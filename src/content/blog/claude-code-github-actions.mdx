@@ -3,6 +3,7 @@ title: Claude Code in GitHub Actions (the scheduled pattern, not just @claude ta
 description: Most Claude Code GitHub Actions guides cover tagging @claude on a PR. Here's the other pattern - a cron-scheduled, autonomous run against your own MCP - shown with the real workflow that built this page.
 date: 2026-07-19
 keyword: claude code github actions
+cover: /blog/covers/claude-code-github-actions.webp
 ---
 
 Nobody using Claude Code inside GitHub Actions to review a pull request is using it to ship on its own clock. Both count as "Claude Code in GitHub Actions," but they're solving different problems. Tagging @claude on an issue or PR is interactive: a human starts it, Claude does one thing inside that conversation, and it's done. The other pattern is scheduled and autonomous: a cron job runs Claude Code headless, with nobody watching, against a stateful backend of its own, and opens a PR that nobody asked for in the moment. This guide covers the setup first - the same installation serves both patterns - and then goes deep on the second one, using the real GitHub Actions workflow that built the page you're reading right now.

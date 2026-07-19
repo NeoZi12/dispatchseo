@@ -12,7 +12,7 @@ export const BUILD_GUIDE_STEPS = [
   { title: "Gate", plain: "Checks Google's current page 1. What those results cover becomes the guide's must-cover list - the searcher's job gets done start to finish - and if the draft can't beat page 1, it refuses to build." },
   { title: "Own it", plain: "Adds at least one thing no competitor page has - a command it actually ran, a real measurement, or your site's own numbers - before writing a word. This is what ranks and what AI answers cite." },
   { title: "Draft", plain: "Writes from current official docs - never from memory - and tests every command it includes." },
-  { title: "Visuals", plain: "Builds 2-3 custom graphics about this exact topic, in your site's own colors and components." },
+  { title: "Visuals", plain: "Builds 2-3 custom graphics about this exact topic, in your site's own colors and components - plus an AI-generated cover image for the blog card, when the image generator is connected." },
   { title: "Humanize", plain: "Rewrites anything that reads AI-generated until it sounds like you wrote it." },
   { title: "Verify", plain: "Runs your site's build to prove nothing breaks - then checks the new guide against your whole back catalogue and rewrites it if it reads like a repeat, so your posts never converge into one template." },
   { title: "PR", plain: "Opens a pull request for your review - it never touches your live site directly." },
@@ -219,6 +219,20 @@ the build-tool workflow and must never be picked up here.
    - Named for the concept it shows (never Visual1/GuideChart), imported
      only by this guide, with a top-of-file comment explaining what it shows
      and why.
+   **COVER IMAGE (when the repo supports it).** If the repo has
+   \`scripts/generate-cover.mjs\` AND the \`CLOUDFLARE_ACCOUNT_ID\` /
+   \`CLOUDFLARE_API_TOKEN\` env vars are set, every guide also ships with an
+   AI-generated cover: run the script with the guide's slug and a --subject
+   describing the topic as a VISUAL SCENE (concrete objects and actions, not
+   the keyword - "a glowing server rack exchanging labeled message packets
+   with a small robot" beats "mcp server"). The script owns the art
+   direction (house style + palette) so covers stay one family - put the
+   scene in the subject, never restate style there. Commit the generated
+   file under \`public/blog/covers/\` and set frontmatter
+   \`cover: /blog/covers/<slug>.webp\`. If the script or env vars are
+   absent, skip WITHOUT failing the run and note "no cover - generator not
+   configured" in the report; the card falls back to its generated plate.
+   Never hotlink an external image or fabricate a cover path.
 8. **HUMANIZER (mandatory, not optional).** Apply the humanizer pass the
    conventions file points at (or its principles if the repo carries no
    skill copy): kill AI tells, tighten, match the first-person practitioner

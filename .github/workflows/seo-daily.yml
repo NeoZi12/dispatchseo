@@ -141,6 +141,10 @@ jobs:
           DATAFORSEO_LOGIN: ${{ secrets.DATAFORSEO_LOGIN }}
           DATAFORSEO_PASSWORD: ${{ secrets.DATAFORSEO_PASSWORD }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Cover-image generation (scripts/generate-cover.mjs) - optional;
+          # the playbook's COVER step skips cleanly when these are unset.
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           MCP_TIMEOUT: "120000"
           # This repo's build needs no env: every dashboard route is
           # force-dynamic, so `next build` touches no data source.

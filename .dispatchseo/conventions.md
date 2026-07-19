@@ -35,7 +35,9 @@ Product-surface files to read fresh each research run:
 - Files: `src/content/blog/<slug>.mdx` - slug is the kebab-case filename.
 - Frontmatter contract: `title` (string), `description` (string, meta
   description length), `date` (YYYY-MM-DD), optional `keyword` (the primary
-  keyword targeted). Nothing else is read.
+  keyword targeted), optional `cover` (absolute-from-root image path, e.g.
+  `/blog/covers/<slug>.webp` - generated via `scripts/generate-cover.mjs`,
+  see the playbook's COVER IMAGE step). Nothing else is read.
 - Rendering: `next-mdx-remote/rsc` with the component map in
   `src/components/blog/registry.tsx` (`src/app/blog/[slug]/page.tsx` is the
   template). The platform renders automatically: canonical URL, OG

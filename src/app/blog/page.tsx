@@ -8,10 +8,13 @@ import { coversForPosts } from "@/lib/blog-covers";
 // Public blog index - the site's content home. Deliberately outside the
 // (dashboard) group: no auth, no DB, builds from the filesystem alone.
 //
-// Layout: newest post as a featured card, everything older as a compact
-// list below it. Reads right with 1 post (today) and with 40 (later) -
-// there's always exactly one "latest" and the list grows underneath it
-// without the page needing a different shape.
+// Layout: newest post as a full-width featured hero, everything older in a
+// 2-col grid of image-topped cards below it (1-col on mobile) - image-led,
+// Postiz-blog inspired. Reads right with 1 post (today) and with 40
+// (later): there's always exactly one "latest" and the grid grows
+// underneath it without the page needing a different shape. Container is
+// max-w-4xl (wider than the rest of the site's max-w-2xl prose pages) so a
+// 2-up grid of real cover images has room to breathe.
 
 export const metadata: Metadata = {
   title: "Blog - DispatchSEO",
@@ -29,7 +32,7 @@ export default function BlogIndex() {
   const covers = coversForPosts(posts);
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-16 sm:py-20">
+    <main className="mx-auto max-w-4xl px-6 py-16 sm:py-20">
       <header className="mb-12">
         <Link
           href="/"
@@ -39,7 +42,7 @@ export default function BlogIndex() {
           DispatchSEO
         </Link>
         <h1 className="mt-5 text-3xl font-semibold tracking-tight sm:text-4xl">Blog</h1>
-        <p className="mt-2 text-neutral-400">
+        <p className="mt-2 max-w-lg text-neutral-400">
           Guides on agent-driven SEO - written and shipped by the pipeline this product runs.
         </p>
       </header>
@@ -53,7 +56,7 @@ export default function BlogIndex() {
           <p className="mb-4 font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-neutral-500">
             More posts
           </p>
-          <div className="space-y-3">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             {rest.map((post) => (
               <PostCard key={post.slug} post={post} spec={covers.get(post.slug)!} />
             ))}

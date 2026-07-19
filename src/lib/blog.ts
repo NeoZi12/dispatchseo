@@ -16,6 +16,7 @@ export type PostMeta = {
   date: string;
   readingMinutes: number;
   keyword?: string;
+  cover?: string; // absolute-from-root image path (e.g. /blog/covers/<slug>.webp)
 };
 
 const BLOG_DIR = join(process.cwd(), "src/content/blog");
@@ -47,6 +48,7 @@ export function getAllPosts(): PostMeta[] {
         date: (data.date as string) ?? "1970-01-01",
         readingMinutes: estimateReadingMinutes(content),
         ...(data.keyword ? { keyword: data.keyword as string } : {}),
+        ...(data.cover ? { cover: data.cover as string } : {}),
       };
     })
     .sort((a, b) => (a.date < b.date ? 1 : -1));

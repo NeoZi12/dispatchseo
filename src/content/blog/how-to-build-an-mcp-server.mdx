@@ -3,6 +3,7 @@ title: How to build an MCP server (with a real, running example)
 description: The full build path - scaffold, first tool, Inspector test, client connect - then the production layer (transport, auth) illustrated with a production server's actual code, not a toy demo.
 date: 2026-07-17
 keyword: how to build an mcp server
+cover: /blog/covers/how-to-build-an-mcp-server.webp
 ---
 
 An MCP server is three things wired together: a transport that moves JSON-RPC messages between client and server, a set of tools the model can call, and an auth layer deciding who's calling and what they're allowed to touch. Building one means scaffolding a project with the official SDK, registering tools against a typed input schema, running the server over a transport (stdio for a local subprocess, Streamable HTTP for a remote server shared by many clients), and testing it with MCP Inspector before a real client ever connects. This guide walks that path end to end, then covers the production layer - remote transport and real auth - using code from a server that's actually running in production, not a toy weather-API demo.
