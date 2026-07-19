@@ -1,26 +1,54 @@
-# DispatchSEO
+<p align="center">
+  <a href="https://dispatchseo.com">
+    <img src="src/app/icon.png" width="90" alt="DispatchSEO logo">
+  </a>
+</p>
 
-**Turn Claude Code into your SEO manager.**
+<h1 align="center">DispatchSEO</h1>
 
+<p align="center"><b>Turn Claude Code into your SEO manager.</b></p>
+
+<p align="center">
+  <a href="LICENSE"><img src="docs/buttons/license-agpl.svg" alt="License: AGPL-3.0"></a>
+</p>
+
+<p align="center">
+  <a href="https://dispatchseo.com">Website</a>
+  &nbsp;&middot;&nbsp;
+  <a href="docs/SELF_HOSTING.md">Self-hosting guide</a>
+  &nbsp;&middot;&nbsp;
+  <a href="https://github.com/NeoZi12/dispatchseo/discussions">Discussions</a>
+  &nbsp;&middot;&nbsp;
+  <a href="https://dispatchseo.com">Cloud waitlist</a>
+</p>
+
+<p align="center">
 The open-source alternative to SEObot and Outrank, built for Claude Code.
 Other SEO tools learn about your product by crawling your homepage. Your
 Claude Code already knows your product, because it probably built half of it.
 DispatchSEO gives that agent the missing pieces: a research playbook, a
 content pipeline that ships pull requests, rank tracking, and a dashboard
 where you stay in control.
+</p>
 
-[![Deploy - new database](docs/buttons/deploy-new-db.svg)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo&env=MCP_API_KEY,CRON_SECRET,DASHBOARD_PASSWORD&envDescription=Invent%20three%20random%20secrets%20-%20run%20%60openssl%20rand%20-hex%2024%60%20three%20times.%20They%20become%20your%20agent%27s%20MCP%20key%2C%20the%20cron%20key%2C%20and%20your%20dashboard%20password.&envLink=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo%2Fblob%2Fmain%2Fdocs%2FSELF_HOSTING.md&project-name=dispatchseo&repository-name=dispatchseo&stores=%5B%7B%22type%22%3A%22integration%22%2C%22integrationSlug%22%3A%22supabase%22%2C%22productSlug%22%3A%22supabase%22%2C%22protocol%22%3A%22storage%22%7D%5D)
-&nbsp;
-[![Deploy - your own database](docs/buttons/deploy-own-db.svg)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo&env=MCP_API_KEY,CRON_SECRET,DASHBOARD_PASSWORD&envDescription=Invent%20three%20random%20secrets%20-%20run%20%60openssl%20rand%20-hex%2024%60%20three%20times.%20They%20become%20your%20agent%27s%20MCP%20key%2C%20the%20cron%20key%2C%20and%20your%20dashboard%20password.%20You%20connect%20your%20Supabase%20database%20right%20after%20deploying%20-%20see%20the%20guide%20link.&envLink=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo%2Fblob%2Fmain%2Fdocs%2FSELF_HOSTING.md&project-name=dispatchseo&repository-name=dispatchseo)
+<p align="center">
+  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo&env=MCP_API_KEY,CRON_SECRET,DASHBOARD_PASSWORD&envDescription=Invent%20three%20random%20secrets%20-%20run%20%60openssl%20rand%20-hex%2024%60%20three%20times.%20They%20become%20your%20agent%27s%20MCP%20key%2C%20the%20cron%20key%2C%20and%20your%20dashboard%20password.&envLink=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo%2Fblob%2Fmain%2Fdocs%2FSELF_HOSTING.md&project-name=dispatchseo&repository-name=dispatchseo&stores=%5B%7B%22type%22%3A%22integration%22%2C%22integrationSlug%22%3A%22supabase%22%2C%22productSlug%22%3A%22supabase%22%2C%22protocol%22%3A%22storage%22%7D%5D"><img src="docs/buttons/deploy-new-db.svg" alt="Deploy - new database"></a>
+  &nbsp;
+  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo&env=MCP_API_KEY,CRON_SECRET,DASHBOARD_PASSWORD&envDescription=Invent%20three%20random%20secrets%20-%20run%20%60openssl%20rand%20-hex%2024%60%20three%20times.%20They%20become%20your%20agent%27s%20MCP%20key%2C%20the%20cron%20key%2C%20and%20your%20dashboard%20password.%20You%20connect%20your%20Supabase%20database%20right%20after%20deploying%20-%20see%20the%20guide%20link.&envLink=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo%2Fblob%2Fmain%2Fdocs%2FSELF_HOSTING.md&project-name=dispatchseo&repository-name=dispatchseo"><img src="docs/buttons/deploy-own-db.svg" alt="Deploy - your own database"></a>
+</p>
 
+<p align="center">
 The first creates a free Supabase database for you. The second skips that -
 use it if your Supabase free plan is full, and connect your own database
-right after deploying ([guide](docs/SELF_HOSTING.md)).
+right after deploying (<a href="docs/SELF_HOSTING.md">guide</a>).
+</p>
 
-License: AGPL-3.0. Self-hosted has zero feature limitations. Everything the
-paid cloud will do, this repo does today, in your own accounts, at $0.
+<p align="center"><i>Self-hosted has zero feature limitations. Everything the
+paid cloud will do, this repo does today, in your own accounts, at $0.</i></p>
 
-![The dashboard Home: journey stage, publishing pace, and live Search Console stats for a connected site](docs/screenshots/home.png)
+<p align="center">
+  <img src="docs/screenshots/home.png" alt="The dashboard Home: journey stage, publishing pace, and live Search Console stats for a connected site">
+</p>
 
 ## How it works
 
@@ -105,6 +133,19 @@ workflow files and setting its own secrets.
 
 There's also an [llms.txt](public/llms.txt) and a [SKILL.md](SKILL.md) if
 you'd rather point an agent at this repo and let it figure the setup out.
+
+## Run it locally
+
+```bash
+git clone https://github.com/NeoZi12/dispatchseo
+cd dispatchseo
+pnpm install
+cp .env.local.example .env.local   # fill in Supabase + the three secrets
+pnpm dev                           # dashboard on localhost:3000
+```
+
+`pnpm build` is the typecheck - run it before opening a PR. There is no
+separate lint or test setup.
 
 ## Cloud version
 
