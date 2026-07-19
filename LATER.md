@@ -2,6 +2,16 @@
 
 Things that were tempting but deliberately not built. Add here instead of building.
 
+- **First-boot setup wizard** (queued 2026-07-19, owner's call during the deploy-button
+  test). Today the deploy form asks the user to invent MCP_API_KEY / CRON_SECRET /
+  DASHBOARD_PASSWORD because at deploy time no app or database exists to generate or
+  store them - env is the only storage alive at that moment. The better UX is the
+  WordPress/Ghost pattern: deploy with zero secrets, first visit shows a claim-your-
+  instance screen that sets the password (hash in DB, env stays as fallback), generates
+  the MCP + cron keys itself, and shows them once. Needs: setup page, password-in-DB
+  auth path, no-DB-yet handling, and closing the unclaimed-instance race. ~a day. The
+  single best onboarding improvement before or right after launch week.
+
 - **Retire the REST weekly-opportunities cron** once the Claude-driven weekly research
   workflow (Phase 4, seo-weekly-research.yml) is verified: remove it from `vercel.json`,
   keep the route as a manual fallback. Superseded because keyword research now derives
