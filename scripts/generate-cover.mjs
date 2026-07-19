@@ -41,21 +41,31 @@ const HUES = {
   magenta: "magenta and pink as the dominant accent colors",
   amber: "warm orange and amber as the dominant accent colors",
 };
-// Backgrounds come out soft/light in this style (the model's illustration
-// prior wins over background instructions) - that matches the reference
-// look (Postiz's blog mixes light covers on a dark site) and the cards'
-// overflow-hidden frame keeps them tidy against neutral-950.
+// Art direction: DARK, MINIMAL, CLEAN. One simple subject, lots of calm
+// dark space, subtle glow - premium tech aesthetic that sits naturally on
+// the neutral-950 site. No mascots, no characters, no cartoon anything
+// (owner's explicit rule), no busy cinematic scenes.
 const STYLE =
-  "clean minimal 3D product illustration, smooth rounded shapes, glossy floating UI " +
-  "cards and icons, soft studio lighting, gentle gradients, " +
-  "dribbble style, professional tech blog cover art";
-// "logo" is deliberately NOT banned: topical marks (a git branch glyph, an
-// octocat silhouette, a plug icon) are what make a cover read as being ABOUT
-// the post - the subject should name them explicitly.
+  "minimal clean 3D render, dark charcoal background, soft studio lighting, " +
+  "simple composition with generous empty space, subtle glow, premium tech aesthetic";
+// "logo" is deliberately NOT banned: a real, recognizable mark (composited
+// via --icon, or a simple glyph the subject names) is what makes a cover
+// read as being ABOUT the post.
 const NEGATIVE =
   "text, words, letters, typography, watermark, signature, low quality, blurry, " +
-  "photo, photograph, human faces, cluttered, busy, cinematic, photorealistic, " +
-  "horror, creepy, grunge, dystopian, machinery clutter, industrial pipes";
+  "photo, photograph, human faces, cluttered, busy, cinematic, " +
+  "cartoon, cute, mascot, character, creature, animal, octopus, tentacles, toy, " +
+  "horror, grunge, machinery clutter, industrial pipes";
+
+// Optional crisp icon composite (--icon github): AI models mangle real
+// logos, so recognizable marks are overlaid EXACTLY, centered, after
+// generation. Add marks here as needed; paths are the official glyphs.
+const ICONS = {
+  github: {
+    viewBox: "0 0 16 16",
+    path: "M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z",
+  },
+};
 
 function arg(name, fallback = undefined) {
   const i = process.argv.indexOf(`--${name}`);
@@ -78,6 +88,11 @@ const outDir = arg("out", "public/blog/covers");
 // two posts used and pick something else.
 const styleKey = arg("style", Object.keys(COMPOSITIONS)[hash(slug) % 4]);
 const hueKey = arg("hue", Object.keys(HUES)[hash(slug + "hue") % 4]);
+const iconKey = arg("icon");
+if (iconKey && !ICONS[iconKey]) {
+  console.error(`Unknown --icon "${iconKey}". Available: ${Object.keys(ICONS).join(", ")}`);
+  process.exit(1);
+}
 if (!slug || !subject) {
   console.error(
     'Usage: node scripts/generate-cover.mjs --slug <slug> --subject "<visual scene>" ' +
@@ -154,7 +169,18 @@ let outPath;
 try {
   const sharp = (await import("sharp")).default;
   outPath = join(outDir, `${slug}.webp`);
-  await sharp(raw).resize(1600, 900, { fit: "cover" }).webp({ quality: 82 }).toFile(outPath);
+  let img = sharp(raw).resize(1600, 900, { fit: "cover" });
+  if (iconKey) {
+    // Center the exact mark, white, at ~46% of cover height.
+    const { viewBox, path } = ICONS[iconKey];
+    const size = 414;
+    const svg = Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="${viewBox}"><path fill="#fff" d="${path}"/></svg>`,
+    );
+    const icon = await sharp(svg).png().toBuffer();
+    img = sharp(await img.toBuffer()).composite([{ input: icon, gravity: "center" }]);
+  }
+  await img.webp({ quality: 82 }).toFile(outPath);
 } catch {
   // sharp unavailable - keep the raw image rather than failing the run, but
   // say so: committed PNGs at this size bloat the repo.

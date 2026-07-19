@@ -225,14 +225,21 @@ the build-tool workflow and must never be picked up here.
    AI-generated cover: run the script with the guide's slug and a --subject
    describing the topic as a VISUAL SCENE (concrete objects and actions, not
    the keyword - "a glowing server rack exchanging labeled message packets
-   with a small robot" beats "mcp server"). Anchor the scene in the topic's
-   RECOGNIZABLE ICONOGRAPHY so the cover reads as being about THIS post,
-   never generic tech: a robotic octopus creature for GitHub, a plug and
-   socket for MCP, a gauge for rankings, branch-and-merge lines for git
-   workflows. A reader should guess the post's topic from the image alone. The script owns the base art
-   direction (dark field, no text) so covers stay one family - put the
-   scene in the subject, never restate style there. VARIETY IS MANDATORY:
-   the script takes \`--style hero|diorama|flow|abstract\` and
+   with a small robot" beats "mcp server"). Keep it MINIMAL and CLEAN -
+   one simple subject, calm space around it, never mascots, characters, or
+   busy scenes (the script's negative prompt enforces this; do not fight
+   it). Make it relevant: for a topic tied to a recognizable product, pass
+   \`--icon <name>\` (e.g. \`--icon github\`) so the script composites the
+   EXACT official mark onto a minimal generated backdrop - never ask the
+   model to draw a logo, it mangles them. If the needed mark is missing
+   from the script's ICONS map, add its official SVG path in the same PR.
+   For concept topics, one simple object does it: a glass cube assembling
+   for "build", a row of small cubes for "examples", a gauge for rankings.
+   A reader should guess the post's topic from the image alone. The script
+   owns the base art direction (dark, minimal, no text) so covers stay one
+   family - put the scene in the subject, never restate style there.
+   VARIETY IS MANDATORY:
+   the script takes \`--style hero|spread|flow|burst\` and
    \`--hue violet|cyan|magenta|amber\` - look at the last 2 published posts'
    covers (\`public/blog/covers/\`, newest by the posts' dates) and pass a
    style AND hue that differ from both, same anti-sameness rule as article
