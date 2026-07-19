@@ -33,7 +33,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AnalyticsPage() {
   const jar = await cookies();
-  if (!isValidCookie(jar.get("dash_auth")?.value)) redirect("/login");
+  if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
 
   const project = await getActiveProject();
   const o = await getAnalyticsOverview(project);

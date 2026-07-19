@@ -213,7 +213,7 @@ function PlaybookColumn({
 
 export default async function Home() {
   const jar = await cookies();
-  if (!isValidCookie(jar.get("dash_auth")?.value)) redirect("/login");
+  if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
 
   const project = await getActiveProject();
   const isDefaultProject = project.slug === DEFAULT_PROJECT_SLUG;

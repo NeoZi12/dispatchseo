@@ -10,7 +10,7 @@ import { consentUrl, oauthConfigured } from "@/lib/gsc-oauth";
 
 export async function GET(): Promise<Response> {
   const jar = await cookies();
-  if (!isValidCookie(jar.get("dash_auth")?.value)) redirect("/login");
+  if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
   if (!oauthConfigured()) {
     return Response.json(
       { error: "GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET are not set." },

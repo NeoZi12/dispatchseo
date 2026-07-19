@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 // Claude Code -> power-ups. /new redirects here; the classic form is retired.
 export default async function OnboardingPage() {
   const jar = await cookies();
-  if (!isValidCookie(jar.get("dash_auth")?.value)) redirect("/login");
+  if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
 
   // The MCP connect command needs this deployment's public origin. Behind
   // Vercel the forwarded headers are trustworthy; localhost falls out naturally.

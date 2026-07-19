@@ -24,7 +24,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 
 export default async function SettingsPage() {
   const jar = await cookies();
-  if (!isValidCookie(jar.get("dash_auth")?.value)) redirect("/login");
+  if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
 
   const project = await getActiveProject();
   const isDefault = project.slug === DEFAULT_PROJECT_SLUG;

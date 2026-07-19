@@ -9,7 +9,7 @@ import { connectProject, verifyState } from "@/lib/gsc-oauth";
 
 export async function GET(req: Request): Promise<Response> {
   const jar = await cookies();
-  if (!isValidCookie(jar.get("dash_auth")?.value)) redirect("/login");
+  if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
 
   const url = new URL(req.url);
   const denied = url.searchParams.get("error");

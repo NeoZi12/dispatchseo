@@ -125,7 +125,7 @@ function AutomationCard({
 
 export default async function AutomationsPage() {
   const jar = await cookies();
-  if (!isValidCookie(jar.get("dash_auth")?.value)) redirect("/login");
+  if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
 
   const project = await getActiveProject();
   const [evidence, flags] = [await gatherEvidence(db(), project.id), effectiveAutomations(project)];

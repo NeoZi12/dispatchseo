@@ -32,15 +32,16 @@ where you stay in control.
 </p>
 
 <p align="center">
-  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo&env=MCP_API_KEY,CRON_SECRET,DASHBOARD_PASSWORD&envDescription=Invent%20three%20random%20secrets%20-%20run%20%60openssl%20rand%20-hex%2024%60%20three%20times.%20They%20become%20your%20agent%27s%20MCP%20key%2C%20the%20cron%20key%2C%20and%20your%20dashboard%20password.&envLink=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo%2Fblob%2Fmain%2Fdocs%2FSELF_HOSTING.md&project-name=dispatchseo&repository-name=dispatchseo&stores=%5B%7B%22type%22%3A%22integration%22%2C%22integrationSlug%22%3A%22supabase%22%2C%22productSlug%22%3A%22supabase%22%2C%22protocol%22%3A%22storage%22%7D%5D"><img src="docs/buttons/deploy-new-db.svg" alt="Deploy - new database"></a>
+  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo&project-name=dispatchseo&repository-name=dispatchseo&stores=%5B%7B%22type%22%3A%22integration%22%2C%22integrationSlug%22%3A%22supabase%22%2C%22productSlug%22%3A%22supabase%22%2C%22protocol%22%3A%22storage%22%7D%5D"><img src="docs/buttons/deploy-new-db.svg" alt="Deploy - new database"></a>
   &nbsp;
-  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo&env=MCP_API_KEY,CRON_SECRET,DASHBOARD_PASSWORD&envDescription=Invent%20three%20random%20secrets%20-%20run%20%60openssl%20rand%20-hex%2024%60%20three%20times.%20They%20become%20your%20agent%27s%20MCP%20key%2C%20the%20cron%20key%2C%20and%20your%20dashboard%20password.%20You%20connect%20your%20Supabase%20database%20right%20after%20deploying%20-%20see%20the%20guide%20link.&envLink=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo%2Fblob%2Fmain%2Fdocs%2FSELF_HOSTING.md&project-name=dispatchseo&repository-name=dispatchseo"><img src="docs/buttons/deploy-own-db.svg" alt="Deploy - your own database"></a>
+  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo&project-name=dispatchseo&repository-name=dispatchseo"><img src="docs/buttons/deploy-own-db.svg" alt="Deploy - your own database"></a>
 </p>
 
 <p align="center">
-The first creates a free Supabase database for you. The second skips that -
-use it if your Supabase free plan is full, and connect your own database
-right after deploying (<a href="docs/SELF_HOSTING.md">guide</a>).
+Neither asks you for anything. Deploy, open your new site, and it walks you
+through the rest - the first button also creates a free Supabase database
+for you; the second is for connecting a database you already have
+(<a href="docs/SELF_HOSTING.md">guide</a>).
 </p>
 
 <p align="center"><i>Self-hosted has zero feature limitations. Everything the

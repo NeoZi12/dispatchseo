@@ -82,7 +82,7 @@ function topicEvidenceLines(evidence: TrendTopic["evidence"]) {
 
 export default async function TrendsPage() {
   const jar = await cookies();
-  if (!isValidCookie(jar.get("dash_auth")?.value)) redirect("/login");
+  if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
 
   const project = await getActiveProject();
   const [sugRes, topicRes, scanRes, overview] = await Promise.all([

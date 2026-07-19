@@ -25,6 +25,9 @@ export function proxy(req: NextRequest) {
   if (
     pathname.startsWith("/api/") ||
     pathname.startsWith("/login") ||
+    // First-boot wizard: must be reachable before any password exists. Only
+    // the exact path - /setup/keys stays behind the cookie-presence gate.
+    pathname === "/setup" ||
     pathname === "/blog" ||
     pathname.startsWith("/blog/") ||
     // Privacy policy must be public: Google's OAuth consent screen links to

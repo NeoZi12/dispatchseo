@@ -65,7 +65,7 @@ function AnswerLog({ answers }: { answers: AiVisibility["recent_answers"] }) {
 
 export default async function AiVisibilityPage() {
   const jar = await cookies();
-  if (!isValidCookie(jar.get("dash_auth")?.value)) redirect("/login");
+  if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
 
   const project = await getActiveProject();
   const visibility = await getAiVisibility(project.id, project.domain, { maxAnswers: 50 });

@@ -132,7 +132,7 @@ function ItemCard({
 
 export default async function BacklinksPage() {
   const jar = await cookies();
-  if (!isValidCookie(jar.get("dash_auth")?.value)) redirect("/login");
+  if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
 
   // Playbook progress, the outreach prospects, and the profile the copy
   // personalizes from, together. If the playbook_status table hasn't been

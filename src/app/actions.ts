@@ -29,7 +29,7 @@ import { fetchDomainRegistrationDate } from "@/lib/domain-age";
 // presence routing, this is the real check.
 async function assertAuthed() {
   const jar = await cookies();
-  if (!isValidCookie(jar.get("dash_auth")?.value)) {
+  if (!(await isValidCookie(jar.get("dash_auth")?.value))) {
     throw new Error("Unauthorized");
   }
 }

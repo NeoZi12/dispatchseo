@@ -1,0 +1,71 @@
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import Link from "next/link";
+import { instanceCronSecret, isValidCookie } from "@/lib/dashboard-auth";
+import { DEFAULT_PROJECT_ID, fetchProjectToken } from "@/lib/projects";
+import { DispatchMark } from "@/components/logo";
+
+// Post-claim reveal: the keys the instance generated for itself. Guarded
+// like every dashboard page; both values stay readable later (the MCP token
+// on Settings, the cron secret here) - this screen is the friendly first
+// look, not a one-time vault.
+export const dynamic = "force-dynamic";
+
+function KeyBlock({ label, value, hint }: { label: string; value: string; hint: string }) {
+  return (
+    <div className="space-y-1.5">
+      <p className="text-sm font-medium text-white">{label}</p>
+      <code className="block break-all rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2.5 font-mono text-[13px] text-neutral-200">
+        {value}
+      </code>
+      <p className="text-xs leading-relaxed text-neutral-500">{hint}</p>
+    </div>
+  );
+}
+
+export default async function SetupKeysPage() {
+  const jar = await cookies();
+  if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
+
+  const [mcpToken, cronSecret] = await Promise.all([
+    fetchProjectToken(DEFAULT_PROJECT_ID),
+    instanceCronSecret(),
+  ]);
+
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-neutral-950 p-6">
+      <div className="w-full max-w-lg space-y-6">
+        <h1 className="flex items-center gap-2.5 text-xl font-semibold text-white">
+          <DispatchMark className="h-7 w-auto" />
+          You're in
+        </h1>
+        <div className="space-y-5 rounded-xl border border-neutral-800 bg-neutral-900/60 p-6">
+          <p className="text-sm leading-relaxed text-neutral-400">
+            DispatchSEO generated its own keys. You'll be pointed at them again
+            when setup needs them, so no need to save them now:
+          </p>
+          {mcpToken && (
+            <KeyBlock
+              label="Agent key (MCP token)"
+              value={mcpToken}
+              hint="What your Claude Code uses to connect. The onboarding flow and Settings page both show it whenever you need it."
+            />
+          )}
+          {cronSecret && (
+            <KeyBlock
+              label="Cron key"
+              value={cronSecret}
+              hint="Authorizes the scheduled jobs (GitHub Actions) to call this backend. The pipeline install sets it as a repo secret for you."
+            />
+          )}
+          <Link
+            href="/dashboard"
+            className="block w-full rounded-lg bg-white px-4 py-3 text-center font-medium text-neutral-950"
+          >
+            Open the dashboard
+          </Link>
+        </div>
+      </div>
+    </main>
+  );
+}

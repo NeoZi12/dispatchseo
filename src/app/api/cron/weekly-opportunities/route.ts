@@ -28,7 +28,7 @@ function classify(keyword: string): "guide" | "tool" {
 }
 
 export async function GET(req: Request): Promise<Response> {
-  const denied = checkCron(req);
+  const denied = await checkCron(req);
   if (denied) return denied;
 
   const result: Record<string, unknown> = {};

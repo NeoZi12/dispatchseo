@@ -40,7 +40,7 @@ function shortDate(iso: string) {
 
 export default async function ToolsPage() {
   const jar = await cookies();
-  if (!isValidCookie(jar.get("dash_auth")?.value)) redirect("/login");
+  if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
 
   const project = await getActiveProject();
   const client = db();

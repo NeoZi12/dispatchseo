@@ -20,7 +20,7 @@ import { PageHeader, SectionTitle } from "@/components/ui";
 async function disconnect() {
   "use server";
   const jar = await cookies();
-  if (!isValidCookie(jar.get("dash_auth")?.value)) redirect("/login");
+  if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
   const project = await getActiveProject();
   await disconnectProject(project.slug);
   revalidatePath("/google");
@@ -32,7 +32,7 @@ export default async function GooglePage({
   searchParams: Promise<{ error?: string; connected?: string }>;
 }) {
   const jar = await cookies();
-  if (!isValidCookie(jar.get("dash_auth")?.value)) redirect("/login");
+  if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
   const { error, connected } = await searchParams;
   const project = await getActiveProject();
   const token = project.gsc_oauth_refresh_token;

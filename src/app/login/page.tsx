@@ -1,6 +1,7 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { COOKIE_NAME, cookieValue, isCorrectPassword } from "@/lib/dashboard-auth";
+import { getSetupState } from "@/lib/setup";
 import {
   clearLoginFailures,
   clientIp,
@@ -16,13 +17,13 @@ async function login(formData: FormData) {
     redirect("/login?error=locked");
   }
   const attempt = String(formData.get("password") ?? "");
-  if (!isCorrectPassword(attempt)) {
+  if (!(await isCorrectPassword(attempt))) {
     const locked = await recordLoginFailure(ip);
     redirect(locked ? "/login?error=locked" : "/login?error=1");
   }
   await clearLoginFailures(ip);
   const jar = await cookies();
-  jar.set(COOKIE_NAME, cookieValue(), {
+  jar.set(COOKIE_NAME, await cookieValue(), {
     httpOnly: true,
     secure: true,
     sameSite: "lax",
@@ -37,6 +38,8 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
+  // A fresh deploy has nothing to log into yet - hand off to the wizard.
+  if ((await getSetupState()) !== "ready") redirect("/setup");
   const { error } = await searchParams;
   return (
     <main className="min-h-screen flex items-center justify-center bg-neutral-950 p-6">

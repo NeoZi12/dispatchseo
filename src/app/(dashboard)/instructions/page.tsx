@@ -205,7 +205,7 @@ function SecondaryStrip() {
 
 export default async function InstructionsPage() {
   const jar = await cookies();
-  if (!isValidCookie(jar.get("dash_auth")?.value)) redirect("/login");
+  if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
 
   const project = await getActiveProject();
   const conventions = await loadConventions(project);

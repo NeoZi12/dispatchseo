@@ -18,56 +18,51 @@ data (DataForSEO) is optional - see [Data tiers](#data-tiers).
 
 ## 1. Deploy the backend
 
-**Fast path:** the Deploy-to-Vercel button in the README clones the repo to
-your GitHub, provisions a Supabase database through the Vercel Marketplace
-(its env vars get injected automatically), and prompts you for the three
-secrets you invent (`MCP_API_KEY`, `CRON_SECRET`, `DASHBOARD_PASSWORD`).
-If you took it, skip to step 2's migration part - the database exists, but
-it's empty until you run the migrations.
+Click a deploy button in the README - neither asks you for anything:
 
-**Bring-your-own-database path:** the README's second deploy button deploys
-the same app but skips creating a database. Use it if your Supabase account
-is already at its free-project limit (the free tier allows 2 active
-projects) or you want to reuse an existing project. After the deploy
-finishes, the site will show an error - that's expected, it has no database
-yet. Connect yours in two copy-pastes: do step 2 below (create the project
-and run the migrations), then in Vercel → your project → Settings →
-Environment Variables add `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
-(both shown in Supabase under Project Settings → API) and redeploy.
+- **Deploy · new database** clones the repo to your GitHub and provisions a
+  free Supabase database through the Vercel Marketplace (its env vars get
+  injected automatically).
+- **Deploy · your own database** deploys the same app without creating a
+  database. Use it if your Supabase account is already at its free-project
+  limit (the free tier allows 2 active projects) or you want to reuse an
+  existing project.
+- **Manual path:** fork this repo, then import it into Vercel (Add New →
+  Project → your fork). Equivalent to the second button.
 
-**Manual path:** fork this repo, then import it into Vercel (Add New →
-Project → your fork). The defaults work; you'll add environment variables in
-step 3.
+Then **open your new site**. It shows a setup wizard that walks you through
+whatever is left, in order:
 
-## 2. Create the database
-
-1. Create a free project at [supabase.com](https://supabase.com).
-2. Open the SQL Editor and run every file in
+1. **Connect a database** (skipped on the marketplace path): create a free
+   project at [supabase.com](https://supabase.com), copy its **Project URL**
+   and **service_role key** from Project Settings → API into Vercel env vars
+   `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`, redeploy. The wizard
+   shows these exact steps.
+2. **Run the migrations**: in the Supabase SQL Editor, run every file in
    [`supabase/migrations/`](../supabase/migrations/) **in numeric order**
-   (0001 first). Each one is additive; running them all takes a couple of
-   minutes.
-3. From Project Settings → API, copy the **URL** and the **service_role
-   key** for the next step.
+   (0001 first). Each one is additive; a couple of minutes, one time.
+3. **Claim the instance**: choose your dashboard password. DispatchSEO
+   generates its agent key (MCP token) and cron key itself and shows you
+   both.
 
-## 3. Environment variables
+## 2. Environment variables
 
-Set these in Vercel (Project → Settings → Environment Variables). The full
-annotated list lives in [`.env.local.example`](../.env.local.example).
+The wizard handles the required ones. The rest go in Vercel (Project →
+Settings → Environment Variables); the full annotated list lives in
+[`.env.local.example`](../.env.local.example).
 
 | Variable | What it is |
 | --- | --- |
-| `SUPABASE_URL` | From step 2 (the deploy button injects it for you) |
-| `SUPABASE_SERVICE_ROLE_KEY` | From step 2 - server-only, never expose it. The deploy button injects it as `SUPABASE_SECRET_KEY`; both names work |
-| `MCP_API_KEY` | Invent it: `openssl rand -hex 24` |
-| `CRON_SECRET` | Invent it: `openssl rand -hex 24` |
-| `DASHBOARD_PASSWORD` | Your dashboard login. Make it long and random - it is the only gate |
-| `GSC_SERVICE_ACCOUNT_JSON` | Step 4 (one line, the whole JSON) |
+| `SUPABASE_URL` | Wizard step 1 (the marketplace path injects it for you) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Wizard step 1 - server-only, never expose it. The marketplace injects it as `SUPABASE_SECRET_KEY`; both names work |
+| `GSC_SERVICE_ACCOUNT_JSON` | Step 3 below (one line, the whole JSON) |
 | `GSC_SITE_URL` | Your property, e.g. `sc-domain:example.com` |
 | `DATAFORSEO_*`, `RESEND_API_KEY`, `ALERT_EMAIL` | Optional - volumes and failure emails |
+| `DASHBOARD_PASSWORD`, `CRON_SECRET`, `MCP_API_KEY` | Optional overrides. Setting them bypasses the wizard's stored values (classic installs work this way); most people never set them |
 
 Redeploy after saving so the functions pick them up.
 
-## 4. Google Search Console (free rankings + traffic data)
+## 3. Google Search Console (free rankings + traffic data)
 
 1. In [Google Cloud Console](https://console.cloud.google.com), create a
    project (or reuse one), enable the **Search Console API**, and create a
@@ -77,7 +72,7 @@ Redeploy after saving so the functions pick them up.
    `name@project.iam.gserviceaccount.com`) as a **Full** user.
 3. Paste the JSON key (single line) into `GSC_SERVICE_ACCOUNT_JSON`.
 
-## 5. Schedules
+## 4. Schedules
 
 Two schedulers, split because Vercel Hobby caps crons at once daily:
 
@@ -86,7 +81,9 @@ Two schedulers, split because Vercel Hobby caps crons at once daily:
 - **GitHub Actions** - the higher-frequency jobs live in
   [`.github/workflows/`](../.github/workflows/). On your fork: enable
   Actions (forks start disabled), then set
-  - repository **secret** `CRON_SECRET` = the same value as in Vercel,
+  - repository **secret** `CRON_SECRET` = your cron key. The setup wizard
+    generated it and shows it at `https://your-app.vercel.app/setup/keys`
+    (classic installs: whatever you set as the `CRON_SECRET` env var),
   - repository **variable** `BACKEND_URL` = your deployment URL
     (e.g. `https://your-app.vercel.app`).
 
@@ -95,10 +92,10 @@ Two schedulers, split because Vercel Hobby caps crons at once daily:
   your site gets its own copies during setup (next step), so leave the ones
   here disabled or delete them from your fork.
 
-## 6. Connect your site
+## 5. Connect your site
 
-Open your deployment, log in with `DASHBOARD_PASSWORD`, and add your site as
-a project. The dashboard gives you one command to paste into Claude Code
+Open your deployment, log in with your dashboard password, and add your site
+as a project. The dashboard gives you one command to paste into Claude Code
 **inside your site's repo** - your agent connects to the MCP server, follows
 the served instructions, writes the workflow files, and sets its own repo
 secrets. That's the whole install: your agent sets you up.

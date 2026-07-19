@@ -1,7 +1,11 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { db } from "./db";
 
-// Single-user password gate. The auth cookie is an HMAC of a fixed message
-// keyed by DASHBOARD_PASSWORD, so changing the password invalidates every
+// Single-user password gate. The password lives either in DASHBOARD_PASSWORD
+// env (classic installs - env always wins) or, since the first-boot setup
+// wizard, as a scrypt hash in instance_settings (claimed installs). The auth
+// cookie is an HMAC of a fixed message keyed by the env password or by the
+// stored hash string, so changing the password either way invalidates every
 // existing session. No sessions table, no user model - one human.
 
 const COOKIE_NAME = "dash_auth";
@@ -9,24 +13,88 @@ const MESSAGE = "seo-dashboard-v1";
 
 export { COOKIE_NAME };
 
-export function cookieValue(): string {
-  const secret = process.env.DASHBOARD_PASSWORD;
-  if (!secret) throw new Error("Missing DASHBOARD_PASSWORD");
+type InstanceRow = { dashboard_password_hash: string; cron_secret: string } | null;
+
+// Every protected page checks the cookie, so the instance row is cached for
+// a minute to keep auth from costing a DB round-trip per request. Claiming
+// busts it; env-only installs never populate it.
+let cache: { row: InstanceRow; at: number } | null = null;
+const CACHE_TTL_MS = 60_000;
+
+async function instanceRow(): Promise<InstanceRow> {
+  if (cache && Date.now() - cache.at < CACHE_TTL_MS) return cache.row;
+  try {
+    const { data, error } = await db()
+      .from("instance_settings")
+      .select("dashboard_password_hash, cron_secret")
+      .maybeSingle();
+    // Table missing or transient error: fall back to the last known row so a
+    // DB hiccup can't flap sessions; never cache the failure.
+    if (error) return cache?.row ?? null;
+    cache = { row: (data as InstanceRow) ?? null, at: Date.now() };
+    return cache.row;
+  } catch {
+    return cache?.row ?? null;
+  }
+}
+
+export function bustInstanceCache(): void {
+  cache = null;
+}
+
+// The HMAC key for the session cookie. Env password wins; otherwise the
+// stored scrypt hash doubles as the key (re-claiming rotates it).
+async function authSecret(): Promise<string | null> {
+  const env = process.env.DASHBOARD_PASSWORD;
+  if (env) return env;
+  const row = await instanceRow();
+  return row?.dashboard_password_hash ?? null;
+}
+
+export async function cookieValue(): Promise<string> {
+  const secret = await authSecret();
+  if (!secret) throw new Error("No dashboard password: instance unclaimed and DASHBOARD_PASSWORD unset");
   return createHmac("sha256", secret).update(MESSAGE).digest("hex");
 }
 
-export function isValidCookie(value: string | undefined): boolean {
-  if (!value || !process.env.DASHBOARD_PASSWORD) return false;
-  const expected = cookieValue();
+export async function isValidCookie(value: string | undefined): Promise<boolean> {
+  if (!value) return false;
+  const secret = await authSecret();
+  if (!secret) return false;
+  const expected = createHmac("sha256", secret).update(MESSAGE).digest("hex");
   const a = Buffer.from(value);
   const b = Buffer.from(expected);
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-export function isCorrectPassword(attempt: string): boolean {
-  const secret = process.env.DASHBOARD_PASSWORD;
-  if (!secret) return false;
-  const a = Buffer.from(attempt);
-  const b = Buffer.from(secret);
+export function hashPassword(password: string): string {
+  const salt = randomBytes(16).toString("hex");
+  const hash = scryptSync(password, salt, 64).toString("hex");
+  return `scrypt:${salt}:${hash}`;
+}
+
+function matchesHash(attempt: string, stored: string): boolean {
+  const [scheme, salt, hash] = stored.split(":");
+  if (scheme !== "scrypt" || !salt || !hash) return false;
+  const a = scryptSync(attempt, salt, 64);
+  const b = Buffer.from(hash, "hex");
   return a.length === b.length && timingSafeEqual(a, b);
+}
+
+export async function isCorrectPassword(attempt: string): Promise<boolean> {
+  const env = process.env.DASHBOARD_PASSWORD;
+  if (env) {
+    const a = Buffer.from(attempt);
+    const b = Buffer.from(env);
+    return a.length === b.length && timingSafeEqual(a, b);
+  }
+  const row = await instanceRow();
+  if (!row?.dashboard_password_hash) return false;
+  return matchesHash(attempt, row.dashboard_password_hash);
+}
+
+// The wizard-generated cron secret, for checkCron's fallback chain.
+export async function instanceCronSecret(): Promise<string | null> {
+  const row = await instanceRow();
+  return row?.cron_secret ?? null;
 }

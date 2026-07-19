@@ -219,7 +219,7 @@ async function runProject(project: Project): Promise<Record<string, unknown>> {
 }
 
 export async function GET(req: Request): Promise<Response> {
-  const denied = checkCron(req);
+  const denied = await checkCron(req);
   if (denied) return denied;
 
   const projects = await listProjects();
