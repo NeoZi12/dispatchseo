@@ -9,16 +9,13 @@ DispatchSEO gives that agent the missing pieces: a research playbook, a
 content pipeline that ships pull requests, rank tracking, and a dashboard
 where you stay in control.
 
-Deploy it - pick one of the two, both free:
+[![Deploy - new database](https://img.shields.io/badge/%E2%96%B2%20Deploy-new%20database-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo&env=MCP_API_KEY,CRON_SECRET,DASHBOARD_PASSWORD&envDescription=Invent%20three%20random%20secrets%20-%20run%20%60openssl%20rand%20-hex%2024%60%20three%20times.%20They%20become%20your%20agent%27s%20MCP%20key%2C%20the%20cron%20key%2C%20and%20your%20dashboard%20password.&envLink=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo%2Fblob%2Fmain%2Fdocs%2FSELF_HOSTING.md&project-name=dispatchseo&repository-name=dispatchseo&stores=%5B%7B%22type%22%3A%22integration%22%2C%22integrationSlug%22%3A%22supabase%22%2C%22productSlug%22%3A%22supabase%22%2C%22protocol%22%3A%22storage%22%7D%5D)
+&nbsp;
+[![Deploy - your own database](https://img.shields.io/badge/%E2%96%B2%20Deploy-your%20own%20database-374151?style=for-the-badge&logo=vercel&logoColor=white)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo&env=MCP_API_KEY,CRON_SECRET,DASHBOARD_PASSWORD&envDescription=Invent%20three%20random%20secrets%20-%20run%20%60openssl%20rand%20-hex%2024%60%20three%20times.%20They%20become%20your%20agent%27s%20MCP%20key%2C%20the%20cron%20key%2C%20and%20your%20dashboard%20password.%20You%20connect%20your%20Supabase%20database%20right%20after%20deploying%20-%20see%20the%20guide%20link.&envLink=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo%2Fblob%2Fmain%2Fdocs%2FSELF_HOSTING.md&project-name=dispatchseo&repository-name=dispatchseo)
 
-| | |
-| --- | --- |
-| [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo&env=MCP_API_KEY,CRON_SECRET,DASHBOARD_PASSWORD&envDescription=Invent%20three%20random%20secrets%20-%20run%20%60openssl%20rand%20-hex%2024%60%20three%20times.%20They%20become%20your%20agent%27s%20MCP%20key%2C%20the%20cron%20key%2C%20and%20your%20dashboard%20password.&envLink=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo%2Fblob%2Fmain%2Fdocs%2FSELF_HOSTING.md&project-name=dispatchseo&repository-name=dispatchseo&stores=%5B%7B%22type%22%3A%22integration%22%2C%22integrationSlug%22%3A%22supabase%22%2C%22productSlug%22%3A%22supabase%22%2C%22protocol%22%3A%22storage%22%7D%5D) | **New database (the default).** Vercel creates a free Supabase database for you automatically. Take this one unless the other row describes you. |
-| [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo&env=MCP_API_KEY,CRON_SECRET,DASHBOARD_PASSWORD&envDescription=Invent%20three%20random%20secrets%20-%20run%20%60openssl%20rand%20-hex%2024%60%20three%20times.%20They%20become%20your%20agent%27s%20MCP%20key%2C%20the%20cron%20key%2C%20and%20your%20dashboard%20password.%20You%20connect%20your%20Supabase%20database%20right%20after%20deploying%20-%20see%20the%20guide%20link.&envLink=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo%2Fblob%2Fmain%2Fdocs%2FSELF_HOSTING.md&project-name=dispatchseo&repository-name=dispatchseo) | **Bring your own database.** For accounts already at Supabase's 2-project free limit, or to reuse an existing database. Deploys the same app without creating a database; you connect yours right after with two copy-pastes - [the guide](docs/SELF_HOSTING.md) walks you through it. |
-
-Either way, the deploy form asks for the same three secrets, which you
-invent on the spot (`openssl rand -hex 24`, three times): your agent's MCP
-key, the cron key, and your dashboard password.
+The first creates a free Supabase database for you. The second skips that -
+use it if your Supabase free plan is full, and connect your own database
+right after deploying ([guide](docs/SELF_HOSTING.md)).
 
 License: AGPL-3.0. Self-hosted has zero feature limitations. Everything the
 paid cloud will do, this repo does today, in your own accounts, at $0.
