@@ -39,8 +39,11 @@ const HUES = {
 };
 const STYLE =
   "deep charcoal black background, cinematic lighting, sharp focus, high detail 3D digital art";
+// "logo" is deliberately NOT banned: topical marks (a git branch glyph, an
+// octocat silhouette, a plug icon) are what make a cover read as being ABOUT
+// the post - the subject should name them explicitly.
 const NEGATIVE =
-  "text, words, letters, typography, watermark, logo, signature, low quality, " +
+  "text, words, letters, typography, watermark, signature, low quality, " +
   "blurry, photo, photograph, human faces";
 
 function arg(name, fallback = undefined) {

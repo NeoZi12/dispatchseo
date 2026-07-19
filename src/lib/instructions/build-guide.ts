@@ -225,7 +225,11 @@ the build-tool workflow and must never be picked up here.
    AI-generated cover: run the script with the guide's slug and a --subject
    describing the topic as a VISUAL SCENE (concrete objects and actions, not
    the keyword - "a glowing server rack exchanging labeled message packets
-   with a small robot" beats "mcp server"). The script owns the base art
+   with a small robot" beats "mcp server"). Anchor the scene in the topic's
+   RECOGNIZABLE ICONOGRAPHY so the cover reads as being about THIS post,
+   never generic tech: a robotic octopus creature for GitHub, a plug and
+   socket for MCP, a gauge for rankings, branch-and-merge lines for git
+   workflows. A reader should guess the post's topic from the image alone. The script owns the base art
    direction (dark field, no text) so covers stay one family - put the
    scene in the subject, never restate style there. VARIETY IS MANDATORY:
    the script takes \`--style hero|diorama|flow|abstract\` and

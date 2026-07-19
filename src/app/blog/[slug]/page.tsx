@@ -71,23 +71,17 @@ export default async function BlogPost({ params }: { params: Promise<{ slug: str
       }
     >
       <article className="max-w-3xl">
-        <nav className="mb-8 flex items-center gap-1.5 text-sm text-neutral-500">
-          <Link
-            href="/"
-            className="rounded-md outline-none transition-colors hover:text-neutral-300 focus-visible:ring-2 focus-visible:ring-violet-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950"
-          >
-            DispatchSEO
-          </Link>
-          <span aria-hidden="true" className="text-neutral-700">
-            /
-          </span>
-          <Link
-            href="/blog"
-            className="rounded-md outline-none transition-colors hover:text-neutral-300 focus-visible:ring-2 focus-visible:ring-violet-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950"
-          >
-            Blog
-          </Link>
-        </nav>
+        {/* One clear back affordance, not a breadcrumb - the old
+            "DispatchSEO / Blog" crumb read as two static labels, not
+            something to click. This is a real link to the index, styled in
+            the site's quiet-link grammar (see the home link on /blog). */}
+        <Link
+          href="/blog"
+          className="mb-8 inline-flex items-center gap-1.5 rounded-md text-sm font-medium text-neutral-400 outline-none transition-colors hover:text-neutral-200 focus-visible:ring-2 focus-visible:ring-violet-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950"
+        >
+          <span aria-hidden="true">←</span>
+          All posts
+        </Link>
         <header className="mb-8">
           <h1 className="text-3xl font-semibold tracking-tight">{post.meta.title}</h1>
           <p className="mt-2 flex items-center gap-2 text-sm text-neutral-500">
@@ -118,6 +112,15 @@ export default async function BlogPost({ params }: { params: Promise<{ slug: str
           <SideAd className="mb-8" />
         )}
         <MDXRemote source={post.content} components={mdxComponents} />
+        <div className="mt-12 border-t border-neutral-800 pt-6">
+          <Link
+            href="/blog"
+            className="inline-flex items-center gap-1.5 rounded-md text-sm font-medium text-neutral-400 outline-none transition-colors hover:text-neutral-200 focus-visible:ring-2 focus-visible:ring-violet-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950"
+          >
+            <span aria-hidden="true">←</span>
+            All posts
+          </Link>
+        </div>
       </article>
       {showRail && (
         <aside className="hidden lg:block">
