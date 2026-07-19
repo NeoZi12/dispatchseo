@@ -69,6 +69,7 @@ export function getPost(slug: string): { meta: PostMeta; content: string } | nul
         date: (data.date as string) ?? "1970-01-01",
         readingMinutes: estimateReadingMinutes(content),
         ...(data.keyword ? { keyword: data.keyword as string } : {}),
+        ...(data.cover ? { cover: data.cover as string } : {}),
       },
       content,
     };

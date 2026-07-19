@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MDXRemote } from "next-mdx-remote/rsc";
@@ -95,6 +96,22 @@ export default async function BlogPost({ params }: { params: Promise<{ slug: str
             <span>{post.meta.readingMinutes} min read</span>
           </p>
         </header>
+        {post.meta.cover && (
+          <div className="relative mb-8 aspect-[16/9] w-full overflow-hidden rounded-xl">
+            {/* Decorative hero - the title above already names the post, so
+                the image needs no alt text. No CoverArt-plate fallback here:
+                a post without a cover keeps the pre-image layout exactly,
+                it doesn't get a generic plate in its place. */}
+            <Image
+              src={post.meta.cover}
+              alt=""
+              fill
+              sizes="(min-width: 1024px) 768px, calc(100vw - 48px)"
+              priority
+              className="object-cover"
+            />
+          </div>
+        )}
         {showRail ? (
           <TableOfContents headings={headings} variant="inline" className="mb-8 lg:hidden" />
         ) : (

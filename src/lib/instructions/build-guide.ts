@@ -225,10 +225,15 @@ the build-tool workflow and must never be picked up here.
    AI-generated cover: run the script with the guide's slug and a --subject
    describing the topic as a VISUAL SCENE (concrete objects and actions, not
    the keyword - "a glowing server rack exchanging labeled message packets
-   with a small robot" beats "mcp server"). The script owns the art
-   direction (house style + palette) so covers stay one family - put the
-   scene in the subject, never restate style there. Commit the generated
-   file under \`public/blog/covers/\` and set frontmatter
+   with a small robot" beats "mcp server"). The script owns the base art
+   direction (dark field, no text) so covers stay one family - put the
+   scene in the subject, never restate style there. VARIETY IS MANDATORY:
+   the script takes \`--style hero|diorama|flow|abstract\` and
+   \`--hue violet|cyan|magenta|amber\` - look at the last 2 published posts'
+   covers (\`public/blog/covers/\`, newest by the posts' dates) and pass a
+   style AND hue that differ from both, same anti-sameness rule as article
+   shapes. Commit the generated file under \`public/blog/covers/\` and set
+   frontmatter
    \`cover: /blog/covers/<slug>.webp\`. If the script or env vars are
    absent, skip WITHOUT failing the run and note "no cover - generator not
    configured" in the report; the card falls back to its generated plate.

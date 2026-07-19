@@ -19,16 +19,26 @@
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-// The house art direction - every cover reads as one family. The per-post
-// --subject slots into the middle; style and palette stay fixed so the blog
-// index looks designed, not stock. Mirrors the site theme: near-black field,
-// violet/purple accents.
-const STYLE_PREFIX =
-  "Dark isometric 3D tech illustration, deep charcoal black background, " +
-  "glowing violet and purple neon accents, soft cyan rim light, ";
-const STYLE_SUFFIX =
-  ", floating translucent UI panels, subtle dot grid floor, cinematic " +
-  "lighting, sharp focus, high detail digital art";
+// The house art direction keeps covers in one family (dark field, neon
+// accents, no text) while COMPOSITION and LIGHT HUE rotate per post so
+// neighboring covers never read as the same image. The subject comes FIRST
+// in the prompt - SDXL weights early tokens hardest, and a style-first
+// prompt is exactly what made every cover converge into the same isometric
+// purple clutter.
+const COMPOSITIONS = {
+  hero: "one large focal object centered, generous empty dark space around it, dramatic rim light, shallow depth of field",
+  diorama: "isometric miniature diorama scene viewed from a high angle, tiny detailed machinery",
+  flow: "wide horizontal composition with strong left-to-right motion, side elevation view",
+  abstract: "abstract floating geometric structures, strong silhouettes, deep perspective",
+};
+const HUES = {
+  violet: "glowing violet and purple neon accents",
+  cyan: "glowing teal and cyan neon accents",
+  magenta: "glowing magenta and hot pink neon accents",
+  amber: "glowing amber and orange neon accents against cool shadows",
+};
+const STYLE =
+  "deep charcoal black background, cinematic lighting, sharp focus, high detail 3D digital art";
 const NEGATIVE =
   "text, words, letters, typography, watermark, logo, signature, low quality, " +
   "blurry, photo, photograph, human faces";
@@ -39,12 +49,31 @@ function arg(name, fallback = undefined) {
   return process.argv[i + 1];
 }
 
+function hash(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
 const slug = arg("slug");
 const subject = arg("subject");
 const outDir = arg("out", "public/blog/covers");
+// Composition + hue default from the slug hash (stable, spreads across the
+// catalogue) and can be forced with --style / --hue to differ from recent
+// covers - the playbook's COVER step tells the agent to check what the last
+// two posts used and pick something else.
+const styleKey = arg("style", Object.keys(COMPOSITIONS)[hash(slug) % 4]);
+const hueKey = arg("hue", Object.keys(HUES)[hash(slug + "hue") % 4]);
 if (!slug || !subject) {
   console.error(
-    'Usage: node scripts/generate-cover.mjs --slug <slug> --subject "<visual subject>"',
+    'Usage: node scripts/generate-cover.mjs --slug <slug> --subject "<visual scene>" ' +
+      "[--style hero|diorama|flow|abstract] [--hue violet|cyan|magenta|amber]",
+  );
+  process.exit(1);
+}
+if (!COMPOSITIONS[styleKey] || !HUES[hueKey]) {
+  console.error(
+    `Unknown --style "${styleKey}" or --hue "${hueKey}". Styles: ${Object.keys(COMPOSITIONS).join(", ")}. Hues: ${Object.keys(HUES).join(", ")}.`,
   );
   process.exit(1);
 }
@@ -65,9 +94,9 @@ if (!accountId || !token) {
 }
 
 const MODEL = "@cf/stabilityai/stable-diffusion-xl-base-1.0";
-const prompt = `${STYLE_PREFIX}${subject}${STYLE_SUFFIX}`;
+const prompt = `${subject}, ${COMPOSITIONS[styleKey]}, ${HUES[hueKey]}, ${STYLE}`;
 
-console.log(`Generating cover for "${slug}"...`);
+console.log(`Generating cover for "${slug}" (style: ${styleKey}, hue: ${hueKey})...`);
 const res = await fetch(
   `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${MODEL}`,
   {
