@@ -1,0 +1,113 @@
+---
+title: MCP server examples - what a real one looks like in production
+description: The actual examples - the official reference servers, real-world servers by category with their tool names, a minimal one in code - plus what a production, multi-tenant server looks like and a checklist to tell the kinds apart.
+date: 2026-07-18
+keyword: mcp server examples
+---
+
+MCP server examples come in three kinds: the official reference implementations (seven small servers maintained by the protocol team, built to teach the SDK), single-service wrappers around one product's API (the GitHub server, the Slack server, the Postgres server - the majority of what exists), and full production backends serving real state to real tenants. This guide lists concrete examples of all three - names, tool names, and a minimal one in code - and then shows the third kind from the inside, using dispatchseo.com's own 44-tool server, whose route file is public, so the comparison is verifiable rather than a claim you have to trust.
+
+> **TL;DR** - Start with the official `modelcontextprotocol/servers` repo (Filesystem, Git, Fetch, Memory, Sequential Thinking, Time, Everything) to learn the shape; connect a real-world wrapper like the GitHub or Playwright server to see a production-grade single-service example; and if you're evaluating an example as a template for something multi-tenant, run it through the five-question checklist near the end - reference implementations say in their own README that they're educational, not production-ready.
+
+## The official reference servers
+
+The protocol steering group maintains [`modelcontextprotocol/servers`](https://github.com/modelcontextprotocol/servers), and its seven reference servers are the canonical starting examples - each one small enough to read in a sitting, each demonstrating one capability:
+
+- **Filesystem** - read, write, and search files under configured directories; the standard example of tools with real side effects.
+- **Git** - repository operations (status, diff, log, commit) exposed as tools.
+- **Fetch** - retrieves a URL and converts the page to markdown for the model; the simplest useful "reach outside" server.
+- **Memory** - a persistent knowledge graph the model can write to and query across sessions; the reference for state that outlives a request.
+- **Sequential Thinking** - a scratchpad for structured step-by-step reasoning; the reference for a server that adds a capability rather than an integration.
+- **Time** - timezone conversion; about the smallest legitimate server that exists.
+- **Everything** - a kitchen-sink server exercising every protocol feature (tools, resources, prompts) at once; built for testing clients, and useful for seeing the full spec surface in one file.
+
+These run over stdio, as a subprocess the client itself launches, and none of them have auth - deliberately. The repo's own README says they are "reference implementations" meant as "educational examples for developers building their own MCP servers, not as production-ready solutions." They're the right first read and the wrong template for anything shared.
+
+## Real-world servers, by category
+
+The second kind of example is the single-service wrapper: one server, one product, a set of tools scoped to that product's API. This is most of what actually gets built and connected day to day. A sampling by category, with the kind of tools each exposes:
+
+- **Code and repos**: the GitHub MCP server - `create_pull_request`, `list_issues`, `search_code`, `merge_pull_request`, and dozens more covering the platform's API surface.
+- **Browser automation**: the Playwright MCP server - `browser_navigate`, `browser_click`, `browser_snapshot`, `browser_take_screenshot` - which is how an agent drives a real browser.
+- **Databases**: Postgres and other database servers that expose schema inspection and (usually read-only) query execution, so the model can answer questions against live data.
+- **Team tools**: Slack (post and search messages, list channels), Linear and Jira (issues in and out), Notion (search and create pages), Google Calendar (list and create events).
+- **Design and product**: Figma (read file structure and components), Stripe (customers, invoices), Sentry (issues and events).
+
+Auth in this kind is usually one API key for the underlying service, shared by whoever configured the server - which matters later in this guide. For discovery beyond this list, the official [MCP Registry](https://registry.modelcontextprotocol.io) is the canonical index, and community directories track thousands more; curation matters precisely because the count long ago passed the point where anyone can review them all.
+
+## A minimal example in code
+
+Reading lists only gets you so far - here is a complete, runnable server, TypeScript with the official SDK, one tool:
+
+```typescript
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
+
+const server = new McpServer({ name: "adder", version: "1.0.0" });
+
+server.registerTool(
+  "add",
+  {
+    description: "Add two numbers and return the sum",
+    inputSchema: { a: z.number(), b: z.number() },
+  },
+  async ({ a, b }) => ({
+    content: [{ type: "text", text: String(a + b) }],
+  }),
+);
+
+await server.connect(new StdioServerTransport());
+```
+
+Install `@modelcontextprotocol/sdk` and `zod`, run it with `npx tsx server.ts`, and point MCP Inspector at it (`npx @modelcontextprotocol/inspector npx tsx server.ts`) to call the tool from a browser UI. The [server-building walkthrough](/blog/how-to-build-an-mcp-server) turns this skeleton into a full build path - project setup, testing, connecting Claude Code - if you want the steps rather than the survey.
+
+## The three kinds, compared
+
+Notice what the two kinds above have in common: the reference servers teach the SDK, the wrappers expose one product, and neither has any concept of *who is calling*. That's the axis that separates them from the third kind - a server running as a real application's backend:
+
+<ExamplePatternTable />
+
+Neither of the first two shapes is wrong for what it's for. But "production" means something specific, and it's worth seeing an example of that too, because almost nothing that ranks for this query shows one.
+
+## The production example: a stateful, multi-tenant backend
+
+dispatchseo.com's own MCP server is the door to a real application's state - the suggestions queue, tracked keywords, published pages, GSC stats, backlink prospects, and site profile, six distinct areas - for however many projects the owner has connected, each identified by its own bearer token:
+
+<McpFactRow />
+
+Every one of those 44 tools runs behind the same check: `authed()` resolves the incoming bearer token to a project row once, then every tool call inside that request reads the resolved project instead of trusting a parameter that could be spoofed or simply forgotten. What matters here is the shape: this server is thin on purpose. It doesn't hold logic itself - it's a typed, authenticated door onto logic that already exists, which is the tell that separates a real backend's MCP surface from a wrapper built to demo the protocol.
+
+## Is the example you're looking at production-real? A checklist
+
+Five questions, in order of how fast they disqualify a "production example" that isn't one:
+
+<ProductionReadinessChecklist />
+
+A server that fails the first two questions isn't a lesser production server - it's a reference implementation or a wrapper, and that's a legitimate thing to be. The checklist exists to stop you from copying a reference implementation's auth-free shape into something that's actually going to serve more than one caller.
+
+## When the toy example is the right one
+
+If you're the only caller, driving a single account, with no plan to ever share the server - the reference-implementation shape is correct, not a compromise. Per-tenant `AsyncLocalStorage` plumbing, a resolved-project-per-request auth gate, a database behind every tool: all of that exists to stop one caller's request from touching another caller's data, which is a real problem only once there's more than one caller. Building it for a single-user server is machinery with nothing to protect.
+
+## FAQ
+
+**What is an example of an MCP server?**
+The Filesystem server from the official `modelcontextprotocol/servers` repo is the classic one: a small stdio server exposing file read/write/search tools to a client like Claude Desktop. The GitHub MCP server is the classic real-world one - the platform's API surfaced as tools an agent can call.
+
+**Where do I find MCP servers to connect, not build?**
+The official MCP Registry at registry.modelcontextprotocol.io, plus your client's own directory (Claude, Cursor, and VS Code each surface curated lists). Prefer servers published by the vendor of the underlying product where one exists.
+
+**Do MCP server examples need a database to count as "production"?**
+Not strictly - state can be a file, a queue, or an in-memory store that outlives a single request. What disqualifies an example is having *no* state at all: every call starting from zero, unable to remember what a previous call did.
+
+**Why don't the official reference servers just add auth?**
+Because they're not meant to run remotely. A subprocess the client itself launches has exactly one caller by construction; auth exists to answer "who's calling," and there's nothing to ask when the answer is always the same process that started the server.
+
+**How many tools is "too many" for one MCP server?**
+There's no fixed ceiling - the limit is whether each tool's description is specific enough for the calling model to pick correctly. dispatchseo.com's 44 tools lean on long, specific descriptions for exactly this reason; a vague one-liner starts causing wrong picks long before any tool-count limit does.
+
+**Can a multi-tenant server still run on a serverless platform?**
+Yes - the auth-then-resolve pattern above doesn't need a long-lived process, it needs the resolved tenant to be available for the duration of one request. dispatchseo.com's runs on Vercel this way, with the project resolved once per request and never cached across requests.
+
+The reference servers teach the protocol, the wrappers cover the integrations, and the gap in most roundups is a worked example of the third kind - which is what dispatchseo.com's own server, built to run its own SEO pipeline rather than to illustrate the protocol, fills here.

@@ -1,0 +1,6 @@
+{
+  "regions": ["fra1"],
+  "crons": [
+    { "path": "/api/cron/daily-ranks", "schedule": "0 4 * * *" }
+  ]
+}

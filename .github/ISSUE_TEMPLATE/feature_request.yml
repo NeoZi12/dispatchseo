@@ -1,0 +1,27 @@
+name: Feature request
+description: Propose an idea before opening a PR
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Heads up on scope: DispatchSEO stays deliberately small. The MCP server is a door to state - research and content generation live in the agent, not this backend - and features ship with BOTH a dashboard and an MCP face. Ideas that fight that shape usually get a "no" regardless of quality.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What can't you do today? Describe the situation, not the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution (optional)
+      description: If you have a shape in mind. Note whether you're offering to build it.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and LATER.md for this idea
+          required: true

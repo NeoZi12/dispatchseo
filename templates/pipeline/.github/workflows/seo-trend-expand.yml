@@ -1,0 +1,93 @@
+name: SEO trend expand
+
+# Stage 2 of the two-stage trend radar: fires when the owner hits Get takes
+# on a radar subject (the dashboard sends a seo-trend-expand
+# repository_dispatch carrying the topic id + title). The run turns that ONE
+# subject into 3-5 validated guide angles, queued as PENDING suggestions
+# linked to the topic - the owner then queues or builds the takes they like.
+# This is where SERP validation spends money, which is exactly why it only
+# runs on subjects the owner picked. The payload comes from the DispatchSEO
+# backend only (repository_dispatch needs a write token), so interpolating
+# it into the prompt is trusted input here.
+
+on:
+  repository_dispatch:
+    types: [seo-trend-expand]
+
+concurrency:
+  group: seo-trend-expand
+  cancel-in-progress: false
+
+jobs:
+  expand:
+    runs-on: ubuntu-latest
+    # SERP validation makes this a little longer than the scan; past 20
+    # minutes it's a hang burning quota.
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fail fast, in plain language, when the Claude token secret is broken.
+      # Without this the claude-code-action dies minutes in with a cryptic
+      # "Environment variable validation failed" (empty secret) or a 401
+      # (wrapped/wrong token) - the 2026-07-17 dogfood install burned four
+      # runs on exactly that. setup.sh verifies the token before storing it,
+      # so this preflight should only ever fire on hand-set secrets.
+      - name: Preflight - Claude token secret usable
+        env:
+          CLAUDE_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -z "$CLAUDE_TOKEN" ]; then
+            echo "::error::The CLAUDE_CODE_OAUTH_TOKEN secret is missing or empty on this repo. Rerun the setup command from your DispatchSEO dashboard (it mints and VERIFIES a fresh token), or set one by hand: run 'claude setup-token', then pipe the token into 'gh secret set CLAUDE_CODE_OAUTH_TOKEN' without any whitespace."
+            exit 1
+          fi
+          case "$CLAUDE_TOKEN" in
+            sk-ant-oat*) echo "Claude token present." ;;
+            *)
+              echo "::error::CLAUDE_CODE_OAUTH_TOKEN does not look like a Claude Code OAuth token (expected it to start with sk-ant-oat). It was probably line-wrapped or the wrong text was pasted when it was saved. Rerun the setup command from your DispatchSEO dashboard to mint and verify a replacement."
+              exit 1 ;;
+          esac
+
+      # Same fail-loudly preflight as the scan: an unreachable MCP must never
+      # produce a green run that expanded nothing.
+      - name: Preflight - seo-manager MCP reachable
+        env:
+          SEO_MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
+        run: |
+          url=$(node -e "console.log(require('./.github/mcp-ci.json').mcpServers['seo-manager'].url)")
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 -X POST "$url" \
+            -H "Authorization: Bearer $SEO_MCP_API_KEY" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json, text/event-stream" \
+            -d '{"jsonrpc":"2.0","id":0,"method":"tools/list"}')
+          if [ "$code" != "200" ]; then
+            echo "::error::seo-manager MCP at $url returned HTTP $code - fix the URL in .github/mcp-ci.json or the SEO_MCP_API_KEY secret"
+            exit 1
+          fi
+          echo "seo-manager MCP OK ($url)"
+
+      - name: Expand the picked subject into takes
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          show_full_output: true
+          prompt: |
+            FIRST call the seo-manager MCP tool get_instructions with workflow trend-expand, then follow the returned markdown exactly - it is the current playbook and overrides any cached knowledge of this pipeline. Also read .dispatchseo/conventions.md for what this product is.
+
+            The subject the owner picked: topic_id "${{ github.event.client_payload.topic_id }}", title "${{ github.event.client_payload.topic_title }}".
+
+            In brief: read the topic's evidence via get_trend_topics (fail loudly if the id is missing or dismissed), draft 3-5 distinct takes on the subject, validate each with suggest_keywords + check_serp + product fit, queue the survivors via propose_suggestion with source trend-scan AND this trend_topic_id - all as PENDING, never approved - then mark the topic expanded via update_trend_topic and report the instructions version. Fewer strong takes beat five thin ones; "no viable takes" is an honest, valid outcome. If get_instructions is unavailable, fail loudly and exit without changes.
+          claude_args: |
+            --mcp-config ./.github/mcp-ci.json
+            --permission-mode bypassPermissions
+            --max-turns 100
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          SEO_MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
+          DATAFORSEO_LOGIN: ${{ secrets.DATAFORSEO_LOGIN }}
+          DATAFORSEO_PASSWORD: ${{ secrets.DATAFORSEO_PASSWORD }}
+          MCP_TIMEOUT: "120000"

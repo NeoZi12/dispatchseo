@@ -1,0 +1,216 @@
+name: SEO auto-merge
+
+# Hands-off publish gate for the SEO pipeline. Runs when checks report (plus
+# an hourly backstop) and merges an open PR labeled `seo` ONLY when both are
+# true:
+#   1. It is auto-mergeable content:
+#      - GUIDE PR: every changed file lives under src/content/blog/ or
+#        src/components/blog/ (guides ship bespoke visual components).
+#      - TOOL PR (label `seo-tool`): carries the `tool-validated` label,
+#        meaning seo-tool-validate built the PR, exercised the LIVE page in a
+#        real browser, and proved the widget works.
+#      Anything else (structural changes, unvalidated tools) waits for the owner.
+#   2. Every automated check has PASSED - pnpm build, Vercel preview,
+#      CodeRabbit, tool validation. Any pending check -> retry on the next
+#      check event. Any failing check -> leave the PR for the owner. Zero checks ->
+#      do NOT merge (no gate = not safe).
+# This is the "green-checks gate" chosen deliberately over immediate merge, so
+# nothing reaches the live, indexed site without passing every automated gate.
+
+on:
+  # Event-driven: sweep the moment any check reports, so a green guide PR
+  # merges within a minute of its last check instead of waiting for the hour.
+  # Both triggers are needed - CodeRabbit reports via the Checks API
+  # (check_suite) while Vercel reports via commit statuses (status), and
+  # Vercel's deploy is usually the check that finishes last.
+  check_suite:
+    types: [completed]
+  status:
+  # Hourly backstop for anything the events miss (e.g. a check that never
+  # reports, or GitHub dropping an event).
+  schedule:
+    - cron: "17 * * * *" # offset off the top of the hour
+  workflow_dispatch:
+
+concurrency:
+  group: seo-auto-merge
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write # re-run crashed tool validations (self-healing step below)
+      checks: read # statusCheckRollup reads check runs (CodeRabbit et al.)
+      statuses: read # ...and commit statuses (Vercel)
+    steps:
+      # Publish-mode gate: the DispatchSEO dashboard controls whether merging
+      # is hands-off via the auto_merge automation flag (off in semi mode,
+      # on in auto, per-toggle in custom). When it's off the merge step is
+      # skipped and green PRs wait on the dashboard's ready-to-ship cards;
+      # validation self-healing below still runs so tool PRs keep getting
+      # their verdicts either way. A 404 means the backend predates the
+      # endpoint - behave as before (merge). Anything else is a real failure
+      # and must be loud, not a silent skip.
+      - name: Look up the project's automation flags
+        id: mode
+        env:
+          SEO_MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
+        run: |
+          code=$(curl -s -o /tmp/mode.json -w "%{http_code}" --max-time 30 \
+            -H "Authorization: Bearer $SEO_MCP_API_KEY" \
+            ${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}/api/project-mode)
+          merge=on
+          if [ "$code" = "200" ]; then
+            if [ "$(jq -r '.automations.auto_merge' /tmp/mode.json)" = "false" ]; then merge=off; fi
+            echo "Publish mode: $(jq -r '.mode' /tmp/mode.json) (auto_merge: $merge)"
+          elif [ "$code" != "404" ]; then
+            echo "::error::project-mode endpoint returned HTTP $code - check the DispatchSEO backend and SEO_MCP_API_KEY"
+            exit 1
+          fi
+          echo "merge=$merge" >> "$GITHUB_OUTPUT"
+
+      - name: Merge green SEO PRs
+        if: steps.mode.outputs.merge != 'off'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          prs=$(gh pr list --repo "$REPO" --label seo --state open --json number --jq '.[].number')
+          if [ -z "$prs" ]; then
+            echo "No open SEO PRs. Nothing to do."
+            exit 0
+          fi
+
+          for n in $prs; do
+            echo "::group::PR #$n"
+
+            # 1. Eligibility gate, by PR shape:
+            #    - Tool PR (seo-tool label): must carry tool-validated - the
+            #      live smoke-test's pass verdict. Tools legitimately touch
+            #      registries/components, so no path check applies.
+            #    - Guide PR: every changed file must live in the blog content
+            #      dir or the blog components dir (the builder's mandatory
+            #      VISUALS step); anything else forces manual review.
+            labels=$(gh pr view "$n" --repo "$REPO" --json labels --jq '[.labels[].name] | join(" ")')
+            if [[ " $labels " == *" seo-tool "* ]]; then
+              if [[ " $labels " != *" tool-validated "* ]]; then
+                echo "PR #$n is a tool PR without a tool-validated verdict yet - waiting for validation."
+                echo "::endgroup::"
+                continue
+              fi
+              echo "PR #$n is a validated tool PR - checking the status rollup."
+            else
+              outside=$(gh pr view "$n" --repo "$REPO" --json files \
+                --jq '[.files[].path | select((startswith("src/content/blog/") or startswith("src/components/blog/")) | not)] | length')
+              if [ "$outside" != "0" ]; then
+                echo "PR #$n touches $outside file(s) outside the blog dirs (structural change) - leaving for manual review."
+                echo "::endgroup::"
+                continue
+              fi
+            fi
+
+            # 2. Checks gate: classify the whole status rollup into one verdict.
+            #    StatusContext -> .state ; CheckRun -> .status/.conclusion.
+            verdict=$(gh pr view "$n" --repo "$REPO" --json statusCheckRollup --jq '
+              [ .statusCheckRollup[] |
+                if .__typename == "CheckRun" then
+                  ( if .status != "COMPLETED" then "PENDING"
+                    elif ((.conclusion // "") | ascii_upcase) as $c
+                         | ($c == "SUCCESS" or $c == "NEUTRAL" or $c == "SKIPPED") then "SUCCESS"
+                    else "FAIL" end )
+                else
+                  ( ((.state // "") | ascii_upcase) as $s |
+                    if $s == "SUCCESS" then "SUCCESS"
+                    elif ($s == "PENDING" or $s == "EXPECTED") then "PENDING"
+                    else "FAIL" end )
+                end
+              ] as $s |
+              if ($s | length) == 0 then "NOCHECKS"
+              elif ($s | index("FAIL")) then "FAIL"
+              elif ($s | index("PENDING")) then "PENDING"
+              else "SUCCESS" end')
+
+            case "$verdict" in
+              SUCCESS)
+                echo "PR #$n has all checks green - merging."
+                # Grab the guide slugs BEFORE merging - the merge deletes the
+                # branch. Tool PRs yield an empty list; the IndexNow run then
+                # skips URL-polling and pings straight from the sitemap.
+                slugs=$(gh pr view "$n" --repo "$REPO" --json files \
+                  --jq '[.files[].path | select(test("^src/content/blog/.+\\.mdx$")) | sub("^src/content/blog/"; "") | sub("\\.mdx$"; "")] | join(" ")')
+                gh pr merge "$n" --repo "$REPO" --squash --delete-branch
+                # This squash push is made with GITHUB_TOKEN, and GITHUB_TOKEN
+                # pushes never trigger push-event workflows - so the IndexNow
+                # workflow would silently skip every auto-merged guide.
+                # Dispatch it explicitly (workflow_dispatch is the documented
+                # exception to that rule).
+                gh workflow run indexnow.yml --repo "$REPO" -f slugs="$slugs" \
+                  || echo "IndexNow dispatch failed - the sitemap still covers the URL on the next crawl."
+                ;;
+              PENDING)
+                echo "PR #$n has checks still running - will retry next run."
+                ;;
+              FAIL)
+                echo "PR #$n has a failing check - leaving for the owner."
+                ;;
+              NOCHECKS)
+                echo "PR #$n has no checks reported yet - not merging (no gate)."
+                ;;
+            esac
+            echo "::endgroup::"
+          done
+
+      # Self-healing for the tool pipeline. Two ways a tool PR ends up with
+      # no verdict label and would otherwise strand silently:
+      # - The bot-PR approval gate (GitHub change, 2026-06-11): the builder
+      #   opens PRs with the built-in GITHUB_TOKEN, so their pull_request
+      #   validation runs are created parked in "action_required" and never
+      #   execute. No repo setting disables that, and the approve API rejects
+      #   same-repo PRs - but workflow_dispatch events created with
+      #   GITHUB_TOKEN always run (the documented exception).
+      # - A validator crash (max-turns, infra flake) that ended a run without
+      #   applying any verdict label.
+      # So each pass: for every verdict-less open tool PR with no validation
+      # currently queued or running, dispatch a fresh validation on the PR's
+      # branch (the dispatched run resolves and gates the PR itself).
+      # Bounded: after 3 executed validations for the same head SHA with no
+      # verdict, leave the PR for the owner instead of burning usage all day.
+      - name: Dispatch stalled tool validations
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          prs=$(gh pr list --repo "$REPO" --label seo-tool --state open \
+            --json number,headRefName,headRefOid,labels \
+            --jq '.[] | select([.labels[].name] | (index("tool-validated") or index("tool-validation-failed")) | not) | "\(.number) \(.headRefOid) \(.headRefName)"')
+          if [ -z "$prs" ]; then
+            echo "No verdict-less tool PRs. Nothing to do."
+            exit 0
+          fi
+
+          while read -r n sha branch; do
+            echo "::group::PR #$n"
+            summary=$(gh api "repos/$REPO/actions/workflows/seo-tool-validate.yml/runs?head_sha=$sha&per_page=30" \
+              --jq '{active: ([.workflow_runs[] | select(.status != "completed")] | length), executed: ([.workflow_runs[] | select(.status == "completed" and .conclusion != "action_required")] | length), parked: ([.workflow_runs[] | select(.status == "completed" and .conclusion == "action_required")] | length)}')
+            active=$(echo "$summary" | jq -r .active)
+            executed=$(echo "$summary" | jq -r .executed)
+            parked=$(echo "$summary" | jq -r .parked)
+            echo "Validation runs for $sha: active=$active executed=$executed parked=$parked"
+            if [ "$active" != "0" ]; then
+              echo "A validation is already queued or running - waiting for its verdict."
+            elif [ "$executed" -ge 3 ]; then
+              echo "$executed validations executed with no verdict - leaving PR #$n for the owner."
+            else
+              echo "Dispatching a fresh validation on $branch (approval-gated or crashed run)."
+              gh workflow run seo-tool-validate.yml --repo "$REPO" --ref "$branch" -f pr_number="$n" \
+                || echo "::warning::Dispatch failed - if this branch predates the dispatch-mode validator, merge or validate PR #$n manually."
+            fi
+            echo "::endgroup::"
+          done <<< "$prs"

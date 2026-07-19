@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+/* Map the next/font variables into Tailwind's font tokens - without this the
+   loaded fonts sit unused on <html> and the whole app renders in the system
+   stack (which is exactly what happened before Hanken Grotesk arrived). */
+@theme inline {
+  --font-sans: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+@layer base {
+  /* Hanken is a variable font, so 450 renders true. Google's 400 cut reads
+     thinner than the commercial grotesques (PostHog's RoundHog/Matter) this
+     look is modeled on; 450 restores that weight while keeping font-medium
+     (500) and up visibly distinct. */
+  body {
+    font-weight: 450;
+  }
+
+  /* The app is dark-only; without this the browser assumes a light page and
+     paints its default WHITE scrollbars on every overflow container (the
+     sidebar scroller was a white bar down a neutral-950 UI). */
+  :root {
+    color-scheme: dark;
+  }
+
+  /* Scrollbars: thin, trackless, a quiet neutral thumb (Chrome 121+ and
+     Firefox; Safari falls back to the dark UA scrollbar from color-scheme). */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(64 64 64 / 0.6) transparent;
+  }
+}

@@ -1,0 +1,38 @@
+name: Bug report
+description: Something is broken
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing: check the dashboard Home page for a red "background jobs" banner and your Vercel function logs - lots of apparent bugs are a failed cron or a missing env var.
+  - type: input
+    id: setup
+    attributes:
+      label: Your setup
+      description: Self-hosted (Vercel/other) or local dev? Which data tier (GSC-only / SerpApi / DataForSEO)?
+      placeholder: Self-hosted on Vercel, GSC-only mode
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got instead. Include the exact error text if there is one.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Vercel function logs, GitHub Actions run output, or browser console - whatever surface the failure showed on. Redact tokens.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I ran the latest main and the migrations in supabase/migrations/ are all applied
+          required: true
+        - label: This report contains no secrets (tokens, service keys, passwords)
+          required: true

@@ -1,0 +1,30 @@
+name: Hourly GSC refresh
+
+# Vercel Hobby crons cap at once/day, so the frequent schedule lives here: ping
+# the backend's hourly-gsc endpoint, which re-snapshots the trailing GSC dates
+# (including today's fresh provisional data) for every project. GSC data is
+# daily-granularity and updates lazily, so every 3 hours loses nothing vs
+# hourly while costing ~240 billed Actions minutes/month instead of ~720 on
+# this private repo's free tier.
+
+on:
+  schedule:
+    - cron: "7 */3 * * *" # every 3 hours at :07 - offset off the top-of-the-hour rush
+  workflow_dispatch:
+
+concurrency:
+  group: hourly-gsc
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger the hourly-gsc cron endpoint
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl --fail-with-body -sS --max-time 120 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            ${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}/api/cron/hourly-gsc

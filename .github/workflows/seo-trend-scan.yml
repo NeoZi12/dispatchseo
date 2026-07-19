@@ -1,0 +1,90 @@
+name: SEO trend scan
+
+# MANUAL-ONLY stage 1 of the two-stage trend radar: fires when the
+# dashboard's Scan now button sends the seo-trend-scan repository_dispatch
+# (or via workflow_dispatch for testing). No schedule on purpose - the owner
+# decides when to sweep. The scan reads the niche for the SUBJECTS being
+# talked about RIGHT NOW - launches, Reddit/HN buzz, Google Trends - and
+# puts them on the radar via propose_trend_topic. It proposes NO guide ideas
+# and runs NO SERP checks: stage 2 (seo-trend-expand.yml) does that, only
+# for subjects the owner picks with Get takes on the Trends page.
+
+on:
+  repository_dispatch:
+    types: [seo-trend-scan]
+  workflow_dispatch:
+
+concurrency:
+  group: seo-trend-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    # Real runs take 3-6 minutes; anything past 15 is a hang burning quota.
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fail fast, in plain language, when the Claude token secret is broken.
+      # Without this the claude-code-action dies minutes in with a cryptic
+      # "Environment variable validation failed" (empty secret) or a 401
+      # (wrapped/wrong token) - the 2026-07-17 dogfood install burned four
+      # runs on exactly that. setup.sh verifies the token before storing it,
+      # so this preflight should only ever fire on hand-set secrets.
+      - name: Preflight - Claude token secret usable
+        env:
+          CLAUDE_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -z "$CLAUDE_TOKEN" ]; then
+            echo "::error::The CLAUDE_CODE_OAUTH_TOKEN secret is missing or empty on this repo. Rerun the setup command from your DispatchSEO dashboard (it mints and VERIFIES a fresh token), or set one by hand: run 'claude setup-token', then pipe the token into 'gh secret set CLAUDE_CODE_OAUTH_TOKEN' without any whitespace."
+            exit 1
+          fi
+          case "$CLAUDE_TOKEN" in
+            sk-ant-oat*) echo "Claude token present." ;;
+            *)
+              echo "::error::CLAUDE_CODE_OAUTH_TOKEN does not look like a Claude Code OAuth token (expected it to start with sk-ant-oat). It was probably line-wrapped or the wrong text was pasted when it was saved. Rerun the setup command from your DispatchSEO dashboard to mint and verify a replacement."
+              exit 1 ;;
+          esac
+
+      # Fail loudly if the seo-manager MCP is unreachable. Without this, a
+      # stale URL in mcp-ci.json makes Claude see an empty toolset and "exit
+      # cleanly" - a green run that scanned nothing (2026-07-14 domain-move bug).
+      - name: Preflight - seo-manager MCP reachable
+        env:
+          SEO_MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
+        run: |
+          url=$(node -e "console.log(require('./.github/mcp-ci.json').mcpServers['seo-manager'].url)")
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 -X POST "$url" \
+            -H "Authorization: Bearer $SEO_MCP_API_KEY" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json, text/event-stream" \
+            -d '{"jsonrpc":"2.0","id":0,"method":"tools/list"}')
+          if [ "$code" != "200" ]; then
+            echo "::error::seo-manager MCP at $url returned HTTP $code - fix the URL in .github/mcp-ci.json or the SEO_MCP_API_KEY secret"
+            exit 1
+          fi
+          echo "seo-manager MCP OK ($url)"
+
+      - name: Run the trend scan
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Full transcript in the step log so a run's evidence (what hype was
+          # seen, what made the radar) stays readable after the fact.
+          show_full_output: true
+          prompt: "FIRST call the seo-manager MCP tool get_instructions with workflow trend-scan, then follow the returned markdown exactly - it is the current playbook and overrides any cached knowledge of this pipeline. Also read .dispatchseo/conventions.md for what this product is. In brief: dismiss stale radar topics, sweep the niche's launches / Reddit and HN buzz / Google Trends (dataforseo MCP where available) for the SUBJECTS being talked about right now, then put at most 5 on the radar via propose_trend_topic with the evidence attached. Do NOT propose suggestions and do NOT run SERP checks - the owner picks subjects on the dashboard and a separate expand run turns picks into guide ideas. Then call record_trend_scan and report the instructions version. A dry sweep is a clean exit - never invent a trend. If get_instructions is unavailable, fail loudly and exit without changes."
+          claude_args: |
+            --mcp-config ./.github/mcp-ci.json
+            --permission-mode bypassPermissions
+            --max-turns 100
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          SEO_MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
+          DATAFORSEO_LOGIN: ${{ secrets.DATAFORSEO_LOGIN }}
+          DATAFORSEO_PASSWORD: ${{ secrets.DATAFORSEO_PASSWORD }}
+          MCP_TIMEOUT: "120000"

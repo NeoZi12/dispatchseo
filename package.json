@@ -1,0 +1,33 @@
+{
+  "name": "dispatchseo",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.5.2",
+  "scripts": {
+    "dev": "next dev",
+    "build": "node scripts/generate-pipeline-pack.mjs && next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.26.0",
+    "@supabase/supabase-js": "^2.110.2",
+    "@tailwindcss/postcss": "^4.3.2",
+    "@vercel/analytics": "^2.0.1",
+    "googleapis": "^173.0.0",
+    "gray-matter": "^4.0.3",
+    "mcp-handler": "^1.1.0",
+    "next": "16.2.10",
+    "next-mdx-remote": "^6.0.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "tailwindcss": "^4.3.2",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/mdx": "^2.0.14",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5"
+  }
+}

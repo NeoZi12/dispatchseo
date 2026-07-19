@@ -1,0 +1,77 @@
+name: SEO geo scan
+
+# Every Wednesday, measure AI visibility: the agent asks the questions
+# {{SITE_NAME}}'s customers would ask an AI assistant (built from the tracked
+# keywords), answers them with real web search on the owner's own Claude
+# subscription, and records which answers cite {{DOMAIN}} via the seo-manager
+# MCP. Google's AI Overview side needs no agent - the daily rank cron already
+# snapshots it. No PR - results land on the dashboard's AI-visibility section.
+
+on:
+  schedule:
+    - cron: "0 6 * * 3" # Wednesdays 06:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: seo-geo-scan
+  cancel-in-progress: false
+
+jobs:
+  geo-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fail fast, in plain language, when the Claude token secret is broken.
+      - name: Preflight - Claude token secret usable
+        env:
+          CLAUDE_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -z "$CLAUDE_TOKEN" ]; then
+            echo "::error::The CLAUDE_CODE_OAUTH_TOKEN secret is missing or empty on this repo. Rerun the setup command from your DispatchSEO dashboard (it mints and VERIFIES a fresh token), or set one by hand: run 'claude setup-token', then pipe the token into 'gh secret set CLAUDE_CODE_OAUTH_TOKEN' without any whitespace."
+            exit 1
+          fi
+          case "$CLAUDE_TOKEN" in
+            sk-ant-oat*) echo "Claude token present." ;;
+            *)
+              echo "::error::CLAUDE_CODE_OAUTH_TOKEN does not look like a Claude Code OAuth token (expected it to start with sk-ant-oat). It was probably line-wrapped or the wrong text was pasted when it was saved. Rerun the setup command from your DispatchSEO dashboard to mint and verify a replacement."
+              exit 1 ;;
+          esac
+
+      # Fail loudly if the seo-manager MCP is unreachable - without this a
+      # stale URL makes Claude see an empty toolset and "exit cleanly".
+      - name: Preflight - seo-manager MCP reachable
+        env:
+          SEO_MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
+        run: |
+          url=$(node -e "console.log(require('./.github/mcp-ci.json').mcpServers['seo-manager'].url)")
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 -X POST "$url" \
+            -H "Authorization: Bearer $SEO_MCP_API_KEY" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json, text/event-stream" \
+            -d '{"jsonrpc":"2.0","id":0,"method":"tools/list"}')
+          if [ "$code" != "200" ]; then
+            echo "::error::seo-manager MCP at $url returned HTTP $code - fix the URL in .github/mcp-ci.json or the SEO_MCP_API_KEY secret"
+            exit 1
+          fi
+          echo "seo-manager MCP OK ($url)"
+
+      - name: Run the geo scan
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          show_full_output: true
+          prompt: "FIRST call the seo-manager MCP tool get_instructions with workflow geo-scan, then follow the returned markdown exactly - it is the current playbook and overrides any cached knowledge of this pipeline. In brief: build ~15 customer questions from the tracked keywords and conventions, answer each with REAL web search (never from memory), judge whether the site is among the cited sources, record every result via record_ai_citations with verbatim answer excerpts, then read get_ai_visibility and report the citation counts and gap domains. If get_instructions is unavailable, fail loudly and exit without changes."
+          claude_args: |
+            --mcp-config ./.github/mcp-ci.json
+            --permission-mode bypassPermissions
+            --max-turns 120
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          SEO_MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
+          MCP_TIMEOUT: "120000"

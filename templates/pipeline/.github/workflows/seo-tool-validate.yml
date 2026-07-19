@@ -1,0 +1,246 @@
+name: SEO tool validation
+
+# The functional reviewer for autonomously-built tool PRs. A tool PR may only
+# auto-merge if this workflow has exercised the LIVE page (real production
+# build, real browser) and proven the widget works. On pass it labels the PR
+# `tool-validated`; the auto-merge gate requires that label for any PR that
+# carries `seo-tool`. On fail it labels `tool-validation-failed` and comments
+# the concrete failures so the next builder run (or the owner) can fix them.
+#
+# Scope: runs ONLY on same-repo PRs labeled seo-tool (the tool builder's PRs).
+# Guide PRs never get the seo-tool label and are never gated by this.
+#
+# Two triggers for the same validation:
+# - pull_request: the normal path. BUT tool PRs are opened by the builder
+#   with the built-in GITHUB_TOKEN, and since GitHub's 2026-06-11 change
+#   those runs are created parked in "action_required" (awaiting manual
+#   approval, with no repo-level opt-out) - left alone the PR stalls forever.
+# - workflow_dispatch (pr_number input): the escape hatch. Dispatch events
+#   created with GITHUB_TOKEN always execute (documented exception), so
+#   seo-auto-merge's self-heal dispatches this workflow for any verdict-less
+#   tool PR. Both paths converge on the resolve step below, which re-verifies
+#   the same-repo + seo-tool gates from live PR state.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Open seo-tool PR number to validate"
+        required: true
+
+concurrency:
+  group: seo-tool-validate-${{ github.event.pull_request.number || inputs.pr_number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    # pull_request mode: same-repo PRs only (fork PRs get no secrets anyway)
+    # + must be a tool PR. Dispatch mode passes here and is gated by the
+    # resolve step instead (its event payload has no PR fields to check).
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+       contains(github.event.pull_request.labels.*.name, 'seo-tool'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # SECURITY: this job builds and RUNS the PR's (LLM-authored) code, so it
+    # must never hold a token that can write to the repo. Labels/comments only;
+    # the squash-merge lives in the separate `merge` job below, which never
+    # checks out or executes PR code.
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write # gh label create
+    steps:
+      # Authoritative gate for BOTH trigger modes: read the PR's live state
+      # and refuse anything that is not an open, same-repo, seo-tool PR. Also
+      # resolves the head SHA the job checks out, so a dispatched run
+      # validates exactly the PR head (not the default branch the dispatch
+      # technically runs against).
+      - name: Resolve and gate the PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+        run: |
+          case "$PR_NUMBER" in
+            ''|*[!0-9]*) echo "::error::pr_number must be a plain PR number."; exit 1 ;;
+          esac
+          info=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
+            --json state,isCrossRepository,labels,headRefOid \
+            --jq '{state, cross: .isCrossRepository, labels: [.labels[].name], sha: .headRefOid}')
+          echo "$info"
+          if [ "$(echo "$info" | jq -r .state)" != "OPEN" ] \
+             || [ "$(echo "$info" | jq -r .cross)" != "false" ] \
+             || ! echo "$info" | jq -e '.labels | index("seo-tool")' >/dev/null; then
+            echo "::error::PR #$PR_NUMBER is not an open same-repo seo-tool PR - refusing to validate."
+            exit 1
+          fi
+          echo "sha=$(echo "$info" | jq -r .sha)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          # The resolved PR head, so both trigger modes exercise the same code.
+          ref: ${{ steps.pr.outputs.sha }}
+          # Don't leave a git credential on disk for the PR's build scripts to
+          # read - this job's steps talk to GitHub only via the env tokens on
+          # the specific steps that need them.
+          persist-credentials: false
+
+      # Fail fast, in plain language, when the Claude token secret is broken.
+      # Without this the claude-code-action dies minutes in with a cryptic
+      # "Environment variable validation failed" (empty secret) or a 401
+      # (wrapped/wrong token) - the 2026-07-17 dogfood install burned four
+      # runs on exactly that. setup.sh verifies the token before storing it,
+      # so this preflight should only ever fire on hand-set secrets.
+      - name: Preflight - Claude token secret usable
+        env:
+          CLAUDE_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -z "$CLAUDE_TOKEN" ]; then
+            echo "::error::The CLAUDE_CODE_OAUTH_TOKEN secret is missing or empty on this repo. Rerun the setup command from your DispatchSEO dashboard (it mints and VERIFIES a fresh token), or set one by hand: run 'claude setup-token', then pipe the token into 'gh secret set CLAUDE_CODE_OAUTH_TOKEN' without any whitespace."
+            exit 1
+          fi
+          case "$CLAUDE_TOKEN" in
+            sk-ant-oat*) echo "Claude token present." ;;
+            *)
+              echo "::error::CLAUDE_CODE_OAUTH_TOKEN does not look like a Claude Code OAuth token (expected it to start with sk-ant-oat). It was probably line-wrapped or the wrong text was pasted when it was saved. Rerun the setup command from your DispatchSEO dashboard to mint and verify a replacement."
+              exit 1 ;;
+          esac
+
+      - name: Set up pnpm
+        # INSTALL-ADAPT: if this repo's package.json has a packageManager
+        # field ("pnpm@x.y.z"), DELETE the version input below - action-setup
+        # reads the field itself, and a version input alongside packageManager
+        # hard-errors on any mismatch (plain string compare, not semver). If
+        # there is no packageManager field, keep a version here matching the
+        # major that wrote pnpm-lock.yaml. pnpm 11+ also requires Node 22+.
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install deps
+        run: |
+          pnpm install --frozen-lockfile || {
+            s=$?
+            echo "::error::pnpm install failed (exit $s). Frequent causes: (1) ERR_PNPM_IGNORED_BUILDS - pnpm 11 hard-fails dependencies with unanswered build scripts (strictDepBuilds is on by default): answer each one in pnpm-workspace.yaml (allowBuilds: dep: true/false, plus an onlyBuiltDependencies list for older pnpm) and commit. (2) pnpm/lockfile version mismatch - align the workflow's pnpm with the version that wrote pnpm-lock.yaml (package.json packageManager field). Reproduce locally with a fresh 'pnpm install --frozen-lockfile'."
+            exit $s
+          }
+
+      - name: Production build
+        run: pnpm build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: "https://placeholder.supabase.co"
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder-anon-key"
+          NEXT_PUBLIC_SITE_URL: "http://localhost:3000"
+
+      - name: Start server and wait for it
+        run: |
+          nohup pnpm start >/tmp/next-server.log 2>&1 &
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/ || true)
+            [ "$code" = "200" ] && echo "server up" && exit 0
+            sleep 2
+          done
+          echo "server failed to start"; cat /tmp/next-server.log; exit 1
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: "https://placeholder.supabase.co"
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder-anon-key"
+          NEXT_PUBLIC_SITE_URL: "http://localhost:3000"
+
+      - name: Install Playwright browser for the MCP
+        run: npx -y playwright install --with-deps chromium
+
+      - name: Validate the tool live
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Tool PRs are opened and pushed by the builder workflow, so the
+          # triggering actor is github-actions[bot]; without this the action
+          # refuses to start ("non-human actor") and the PR never gets a
+          # verdict. Same-repo + seo-tool label gates above still apply.
+          allowed_bots: "github-actions"
+          # Full transcript in the step log - post-hoc debuggability.
+          show_full_output: true
+          prompt: "You are the functional validator for an autonomously-built {{SITE_NAME}} tool PR. 1) Find the tool under review: run `git diff origin/main...HEAD --name-only` and read the diff of the tools registry (its path is listed in .dispatchseo/conventions.md) to get the NEW tool's slug (the entry added in this PR). 2) Using the playwright MCP, open http://localhost:3000/tools/<slug> and validate: the page returns 200 and renders the landing funnel (hero h1, the interactive widget, FAQ section); every primary widget interaction works (fill each input with realistic values, click every action button, verify output actually updates, test the copy action); edge cases do not break it (empty input, nonsense input - the widget must never throw); zero console errors during the whole session (check browser console messages). 3) Verdict: if EVERYTHING passes, run `gh pr edit <pr-number> --add-label tool-validated --remove-label tool-validation-failed || gh pr edit <pr-number> --add-label tool-validated` and post a short PR comment via `gh pr comment` summarizing what you exercised. If ANYTHING fails, run `gh pr edit <pr-number> --add-label tool-validation-failed --remove-label tool-validated || gh pr edit <pr-number> --add-label tool-validation-failed` (removing tool-validated matters: a stale pass from an earlier commit must not authorize a merge) and comment the concrete failures (what you did, what happened, console output). Create missing labels with `gh label create` if needed. The PR number is in the PR_NUMBER environment variable. Never modify code in this run - you are a reviewer only."
+          claude_args: |
+            --mcp-config ./.github/mcp-validate.json
+            --permission-mode bypassPermissions
+            --max-turns 140
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+
+  # The hands-off publish for tools: a PASS verdict from the live validation
+  # above IS the merge authorization (the tool was built in prod mode and
+  # exercised in a real browser - a stronger gate than any preview check).
+  # FAIL or no verdict leaves the PR open for the owner.
+  #
+  # SECURITY: this is a separate job on a fresh runner precisely so the
+  # contents:write token never coexists with the PR's executed code (the
+  # validate job above builds and runs the branch). No checkout here - it only
+  # reads labels and merges via gh.
+  merge:
+    needs: validate
+    # Dispatch mode passes here by design: the validate job's resolve step
+    # already enforced the same-repo + seo-tool gates, and this job re-reads
+    # the labels via gh before acting anyway.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+       contains(github.event.pull_request.labels.*.name, 'seo-tool'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # squash-merge + branch delete
+      pull-requests: write
+    steps:
+      - name: Merge on PASS verdict
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+          SEO_MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
+        run: |
+          # Publish-mode gate: same rule as seo-auto-merge - when the owner
+          # turned auto_merge off (semi mode or a custom toggle), a PASS still
+          # labels the PR but the merge waits for the dashboard's Merge click.
+          code=$(curl -s -o /tmp/mode.json -w "%{http_code}" --max-time 30 \
+            -H "Authorization: Bearer $SEO_MCP_API_KEY" \
+            {{BACKEND_URL}}/api/project-mode)
+          if [ "$code" = "200" ] && [ "$(jq -r '.automations.auto_merge' /tmp/mode.json)" = "false" ]; then
+            echo "auto_merge is off on the dashboard - leaving the validated PR for the owner."
+            exit 0
+          elif [ "$code" != "200" ] && [ "$code" != "404" ]; then
+            echo "::error::project-mode endpoint returned HTTP $code"; exit 1
+          fi
+
+          labels=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json labels -q '.labels[].name')
+          # Both conditions: tool-validated present AND no failure flag. A stale
+          # tool-validated from an earlier commit must never merge a newer,
+          # failing state of the branch.
+          if echo "$labels" | grep -qx "tool-validated" && ! echo "$labels" | grep -qx "tool-validation-failed"; then
+            echo "Validated - squash-merging PR #$PR_NUMBER."
+            gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --squash --delete-branch || {
+              gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "Validation passed but auto-merge failed (likely a conflict with main). Manual merge needed."
+              exit 1
+            }
+            # The squash push above is made with GITHUB_TOKEN, which never
+            # triggers push-event workflows - dispatch IndexNow explicitly so
+            # the new tool URL gets pinged (no blog slugs; the ping reads the
+            # live sitemap).
+            gh workflow run indexnow.yml --repo "$GITHUB_REPOSITORY" \
+              || echo "IndexNow dispatch failed - the sitemap still covers the URL on the next crawl."
+          else
+            echo "No tool-validated label - leaving the PR open for review."
+          fi

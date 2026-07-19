@@ -1,0 +1,153 @@
+name: SEO daily builder
+
+# Every morning, build the oldest approved suggestion (guide or tool) into a PR,
+# fully autonomously, through the centrally-served DispatchSEO pipeline (get_instructions -> template -> live
+# SERP gate -> humanizer -> PR). If nothing is approved, it exits cleanly. Skips
+# if an SEO PR is already open, so there is never more than one at a time - the
+# steady state is build -> auto-merge -> gone -> repeat, and if a PR gets stuck
+# (failed check, or a tool PR awaiting you) the builder pauses instead of piling
+# more on top. Publishing is handled by seo-auto-merge.yml: guide PRs whose
+# checks all pass are merged hands-off; tool PRs are left for you to merge.
+
+on:
+  schedule:
+    - cron: "0 5 * * *" # 05:00 UTC daily
+  workflow_dispatch:
+
+concurrency:
+  group: seo-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip if an SEO PR is already open or guide builds are toggled off
+        id: guard
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SEO_MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
+        run: |
+          open=$(gh pr list --repo "$GITHUB_REPOSITORY" --label seo --state open --json number --jq 'length')
+          if [ "$open" != "0" ]; then
+            echo "An SEO PR is already open - skipping this run so only one is ever open at a time."
+          fi
+          # Automation-flag gate: the DispatchSEO dashboard can pause guide
+          # builds (auto_build_guides off). 404 = backend without the endpoint
+          # yet -> build as before; other failures are loud.
+          if [ "$open" = "0" ]; then
+            code=$(curl -s -o /tmp/mode.json -w "%{http_code}" --max-time 30 \
+              -H "Authorization: Bearer $SEO_MCP_API_KEY" \
+              {{BACKEND_URL}}/api/project-mode)
+            if [ "$code" = "200" ] && [ "$(jq -r '.automations.auto_build_guides' /tmp/mode.json)" = "false" ]; then
+              echo "Guide builds are toggled off on the dashboard - skipping."
+              open=paused
+            elif [ "$code" != "200" ] && [ "$code" != "404" ]; then
+              echo "::error::project-mode endpoint returned HTTP $code"; exit 1
+            fi
+          fi
+          echo "open=$open" >> "$GITHUB_OUTPUT"
+
+      # Fail fast, in plain language, when the Claude token secret is broken.
+      # Without this the claude-code-action dies minutes in with a cryptic
+      # "Environment variable validation failed" (empty secret) or a 401
+      # (wrapped/wrong token) - the 2026-07-17 dogfood install burned four
+      # runs on exactly that. setup.sh verifies the token before storing it,
+      # so this preflight should only ever fire on hand-set secrets.
+      - name: Preflight - Claude token secret usable
+        if: steps.guard.outputs.open == '0'
+        env:
+          CLAUDE_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -z "$CLAUDE_TOKEN" ]; then
+            echo "::error::The CLAUDE_CODE_OAUTH_TOKEN secret is missing or empty on this repo. Rerun the setup command from your DispatchSEO dashboard (it mints and VERIFIES a fresh token), or set one by hand: run 'claude setup-token', then pipe the token into 'gh secret set CLAUDE_CODE_OAUTH_TOKEN' without any whitespace."
+            exit 1
+          fi
+          case "$CLAUDE_TOKEN" in
+            sk-ant-oat*) echo "Claude token present." ;;
+            *)
+              echo "::error::CLAUDE_CODE_OAUTH_TOKEN does not look like a Claude Code OAuth token (expected it to start with sk-ant-oat). It was probably line-wrapped or the wrong text was pasted when it was saved. Rerun the setup command from your DispatchSEO dashboard to mint and verify a replacement."
+              exit 1 ;;
+          esac
+
+      # Fail loudly if the seo-manager MCP is unreachable. Without this, a
+      # stale URL in mcp-ci.json makes Claude see an empty toolset and "exit
+      # cleanly" - a green run that built nothing (2026-07-14 domain-move bug).
+      - name: Preflight - seo-manager MCP reachable
+        if: steps.guard.outputs.open == '0'
+        env:
+          SEO_MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
+        run: |
+          url=$(node -e "console.log(require('./.github/mcp-ci.json').mcpServers['seo-manager'].url)")
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 -X POST "$url" \
+            -H "Authorization: Bearer $SEO_MCP_API_KEY" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json, text/event-stream" \
+            -d '{"jsonrpc":"2.0","id":0,"method":"tools/list"}')
+          if [ "$code" != "200" ]; then
+            echo "::error::seo-manager MCP at $url returned HTTP $code - fix the URL in .github/mcp-ci.json or the SEO_MCP_API_KEY secret"
+            exit 1
+          fi
+          echo "seo-manager MCP OK ($url)"
+
+      - name: Set up pnpm
+        # INSTALL-ADAPT: if this repo's package.json has a packageManager
+        # field ("pnpm@x.y.z"), DELETE the version input below - action-setup
+        # reads the field itself, and a version input alongside packageManager
+        # hard-errors on any mismatch (plain string compare, not semver). If
+        # there is no packageManager field, keep a version here matching the
+        # major that wrote pnpm-lock.yaml. pnpm 11+ also requires Node 22+.
+        if: steps.guard.outputs.open == '0'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Set up Node
+        if: steps.guard.outputs.open == '0'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install deps (so the pipeline's `pnpm build` verify step works)
+        if: steps.guard.outputs.open == '0'
+        run: |
+          pnpm install --frozen-lockfile || {
+            s=$?
+            echo "::error::pnpm install failed (exit $s). Frequent causes: (1) ERR_PNPM_IGNORED_BUILDS - pnpm 11 hard-fails dependencies with unanswered build scripts (strictDepBuilds is on by default): answer each one in pnpm-workspace.yaml (allowBuilds: dep: true/false, plus an onlyBuiltDependencies list for older pnpm) and commit. (2) pnpm/lockfile version mismatch - align the workflow's pnpm with the version that wrote pnpm-lock.yaml (package.json packageManager field). Reproduce locally with a fresh 'pnpm install --frozen-lockfile'."
+            exit $s
+          }
+
+      - name: Run the SEO builder
+        if: steps.guard.outputs.open == '0'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Pass the standard workflow token as an input so the action uses it
+          # directly instead of exchanging OIDC for a Claude GitHub App token
+          # (which would require installing the app on the repo).
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: "FIRST call the seo-manager MCP tool get_instructions with workflow build-guide, then follow the returned markdown exactly - it is the current playbook and overrides any cached knowledge of this pipeline. Also read .dispatchseo/conventions.md for this repo's site facts. In brief: take the oldest approved guide suggestion, mark it in_progress, build the guide MDX through the full pipeline (template, thin-content gate, draft, mandatory visuals, humanizer), run pnpm build to verify, open a PR labeled seo via gh, then update_suggestion to done with the PR url and log_page, and state the instructions version in the run report. Never build tool suggestions - those belong to the seo-build-tool workflow. If get_instructions is unavailable, fail loudly and exit without changes; if there are no approved guide suggestions, exit cleanly without any changes."
+          claude_args: |
+            --mcp-config ./.github/mcp-ci.json
+            --permission-mode bypassPermissions
+            --max-turns 150
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          SEO_MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
+          DATAFORSEO_LOGIN: ${{ secrets.DATAFORSEO_LOGIN }}
+          DATAFORSEO_PASSWORD: ${{ secrets.DATAFORSEO_PASSWORD }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MCP_TIMEOUT: "120000"
+          # Placeholder public env so `next build` never trips on missing vars -
+          # static blog pages do not call Supabase, and the clients are lazy.
+          NEXT_PUBLIC_SUPABASE_URL: "https://placeholder.supabase.co"
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder-anon-key"
+          NEXT_PUBLIC_SITE_URL: "https://{{DOMAIN}}"

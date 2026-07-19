@@ -1,0 +1,90 @@
+name: SEO weekly research
+
+# Every Monday, research keywords from the product itself: the agent reads the
+# product surface in this repo AS IT EXISTS THAT WEEK (content registries,
+# existing slugs, the master build doc, free tips), derives keyword ideas from
+# what {{SITE_NAME}} actually is, validates them through DataForSEO, tracks the
+# winners, and fills the suggestions queue (guides pre-approved, tool ideas
+# pending). No PR - it only writes to the queue via the seo-manager MCP, which
+# you then see on the dashboard. This replaces the old REST opportunities cron.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: seo-research
+  cancel-in-progress: false
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fail fast, in plain language, when the Claude token secret is broken.
+      # Without this the claude-code-action dies minutes in with a cryptic
+      # "Environment variable validation failed" (empty secret) or a 401
+      # (wrapped/wrong token) - the 2026-07-17 dogfood install burned four
+      # runs on exactly that. setup.sh verifies the token before storing it,
+      # so this preflight should only ever fire on hand-set secrets.
+      - name: Preflight - Claude token secret usable
+        env:
+          CLAUDE_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -z "$CLAUDE_TOKEN" ]; then
+            echo "::error::The CLAUDE_CODE_OAUTH_TOKEN secret is missing or empty on this repo. Rerun the setup command from your DispatchSEO dashboard (it mints and VERIFIES a fresh token), or set one by hand: run 'claude setup-token', then pipe the token into 'gh secret set CLAUDE_CODE_OAUTH_TOKEN' without any whitespace."
+            exit 1
+          fi
+          case "$CLAUDE_TOKEN" in
+            sk-ant-oat*) echo "Claude token present." ;;
+            *)
+              echo "::error::CLAUDE_CODE_OAUTH_TOKEN does not look like a Claude Code OAuth token (expected it to start with sk-ant-oat). It was probably line-wrapped or the wrong text was pasted when it was saved. Rerun the setup command from your DispatchSEO dashboard to mint and verify a replacement."
+              exit 1 ;;
+          esac
+
+      # Fail loudly if the seo-manager MCP is unreachable. Without this, a
+      # stale URL in mcp-ci.json makes Claude see an empty toolset and "exit
+      # cleanly" - a green run that built nothing (2026-07-14 domain-move bug).
+      - name: Preflight - seo-manager MCP reachable
+        env:
+          SEO_MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
+        run: |
+          url=$(node -e "console.log(require('./.github/mcp-ci.json').mcpServers['seo-manager'].url)")
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 -X POST "$url" \
+            -H "Authorization: Bearer $SEO_MCP_API_KEY" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json, text/event-stream" \
+            -d '{"jsonrpc":"2.0","id":0,"method":"tools/list"}')
+          if [ "$code" != "200" ]; then
+            echo "::error::seo-manager MCP at $url returned HTTP $code - fix the URL in .github/mcp-ci.json or the SEO_MCP_API_KEY secret"
+            exit 1
+          fi
+          echo "seo-manager MCP OK ($url)"
+
+      - name: Run the SEO researcher
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Print the full execution transcript in the step log, so a run's
+          # summary tables (what was considered, what passed, what was queued)
+          # stay readable after the fact - without this, a "success" that
+          # queued nothing is indistinguishable from one that found gold.
+          show_full_output: true
+          prompt: "FIRST call the seo-manager MCP tool get_instructions with workflow research, then follow the returned markdown exactly - it is the current playbook and overrides any cached knowledge of this pipeline. Also read .dispatchseo/conventions.md for this repo's product-surface files. Cover the whole product (no topic filter). In brief: derive keyword candidates from product knowledge, validate them via the dataforseo MCP, track winners via track_keywords, queue suggestions with propose_suggestion, then approve every queued idea - guides AND tools - via update_suggestion. (On semi-automatic projects the backend records agent approvals as pending for the owner to decide; the tool response says so and that counts as success, do not retry.) Honor the weekly quota, report the quota status and the instructions version, and output the two summary tables at the end. If get_instructions is unavailable, fail loudly and exit without changes."
+          claude_args: |
+            --mcp-config ./.github/mcp-ci.json
+            --permission-mode bypassPermissions
+            --max-turns 120
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          SEO_MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
+          DATAFORSEO_LOGIN: ${{ secrets.DATAFORSEO_LOGIN }}
+          DATAFORSEO_PASSWORD: ${{ secrets.DATAFORSEO_PASSWORD }}
+          MCP_TIMEOUT: "120000"

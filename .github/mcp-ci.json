@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "seo-manager": {
+      "type": "http",
+      "url": "https://dispatchseo.com/api/mcp",
+      "headers": {
+        "Authorization": "Bearer ${SEO_MCP_API_KEY}"
+      }
+    },
+    "dataforseo": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "dataforseo-mcp-server@latest"],
+      "env": {
+        "DATAFORSEO_USERNAME": "${DATAFORSEO_LOGIN}",
+        "DATAFORSEO_PASSWORD": "${DATAFORSEO_PASSWORD}",
+        "ENABLED_MODULES": "SERP,DATAFORSEO_LABS,BACKLINKS"
+      }
+    }
+  }
+}

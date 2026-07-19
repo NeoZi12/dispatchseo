@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & setup help
+    url: https://github.com/NeoZi12/dispatchseo/discussions
+    about: "How do I...?" questions go to Discussions, not issues.
+  - name: Security vulnerability
+    url: https://github.com/NeoZi12/dispatchseo/security/advisories/new
+    about: Report privately - never as a public issue.

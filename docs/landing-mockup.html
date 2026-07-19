@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DispatchSEO — Turn Claude Code into your SEO manager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0a0b;
+    --bg2:#0f0f11;
+    --card:#121215;
+    --card2:#17171b;
+    --line:#232329;
+    --line2:#2e2e35;
+    --line3:#3a3a42;
+    --dim:#6e6e78;
+    --mut:#a5a5ae;
+    --txt:#f4f4f5;
+    --vio:#8b5cf6;
+    --vio2:#a78bfa;
+    --up:#4ade80;
+    --r-sm:8px;
+    --r-md:12px;
+    --disp:'Plus Jakarta Sans',system-ui,sans-serif;
+    --body:'DM Sans',system-ui,sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{font-family:var(--body);color:var(--txt);background:var(--bg);line-height:1.6;font-size:17px;-webkit-font-smoothing:antialiased}
+  h1,h2,h3{font-family:var(--disp);line-height:1.12;letter-spacing:-0.02em;color:#fff}
+  a{color:inherit}
+  ::selection{background:var(--vio);color:#fff}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+  section{padding:96px 0;scroll-margin-top:90px}
+  #waitlist{scroll-margin-top:96px}
+
+  /* ---------- keyword emphasis + terminal caret ---------- */
+  .kw-hl{color:inherit}
+  .caret{display:inline-block;width:.06em;height:.9em;background:var(--vio);border-radius:1px;margin-left:.12em;vertical-align:-.07em;animation:blink 1.1s steps(2,start) infinite}
+  @keyframes blink{to{visibility:hidden}}
+  @media (prefers-reduced-motion: reduce){.caret{animation:none}}
+
+  /* ---------- nav ---------- */
+  nav{position:sticky;top:0;z-index:50;background:rgba(10,10,11,.82);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+  .nav-in{display:flex;align-items:center;height:68px;position:relative}
+  .logo{font-family:var(--disp);font-weight:800;font-size:19px;color:#fff;text-decoration:none;display:flex;align-items:center;gap:10px}
+  .logo-mark{height:28px;width:auto;display:block}
+  .nav-links{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;gap:28px}
+  .nav-links a{text-decoration:none;font-size:15px;color:var(--mut);font-weight:500;transition:color .12s}
+  .nav-links a:hover{color:#fff}
+  .nav-cta{margin-left:auto;display:flex;align-items:center;gap:16px}
+  .gh-link{display:flex;align-items:center;gap:7px;font-size:14.5px;font-weight:600;text-decoration:none;color:var(--mut);transition:color .12s}
+  .gh-link:hover{color:#fff}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-family:var(--body);font-weight:600;font-size:15.5px;padding:12px 22px;border-radius:10px;border:1px solid #fff;cursor:pointer;text-decoration:none;transition:transform .12s ease, box-shadow .12s ease, background .12s ease}
+  .btn:hover{transform:translateY(-1px)}
+  .btn-solid{background:#fff;color:var(--bg)}
+  .btn-solid:hover{box-shadow:0 6px 22px rgba(255,255,255,.14)}
+  .btn-ghost{background:transparent;color:var(--txt);border-color:var(--line3)}
+  .btn-ghost:hover{background:var(--card2)}
+  .btn-sm{padding:8px 16px;font-size:14px;border-radius:8px}
+
+  /* ---------- hero ---------- */
+  .hero{padding:88px 0 40px;text-align:center;position:relative}
+  .hero h1{font-size:clamp(38px,6.2vw,68px);font-weight:800;margin:0 auto 22px;max-width:880px}
+  .hero .sub{font-size:clamp(16.5px,2vw,19.5px);color:var(--mut);max-width:680px;margin:0 auto 34px}
+  .cta-row{display:flex;gap:12px;justify-content:center;align-items:stretch;flex-wrap:wrap}
+  .email-group{display:flex;background:var(--card);border:1.5px solid var(--line3);border-radius:12px;padding:5px;width:min(430px,100%);transition:border-color .15s}
+  .email-group:focus-within{border-color:var(--vio)}
+  .email-group input{border:0;outline:0;flex:1;padding:8px 14px;font-family:var(--body);font-size:15.5px;background:transparent;color:var(--txt);min-width:0}
+  .email-group input::placeholder{color:var(--dim)}
+  .email-group .btn{border-radius:8px;white-space:nowrap}
+  .hero-note{margin-top:16px;font-size:14px;color:var(--dim)}
+  .hero-note a{font-weight:600;color:var(--txt)}
+  .gift-ic{width:14px;height:14px;color:var(--vio2);vertical-align:-2px;margin-right:6px;display:inline-block}
+
+  /* hero doodles */
+  .doodle{position:absolute;pointer-events:none}
+  .doodle path{fill:none;stroke:#4b4b55;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+  .doodle-l{left:4%;top:180px;width:70px;transform:rotate(-12deg)}
+  .doodle-r{right:5%;top:130px;width:56px;transform:rotate(14deg)}
+  .doodle-arrow{right:14%;top:390px;width:80px}
+
+  /* ---------- hero mock (flat screenshot, dark like the real dashboard) ---------- */
+  .mock-zone{position:relative;max-width:960px;margin:64px auto 0;text-align:left}
+  .mock{background:var(--card);border:1px solid var(--line2);border-radius:16px;box-shadow:0 32px 80px -28px rgba(0,0,0,.85);overflow:hidden}
+  .mock-bar{display:flex;align-items:center;gap:10px;padding:15px 20px;border-bottom:1px solid var(--line);background:var(--bg2)}
+  .mock-bar .m-title{font-family:var(--disp);font-weight:700;font-size:15px;color:#fff}
+  .mock-bar .m-pill{font-size:12px;font-weight:600;color:var(--mut);background:var(--card2);border:1px solid var(--line2);border-radius:6px;padding:3px 9px}
+  .mock-bar .m-agent{margin-left:auto;display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--dim);font-weight:500}
+  .pulse{width:7px;height:7px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.18)}
+  .q-row{display:flex;align-items:center;gap:16px;padding:0 20px;min-height:76px;border-bottom:1px solid #1a1a1f}
+  .q-row:last-child{border-bottom:0}
+  .q-main{flex:1;min-width:0}
+  .q-title{font-weight:600;font-size:15px;line-height:1.35;color:var(--txt)}
+  .q-meta{display:flex;gap:8px;margin-top:5px;flex-wrap:wrap}
+  .kw{font-size:11.5px;font-weight:600;background:var(--card2);border-radius:999px;padding:2px 9px;color:var(--mut)}
+  .kw.vol{background:transparent;border:1px solid var(--line2)}
+  .q-head{display:flex;align-items:center;gap:9px;min-width:0}
+  .tb{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-radius:5px;padding:2px 7px;flex-shrink:0}
+  .tb.guide{background:var(--card2);color:var(--mut);border:1px solid var(--line2)}
+  .tb.tool{background:rgba(139,92,246,.16);color:var(--vio2)}
+  .q-right{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0}
+  .q-time{font-size:12.5px;font-weight:500;color:var(--dim);white-space:nowrap;display:flex;align-items:center;gap:6px}
+  .q-time svg{width:14px;height:14px;color:var(--up)}
+  .q-stats{font-size:12.5px;color:var(--dim);white-space:nowrap;display:flex;gap:12px}
+  .q-stats b{color:var(--txt);font-weight:700}
+  .pulse-v{width:7px;height:7px;border-radius:50%;background:var(--vio);box-shadow:0 0 0 3px rgba(139,92,246,.2)}
+  /* floating rank card */
+  .float-card{position:absolute;right:-14px;bottom:-34px;width:250px;background:var(--card);border:1px solid var(--line2);border-radius:14px;box-shadow:0 22px 52px -18px rgba(0,0,0,.9);padding:16px 18px}
+  .float-card .fc-h{font-size:12px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px}
+  .fc-row{display:flex;align-items:baseline;justify-content:space-between;font-size:13.5px;padding:5px 0;border-bottom:1px dashed #1e1e24}
+  .fc-row:last-child{border-bottom:0}
+  .fc-kw{color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px}
+  .fc-pos{font-family:var(--disp);font-weight:800;color:#fff}
+  .fc-up{font-size:11.5px;font-weight:700;color:var(--up);margin-left:5px}
+
+  /* ---------- stat strip ---------- */
+  .stats{border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--bg2)}
+  .stats-in{display:grid;grid-template-columns:repeat(4,1fr);gap:0}
+  .stat{padding:40px 28px;border-right:1px solid var(--line)}
+  .stat:last-child{border-right:0}
+  .stat .n{font-family:var(--disp);font-weight:800;font-size:34px;letter-spacing:-0.02em;color:#fff}
+  .stat .d{font-size:14.5px;color:var(--mut);margin-top:6px;line-height:1.45}
+
+  /* ---------- section headers ---------- */
+  .sec-h{text-align:center;max-width:720px;margin:0 auto 64px}
+  .sec-h h2{font-size:clamp(30px,4.4vw,46px);font-weight:800;margin-bottom:18px}
+  .sec-h p{color:var(--mut);font-size:17.5px}
+
+  /* ---------- how it works ---------- */
+  .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:20px}
+  .step{border:1px solid var(--line);border-radius:var(--r-md);padding:28px 24px;background:var(--card);position:relative;transition:border-color .15s}
+  .step:hover{border-color:var(--line3)}
+  .step .num{font-family:var(--disp);font-weight:800;font-size:15px;width:34px;height:34px;border-radius:10px;background:var(--vio);color:#fff;display:grid;place-items:center;margin-bottom:18px}
+  .step h3{font-size:19px;font-weight:700;margin-bottom:9px}
+  .step p{font-size:14.8px;color:var(--mut)}
+
+  /* ---------- raised band (why now) ---------- */
+  .band-alt{background:var(--bg2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .who{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:56px}
+  .who-card{border:1px solid var(--line);border-radius:var(--r-md);padding:30px 26px;background:var(--card)}
+  .who-card .ic{width:44px;height:44px;border:1px solid var(--line2);border-radius:11px;display:grid;place-items:center;color:var(--vio2);margin-bottom:18px}
+  .who-card .ic svg{width:22px;height:22px}
+  .who-card h3{font-size:19px;font-weight:700;margin-bottom:10px}
+  .who-card p{font-size:15px;color:var(--mut)}
+
+  /* ---------- features ---------- */
+  .feat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+  .feat{border:1px solid var(--line);border-radius:var(--r-md);padding:26px 22px;background:var(--card);transition:border-color .15s}
+  .feat:hover{border-color:var(--line3)}
+  .feat .f-ic{width:40px;height:40px;border-radius:10px;background:var(--card2);display:grid;place-items:center;color:var(--vio2);margin-bottom:16px}
+  .feat .f-ic svg{width:20px;height:20px}
+  .feat h3{font-size:16.5px;font-weight:700;margin-bottom:7px}
+  .feat p{font-size:14px;color:var(--mut);line-height:1.5}
+
+  /* ---------- open source ---------- */
+  .oss{background:var(--bg2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .oss-in{display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center}
+  .oss-copy h2{font-size:clamp(28px,3.8vw,40px);font-weight:800;margin-bottom:20px}
+  .oss-copy p{color:var(--mut);margin-bottom:16px;font-size:16.5px}
+  .oss-badges{display:flex;gap:10px;margin:22px 0 28px;flex-wrap:wrap}
+  .oss-badge{font-size:12.5px;font-weight:600;border:1px solid var(--line2);border-radius:8px;padding:6px 12px;background:var(--card);color:var(--mut)}
+  .oss-btns{display:flex;gap:12px;flex-wrap:wrap}
+  .term{background:#000;border:1px solid var(--line);border-radius:14px;padding:22px 24px;font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:13.5px;line-height:1.85;color:#d4d4d8;box-shadow:0 24px 56px -20px rgba(0,0,0,.8);overflow-x:auto}
+  .term .t-dots{display:flex;gap:6px;margin-bottom:16px}
+  .term .t-dots i{width:10px;height:10px;border-radius:50%;background:#2a2a30;display:block}
+  .term .cmd{color:#fff}
+  .term .dim{color:var(--dim)}
+  .term .out{color:#86efac}
+
+  /* ---------- pricing ---------- */
+  .price-note{text-align:center;margin:-32px auto 34px;max-width:560px;font-size:15px;color:var(--dim)}
+  .price-note b{color:var(--txt)}
+  .plans{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;align-items:stretch}
+  .plan{border:1px solid var(--line);border-radius:16px;padding:30px 26px;background:var(--card);display:flex;flex-direction:column;position:relative}
+  .plan.hero-plan{border:2px solid var(--vio)}
+  .plan .p-badge{position:absolute;top:-12px;left:24px;font-size:11.5px;font-weight:700;letter-spacing:.04em;background:var(--vio);color:#fff;border-radius:999px;padding:4px 12px}
+  .plan .p-badge.soft{background:var(--card);color:var(--mut);border:1px solid var(--line2)}
+  .plan h3{font-size:17px;font-weight:700;margin-bottom:6px}
+  .plan .p-price{font-family:var(--disp);font-weight:800;font-size:36px;letter-spacing:-0.02em;margin:8px 0 2px;color:#fff}
+  .plan .p-price small{font-size:14px;font-weight:600;color:var(--dim);font-family:var(--body)}
+  .plan .p-sub{font-size:13.5px;color:var(--dim);margin-bottom:20px}
+  .plan ul{list-style:none;margin-bottom:26px;flex:1}
+  .plan li{font-size:14px;color:var(--mut);padding:6px 0 6px 24px;position:relative}
+  .plan li::before{content:"✓";position:absolute;left:2px;font-weight:700;color:var(--vio2)}
+  .plan .btn{width:100%}
+  .cloud-adds{display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap;margin:0 auto 46px}
+  .cloud-adds .ca-label{font-size:11.5px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--dim);margin-right:4px}
+  .ca-pill{display:inline-flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:var(--mut);background:var(--card);border:1px solid var(--line2);border-radius:8px;padding:8px 14px}
+  .ca-pill svg{width:16px;height:16px;color:var(--vio2);flex-shrink:0}
+
+  /* ---------- faq ---------- */
+  .faq{background:var(--bg2);border-top:1px solid var(--line)}
+  .faq-list{max-width:760px;margin:0 auto}
+  details{border:1px solid var(--line);border-radius:var(--r-md);background:var(--card);margin-bottom:12px;overflow:hidden}
+  summary{cursor:pointer;padding:20px 24px;font-weight:600;font-size:16.5px;font-family:var(--disp);color:#fff;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:16px}
+  summary::-webkit-details-marker{display:none}
+  summary::after{content:"+";font-size:22px;font-weight:400;color:var(--dim);flex-shrink:0;transition:transform .18s}
+  details[open] summary::after{transform:rotate(45deg)}
+  details .a{padding:0 24px 22px;color:var(--mut);font-size:15.5px}
+  details .a a{font-weight:600;color:var(--txt)}
+
+  /* ---------- final cta ---------- */
+  .final{text-align:center;position:relative;overflow:hidden;border-top:1px solid var(--line)}
+  .final h2{font-size:clamp(32px,5vw,52px);font-weight:800;margin-bottom:18px}
+  .final p{color:var(--mut);max-width:520px;margin:0 auto 36px;font-size:17px}
+  .final .email-group{margin:0 auto}
+  .final .hero-note{color:var(--dim)}
+  .final .hero-note a{color:var(--txt)}
+  .final .doodle path{stroke:#4b4b55}
+  .doodle-f1{left:8%;top:70px;width:60px;transform:rotate(-10deg)}
+  .doodle-f2{right:9%;bottom:80px;width:70px;transform:rotate(8deg)}
+
+  /* ---------- footer ---------- */
+  footer{padding:72px 0 40px;border-top:1px solid var(--line);background:var(--bg)}
+  .foot-grid{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:48px;margin-bottom:56px}
+  .foot-brand p{color:var(--dim);font-size:14.5px;margin-top:14px;max-width:260px}
+  .foot-col h4{font-family:var(--disp);font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);margin-bottom:18px}
+  .foot-col a{display:block;text-decoration:none;color:var(--mut);font-size:14.5px;padding:5px 0;transition:color .12s}
+  .foot-col a:hover{color:#fff}
+  .foot-bottom{display:flex;justify-content:space-between;align-items:center;padding-top:28px;border-top:1px solid #1a1a1f;font-size:13.5px;color:var(--dim);flex-wrap:wrap;gap:12px}
+  .foot-bottom a{font-weight:600;color:var(--txt);text-decoration:none}
+  .foot-oss{display:inline-flex;align-items:center;gap:5px}
+  .foot-oss svg{width:15px;height:15px;color:var(--vio2)}
+
+  /* ---------- responsive ---------- */
+  @media(max-width:980px){
+    .steps,.feat-grid{grid-template-columns:repeat(2,1fr)}
+    .plans{grid-template-columns:repeat(2,1fr)}
+    .who{grid-template-columns:1fr}
+    .oss-in{grid-template-columns:1fr;gap:44px}
+    .stats-in{grid-template-columns:repeat(2,1fr)}
+    .stat{border-bottom:1px solid var(--line)}
+    .stat:nth-child(2n){border-right:0}
+    .stat:nth-child(3),.stat:nth-child(4){border-bottom:0}
+    .nav-links{display:none}
+    .float-card{position:static;width:auto;margin-top:16px;box-shadow:none}
+    .doodle{display:none}
+  }
+  @media(max-width:600px){
+    section{padding:64px 0}
+    .steps,.feat-grid,.plans{grid-template-columns:1fr}
+    .stats-in{grid-template-columns:1fr}
+    .stat{border-right:0;border-bottom:1px solid var(--line)}
+    .stat:last-child{border-bottom:0}
+    .foot-grid{grid-template-columns:1fr 1fr}
+    .q-right{display:none}
+    .email-group{flex-direction:column;gap:8px;border-radius:14px}
+    .email-group input{padding:10px 14px}
+  }
+</style>
+</head>
+<body>
+
+<!-- ======================== NAV ======================== -->
+<nav>
+  <div class="wrap nav-in">
+    <a class="logo" href="#">
+      <svg class="logo-mark" viewBox="114 76 260 364" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect x="180" y="88" width="30" height="106" rx="15" fill="#a78bfa"/>
+        <rect x="286" y="134" width="46" height="52" rx="14" fill="#a78bfa"/>
+        <rect x="126" y="248" width="24" height="78" rx="12" fill="#a78bfa"/>
+        <rect x="150" y="176" width="212" height="252" rx="44" fill="#8b5cf6"/>
+        <rect x="192" y="220" width="128" height="18" rx="9" fill="#0a0a0b"/>
+        <rect x="192" y="256" width="128" height="18" rx="9" fill="#0a0a0b"/>
+        <rect x="192" y="292" width="128" height="18" rx="9" fill="#0a0a0b"/>
+      </svg>
+      DispatchSEO
+    </a>
+    <div class="nav-links">
+      <a href="#how">How it works</a>
+      <a href="#features">Features</a>
+      <a href="#oss">Open source</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#faq">FAQ</a>
+    </div>
+    <div class="nav-cta">
+      <a class="gh-link" href="#oss">
+        <svg width="17" height="17" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+      <a class="btn btn-solid btn-sm" href="#waitlist">Join the waitlist</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ======================== HERO ======================== -->
+<header class="hero">
+  <!-- doodle: rising clicks trend, left -->
+  <svg class="doodle doodle-l" viewBox="0 0 64 64"><path d="M6 50 L22 35 L33 43 L56 15 M56 15 L45 18 M56 15 L54 27"/></svg>
+  <!-- doodle: cursor click, right -->
+  <svg class="doodle doodle-r" viewBox="0 0 48 48"><path d="M19 17 L30 43 L33.5 32 L44 29 Z M9 8 L13 12 M6 19 L11.5 20.5 M19 5 L20.5 10.5"/></svg>
+  <!-- doodle: loose arrow curving toward the mock -->
+  <svg class="doodle doodle-arrow" viewBox="0 0 80 60"><path d="M6 9 C 33 13, 55 27, 63 49 M63 49 L50 44 M63 49 L66 35"/></svg>
+
+  <div class="wrap">
+    <h1>Turn Claude Code into<br>your <span class="kw-hl">SEO manager</span><span class="caret"></span></h1>
+    <p class="sub">The Claude Code that built your product now manages its SEO: trends, guides, interactive tools, reviews, rank tracking. Run it on full auto, or approve every piece.</p>
+
+    <div class="cta-row" id="waitlist">
+      <div class="email-group">
+        <input type="email" placeholder="you@company.com">
+        <button class="btn btn-solid">Join the waitlist</button>
+      </div>
+      <a class="btn btn-ghost" href="#oss">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25z"/></svg>
+        Star on GitHub
+      </a>
+    </div>
+    <p class="hero-note"><svg class="gift-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C9.5 3 11 5 12 8c1-3 2.5-5 4.5-5a2.5 2.5 0 0 1 0 5"/></svg>Waitlist members lock in founding pricing at launch. <a href="#oss">Self-hosting is free today.</a></p>
+
+    <!-- flat product mock, dark like the real dashboard -->
+    <div class="mock-zone">
+      <div class="mock">
+        <div class="mock-bar">
+          <span class="m-title">Shipped this week</span>
+          <span class="m-pill">yoursite.com</span>
+          <span class="m-agent"><span class="pulse"></span> agent active · next build tonight</span>
+        </div>
+        <div class="q-row">
+          <div class="q-main">
+            <div class="q-head"><span class="tb tool">Tool</span><div class="q-title">Vercel Cost Calculator</div></div>
+            <div class="q-meta"><span class="kw">reduce vercel costs</span><span class="kw vol">880/mo</span><span class="kw vol">PR #151 merged</span></div>
+          </div>
+          <div class="q-right">
+            <div class="q-time"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>yesterday</div>
+            <div class="q-stats"><span><b>14</b> clicks</span><span><b>410</b> impressions</span></div>
+          </div>
+        </div>
+        <div class="q-row">
+          <div class="q-main">
+            <div class="q-head"><span class="tb guide">Guide</span><div class="q-title">Stripe webhooks in Next.js: the parts the docs skip</div></div>
+            <div class="q-meta"><span class="kw">stripe webhook nextjs</span><span class="kw vol">1.3K/mo</span><span class="kw vol">PR #149 merged</span></div>
+          </div>
+          <div class="q-right">
+            <div class="q-time"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>2 days ago</div>
+            <div class="q-stats"><span><b>47</b> clicks</span><span><b>1.6K</b> impressions</span></div>
+          </div>
+        </div>
+        <div class="q-row">
+          <div class="q-main">
+            <div class="q-head"><span class="tb guide">Guide</span><div class="q-title">Pricing page teardown: what 50 SaaS pricing pages get wrong</div></div>
+            <div class="q-meta"><span class="kw">saas pricing page examples</span><span class="kw vol">1.9K/mo</span><span class="kw vol">PR #146 merged</span></div>
+          </div>
+          <div class="q-right">
+            <div class="q-time"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>3 days ago</div>
+            <div class="q-stats"><span><b>129</b> clicks</span><span><b>4.2K</b> impressions</span></div>
+          </div>
+        </div>
+      </div>
+      <!-- floating rank card -->
+      <div class="float-card">
+        <div class="fc-h">Rank moves this week</div>
+        <div class="fc-row"><span class="fc-kw">saas pricing page examples</span><span><span class="fc-pos">#6</span><span class="fc-up">▲3</span></span></div>
+        <div class="fc-row"><span class="fc-kw">stripe webhook nextjs</span><span><span class="fc-pos">#11</span><span class="fc-up">▲4</span></span></div>
+        <div class="fc-row"><span class="fc-kw">reduce vercel costs</span><span><span class="fc-pos">#19</span><span class="fc-up">▲12</span></span></div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ======================== STAT STRIP ======================== -->
+<div class="stats">
+  <div class="wrap stats-in">
+    <div class="stat"><div class="n">$0</div><div class="d">to run. Free tiers all the way down: Vercel, Supabase, Search Console.</div></div>
+    <div class="stat"><div class="n">~15 min</div><div class="d">setup. Your agent reads the instructions and configures itself.</div></div>
+    <div class="stat"><div class="n">Daily</div><div class="d">rank checks on every keyword you track, per site.</div></div>
+    <div class="stat"><div class="n">1/week</div><div class="d">a new interactive tool: calculators and checkers that earn links.</div></div>
+  </div>
+</div>
+
+<!-- ======================== HOW IT WORKS ======================== -->
+<section id="how">
+  <div class="wrap">
+    <div class="sec-h">
+      <h2>Connect it once,<br>then watch it work</h2>
+      <p>One pipeline, four steps. The agent thinks, the backend remembers, you decide.</p>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="num">1</div>
+        <h3>Connect</h3>
+        <p>Add the MCP server to Claude Code and point it at your site's repo. The agent reads your site and writes its own brief.</p>
+      </div>
+      <div class="step">
+        <div class="num">2</div>
+        <h3>Research</h3>
+        <p>It mines Search Console and SERP data for keywords you can actually win, then queues article ideas with the reasoning attached.</p>
+      </div>
+      <div class="step">
+        <div class="num">3</div>
+        <h3>Approve, or automate</h3>
+        <p>Approve each idea from the dashboard or chat, or flip on auto mode and let the pipeline ship on schedule, with PRs as the audit trail.</p>
+      </div>
+      <div class="step">
+        <div class="num">4</div>
+        <h3>Ship and track</h3>
+        <p>Approved ideas come back as pull requests to your repo. Merge, publish, and watch ranks move on the same dashboard.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================== WHY NOW / WHO FOR ======================== -->
+<section class="band-alt">
+  <div class="wrap">
+    <div class="sec-h">
+      <h2>Your agent built your product.<br>Now it runs your SEO.</h2>
+      <p>Every other AI SEO tool learns about you from a homepage crawl. Your agent has the repo: the features, the docs, the decisions, probably its own commits. DispatchSEO is the only product where the agent that knows your project best manages its SEO for you.</p>
+    </div>
+    <div class="who">
+      <div class="who-card">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg></span>
+        <h3>Founders with a product to ship</h3>
+        <p>Your site lives in a git repo and your time is better spent on the product. Hand the content grind to your agent and keep the final say on everything.</p>
+      </div>
+      <div class="who-card">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3H6a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3h12a3 3 0 0 0 3-3 3 3 0 0 0-3-3z"/></svg></span>
+        <h3>Claude Code power users</h3>
+        <p>You already pay for the best writing model there is. DispatchSEO gives it memory, schedules, and a queue, so SEO stops being a weekend project.</p>
+      </div>
+      <div class="who-card">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v5c0 4.2 2.8 6.9 7 8.3 4.2-1.4 7-4.1 7-8.3V6l-7-3Z"/><path d="m9 11.5 2 2 4-4"/></svg></span>
+        <h3>People burned by AI content tools</h3>
+        <p>Every article passes through your hands as a pull request before it exists on your site. Your repo, your git history, your rollback.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================== FEATURES ======================== -->
+<section id="features">
+  <div class="wrap">
+    <div class="sec-h">
+      <h2>Everything an SEO operation needs, <span class="kw-hl">in one place</span></h2>
+      <p>Research, building, reviewing, and tracking live in one backend that both you and your agent can drive.</p>
+    </div>
+    <div class="feat-grid">
+      <div class="feat"><div class="f-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></svg></div><h3>Keyword research</h3><p>The agent finds terms with real demand that you can actually rank for, and shows you its reasoning.</p></div>
+      <div class="feat"><div class="f-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 7 13.5 15.5 8.5 10.5 2 17"/><path d="M16 7h6v6"/></svg></div><h3>Rank tracking</h3><p>Daily SERP checks on every keyword you track. See what moved, per site, without opening a spreadsheet.</p></div>
+      <div class="feat"><div class="f-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5.5-5.5 2 2-5.5 5.5-2Z"/></svg></div><h3>Search Console insights</h3><p>Clicks, impressions, and position, synced through the day and mined for queries you're already close to winning.</p></div>
+      <div class="feat"><div class="f-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z"/><path d="M14 3v6h6"/><path d="M9 13h6"/><path d="M9 17h4"/></svg></div><h3>Auto guide builder</h3><p>Approved ideas build themselves into full guides on schedule, written from your product's real facts.</p></div>
+      <div class="feat"><div class="f-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></div><h3>Auto tool builder</h3><p>Ships small interactive tools: calculators, checkers, generators. The pages that earn links on their own.</p></div>
+      <div class="feat"><div class="f-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1.6"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49"/><path d="M7.76 16.24a6 6 0 0 1 0-8.49"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 19.07a10 10 0 0 1 0-14.14"/></svg></div><h3>Trend topics</h3><p>Catch rising topics in your niche early, and expand the good ones into article clusters.</p></div>
+      <div class="feat"><div class="f-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 5-6"/></svg></div><h3>Built-in reviewer</h3><p>Every draft is checked for quality and sameness against your existing content before it becomes a PR.</p></div>
+      <div class="feat"><div class="f-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></div><h3>Full MCP parity</h3><p>Anything the dashboard can do, your agent can do over MCP. Both stay in sync, by design.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================== OPEN SOURCE ======================== -->
+<section class="oss" id="oss">
+  <div class="wrap oss-in">
+    <div class="oss-copy">
+      <h2><span class="kw-hl">Free forever</span>, if you host it yourself</h2>
+      <p>DispatchSEO is open source under AGPL-3.0, with zero feature gating. The self-hosted version is the whole product, and it runs end to end on free tiers: Vercel, Supabase, Search Console, plus the Claude subscription you already have.</p>
+      <p>Setup is agent-driven. Deploy, add the MCP server, and tell your agent to set itself up. It follows the instructions so you don't have to.</p>
+      <div class="oss-badges">
+        <span class="oss-badge">AGPL-3.0</span>
+        <span class="oss-badge">Zero feature limits</span>
+        <span class="oss-badge">Your accounts, your keys</span>
+        <span class="oss-badge">Deploy to Vercel</span>
+      </div>
+      <div class="oss-btns">
+        <a class="btn btn-solid" href="#">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+          Star on GitHub
+        </a>
+        <a class="btn btn-ghost" href="#">Read the docs</a>
+      </div>
+    </div>
+    <div class="term">
+      <div class="t-dots"><i></i><i></i><i></i></div>
+      <div><span class="dim">$</span> <span class="cmd">claude mcp add dispatchseo https://yourdeploy.vercel.app/api/mcp</span></div>
+      <div><span class="dim">$</span> <span class="cmd">claude</span></div>
+      <div><span class="dim">&gt;</span> <span class="cmd">set up my site for SEO</span></div>
+      <div class="out">● Read your repo: Next.js blog, 24 posts, docs site</div>
+      <div class="out">● Wrote the site profile and started tracking 40 keywords</div>
+      <div class="out">● Queued 6 article ideas for your review</div>
+      <div><span class="dim">Your move: approve them at yourdeploy.vercel.app</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================== PRICING ======================== -->
+<section id="pricing">
+  <div class="wrap">
+    <div class="sec-h">
+      <h2>Self-host free.<br>Cloud, <span class="kw-hl">when it lands</span>.</h2>
+    </div>
+    <p class="price-note">Cloud pricing below is <b>planned, not final</b>. Joining the waitlist locks in founding-member pricing at launch.</p>
+    <div class="cloud-adds">
+      <span class="ca-label">Cloud adds</span>
+      <span class="ca-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M7 21v-5"/><path d="M12 21V9"/><path d="M17 21v-8"/></svg>bundled SERP + volume data, one bill</span>
+      <span class="ca-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg>one-click Search Console connect</span>
+      <span class="ca-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>managed schedules + failure alerts</span>
+    </div>
+    <div class="plans">
+      <div class="plan">
+        <span class="p-badge soft">Available now</span>
+        <h3>Self-host</h3>
+        <div class="p-price">$0<small> forever</small></div>
+        <div class="p-sub">The whole product, in your accounts</div>
+        <ul>
+          <li>Every feature, no gating</li>
+          <li>Unlimited sites and keywords</li>
+          <li>Bring your own data keys</li>
+          <li>Community support</li>
+        </ul>
+        <a class="btn btn-ghost" href="#oss">Deploy from GitHub</a>
+      </div>
+      <div class="plan">
+        <span class="p-badge soft">Coming soon</span>
+        <h3>Starter</h3>
+        <div class="p-price">$49<small>/mo</small></div>
+        <div class="p-sub">One site on autopilot</div>
+        <ul>
+          <li>1 site</li>
+          <li>100 tracked keywords</li>
+          <li>Bundled SERP + volume data</li>
+          <li>One-click Search Console</li>
+          <li>Managed schedules + alerts</li>
+        </ul>
+        <a class="btn btn-solid" href="#waitlist">Join the waitlist</a>
+      </div>
+      <div class="plan hero-plan">
+        <span class="p-badge">Coming soon</span>
+        <h3>Growth</h3>
+        <div class="p-price">$99<small>/mo</small></div>
+        <div class="p-sub">For a small portfolio</div>
+        <ul>
+          <li>3 sites</li>
+          <li>300 tracked keywords</li>
+          <li>Everything in Starter</li>
+          <li>Weekly opportunity digest</li>
+        </ul>
+        <a class="btn btn-solid" href="#waitlist">Join the waitlist</a>
+      </div>
+      <div class="plan">
+        <span class="p-badge soft">Coming soon</span>
+        <h3>Scale</h3>
+        <div class="p-price">$149<small>/mo</small></div>
+        <div class="p-sub">Portfolios and agencies</div>
+        <ul>
+          <li>10 sites</li>
+          <li>1,000 tracked keywords</li>
+          <li>Everything in Growth</li>
+          <li>Priority support</li>
+        </ul>
+        <a class="btn btn-solid" href="#waitlist">Join the waitlist</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================== FAQ ======================== -->
+<section class="faq" id="faq">
+  <div class="wrap">
+    <div class="sec-h">
+      <h2>Fair <span class="kw-hl">questions</span></h2>
+    </div>
+    <div class="faq-list">
+      <details open>
+        <summary>Is this another AI content spammer?</summary>
+        <div class="a">No. Every draft is reviewed for quality and sameness before it ships, publishing pace ramps up slowly on purpose, and the agent writes from your product's actual facts, with your repo as its source material. You choose the gate: approve every piece yourself, or run on auto with pull requests as the audit trail.</div>
+      </details>
+      <details>
+        <summary>What do I need to run the free version?</summary>
+        <div class="a">A website that lives in a GitHub repo, a Claude subscription with Claude Code, and free accounts on Vercel, Supabase, and Google Search Console. Rank tracking works with a free SerpApi key; search volume data needs a DataForSEO account, which is the main gap the cloud version fills.</div>
+      </details>
+      <details>
+        <summary>Is it really free? What's the catch?</summary>
+        <div class="a">The code is AGPL-3.0 and the self-hosted version has every feature. It runs in your own accounts, so there's nothing for us to bill. The paid cloud sells convenience: we host it, bundle the SERP and volume data into one bill, and replace the Google service account ritual with one click.</div>
+      </details>
+      <details>
+        <summary>Do I need to know SEO?</summary>
+        <div class="a">No. The agent does the research and explains each idea in plain language: what the keyword is, why it looks winnable, and what the article should cover. You judge whether it sounds right for your business, which is the part no tool should take from you.</div>
+      </details>
+      <details>
+        <summary>Does it only work with Claude Code?</summary>
+        <div class="a">Claude Code is the first-class path and what we test against. The server speaks standard MCP though, so other MCP clients can connect to the same tools. Adapters for other coding agents will come when people ask for them.</div>
+      </details>
+      <details>
+        <summary>When does the cloud version launch?</summary>
+        <div class="a">When the waitlist proves the demand. Waitlist members get the first invites and founding-member pricing. Meanwhile the self-hosted version is complete and free, so you don't have to wait to start.</div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ======================== FINAL CTA ======================== -->
+<section class="final">
+  <svg class="doodle doodle-f1" viewBox="0 0 48 56"><path d="M10 7 L30 7 L38 15 L38 49 L10 49 Z M30 7 L30 15 L38 15 M17 27 L31 27 M17 35 L27 35"/></svg>
+  <svg class="doodle doodle-f2" viewBox="0 0 64 64"><path d="M8 52 L24 38 L34 46 L56 20 M56 20 L45 22 M56 20 L55 32"/></svg>
+  <div class="wrap">
+    <h2>Give your agent the <span class="kw-hl">keys</span>.<br>Keep the lock.<span class="caret"></span></h2>
+    <p>Be first in line when the cloud version opens. Founding-member pricing for everyone on the list.</p>
+    <div class="cta-row">
+      <div class="email-group">
+        <input type="email" placeholder="you@company.com">
+        <button class="btn btn-solid">Join the waitlist</button>
+      </div>
+    </div>
+    <p class="hero-note">Or don't wait: <a href="#oss">self-host it free today</a>.</p>
+  </div>
+</section>
+
+<!-- ======================== FOOTER ======================== -->
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-brand">
+        <a class="logo" href="#">
+          <svg class="logo-mark" viewBox="114 76 260 364" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <rect x="180" y="88" width="30" height="106" rx="15" fill="#a78bfa"/>
+            <rect x="286" y="134" width="46" height="52" rx="14" fill="#a78bfa"/>
+            <rect x="126" y="248" width="24" height="78" rx="12" fill="#a78bfa"/>
+            <rect x="150" y="176" width="212" height="252" rx="44" fill="#8b5cf6"/>
+            <rect x="192" y="220" width="128" height="18" rx="9" fill="#0a0a0b"/>
+            <rect x="192" y="256" width="128" height="18" rx="9" fill="#0a0a0b"/>
+            <rect x="192" y="292" width="128" height="18" rx="9" fill="#0a0a0b"/>
+          </svg>
+          DispatchSEO
+        </a>
+        <p>The open-source SEO manager for Claude Code. The agent that knows your product, running its SEO.</p>
+      </div>
+      <div class="foot-col">
+        <h4>Product</h4>
+        <a href="#how">How it works</a>
+        <a href="#features">Features</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#faq">FAQ</a>
+      </div>
+      <div class="foot-col">
+        <h4>Open source</h4>
+        <a href="#">GitHub</a>
+        <a href="#">Docs</a>
+        <a href="#">Self-host guide</a>
+        <a href="#">AGPL-3.0 license</a>
+      </div>
+      <div class="foot-col">
+        <h4>Company</h4>
+        <a href="#waitlist">Cloud waitlist</a>
+        <a href="#">Privacy</a>
+        <a href="#">Contact</a>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>© DispatchSEO 2026</span>
+      <span class="foot-oss">Proudly <a href="#">open source</a> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7-4.35-9.3-8.6A5 5 0 0 1 12 6a5 5 0 0 1 9.3 5.4C19 15.65 12 20 12 20Z"/></svg></span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

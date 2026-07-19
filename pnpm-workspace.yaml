@@ -1,0 +1,15 @@
+# pnpm 11 requires an explicit true/false answer for every dependency with a
+# build script - an unanswered entry (or the old ignoredBuiltDependencies
+# list alone) makes a fresh `pnpm install --frozen-lockfile` hard-fail with
+# ERR_PNPM_IGNORED_BUILDS, which killed the CI builder runs.
+allowBuilds:
+  sharp: true
+  unrs-resolver: false
+# Kept for older pnpm versions that read the approve-list instead.
+onlyBuiltDependencies:
+  - sharp
+
+# next pins postcss@8.4.31, which carries GHSA-qx2v-qp2m-jg93 (moderate).
+# Force the patched line everywhere; postcss 8.5.x is a drop-in patch series.
+overrides:
+  postcss: ">=8.5.10"
