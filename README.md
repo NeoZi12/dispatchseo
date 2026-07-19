@@ -11,6 +11,13 @@ where you stay in control.
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo&env=MCP_API_KEY,CRON_SECRET,DASHBOARD_PASSWORD&envDescription=Three%20secrets%20you%20invent%20-%20openssl%20rand%20-hex%2024%20works.%20Supabase%20is%20provisioned%20automatically.&envLink=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo%2Fblob%2Fmain%2Fdocs%2FSELF_HOSTING.md&project-name=dispatchseo&repository-name=dispatchseo&stores=%5B%7B%22type%22%3A%22integration%22%2C%22integrationSlug%22%3A%22supabase%22%2C%22productSlug%22%3A%22supabase%22%2C%22protocol%22%3A%22storage%22%7D%5D)
 
+Already at your Supabase free-project limit, or want to reuse a database you
+have? [Deploy with your own Supabase](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo&env=MCP_API_KEY,CRON_SECRET,DASHBOARD_PASSWORD,SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY&envDescription=Three%20secrets%20you%20invent%20(openssl%20rand%20-hex%2024)%20plus%20your%20Supabase%20project%27s%20URL%20and%20service-role%20key.&envLink=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo%2Fblob%2Fmain%2Fdocs%2FSELF_HOSTING.md&project-name=dispatchseo&repository-name=dispatchseo)
+instead - create a free project at [supabase.com](https://supabase.com)
+yourself and paste its URL + service-role key when prompted. Same result,
+two extra minutes. Details in
+[docs/SELF_HOSTING.md](docs/SELF_HOSTING.md).
+
 License: AGPL-3.0. Self-hosted has zero feature limitations. Everything the
 paid cloud will do, this repo does today, in your own accounts, at $0.
 
