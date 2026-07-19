@@ -25,12 +25,15 @@ secrets you invent (`MCP_API_KEY`, `CRON_SECRET`, `DASHBOARD_PASSWORD`).
 If you took it, skip to step 2's migration part - the database exists, but
 it's empty until you run the migrations.
 
-**Bring-your-own-Supabase path:** the second deploy link in the README skips
-the Marketplace store. Use it if your Supabase account is already at its
-free-project limit (the free tier allows 2 active projects) or you want to
-reuse an existing project: create the database at supabase.com first (step
-2), and the deploy flow prompts you for its `SUPABASE_URL` and
-`SUPABASE_SERVICE_ROLE_KEY` alongside the three invented secrets.
+**Bring-your-own-database path:** the README's second deploy button deploys
+the same app but skips creating a database. Use it if your Supabase account
+is already at its free-project limit (the free tier allows 2 active
+projects) or you want to reuse an existing project. After the deploy
+finishes, the site will show an error - that's expected, it has no database
+yet. Connect yours in two copy-pastes: do step 2 below (create the project
+and run the migrations), then in Vercel → your project → Settings →
+Environment Variables add `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
+(both shown in Supabase under Project Settings → API) and redeploy.
 
 **Manual path:** fork this repo, then import it into Vercel (Add New →
 Project → your fork). The defaults work; you'll add environment variables in
