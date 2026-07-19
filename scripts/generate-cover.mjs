@@ -25,26 +25,37 @@ import { join } from "node:path";
 // in the prompt - SDXL weights early tokens hardest, and a style-first
 // prompt is exactly what made every cover converge into the same isometric
 // purple clutter.
+// Art direction: clean 3D PRODUCT ILLUSTRATION (the Postiz-blog look) - one
+// clear concept per cover, few elements, readable at card size. Explicitly
+// NOT cinematic renders: the earlier "neon factory / creature" direction
+// produced generic AI-art clutter.
 const COMPOSITIONS = {
-  hero: "one large focal object centered, generous empty dark space around it, dramatic rim light, shallow depth of field",
-  diorama: "isometric miniature diorama scene viewed from a high angle, tiny detailed machinery",
-  flow: "wide horizontal composition with strong left-to-right motion, side elevation view",
-  abstract: "abstract floating geometric structures, strong silhouettes, deep perspective",
+  hero: "one large centered object, generous empty space around it, simple composition",
+  spread: "a small set of floating elements arranged in a loose grid, evenly spaced",
+  flow: "elements flowing left to right in a clear sequence connected by a single line",
+  burst: "elements radiating from one central object, symmetrical composition",
 };
 const HUES = {
-  violet: "glowing violet and purple neon accents",
-  cyan: "glowing teal and cyan neon accents",
-  magenta: "glowing magenta and hot pink neon accents",
-  amber: "glowing amber and orange neon accents against cool shadows",
+  violet: "violet and purple as the dominant accent colors",
+  cyan: "teal and cyan as the dominant accent colors",
+  magenta: "magenta and pink as the dominant accent colors",
+  amber: "warm orange and amber as the dominant accent colors",
 };
+// Backgrounds come out soft/light in this style (the model's illustration
+// prior wins over background instructions) - that matches the reference
+// look (Postiz's blog mixes light covers on a dark site) and the cards'
+// overflow-hidden frame keeps them tidy against neutral-950.
 const STYLE =
-  "deep charcoal black background, cinematic lighting, sharp focus, high detail 3D digital art";
+  "clean minimal 3D product illustration, smooth rounded shapes, glossy floating UI " +
+  "cards and icons, soft studio lighting, gentle gradients, " +
+  "dribbble style, professional tech blog cover art";
 // "logo" is deliberately NOT banned: topical marks (a git branch glyph, an
 // octocat silhouette, a plug icon) are what make a cover read as being ABOUT
 // the post - the subject should name them explicitly.
 const NEGATIVE =
-  "text, words, letters, typography, watermark, signature, low quality, " +
-  "blurry, photo, photograph, human faces";
+  "text, words, letters, typography, watermark, signature, low quality, blurry, " +
+  "photo, photograph, human faces, cluttered, busy, cinematic, photorealistic, " +
+  "horror, creepy, grunge, dystopian, machinery clutter, industrial pipes";
 
 function arg(name, fallback = undefined) {
   const i = process.argv.indexOf(`--${name}`);
