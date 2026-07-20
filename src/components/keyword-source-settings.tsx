@@ -28,6 +28,7 @@ export function KeywordSourceSettings({
   hasSerpapiKey: boolean;
 }) {
   const [open, setOpen] = useState<"dataforseo" | "serpapi" | null>(null);
+  const [confirmGsc, setConfirmGsc] = useState(false);
   const [pending, startTransition] = useTransition();
   const [serpState, serpAction, serpPending] = useActionState<ConnectSerpapiState, FormData>(
     connectSerpapi,
@@ -130,11 +131,33 @@ export function KeywordSourceSettings({
         </span>
         {current === "gsc" ? (
           <span className="text-xs text-emerald-400">active</span>
+        ) : confirmGsc ? (
+          <span className="flex items-center gap-2">
+            <span className="text-xs text-neutral-400">
+              Rank checks drop to Search Console data only - switch?
+            </span>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => startTransition(() => chooseGscOnly())}
+              className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-neutral-950 transition-colors hover:bg-emerald-400 disabled:opacity-50"
+            >
+              {pending ? "Switching..." : "Yes, GSC only"}
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => setConfirmGsc(false)}
+              className={ghostBtn}
+            >
+              Cancel
+            </button>
+          </span>
         ) : (
           <button
             type="button"
             disabled={pending}
-            onClick={() => startTransition(() => chooseGscOnly())}
+            onClick={() => setConfirmGsc(true)}
             className={ghostBtn}
           >
             Switch to GSC only
