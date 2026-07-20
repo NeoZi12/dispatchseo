@@ -34,7 +34,16 @@ export type Suggestion = {
 export type TrendTopic = {
   id: string;
   title: string;
-  evidence: { why_now?: string; signals?: string[]; sources?: string[] } | null;
+  // seed_url/seed_stats: the single most viral piece of content driving the
+  // subject (video/thread) plus its public numbers - the builder writes FROM
+  // that source when a take carries it forward in its spec.
+  evidence: {
+    why_now?: string;
+    signals?: string[];
+    sources?: string[];
+    seed_url?: string;
+    seed_stats?: string;
+  } | null;
   status: "new" | "expanding" | "expanded" | "dismissed";
   expand_requested_at: string | null;
   expanded_at: string | null;

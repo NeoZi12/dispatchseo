@@ -2,6 +2,15 @@
 
 Things that were tempting but deliberately not built. Add here instead of building.
 
+- **Cross-post shipped guides via Postiz** (idea from Postiz's 2026-07 "AI slop SEO" blog
+  post). After a guide merges, chop it into platform posts (X thread, LinkedIn) and
+  schedule via Postiz (open source, 28+ platforms) so distribution feeds back into
+  rankings. Deferred: needs a Postiz instance/account + per-project tokens (real manual
+  setup per user), value unproven for connected sites. Revisit if shipped guides
+  consistently rank but get no discovery-platform citations. The two steals from the
+  same post that WERE built (2026-07-20): viral seed_url flowing trend-scan →
+  trend-expand → build-guide, and the seeded-guide enrichment rules.
+
 - **First-boot setup wizard - BUILT 2026-07-19**, same day it was queued (owner's
   call during the deploy-button test). /setup walks a fresh deploy through connect-db →
   run-migrations → claim (password chosen there, scrypt hash in instance_settings,

@@ -57,6 +57,36 @@ export function specLines(spec: Record<string, unknown> | null | undefined) {
   return lines;
 }
 
+// A seeded idea grew from one specific viral post/video. The link renders as
+// an anchor - the owner judges the source before approving - so it lives
+// outside specLines' text-only rows. Shared by idea cards and topic cards.
+export function SeedLine({ from }: { from: Record<string, unknown> | null | undefined }) {
+  const url =
+    from && typeof from.seed_url === "string" && /^https?:\/\//.test(from.seed_url)
+      ? from.seed_url
+      : null;
+  if (!url) return null;
+  const stats = from && typeof from.seed_stats === "string" ? from.seed_stats : null;
+  let host = url;
+  try {
+    host = new URL(url).hostname.replace(/^www\./, "");
+  } catch {}
+  return (
+    <p className="text-xs text-neutral-400">
+      <span className="font-medium text-neutral-300">Seeded by:</span>{" "}
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-sky-400 underline underline-offset-2 hover:text-sky-300"
+      >
+        {host}
+      </a>
+      {stats ? ` · ${stats}` : ""}
+    </p>
+  );
+}
+
 export function IdeaCard({
   s,
   fromTopic,
@@ -89,8 +119,9 @@ export function IdeaCard({
       actions={<TakeDecideButtons id={s.id} />}
     >
       {s.rationale ? <p className="text-sm text-neutral-400">{s.rationale}</p> : null}
-      {lines.length > 0 ? (
+      {lines.length > 0 || s.spec?.seed_url ? (
         <div className="space-y-1 border-t border-neutral-800/70 pt-2">
+          <SeedLine from={s.spec} />
           {lines.map((l) => (
             <p key={l.label} className="text-xs text-neutral-400">
               <span className="font-medium text-neutral-300">{l.label}:</span> {l.text}

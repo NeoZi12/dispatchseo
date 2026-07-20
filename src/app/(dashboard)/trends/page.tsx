@@ -13,7 +13,7 @@ import {
 } from "@/components/client";
 import { TrendScanButton, TrendScanPoller, TrendScanSweep } from "@/components/trend-scan";
 import { CollapsibleCard } from "@/components/collapsible-card";
-import { AgeBadge, IdeaCard, KeywordLine, specLines } from "@/components/idea-card";
+import { AgeBadge, IdeaCard, KeywordLine, SeedLine, specLines } from "@/components/idea-card";
 import { EmptyState, PageHeader, SectionTitle } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -270,8 +270,9 @@ export default async function TrendsPage() {
                     </p>
                   ) : null}
 
-                  {evidence.length > 0 ? (
+                  {evidence.length > 0 || t.evidence?.seed_url ? (
                     <div className="space-y-1 border-t border-neutral-800/70 pt-2">
+                      <SeedLine from={t.evidence} />
                       {evidence.map((l) => (
                         <p key={l.label} className="text-xs text-neutral-400">
                           <span className="font-medium text-neutral-300">{l.label}:</span>{" "}

@@ -144,6 +144,9 @@ const mcpHandler = createMcpHandler(
           "type is guide|tool|backlink|update. rationale explains why it's worth doing " +
           "(volume, KD, intent, gap). spec is a free-form brief object: for guides an " +
           "outline/angle/serp_notes; for tools the functionality; for backlinks the target url. " +
+          "A take grown from one specific viral post/video additionally carries spec.seed_url " +
+          "(+ spec.seed_stats) - the guide builder writes FROM that source: credits it, pulls " +
+          "real quotes, embeds a video, then covers what the original missed. " +
           "source marks who queued it: the trend workflows MUST pass 'trend-scan' " +
           "(their ideas get the dashboard's Trend radar, the owner-only approval " +
           "gate, and front-of-queue placement on approval), and the trend-expand " +
@@ -1502,7 +1505,12 @@ const mcpHandler = createMcpHandler(
           "The trend-scan workflow calls this once per shortlisted subject (max 5 " +
           "per scan). why_now leads with the trigger event and its date; signals " +
           "are the threads/launches/trend lines actually seen; sources are the " +
-          "vendor posts or threads that prove it. If the subject is already on " +
+          "vendor posts or threads that prove it. seed_url is the single most " +
+          "viral PIECE of content driving the subject (the YouTube video, HN " +
+          "thread, or Reddit post itself) with seed_stats carrying its public " +
+          "numbers and date ('512k views, Jul 12') - the builder later writes " +
+          "FROM that source (credit, quotes, embed), so only pass a seed that " +
+          "genuinely anchors the conversation. If the subject is already on " +
           "the radar (any status) the existing row is returned with a note - " +
           "move on, don't retry.",
         inputSchema: {
@@ -1510,9 +1518,11 @@ const mcpHandler = createMcpHandler(
           why_now: z.string().min(1),
           signals: z.array(z.string()).max(8).optional(),
           sources: z.array(z.string()).max(8).optional(),
+          seed_url: z.string().url().optional(),
+          seed_stats: z.string().optional(),
         },
       },
-      async ({ title, why_now, signals, sources }) => {
+      async ({ title, why_now, signals, sources, seed_url, seed_stats }) => {
         const p = currentProject();
         // Dedupe by title, case-insensitive, across ALL statuses - a
         // dismissed subject stays dismissed, an expanded one keeps its takes.
@@ -1541,7 +1551,7 @@ const mcpHandler = createMcpHandler(
           .insert({
             project_id: p.id,
             title,
-            evidence: { why_now, signals, sources },
+            evidence: { why_now, signals, sources, seed_url, seed_stats },
           })
           .select()
           .single();

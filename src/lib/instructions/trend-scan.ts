@@ -12,7 +12,7 @@ export const TREND_SCAN_STEPS = [
   { title: "Fire", plain: "Runs only when you hit Scan now - never on a schedule." },
   { title: "Sweep", plain: "Reads the latest launches, Reddit and Hacker News buzz, and Google Trends in your niche." },
   { title: "Shortlist", plain: "Picks the 3-5 subjects your audience is genuinely talking about - skipping anything already on the radar or covered on the site." },
-  { title: "Radar", plain: "Puts the subjects on your radar with the hype evidence attached - just topics, no guide ideas yet." },
+  { title: "Radar", plain: "Puts the subjects on your radar with the hype evidence attached - including, when one exists, a link to the viral video or thread driving the buzz, so the eventual guide can quote and credit the real source." },
   { title: "Your pick", plain: "You hit Get takes on a subject you like; a second run turns it into concrete guide angles for your approval." },
 ];
 
@@ -48,6 +48,16 @@ and only for the subjects the owner picks. Keep this run fast and cheap.
      winner - never discard a candidate for missing volume alone.
    The security rule holds: read official vendor sources, trend data, and
    search-result metadata; do not fetch arbitrary third-party pages.
+   **While sweeping, hunt each subject's SEED**: the single most viral PIECE
+   of content driving the conversation - the YouTube video, HN thread, or
+   Reddit post itself, not a vendor announcement - with its public numbers
+   and date ("512k views, Jul 12" / "1.4k points, 3 days ago"), judged from
+   search-result metadata (view counts, scores) without fetching the page.
+   A seed is double proof: real humans already voted for this exact content,
+   and it hands the eventual guide real material to quote, credit, and beat.
+   Not every subject has one - a launch can trend on many small threads -
+   and a forced seed is worse than none: only record a piece that genuinely
+   anchors the conversation.
 4. **Shortlist 3-5 subjects** (5 is the hard cap - this is a radar, not a
    firehose). A subject earns its slot when:
    - **It is genuinely being talked about now** - a launch, a release, a
@@ -61,9 +71,11 @@ and only for the subjects the owner picks. Keep this run fast and cheap.
    short evocative title (what the niche calls it, not SEO phrasing), a
    why_now that leads with the trigger event and its date, signals (the
    threads/launches/trend lines actually seen, with dates or scores), and
-   sources (the vendor posts or threads that prove it). Duplicates are
-   answered, not errored - if the tool says the subject is already on the
-   radar, move on.
+   sources (the vendor posts or threads that prove it). When the sweep found
+   a seed, pass seed_url (the viral piece itself) and seed_stats (its
+   numbers + date) - the radar card shows it and stage 2 carries it to the
+   builder. Duplicates are answered, not errored - if the tool says the
+   subject is already on the radar, move on.
 6. \`record_trend_scan\` - stamps the scan time shown on the radar.
 7. **Report**: subjects seen, subjects queued (one evidence line each), what
    was dismissed as stale - and "nothing hype-worthy this run" honestly when

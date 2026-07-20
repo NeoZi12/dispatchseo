@@ -11,7 +11,7 @@ export const BUILD_GUIDE_STEPS = [
   { title: "Study", plain: "Reads your recent posts first to match your voice - and deliberately picks a different article shape than the last few, so your site never reads like one template." },
   { title: "Gate", plain: "Checks Google's current page 1. What those results cover becomes the guide's must-cover list - the searcher's job gets done start to finish - and if the draft can't beat page 1, it refuses to build." },
   { title: "Own it", plain: "Adds at least one thing no competitor page has - a command it actually ran, a real measurement, or your site's own numbers - before writing a word. This is what ranks and what AI answers cite." },
-  { title: "Draft", plain: "Writes from current official docs - never from memory - and tests every command it includes." },
+  { title: "Draft", plain: "Writes from current official docs - never from memory - and tests every command it includes. If the idea grew from a viral video or thread, it writes from that source too: credited, quoted, embedded - then goes beyond it." },
   { title: "Visuals", plain: "Builds 2-3 custom graphics about this exact topic, in your site's own colors and components - plus an AI-generated cover image for the blog card, when the image generator is connected." },
   { title: "Humanize", plain: "Rewrites anything that reads AI-generated until it sounds like you wrote it." },
   { title: "Verify", plain: "Runs your site's build to prove nothing breaks - then checks the new guide against your whole back catalogue and rewrites it if it reads like a repeat, so your posts never converge into one template." },
@@ -164,7 +164,21 @@ the build-tool workflow and must never be picked up here.
    API with no key - do not try to install it and never invent its output:
    verify the exact syntax against that tool's current official docs and
    present it as documented, not as run. Then write the full guide per the
-   site's contract in the conventions file. Universal body rules:
+   site's contract in the conventions file.
+   **SEEDED GUIDES.** When the suggestion's spec carries seed_url, this idea
+   grew from one specific viral video/thread, and the draft is an ENRICHMENT
+   of that source, never a disguised copy. The seed rode the owner's approval,
+   so fetching it is within the trusted-sources rule: read it (transcript for
+   a video where available), pull the real substance - the argument, the
+   steps, exact quotes with attribution - and credit it with a visible link
+   early in the piece; embed the video where the stack supports embeds. Then
+   EARN the page: cover what the original missed, correct what it got wrong
+   against current docs, and still produce this run's own step-5 information
+   gain - the seed is raw material, not a substitute for original work. Its
+   numbers (spec.seed_stats) may be cited as why-now evidence. Never
+   republish the source wholesale: a transformed, credited enrichment ranks;
+   a paraphrase gets discounted as scraped content.
+   Universal body rules:
    - **Answer-first**: the first paragraph fully answers the core query in
      2-4 sentences (for Google AND AI engines). No preamble. Then a TL;DR
      blockquote.

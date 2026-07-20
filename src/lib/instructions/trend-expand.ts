@@ -7,7 +7,7 @@
 
 export const TREND_EXPAND_STEPS = [
   { title: "Fire", plain: "Runs when you hit Get takes on a radar subject - one run per subject." },
-  { title: "Read up", plain: "Reads the subject's evidence, what the site already covers, and what's already queued." },
+  { title: "Read up", plain: "Reads the subject's evidence - including the viral video or thread that seeded it - plus what the site already covers and what's already queued." },
   { title: "Angle", plain: "Drafts 3-5 distinct takes on the subject - comparisons, how-tos, opinionated analyses." },
   { title: "Validate", plain: "Keeps only takes with real search demand, a beatable page 1, and a genuine fit with your site." },
   { title: "Your call", plain: "Survivors land under the subject for your approval - add to queue or skip each one; approved takes ship at your site's publishing pace." },
@@ -28,7 +28,9 @@ spam to Google.
 1. **Read the topic.** \`get_trend_topics\` and find the row matching the
    dispatched topic_id. If it is missing or dismissed, fail loudly and exit
    without changes - never expand a subject the owner didn't pick. Its
-   evidence (why_now, signals, sources) is your starting context.
+   evidence (why_now, signals, sources, and - when the scan found one -
+   seed_url/seed_stats, the viral video/thread driving the subject) is your
+   starting context.
 2. **Know the ground.** Read the conventions file (or \`get_conventions\`)
    for what {{SITE_NAME}} is and who it serves; \`get_pages\` plus
    \`get_suggestions\` across statuses for what is already covered or queued
@@ -64,6 +66,13 @@ spam to Google.
    their subject on the Trends page), a rationale that leads with WHY NOW,
    and a spec carrying the evidence: why_now, the hype signals seen (with
    dates), serp_notes, the chosen angle, and suggested internal links.
+   **Seed pass-through**: when a take genuinely builds on the subject's
+   seed content (reacts to it, expands it, answers it), copy the topic's
+   seed_url and seed_stats into that take's spec - the guide builder writes
+   FROM a seeded source: credits it, pulls real quotes, embeds a video,
+   then covers what the original missed. Only pass the seed to takes that
+   actually draw on it; a generic angle wearing a pasted seed link reads as
+   fake attribution.
    Maximum 5 takes per subject. Do NOT call \`update_suggestion\` to approve
    anything.
 6. **Close the loop**: \`update_trend_topic(topic_id, status="expanded")\` -
