@@ -33,8 +33,9 @@ Click a deploy button in the README - neither asks you for anything:
 Then **open your new site**. It shows a setup wizard that walks you through
 whatever is left, in order:
 
-1. **Connect a database** (skipped on the marketplace path): create a free
-   project at [supabase.com](https://supabase.com), copy its **Project URL**
+1. **Connect a database** (skipped on the marketplace path): open the
+   Supabase project you want to reuse - or create a free one at
+   [supabase.com](https://supabase.com) - then copy its **Project URL**
    and **service_role key** from Project Settings → API into Vercel env vars
    `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`, redeploy. The wizard
    shows these exact steps.

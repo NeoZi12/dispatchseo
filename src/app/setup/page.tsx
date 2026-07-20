@@ -92,7 +92,8 @@ export default async function SetupPage({
             </div>
             <ol className="space-y-3">
               <Step n={1}>
-                Create a free project at{" "}
+                Open the Supabase project you want to use - any existing one
+                works, or create a free project at{" "}
                 <a href="https://supabase.com" className="text-indigo-400 underline" target="_blank" rel="noreferrer">
                   supabase.com
                 </a>{" "}
