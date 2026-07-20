@@ -286,6 +286,15 @@ export default async function Home() {
   // failed or hasn't run within its expected window.
   const cronIssues = cronHealth.filter((h) => !h.ok || h.stale);
 
+  // One-line version of the same trouble for the AgentStatus pill - the
+  // green heartbeat flips red the moment any background job is unhealthy.
+  const agentAlert =
+    cronIssues.length === 0
+      ? null
+      : cronIssues.length === 1
+        ? `${cronIssues[0].job} ${cronIssues[0].ok ? "is overdue" : "failed"}`
+        : `${cronIssues.length} background jobs failing`;
+
   const suggestions = (sugRes.data ?? []) as Suggestion[];
 
   // The progress story (journey stage + weekly movers) - derived from the
@@ -478,6 +487,7 @@ export default async function Home() {
             toolsQueued={
               automations.auto_build_tools && approvedUnbuilt.some((s) => s.type === "tool")
             }
+            alert={agentAlert}
           />
         ) : null}
         <PageHeader

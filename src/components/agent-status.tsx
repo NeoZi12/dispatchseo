@@ -29,13 +29,18 @@ export function AgentStatus({
   building,
   guidesQueued,
   toolsQueued,
+  alert = null,
 }: {
   building: boolean;
   guidesQueued: boolean;
   toolsQueued: boolean;
+  // Non-null when a background job is failing or overdue (server-derived
+  // from getCronHealth): the pill goes red and shows this summary instead
+  // of the countdown - the banner below carries the full detail.
+  alert?: string | null;
 }) {
   const [now, setNow] = useState<number | null>(null);
-  const needsClock = !building && guidesQueued;
+  const needsClock = !building && guidesQueued && !alert;
 
   useEffect(() => {
     if (!needsClock) return;
@@ -43,6 +48,24 @@ export function AgentStatus({
     const id = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(id);
   }, [needsClock]);
+
+  if (alert) {
+    return (
+      <div
+        className="inline-flex items-center gap-2.5 text-sm text-red-200"
+        title="Details in the alert box below."
+      >
+        <span
+          className="h-2 w-2 shrink-0 rounded-full bg-red-400 ring-3 ring-red-400/25"
+          aria-hidden="true"
+        />
+        <span>
+          agent needs attention
+          <span className="text-red-300/90"> · {alert}</span>
+        </span>
+      </div>
+    );
+  }
 
   let detail: string | null = null;
   let title: string | undefined;
