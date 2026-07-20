@@ -44,6 +44,14 @@ for you; the second is for connecting a database you already have
 (<a href="docs/SELF_HOSTING.md">guide</a>).
 </p>
 
+<p align="center">Prefer your own machine? No cloud accounts, one command:</p>
+
+```bash
+git clone https://github.com/NeoZi12/dispatchseo && cd dispatchseo
+cp .env.docker.example .env   # then set the two secrets inside
+docker compose up -d          # dashboard on http://localhost:3000
+```
+
 <p align="center"><i>Self-hosted has zero feature limitations. Everything the
 paid cloud will do, this repo does today, in your own accounts, at $0.</i></p>
 
@@ -120,17 +128,24 @@ worth winning.
   requests, so git-based sites only; WordPress won't work.
 - A Claude subscription with Claude Code. Your agent is the engine and it
   runs on your existing plan.
-- Free accounts on Vercel and Supabase, and Google Search Console access to
-  your site.
+- Somewhere to run it: either free Vercel + Supabase accounts, or any
+  machine with Docker (~1 GB RAM - a $5 VPS or your laptop).
+- Google Search Console access to your site.
 
 ## Quick start
 
-Click the deploy button above, then follow
-[docs/SELF_HOSTING.md](docs/SELF_HOSTING.md). The short version: run the
-database migrations, add a Google service account, enable the GitHub Actions
-schedule, then paste one command into Claude Code inside your site's repo.
-Your agent does the rest of the install itself, including writing its own
-workflow files and setting its own secrets.
+Two ways in, same product either way
+([docs/SELF_HOSTING.md](docs/SELF_HOSTING.md) covers both):
+
+- **Docker** - the clone + `docker compose up -d` above. Database,
+  migrations, and cron schedules are all bundled; open the dashboard and the
+  setup wizard takes over.
+- **Free cloud tiers** - click a deploy button above (Vercel + Supabase),
+  run the one-file database setup, and enable the GitHub Actions schedule.
+
+Either way, the last step is pasting one command into Claude Code inside
+your site's repo. Your agent does the rest of the install itself, including
+writing its own workflow files and setting its own secrets.
 
 There's also an [llms.txt](public/llms.txt) and a [SKILL.md](SKILL.md) if
 you'd rather point an agent at this repo and let it figure the setup out.
