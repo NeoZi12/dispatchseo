@@ -138,8 +138,8 @@ cron errors.
 seo-weekly-research) end with a "Report outcome to the dashboard" step that
 calls `/api/cron/deploy-check?job=<name>&ok=1|&fail=<msg>` — workflow
 failures hit the banner + email instead of dying quietly in the Actions tab
-(seo-tool-validate is deliberately excluded: its validate job runs
-LLM-authored PR code and must hold no secrets). `secrets-canary.yml` runs
+(seo-tool-validate reports from its MERGE job only: the validate job runs
+LLM-authored PR code and holds no secrets at all). `secrets-canary.yml` runs
 every 6h validating CRON_SECRET, the Claude token's shape (the line-wrapped
 paste gotcha), and that the backend accepts SEO_MCP_API_KEY — so a rotted
 secret is flagged hours before the overnight builders die on it. Any new

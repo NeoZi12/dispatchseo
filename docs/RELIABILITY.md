@@ -100,8 +100,8 @@ also in [`LATER.md`](../LATER.md).
 | Sidebar red-dot badge | Deferred | Background-job trouble shows on the Home banner only; the nav sidebar has no unread/alert indicator yet. |
 | PR-age escalation card | Deferred | A PR sitting open past some threshold (stuck check, awaiting review) has no escalating dashboard treatment yet. |
 | GSC property picker write-back | Deferred (unless landed this session) | Check `src/app/(dashboard)/google/page.tsx` before relying on this row - the dashboard track was working this area in parallel; update the status once confirmed either way. |
-| Conditional `dataforseo` block in `mcp-ci.json` | Deferred | `.github/mcp-ci.json` / `mcp-validate.json` don't yet omit the DataForSEO block for projects that never connected it. |
-| `indexnow.yml` | Deferred | Already tracked in [`LATER.md`](../LATER.md). |
+| Conditional `dataforseo` block in `mcp-ci.json` | **Fixed 2026-07-20** | `getPipelinePack()` now strips the `dataforseo` server from `.github/mcp-ci.json` at serve time for projects without DataForSEO credentials (own creds, or env fallback for the default project) - free-mode installs never ship a stdio server wired to blank secrets. |
+| `indexnow.yml` | Deferred | Tracked in [`LATER.md`](../LATER.md) ("IndexNow workflow in the pipeline pack"). |
 
 ## How to add a new automation
 

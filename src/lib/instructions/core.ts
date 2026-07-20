@@ -22,8 +22,14 @@ tokens and exemplar components, voice and writing rules. Read it COMPLETELY
 before acting. These instructions define WHAT to do and the quality bar; the
 conventions file defines how it maps onto THIS repo.
 
-If the file does not exist, stop and run the \`setup\` workflow first
-(\`get_instructions\` with workflow \`setup\`) - do not guess site facts.
+If the file does not exist and a human is present (interactive session),
+stop and run the \`setup\` workflow first (\`get_instructions\` with workflow
+\`setup\`) - do not guess site facts. In a HEADLESS run (scheduled workflow,
+no human), do NOT attempt setup unsupervised - it is an interactive workflow
+and would burn the run's whole budget improvising. Instead report the
+outcome as skipped ("setup incomplete - conventions.md missing; run the
+install/setup command from the dashboard") and exit zero: an unfinished
+setup is the owner's pending step, never a red run.
 
 ## Data tools - which server for what
 

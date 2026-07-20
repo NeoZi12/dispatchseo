@@ -61,3 +61,10 @@ chatbot in dashboard, charts libraries, dark mode, settings pages, mobile app.
   check costs ~$0.002/keyword/day on the project's own DataForSEO account (disclosed on
   the Automations card, 2026-07-17). A real on/off flag would touch the automation-preset
   matching logic (modeForFlags), so it waits until an owner actually asks to turn it off.
+
+- **IndexNow workflow in the pipeline pack.** `seo-auto-merge.yml` and
+  `seo-tool-validate.yml` dispatch `indexnow.yml` after a merge, but the pack does not
+  ship that workflow - repos without one hit the harmless `|| echo` fallback and the
+  URL waits for the next crawl. Ship a generic `indexnow.yml` in `templates/pipeline/`
+  so every connected repo gets instant Bing/Yandex pings, not just repos that already
+  had one (RELIABILITY.md tracks this as Deferred).

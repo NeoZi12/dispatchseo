@@ -18,6 +18,7 @@ import {
   modeForFlags,
   type AutomationFlags,
 } from "@/lib/projects";
+import { markCronFixed } from "@/lib/cron-alerts";
 import { saveContentPrefs } from "@/lib/content-prefs-store";
 import { encryptSecret } from "@/lib/crypto";
 import { validateSerpapiKey } from "@/lib/serp";
@@ -61,6 +62,15 @@ export async function decideSuggestion(id: string, decision: "approved" | "rejec
   revalidatePath("/dashboard");
   revalidatePath("/trends");
   revalidatePath("/research");
+}
+
+// The Home banner's "Mark fixed" - the dashboard face of the mark_cron_fixed
+// MCP tool. An owner judgment call: clears the alert now; if the job is still
+// broken the next failed run or missed window re-raises it on its own.
+export async function markCronFixedAction(job: string) {
+  await assertAuthed();
+  await markCronFixed(job);
+  revalidatePath("/dashboard");
 }
 
 // ---- the owner's queue (manual ideas + explicit build order) ----------------

@@ -75,20 +75,28 @@ export async function openSeoPrs(repo: string | null | undefined): Promise<SeoPr
 }
 
 // Fires the repository_dispatch that wakes the project repo's tool-builder
-// workflow the moment a tool suggestion is approved. Fire-and-forget by
-// design: approval must never fail because GitHub hiccuped - the weekly
-// sweep (Wednesdays) catches anything a missed dispatch leaves behind.
+// workflow the moment a tool suggestion is approved. Never throws - approval
+// must never fail because GitHub hiccuped - but it DOES report whether the
+// wake-up actually went out, because callers used to claim "build dispatched"
+// over a silent no-op (no repo connected, no token) and the owner would wait
+// for a PR that could never come. Callers phrase their response off the
+// result; the Wednesday sweep still catches github-error/no-token misses,
+// while no-repo can only resolve when a pipeline is installed.
 // The payload is a wake-up signal only; the workflow re-reads the queue
 // from the MCP, so nothing here is trusted input on the CI side.
+export type ToolBuildDispatch =
+  | { dispatched: true }
+  | { dispatched: false; reason: "no-repo" | "no-token" | "github-error" };
+
 export async function dispatchToolBuild(
   repo: string | null | undefined,
   suggestionId: string,
-): Promise<void> {
+): Promise<ToolBuildDispatch> {
   const target = repoOrDefault(repo);
-  if (!target) return; // no pipeline repo -> nothing to wake
-  if (!process.env.GH_MERGE_TOKEN) return; // dispatch needs auth; sweep covers it
+  if (!target) return { dispatched: false, reason: "no-repo" };
+  if (!process.env.GH_MERGE_TOKEN) return { dispatched: false, reason: "no-token" };
   try {
-    await fetch(`${API}/repos/${target}/dispatches`, {
+    const res = await fetch(`${API}/repos/${target}/dispatches`, {
       method: "POST",
       headers: { ...headers(), "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -96,8 +104,9 @@ export async function dispatchToolBuild(
         client_payload: { suggestion_id: suggestionId },
       }),
     });
+    return res.ok ? { dispatched: true } : { dispatched: false, reason: "github-error" };
   } catch {
-    // Swallowed on purpose - see fire-and-forget note above.
+    return { dispatched: false, reason: "github-error" };
   }
 }
 

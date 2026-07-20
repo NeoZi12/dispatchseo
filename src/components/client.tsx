@@ -7,6 +7,7 @@ import {
   decideSuggestion,
   dismissTrendTopic,
   expandTrendTopic,
+  markCronFixedAction,
   markIndexRequested,
   markIndexRequestedBulk,
   mergeSeoPr,
@@ -652,6 +653,39 @@ export function IndexRequestedDoneAll({ ids }: { ids: string[] }) {
         className="rounded-lg border border-neutral-700 px-3 py-1.5 text-xs font-semibold text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-400"
       >
         Mark all {ids.length} as done
+      </button>
+      {state === "failed" ? (
+        <span className="whitespace-nowrap text-xs text-red-400">{ERR}</span>
+      ) : null}
+    </span>
+  );
+}
+
+// The cron banner's quiet per-issue escape hatch: the owner declares an
+// alert handled (the agent's equivalent is the mark_cron_fixed MCP tool).
+// Optimistic like its siblings - the whole banner clears on revalidate.
+export function CronFixedButton({ job }: { job: string }) {
+  const [, start] = useTransition();
+  const [state, setState] = useState<"idle" | "done" | "failed">("idle");
+
+  if (state === "done")
+    return <span className="whitespace-nowrap text-xs text-emerald-400">✓ marked fixed</span>;
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <button
+        onClick={() => {
+          setState("done");
+          start(async () => {
+            try {
+              await markCronFixedAction(job);
+            } catch {
+              setState("failed");
+            }
+          });
+        }}
+        className="text-xs text-red-300/70 underline decoration-dotted underline-offset-2 transition-colors hover:text-red-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-400"
+      >
+        mark fixed
       </button>
       {state === "failed" ? (
         <span className="whitespace-nowrap text-xs text-red-400">{ERR}</span>

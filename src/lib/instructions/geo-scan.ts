@@ -33,7 +33,9 @@ in this run.
    the tracked keywords and \`get_conventions\` for what {{SITE_NAME}} is and
    who it serves. Convert keywords into the questions a real customer would
    ask an assistant - "best time tracker for freelancers", not the raw
-   keyword string. Prefer commercial/comparison questions (where being cited
+   keyword string. If NO keywords are tracked yet (fresh project), that is a
+   configuration state, not a failure: derive the question set from the
+   conventions file's product facts alone and say so in the scan report. Prefer commercial/comparison questions (where being cited
    converts) over definitional ones. Reuse roughly the same set week to week
    so the trend line means something: check \`get_ai_visibility\` first and
    keep prior queries unless they were retired for a reason.

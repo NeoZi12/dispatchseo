@@ -3,7 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { joinWaitlist } from "@/lib/waitlist";
 import { getActivityReport } from "@/lib/activity";
-import { getCronHealth } from "@/lib/cron-alerts";
+import { getCronHealth, markCronFixed } from "@/lib/cron-alerts";
 import { getAnalyticsOverview } from "@/lib/analytics-data";
 import { getJourney } from "@/lib/journey";
 import { getWeeklyProgress } from "@/lib/progress";
@@ -43,6 +43,7 @@ import {
 } from "@/lib/similarity";
 import { requestTrendExpand, requestTrendScan } from "@/lib/trends";
 import { serpProviderForProject, providerOrganic } from "@/lib/serp";
+import { gscAccessProbe } from "@/lib/gsc";
 import { setTrackedProperty } from "@/lib/gsc-oauth";
 import { expandKeyword } from "@/lib/suggest";
 
@@ -63,7 +64,7 @@ import { expandKeyword } from "@/lib/suggest";
 // set_playbook_status, update_backlink_prospect, mark_indexing_requested,
 // reorder_queue, build_suggestion_now (tools only - guides always ship at
 // the publishing pace), trigger_trend_scan, expand_trend_topic,
-// set_content_prefs). Owner-gated
+// set_content_prefs, mark_cron_fixed). Owner-gated
 // moves (approve/reject/restore, tool build now,
 // the trend buttons) share their logic with the dashboard actions via
 // lib/queue.ts and lib/trends.ts, and are unlocked over MCP by
@@ -216,8 +217,12 @@ const mcpHandler = createMcpHandler(
                 : "Front of the queue.";
           }
           if (type === "tool" && build === "now") {
-            await dispatchToolBuild(p.github_repo, data.id);
-            note = "Build dispatched - the PR opens in a few minutes.";
+            const dispatch = await dispatchToolBuild(p.github_repo, data.id);
+            note = dispatch.dispatched
+              ? "Build dispatched - the PR opens in a few minutes."
+              : dispatch.reason === "no-repo"
+                ? "Approved, but no content pipeline is connected yet - nothing can build until the pipeline install step on Home is done."
+                : "Approved, but the instant build trigger could not reach GitHub - the Wednesday tool sweep will pick it up.";
           }
         }
         return ok(note ? { note, suggestion: data } : data);
@@ -329,8 +334,17 @@ const mcpHandler = createMcpHandler(
         if (error) return fail(error.message);
         // Approving a TOOL idea (from whichever client) wakes the project's
         // tool-builder workflow immediately; guides wait for the daily cron.
+        // A no-op dispatch (no pipeline yet) is said out loud instead of
+        // letting the approval read like a build is coming.
+        let buildNote: string | undefined;
         if (effective === "approved" && data?.type === "tool") {
-          await dispatchToolBuild(p.github_repo, id);
+          const dispatch = await dispatchToolBuild(p.github_repo, id);
+          if (!dispatch.dispatched) {
+            buildNote =
+              dispatch.reason === "no-repo"
+                ? "Approved, but no content pipeline is connected yet - nothing can build until the pipeline install step on Home is done."
+                : "Approved, but the instant build trigger could not reach GitHub - the Wednesday tool sweep will pick it up.";
+          }
         }
         // Owner-approving a trend take puts it at the FRONT of the queue -
         // the radar's whole point is shipping while the hype window is open.
@@ -348,7 +362,7 @@ const mcpHandler = createMcpHandler(
             suggestion: data,
           });
         }
-        return ok(data);
+        return ok(buildNote ? { note: buildNote, suggestion: data } : data);
       },
     );
 
@@ -405,9 +419,17 @@ const mcpHandler = createMcpHandler(
           .single();
         if (error) return fail(error.message);
         if (data.type === "tool") {
-          // Tools already build on approval - reuse that path.
-          await dispatchToolBuild(p.github_repo, id);
-          return ok({ ok: true, message: "Approved - the tool builder is waking up." });
+          // Tools already build on approval - reuse that path. Honest about
+          // a no-op dispatch: "waking up" over a missing pipeline is a lie.
+          const dispatch = await dispatchToolBuild(p.github_repo, id);
+          return ok({
+            ok: true,
+            message: dispatch.dispatched
+              ? "Approved - the tool builder is waking up."
+              : dispatch.reason === "no-repo"
+                ? "Approved, but no content pipeline is connected yet - nothing can build until the pipeline install step on Home is done."
+                : "Approved, but the instant build trigger could not reach GitHub - the Wednesday tool sweep will pick it up.",
+          });
         }
         // No guide build-now (owner decision, 2026-07-15): the publishing pace
         // is the whole protection against scaled-content flags, so the closest
@@ -555,8 +577,11 @@ const mcpHandler = createMcpHandler(
         description:
           "Rank history for tracked keywords over the last N days (default 30). Returns each " +
           "keyword with its current position, the earliest position in the window, the change " +
-          "(positive = improved, i.e. moved toward #1), and the full check series. position " +
-          "null means not in the top 100. Pass a keyword to scope to one.",
+          "(positive = improved, i.e. moved toward #1), and the full check series. Read " +
+          "position null together with checked: checked true + position null means confirmed " +
+          "not in the top 100; checked false means the keyword has never been successfully " +
+          "checked in the window (rank tracking not set up yet, or the nightly cron hasn't " +
+          "run) - unknown, NOT 'not ranking'. Pass a keyword to scope to one.",
         inputSchema: {
           keyword: z.string().optional(),
           days: z.number().int().positive().optional(),
@@ -594,6 +619,9 @@ const mcpHandler = createMcpHandler(
             keyword: kw.keyword,
             search_volume: kw.search_volume,
             keyword_difficulty: kw.keyword_difficulty,
+            // checked=false: zero successful checks in the window - "unknown",
+            // never to be read as "not ranking" (see the tool description).
+            checked: series.length > 0,
             current_position: current,
             window_start_position: first,
             change,
@@ -791,7 +819,26 @@ const mcpHandler = createMcpHandler(
           impressions_delta_halves:
             sum(secondHalf, "impressions") - sum(firstHalf, "impressions"),
         };
-        return ok({ summary, snapshots: rows.slice().reverse() });
+        // An empty window with a configured property is almost never "a quiet
+        // week" - say WHY it's empty (access not granted vs waiting on the
+        // first sync) so the agent points the owner at the right step instead
+        // of reporting zeros as a real traffic story. Probe only in the empty
+        // case: established projects never pay for it.
+        let note: string | undefined;
+        if (rows.length === 0) {
+          if (!p.gsc_site_url) {
+            note = "setup incomplete: no Search Console property connected for this project.";
+          } else {
+            const probe = await gscAccessProbe(p.gsc_site_url);
+            note =
+              probe.state === "ok"
+                ? `Search Console access is granted for ${p.gsc_site_url} but no data has synced yet - GSC data lags 2-3 days, the next hourly refresh picks it up.`
+                : probe.state === "pending"
+                  ? `setup incomplete: ${probe.why} - the owner needs to finish the Connect Search Console step on Home before traffic data can exist.`
+                  : `Search Console could not be reached (${probe.why}) - treat the empty window as unknown, not as zero traffic.`;
+          }
+        }
+        return ok({ summary, snapshots: rows.slice().reverse(), ...(note ? { note } : {}) });
       },
     );
 
@@ -921,7 +968,13 @@ const mcpHandler = createMcpHandler(
             ai_overview: ai,
           });
         } catch (e) {
-          return fail(e instanceof Error ? e.message : String(e));
+          // Raw provider errors ("task error 40101") point the agent nowhere;
+          // name the likely fix alongside them.
+          const raw = e instanceof Error ? e.message : String(e);
+          return fail(
+            `SERP provider call failed: ${raw} - if this persists, the project's ` +
+              `DataForSEO/SerpApi credentials or balance need attention in Settings.`,
+          );
         }
       },
     );
@@ -1237,6 +1290,39 @@ const mcpHandler = createMcpHandler(
           // project's own --slug-suffixed reports. A project token must
           // never read a sibling project's job names or failure text.
           return ok(await getCronHealth(currentProject().slug));
+        } catch (e) {
+          return fail(e instanceof Error ? e.message : String(e));
+        }
+      },
+    );
+
+    server.registerTool(
+      "mark_cron_fixed",
+      {
+        title: "Mark cron issue fixed",
+        description:
+          "Clear a background-job alert (the dashboard's red banner) after " +
+          "fixing the underlying problem. Logs a synthetic ok run for the " +
+          "job, clearing both alert shapes - a failed last run and an " +
+          "overdue job. Call this ONLY after you actually fixed AND " +
+          "verified the job (re-ran the workflow / hit the endpoint and saw " +
+          "it succeed) - if the problem persists, the next failed run or " +
+          "missed window re-raises the alert. Use the exact job name from " +
+          "get_cron_health, including any --<project> suffix; fails if that " +
+          "job has no active alert.",
+        inputSchema: { job: z.string().min(1) },
+      },
+      async ({ job }) => {
+        // Scoped through getCronHealth(slug) inside markCronFixed: a project
+        // token can only clear instance-wide alerts or its own --slug jobs -
+        // a sibling project's job never appears in its health list.
+        const p = currentProject();
+        try {
+          await markCronFixed(job, p.slug);
+          return ok({
+            marked_fixed: job,
+            note: "alert cleared; the next real run keeps or re-raises it truthfully",
+          });
         } catch (e) {
           return fail(e instanceof Error ? e.message : String(e));
         }

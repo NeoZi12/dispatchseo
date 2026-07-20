@@ -1,6 +1,6 @@
 import pack from "./pipeline-pack.json";
 import { instanceSettings } from "@/lib/dashboard-auth";
-import type { Project } from "@/lib/projects";
+import { DEFAULT_PROJECT_ID, type Project } from "@/lib/projects";
 
 // The repo-side shim, served as data. A connected repo keeps only these
 // files (GitHub workflows + MCP configs + thin slash commands); the actual
@@ -29,13 +29,37 @@ export async function backendBaseUrl(): Promise<string> {
   return "https://dispatchseo.com";
 }
 
+// Whether the project's repo will have DataForSEO credentials to feed the
+// dataforseo MCP server: its own connected account, or (default project
+// only) the instance env fallback - the same resolution credsForProject
+// uses. Free-mode projects get mcp-ci.json WITHOUT the dataforseo block:
+// shipping a stdio server wired to blank secrets into every repo was the
+// RELIABILITY.md "conditional dataforseo block" deferred item - an
+// unset-credentials state must configure itself away, not ride along as a
+// maybe-crash in every scheduled agent run.
+function hasDataforseo(project: Project): boolean {
+  return project.dataforseo_login != null || project.id === DEFAULT_PROJECT_ID;
+}
+
 export async function getPipelinePack(project: Project): Promise<PackFile[]> {
   const base = await backendBaseUrl();
-  return (pack.files as PackFile[]).map((f) => ({
-    path: f.path,
-    content: f.content
+  return (pack.files as PackFile[]).map((f) => {
+    let content = f.content
       .replaceAll("{{SITE_NAME}}", project.name)
       .replaceAll("{{DOMAIN}}", project.domain)
-      .replaceAll("{{BACKEND_URL}}", base),
-  }));
+      .replaceAll("{{BACKEND_URL}}", base);
+    if (f.path === ".github/mcp-ci.json" && !hasDataforseo(project)) {
+      try {
+        const parsed = JSON.parse(content) as { mcpServers?: Record<string, unknown> };
+        if (parsed.mcpServers) {
+          delete parsed.mcpServers.dataforseo;
+          content = JSON.stringify(parsed, null, 2) + "\n";
+        }
+      } catch {
+        // Malformed template JSON would be a build-time bug; serve verbatim
+        // rather than dying here.
+      }
+    }
+    return { path: f.path, content };
+  });
 }

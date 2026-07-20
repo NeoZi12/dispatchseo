@@ -9,6 +9,7 @@ import {
   AddIdeaCard,
   CopyBlock,
   CopyButton,
+  CronFixedButton,
   DecideButtons,
   DismissTopicButton,
   ExpandTopicButton,
@@ -25,6 +26,7 @@ import { GlanceSection } from "@/components/glance-stats";
 import { FREE_BACKLINKS, PAID_BACKLINKS } from "@/lib/playbook-data";
 import { getActivityReport, type ActivityLine } from "@/lib/activity";
 import { getCronHealth } from "@/lib/cron-alerts";
+import { buildCronFixPrompt } from "@/lib/cron-fix-prompt";
 import { getAnalyticsOverview } from "@/lib/analytics-data";
 import { getJourney } from "@/lib/journey";
 import { getWeeklyProgress } from "@/lib/progress";
@@ -503,11 +505,22 @@ export default async function Home() {
                   <span className="font-mono">{h.job}</span>{" "}
                   {!h.ok
                     ? `failed on its last run${h.errors[0] ? ` - ${h.errors[0]}` : ""}`
-                    : `hasn't run since ${new Date(h.last_run_at).toUTCString()}`}
+                    : `hasn't run since ${new Date(h.last_run_at).toUTCString()}`}{" "}
+                  <CronFixedButton job={h.job} />
                 </li>
               ))}
             </ul>
-            <p className="mt-1 text-xs text-red-300/70">
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <CopyButton
+                text={buildCronFixPrompt(project, cronIssues)}
+                label="Copy fix prompt for Claude Code"
+              />
+              <p className="text-xs text-red-300/70">
+                Paste it into Claude Code - it inspects the job, fixes it, and clears this
+                alert over MCP once the fix is verified.
+              </p>
+            </div>
+            <p className="mt-2 text-xs text-red-300/70">
               Full detail in your Vercel function logs (daily-ranks) and GitHub Actions runs
               (hourly-gsc, deploy-check, the seo-* workflows, and the secrets canary).
             </p>

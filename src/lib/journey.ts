@@ -80,7 +80,15 @@ export function computeJourney(
   }
 
   const ageDays = siteAgeDays(project);
-  const gscConnected = Boolean(project.gsc_site_url);
+  // "Connected" means the pipe has actually delivered data, not that a
+  // property string exists - onboarding GUESSES sc-domain:<domain> for every
+  // project, so the string is set long before the owner grants access. Keying
+  // the stage off the string put not-yet-granted projects in "foundation"
+  // ("impressions come around month 2-3") - exactly the manufactured comfort
+  // rule 2 above bans, while the setup card on the same page said the
+  // opposite. Data rows are the same signal the setup card and the cron
+  // readiness gate use, so all three surfaces tell one story.
+  const gscConnected = daily.length > 0;
 
   // Ordered so every input only ever moves forward: firsts don't un-happen,
   // age and cumulative clicks only grow. Real data (even from a since-broken

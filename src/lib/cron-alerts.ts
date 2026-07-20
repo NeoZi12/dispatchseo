@@ -32,10 +32,10 @@ export type CronJob =
 const STALE_HOURS: Record<string, number> = {
   "daily-ranks": 36,
   "hourly-gsc": 6,
-  "weekly-opportunities": 8 * 24,
   "seo-daily": 36,
   "seo-auto-merge": 6, // hourly backstop schedule
   "seo-tools": 9 * 24, // Wednesdays
+  "seo-geo-scan": 9 * 24, // Wednesdays, same buffer as the other weeklies
   "seo-weekly-research": 9 * 24,
   "secrets-canary": 24, // every 6h - a silent canary is itself an alarm
   // Daily per-repo health check (04:30 UTC). Its silence IS the signal that
@@ -186,9 +186,36 @@ export async function reportCronRun(
   }
 }
 
+// "Mark as fixed" - shared by the Home banner button and the mark_cron_fixed
+// MCP tool. Logs a synthetic ok run for the job, which clears both alert
+// shapes at once: a failed latest run (the ok row is now the latest) and an
+// overdue job (last_run_at resets). Honest by construction: it only accepts
+// a job that currently alerts for the caller's scope, and if the underlying
+// problem wasn't really fixed the next failed run or missed window re-raises
+// the banner on its own.
+export async function markCronFixed(job: string, projectSlug?: string): Promise<void> {
+  const health = await getCronHealth(projectSlug);
+  const issue = health.find((h) => h.job === job && (!h.ok || h.stale));
+  if (!issue) {
+    throw new Error(
+      `no active alert for "${job}" - use the exact job name shown by get_cron_health / the Home banner`,
+    );
+  }
+  const { error } = await db().from("cron_runs").insert({
+    job,
+    ok: true,
+    // Banner and emails only surface errors on failed rows, so this note is
+    // pure audit trail: it distinguishes a manual clear from a real run.
+    errors: ["marked as fixed manually - awaiting the next real run"],
+  });
+  if (error) throw new Error(`could not mark ${job} fixed: ${error.message}`);
+}
+
 // Latest run per job, for the dashboard banner and the get_cron_health MCP
 // tool. A job that has never run is absent (a fresh install has nothing to
-// alert about - the setup cards own "crons not installed yet").
+// alert about - the setup cards own "crons not installed yet"), EXCEPT the
+// pipeline heartbeat below, which exists precisely to catch "installed but
+// never managed to report".
 //
 // projectSlug scoping: pass a slug to see only that project's world -
 // instance-wide jobs (backend crons cover every project) plus jobs suffixed
@@ -209,11 +236,28 @@ export async function getCronHealth(projectSlug?: string): Promise<CronHealth[]>
   for (const row of data) {
     if (!latest.has(row.job as string)) latest.set(row.job as string, row);
   }
-  return [...latest.values()]
+  const health = [...latest.values()]
     .filter((row) => {
       if (!projectSlug) return true;
       const owner = jobProjectSlug(row.job as string);
       return owner === null || owner === projectSlug;
+    })
+    // Legacy-identity suppression: a repo that switches its reporting auth
+    // from CRON_SECRET to its project token (the install/update flow does
+    // this) leaves its old BARE job name behind; that abandoned row would
+    // sit "stale" on the banner for days until it ages out of the window
+    // (bit us 2026-07-20 with seo-auto-merge vs seo-auto-merge--clockedcode).
+    // If any suffixed sibling reported more recently, the bare identity is
+    // retired, not late - drop it. Backend crons have no suffixed siblings
+    // and are unaffected.
+    .filter((row, _i, all) => {
+      const job = row.job as string;
+      if (jobProjectSlug(job) !== null) return true;
+      return !all.some(
+        (s) =>
+          (s.job as string).startsWith(`${job}--`) &&
+          (s.created_at as string) > (row.created_at as string),
+      );
     })
     .map((row) => {
       const job = row.job as string;
@@ -227,4 +271,92 @@ export async function getCronHealth(projectSlug?: string): Promise<CronHealth[]>
         errors: (row.errors as string[]) ?? [],
       };
     });
+  const heartbeat = await pipelineHeartbeatAlerts(
+    projectSlug,
+    new Set(health.map((h) => h.job)),
+  );
+  return [...health, ...heartbeat];
+}
+
+// The window above can only alarm about jobs with a row INSIDE it - a
+// connected repo whose reporting NEVER worked (rotted secret from day one)
+// or died long ago is invisible to it. That exact hole hid clockedcode's
+// dead reporting rail for days (2026-07-20 audit: workflows ran green on
+// GitHub while phoning nothing home, so "silence IS the signal" never got
+// a first row to go silent FROM). Fix: for every project wired to a repo,
+// check the daily seo-token-check heartbeat with a targeted, window-
+// independent query. No row ever -> "installed but never reported" (secrets
+// are likely wrong); latest row past the staleness threshold but aged out
+// of the window -> the stale alert the window would have shown. Best-effort
+// like everything here - any query error just means no extra alerts.
+async function pipelineHeartbeatAlerts(
+  projectSlug: string | undefined,
+  alreadyReported: Set<string>,
+): Promise<CronHealth[]> {
+  try {
+    const { data: projects, error } = await db()
+      .from("projects")
+      .select("id, slug, github_repo, pipeline_installed_at");
+    if (error || !projects) return [];
+    const out: CronHealth[] = [];
+    for (const p of projects) {
+      if (projectSlug && p.slug !== projectSlug) continue;
+      if (!p.github_repo) continue; // nothing installable, nothing to expect
+      const job = `seo-token-check--${p.slug}`;
+      if (alreadyReported.has(job)) continue; // window already covers it
+      // Wired = the install stamp, or a conventions row for installs that
+      // predate migration 0018 - the same signals the Home install card uses.
+      let wired = p.pipeline_installed_at != null;
+      if (!wired) {
+        const { data: conv, error: convErr } = await db()
+          .from("conventions")
+          .select("project_id")
+          .eq("project_id", p.id)
+          .maybeSingle();
+        wired = !convErr && conv != null;
+      }
+      if (!wired) continue;
+      // A fresh install's first daily heartbeat can be up to ~28h away
+      // (04:30 UTC schedule); give it 48h before "never reported" alarms.
+      if (
+        p.pipeline_installed_at != null &&
+        Date.now() - new Date(p.pipeline_installed_at as string).getTime() < 48 * 3600_000
+      ) {
+        continue;
+      }
+      const { data: hb, error: hbErr } = await db()
+        .from("cron_runs")
+        .select("ok, created_at")
+        .eq("job", job)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (hbErr) continue;
+      if (!hb) {
+        out.push({
+          job,
+          ok: false,
+          stale: true,
+          last_run_at: (p.pipeline_installed_at as string | null) ?? new Date(0).toISOString(),
+          errors: [
+            "pipeline is installed but its workflows have never reported to the dashboard - the repo's secrets are likely wrong; re-run the setup command from Home to fix them",
+          ],
+        });
+      } else {
+        const ageHours = (Date.now() - new Date(hb.created_at as string).getTime()) / 3600000;
+        if (ageHours > (STALE_HOURS["seo-token-check"] ?? Infinity)) {
+          out.push({
+            job,
+            ok: Boolean(hb.ok),
+            stale: true,
+            last_run_at: hb.created_at as string,
+            errors: [],
+          });
+        }
+      }
+    }
+    return out;
+  } catch {
+    return [];
+  }
 }

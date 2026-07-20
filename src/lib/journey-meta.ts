@@ -23,7 +23,7 @@ export const STAGE_META: Record<
     months: null,
     startMonth: null,
     expectation:
-      "Google Search Console isn't connected, so progress can't be measured yet. Wire it up in Settings - everything below starts there.",
+      "Google Search Console isn't delivering data yet, so progress can't be measured. Finish the Connect Search Console step on Home - everything below starts there.",
   },
   foundation: {
     label: "Foundation",
