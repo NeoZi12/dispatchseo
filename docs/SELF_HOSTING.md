@@ -33,16 +33,19 @@ Click a deploy button in the README - neither asks you for anything:
 Then **open your new site**. It shows a setup wizard that walks you through
 whatever is left, in order:
 
-1. **Connect your database** (skipped on the marketplace path): copy your
-   Supabase project's **Project URL**
-   and **service_role key** from Project Settings → API into Vercel env vars
-   `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`, redeploy. The wizard
-   shows these exact steps.
-2. **Run the migrations**: in the Supabase SQL Editor, run every file in
-   [`supabase/migrations/`](../supabase/migrations/) **in numeric order**
-   (0001 first). Each one is additive; a couple of minutes, one time. `/setup`
-   checks that the full set has actually run - not just that the database is
-   reachable - before letting you move on.
+1. **Connect your database** (skipped on the marketplace path): pick any
+   Supabase project you already have, or create a free one. Copy its
+   **Project URL** (the `Connect` button shows it) and its **secret key**
+   (Project Settings → API Keys; starts with `sb_secret_`, called
+   `service_role` on older projects - both work) into Vercel env vars
+   `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`, then redeploy. The
+   wizard shows these exact steps with links.
+2. **Run the migrations**: paste
+   [`supabase/migrations/setup.sql`](../supabase/migrations/setup.sql)
+   (every migration in one file, safe to re-run) into the Supabase SQL
+   Editor and press Run. `/setup` checks that the full set has actually
+   run - not just that the database is reachable - before letting you
+   move on.
 3. **Claim the instance**: choose your dashboard password. DispatchSEO
    generates its agent key (MCP token) and cron key itself, captures this
    deploy's own URL so connected pipelines phone home to the right backend

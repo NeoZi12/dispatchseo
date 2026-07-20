@@ -41,8 +41,8 @@ export default async function SetupKeysPage() {
         </h1>
         <div className="space-y-5 rounded-xl border border-neutral-800 bg-neutral-900/60 p-6">
           <p className="text-sm leading-relaxed text-neutral-400">
-            DispatchSEO generated its own keys. You'll be pointed at them again
-            when setup needs them, so no need to save them now:
+            DispatchSEO generated its own keys. No need to save them anywhere -
+            the app shows them again whenever a step needs them:
           </p>
           {mcpToken && (
             <KeyBlock

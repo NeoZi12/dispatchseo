@@ -86,33 +86,53 @@ export default async function SetupPage({
             <div>
               <h2 className="font-medium text-white">Step 1 of 3 - connect your database</h2>
               <p className="mt-1 text-sm text-neutral-400">
-                Your deployment is live. Point it at your Supabase project -
-                it takes two copy-pastes:
+                DispatchSEO keeps everything in a Supabase database. Copy two
+                values from Supabase into Vercel and this step is done.
               </p>
             </div>
             <ol className="space-y-3">
               <Step n={1}>
-                In your Supabase project: <Code>Project Settings</Code> → <Code>API</Code>. Copy the{" "}
-                <b className="text-neutral-200">Project URL</b> and the{" "}
-                <b className="text-neutral-200">service_role key</b>.
+                Sign in to your{" "}
+                <a href="https://supabase.com/dashboard" className="text-indigo-400 underline" target="_blank" rel="noreferrer">
+                  Supabase dashboard
+                </a>{" "}
+                and open the project you want to use. Any project you already
+                have is fine. No project yet? Click{" "}
+                <Code>New project</Code> - it's free and ready in a minute or
+                two.
               </Step>
               <Step n={2}>
-                In Vercel: your project → <Code>Settings</Code> →{" "}
-                <Code>Environment Variables</Code>. Add them as{" "}
-                <Code>SUPABASE_URL</Code> and <Code>SUPABASE_SERVICE_ROLE_KEY</Code>.
+                Copy the <b className="text-neutral-200">Project URL</b>:
+                click the <Code>Connect</Code> button at the top of your
+                project and it's right there. It looks like{" "}
+                <Code>https://abc123.supabase.co</Code>.
               </Step>
               <Step n={3}>
-                Redeploy so the new variables load: <Code>Deployments</Code> → latest →{" "}
-                <Code>Redeploy</Code>. Then come back here.
+                Copy the <b className="text-neutral-200">secret key</b>: go to{" "}
+                <a href="https://supabase.com/dashboard/project/_/settings/api-keys" className="text-indigo-400 underline" target="_blank" rel="noreferrer">
+                  API Keys
+                </a>{" "}
+                (<Code>Project Settings</Code> → <Code>API Keys</Code>) and
+                reveal the key starting with <Code>sb_secret_</Code>. On older
+                projects it's called <Code>service_role</Code> - that one works
+                too.
+              </Step>
+              <Step n={4}>
+                Paste both into Vercel: open your project at{" "}
+                <a href="https://vercel.com/dashboard" className="text-indigo-400 underline" target="_blank" rel="noreferrer">
+                  vercel.com
+                </a>{" "}
+                → <Code>Settings</Code> → <Code>Environment Variables</Code>.
+                Add <Code>SUPABASE_URL</Code> with the Project URL, and{" "}
+                <Code>SUPABASE_SERVICE_ROLE_KEY</Code> with the key.
+              </Step>
+              <Step n={5}>
+                Restart the app so it sees them: in Vercel,{" "}
+                <Code>Deployments</Code> → the <Code>⋯</Code> menu on the top
+                deployment → <Code>Redeploy</Code>. Wait for it to finish,
+                then come back here.
               </Step>
             </ol>
-            <p className="text-xs text-neutral-500">
-              No Supabase project yet? Create a free one at{" "}
-              <a href="https://supabase.com" className="text-neutral-400 underline" target="_blank" rel="noreferrer">
-                supabase.com
-              </a>{" "}
-              (any name, any region), then follow the steps above.
-            </p>
             <form action={recheck}>
               <button className="w-full rounded-lg bg-white px-4 py-3 font-medium text-neutral-950">
                 I did this - check again
@@ -126,9 +146,8 @@ export default async function SetupPage({
             <div>
               <h2 className="font-medium text-white">Step 2 of 3 - create the tables</h2>
               <p className="mt-1 text-sm text-neutral-400">
-                Database connected. Run one SQL file to create (or complete)
-                DispatchSEO's tables - it's idempotent, so re-running it is
-                always safe:
+                Your database is connected. Now it needs its tables - one
+                copy-paste of SQL, and it's safe to run more than once:
               </p>
             </div>
             <ol className="space-y-3">
@@ -142,17 +161,27 @@ export default async function SetupPage({
                 >
                   setup.sql
                 </a>{" "}
-                (every migration, one file) and copy its raw contents.
+                and copy the whole file - the copy icon at the top right of
+                the code does it in one click.
               </Step>
               <Step n={2}>
-                In Supabase: <Code>SQL Editor</Code> → paste → <Code>Run</Code>.
-                One paste, one time.
+                Open your project's{" "}
+                <a
+                  href="https://supabase.com/dashboard/project/_/sql/new"
+                  className="text-indigo-400 underline"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  SQL Editor
+                </a>{" "}
+                in Supabase, paste, and press <Code>Run</Code>. When it says{" "}
+                <Code>Success. No rows returned</Code>, you're done.
               </Step>
             </ol>
             {missing.length > 0 && (
               <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-                Missing right now: {missing.join(", ")}. Running setup.sql
-                fills exactly these in - it skips everything already applied.
+                Still missing: {missing.join(", ")}. Running setup.sql adds
+                exactly these and skips anything you already have.
               </p>
             )}
             <form action={recheck}>
@@ -166,10 +195,11 @@ export default async function SetupPage({
         {state === "unclaimed" && (
           <div className="space-y-5 rounded-xl border border-neutral-800 bg-neutral-900/60 p-6">
             <div>
-              <h2 className="font-medium text-white">Step 3 of 3 - claim this instance</h2>
+              <h2 className="font-medium text-white">Step 3 of 3 - choose your password</h2>
               <p className="mt-1 text-sm text-neutral-400">
-                Choose the dashboard password. DispatchSEO generates its other
-                keys itself and shows them on the next screen.
+                Last step. Pick the password you'll use to log in to this
+                dashboard - everything else is generated for you on the next
+                screen.
               </p>
             </div>
             <form action={claim} className="space-y-3">
