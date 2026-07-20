@@ -60,7 +60,7 @@ export default async function SetupKeysPage() {
           )}
           <Link
             href="/onboarding"
-            className="block w-full rounded-lg bg-white px-4 py-3 text-center font-medium text-neutral-950"
+            className="block w-full cursor-pointer rounded-lg bg-white px-4 py-3 text-center font-medium text-neutral-950 transition-colors hover:bg-neutral-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-400"
           >
             Continue - add your site →
           </Link>

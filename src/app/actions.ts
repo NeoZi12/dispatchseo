@@ -543,7 +543,10 @@ async function createProjectCore(
   if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain)) {
     return { error: "That domain does not look right - use something like usagecut.com." };
   }
-  if (repo && !/^[\w.-]+\/[\w.-]+$/.test(repo)) {
+  if (!repo) {
+    return { error: "Add your GitHub repo - Claude publishes content there as pull requests." };
+  }
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) {
     return {
       error:
         "Could not read that repo - paste the GitHub URL (https://github.com/owner/repo) or just owner/repo.",

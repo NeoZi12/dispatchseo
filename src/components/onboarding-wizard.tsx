@@ -91,11 +91,23 @@ const POWERUPS = [
 const inputClass =
   "w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-violet-400/60";
 
-function CopyBox({ text }: { text: string }) {
+function CopyBox({ text, emphasis }: { text: string; emphasis?: boolean }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="flex items-center gap-2.5 rounded-lg border border-neutral-800 bg-neutral-950 py-2.5 pl-3.5 pr-3">
-      <code className="flex-1 overflow-x-auto whitespace-nowrap font-mono text-[13px] text-neutral-300 [scrollbar-width:none]">
+    <div
+      className={
+        emphasis
+          ? "flex items-center gap-3 rounded-xl border border-violet-500/40 bg-neutral-950 py-4 pl-5 pr-3.5 shadow-[0_0_36px_-10px_rgba(139,92,246,0.45)]"
+          : "flex items-center gap-2.5 rounded-lg border border-neutral-800 bg-neutral-950 py-2.5 pl-3.5 pr-3"
+      }
+    >
+      <code
+        className={
+          emphasis
+            ? "flex-1 overflow-x-auto whitespace-nowrap font-mono text-[15px] text-neutral-100 [scrollbar-width:none]"
+            : "flex-1 overflow-x-auto whitespace-nowrap font-mono text-[13px] text-neutral-300 [scrollbar-width:none]"
+        }
+      >
         {text}
       </code>
       <button
@@ -106,7 +118,13 @@ function CopyBox({ text }: { text: string }) {
             setTimeout(() => setCopied(false), 1600);
           }, () => {});
         }}
-        className={`shrink-0 rounded-md bg-neutral-800 px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-neutral-700 ${copied ? "text-emerald-400" : "text-neutral-300"}`}
+        className={
+          emphasis
+            ? `shrink-0 cursor-pointer rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors ${
+                copied ? "bg-emerald-400 text-neutral-950" : "bg-violet-500 text-neutral-950 hover:bg-violet-400"
+              }`
+            : `shrink-0 cursor-pointer rounded-md bg-neutral-800 px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-neutral-700 ${copied ? "text-emerald-400" : "text-neutral-300"}`
+        }
       >
         {copied ? "Copied" : "Copy"}
       </button>
@@ -130,6 +148,47 @@ function StepIcon({ children, done }: { children: React.ReactNode; done?: boolea
 
 function ErrorLine({ msg }: { msg: string }) {
   return <p className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-400">{msg}</p>;
+}
+
+// The 3-step "add this email to Search Console" recap. Shared between the
+// normal (service account exists) and muted (no service account yet) looks so
+// the copy never drifts between the two - only the color weight changes.
+function GscSteps({ domain, muted }: { domain: string; muted?: boolean }) {
+  const item = muted ? "text-neutral-500" : "text-neutral-400";
+  const bold = muted ? "font-medium text-neutral-400" : "font-medium text-neutral-200";
+  const num = muted ? "bg-neutral-800/60 text-neutral-600" : "bg-neutral-800 text-neutral-300";
+  return (
+    <ol className={`space-y-2 text-sm ${item}`}>
+      {[
+        <>
+          Open{" "}
+          <a
+            href="https://search.google.com/search-console"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-violet-400 underline underline-offset-2 hover:text-violet-300"
+          >
+            Google Search Console
+          </a>{" "}
+          and pick {domain}.
+        </>,
+        <>
+          Go to <b className={bold}>Settings</b>, then <b className={bold}>Users and permissions</b>.
+        </>,
+        <>
+          Click <b className={bold}>Add user</b>, paste the email, keep the{" "}
+          <b className={bold}>Restricted</b> permission, save.
+        </>,
+      ].map((s, i) => (
+        <li key={i} className="flex gap-2.5">
+          <span className={`mt-px flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md text-xs font-semibold ${num}`}>
+            {i + 1}
+          </span>
+          <span>{s}</span>
+        </li>
+      ))}
+    </ol>
+  );
 }
 
 export function OnboardingWizard({
@@ -304,10 +363,21 @@ export function OnboardingWizard({
               <input name="domain" required placeholder="usagecut.com" autoComplete="off" className={inputClass} />
             </label>
             <label className="block space-y-1.5">
-              <span className="text-sm font-medium text-neutral-200">
-                GitHub repo <span className="text-xs font-normal text-neutral-500">optional, for auto-publishing later</span>
+              <span className="text-sm font-medium text-neutral-200">GitHub repo</span>
+              <input name="repo" required placeholder="owner/repo" autoComplete="off" className={inputClass} />
+              <span className="block text-xs leading-relaxed text-neutral-500">
+                Claude publishes content as pull requests to this repo. It&apos;s the owner/repo
+                part of your repository&apos;s URL on{" "}
+                <a
+                  href="https://github.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-violet-400 underline underline-offset-2 hover:text-violet-300"
+                >
+                  github.com
+                </a>
+                .
               </span>
-              <input name="repo" placeholder="owner/repo" autoComplete="off" className={inputClass} />
             </label>
             <div className="space-y-1.5">
               <span className="block text-sm font-medium text-neutral-200">
@@ -326,7 +396,7 @@ export function OnboardingWizard({
                     type="button"
                     aria-pressed={contentMode === o.v}
                     onClick={() => setContentMode(o.v)}
-                    className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                    className={`cursor-pointer rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
                       contentMode === o.v
                         ? "border-violet-500 bg-[#191521] text-neutral-100"
                         : "border-neutral-700 text-neutral-400 hover:border-neutral-500"
@@ -361,7 +431,7 @@ export function OnboardingWizard({
               <button
                 type="submit"
                 disabled={createPending}
-                className="rounded-lg bg-violet-500 px-5 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-violet-400 disabled:opacity-40"
+                className="cursor-pointer rounded-lg bg-violet-500 px-5 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {createPending ? "Creating..." : "Continue"}
               </button>
@@ -390,54 +460,77 @@ export function OnboardingWizard({
                   Add this email as a user in Search Console
                 </p>
                 <CopyBox text={saEmail} />
+                <div className="mt-3.5">
+                  <GscSteps domain={created?.domain ?? "your site"} />
+                </div>
+                <p className="mt-3 text-[13px] text-neutral-400">
+                  This step confirms itself automatically once the first data arrives.
+                </p>
               </>
             ) : (
-              <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
-                The server has no GSC service account configured (GSC_SERVICE_ACCOUNT_JSON) - set it
-                up first, then this screen shows the email to add.
-              </p>
+              <>
+                <div className="rounded-lg border border-violet-500/20 bg-violet-500/[0.06] p-3.5">
+                  <div className="flex items-center gap-2">
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      className="h-4 w-4 shrink-0 text-violet-400"
+                      aria-hidden
+                    >
+                      <circle cx="12" cy="12" r="9" />
+                      <path d="M12 8h.01" strokeLinecap="round" />
+                      <path d="M11 11.5h1v5.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    <p className="text-sm font-medium text-neutral-200">
+                      No service account on this deployment yet
+                    </p>
+                  </div>
+                  <p className="mt-2.5 text-[13px] leading-relaxed text-neutral-400">
+                    DispatchSEO reads your Search Console numbers through a &quot;service
+                    account&quot; - a robot Google account it signs in as. This deployment doesn&apos;t
+                    have one yet, which is why there&apos;s no email to show here.
+                  </p>
+                  <p className="mt-2 text-[13px] leading-relaxed text-neutral-400">
+                    To set one up, follow the service-account steps in the{" "}
+                    <a
+                      href="https://github.com/NeoZi12/dispatchseo/blob/main/docs/SELF_HOSTING.md#3-google-search-console-free-rankings--traffic-data"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-violet-400 underline underline-offset-2 hover:text-violet-300"
+                    >
+                      self-hosting guide
+                    </a>
+                    : create the account, download its JSON key, paste it into a Vercel env var
+                    named <code className="font-mono text-neutral-300">GSC_SERVICE_ACCOUNT_JSON</code>,
+                    and redeploy.
+                  </p>
+                  <p className="mt-2 text-[13px] leading-relaxed text-neutral-400">
+                    Then come back here - or to the Home setup cards - and the email to add will
+                    show up.
+                  </p>
+                  <p className="mt-2.5 text-[13px] font-medium text-neutral-300">
+                    Nothing else depends on this. Continue the wizard now and set it up whenever.
+                  </p>
+                </div>
+                <details className="mt-3.5">
+                  <summary className="cursor-pointer select-none text-[13px] font-medium text-neutral-500 transition-colors hover:text-neutral-300">
+                    What you&apos;ll do once the email exists
+                  </summary>
+                  <div className="mt-2.5">
+                    <GscSteps domain={created?.domain ?? "your site"} muted />
+                  </div>
+                </details>
+              </>
             )}
-            <ol className="mt-3.5 space-y-2 text-sm text-neutral-400">
-              {[
-                <>
-                  Open{" "}
-                  <a
-                    href="https://search.google.com/search-console"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-violet-400 underline underline-offset-2 hover:text-violet-300"
-                  >
-                    Google Search Console
-                  </a>{" "}
-                  and pick {created?.domain ?? "your site"}.
-                </>,
-                <>
-                  Go to <b className="font-medium text-neutral-200">Settings</b>, then{" "}
-                  <b className="font-medium text-neutral-200">Users and permissions</b>.
-                </>,
-                <>
-                  Click <b className="font-medium text-neutral-200">Add user</b>, paste the email, keep
-                  the <b className="font-medium text-neutral-200">Restricted</b> permission, save.
-                </>,
-              ].map((s, i) => (
-                <li key={i} className="flex gap-2.5">
-                  <span className="mt-px flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md bg-neutral-800 text-xs font-semibold text-neutral-300">
-                    {i + 1}
-                  </span>
-                  <span>{s}</span>
-                </li>
-              ))}
-            </ol>
-            <p className="mt-3 text-[13px] text-neutral-400">
-              This step confirms itself automatically once the first data arrives.
-            </p>
           </div>
           <div className="mt-5 flex items-center justify-between">
             <span />
             <button
               type="button"
               onClick={() => setScreen("s2a")}
-              className="rounded-lg bg-violet-500 px-5 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-violet-400"
+              className="cursor-pointer rounded-lg bg-violet-500 px-5 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-violet-400"
             >
               Continue
             </button>
@@ -463,7 +556,7 @@ export function OnboardingWizard({
                 setChoice("paid");
                 setScreen("s2b_paid");
               }}
-              className="rounded-xl border border-neutral-800 bg-neutral-900 p-4 text-left transition-colors hover:border-neutral-600"
+              className="cursor-pointer rounded-xl border border-neutral-800 bg-neutral-900 p-4 text-left transition-colors hover:border-neutral-600"
             >
               <div className="mb-2.5 flex gap-1.5">
                 <span className="rounded bg-neutral-800 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
@@ -489,7 +582,7 @@ export function OnboardingWizard({
                 setChoice("free");
                 setScreen("s2b_free");
               }}
-              className="rounded-xl border border-neutral-800 bg-neutral-900 p-4 text-left transition-colors hover:border-neutral-600"
+              className="cursor-pointer rounded-xl border border-neutral-800 bg-neutral-900 p-4 text-left transition-colors hover:border-neutral-600"
             >
               <div className="mb-2.5 flex gap-1.5">
                 <span className="rounded bg-emerald-400/10 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-emerald-400">
@@ -511,7 +604,7 @@ export function OnboardingWizard({
             <button
               type="button"
               onClick={() => setScreen("s1")}
-              className="text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300"
+              className="cursor-pointer text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300"
             >
               ← Back
             </button>
@@ -569,14 +662,14 @@ export function OnboardingWizard({
               <button
                 type="button"
                 onClick={() => setScreen("s2a")}
-                className="text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300"
+                className="cursor-pointer text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300"
               >
                 ← Back
               </button>
               <button
                 type="submit"
                 disabled={dfsPending}
-                className="rounded-lg bg-violet-500 px-5 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-violet-400 disabled:opacity-40"
+                className="cursor-pointer rounded-lg bg-violet-500 px-5 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {dfsPending ? "Checking with DataForSEO..." : "Verify and continue"}
               </button>
@@ -625,7 +718,7 @@ export function OnboardingWizard({
               <button
                 type="button"
                 onClick={() => setScreen("s2a")}
-                className="text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300"
+                className="cursor-pointer text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300"
               >
                 ← Back
               </button>
@@ -634,14 +727,14 @@ export function OnboardingWizard({
                   type="button"
                   onClick={skipSerpapi}
                   disabled={pendingSkip}
-                  className="px-2 text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300 disabled:opacity-40"
+                  className="cursor-pointer px-2 text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {pendingSkip ? "Saving..." : "Not interested, let's continue"}
                 </button>
                 <button
                   type="submit"
                   disabled={serpPending}
-                  className="rounded-lg bg-violet-500 px-5 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-violet-400 disabled:opacity-40"
+                  className="cursor-pointer rounded-lg bg-violet-500 px-5 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {serpPending ? "Checking with SerpApi..." : "Verify and continue"}
                 </button>
@@ -681,14 +774,14 @@ export function OnboardingWizard({
             <button
               type="button"
               onClick={() => setScreen(choice === "paid" ? "s2b_paid" : "s2b_free")}
-              className="text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300"
+              className="cursor-pointer text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300"
             >
               ← Back
             </button>
             <button
               type="button"
               onClick={() => setScreen("s3m")}
-              className="rounded-lg bg-violet-500 px-5 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-violet-400"
+              className="cursor-pointer rounded-lg bg-violet-500 px-5 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-violet-400"
             >
               Continue
             </button>
@@ -716,7 +809,7 @@ export function OnboardingWizard({
               type="button"
               aria-pressed={modeChoice === "semi"}
               onClick={() => setModeChoice("semi")}
-              className={`rounded-xl border p-4 text-left transition-colors ${
+              className={`cursor-pointer rounded-xl border p-4 text-left transition-colors ${
                 modeChoice === "semi"
                   ? "border-violet-500 bg-[#191521]"
                   : "border-neutral-800 bg-neutral-900 hover:border-neutral-600"
@@ -740,7 +833,7 @@ export function OnboardingWizard({
               type="button"
               aria-pressed={modeChoice === "auto"}
               onClick={() => setModeChoice("auto")}
-              className={`rounded-xl border p-4 text-left transition-colors ${
+              className={`cursor-pointer rounded-xl border p-4 text-left transition-colors ${
                 modeChoice === "auto"
                   ? "border-violet-500 bg-[#191521]"
                   : "border-neutral-800 bg-neutral-900 hover:border-neutral-600"
@@ -768,7 +861,7 @@ export function OnboardingWizard({
             <button
               type="button"
               onClick={() => setScreen("s3")}
-              className="text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300"
+              className="cursor-pointer text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300"
             >
               ← Back
             </button>
@@ -776,7 +869,7 @@ export function OnboardingWizard({
               type="button"
               onClick={confirmMode}
               disabled={pendingMode}
-              className="rounded-lg bg-violet-500 px-5 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-violet-400 disabled:opacity-40"
+              className="cursor-pointer rounded-lg bg-violet-500 px-5 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {pendingMode ? "Saving..." : "Continue"}
             </button>
@@ -812,7 +905,7 @@ export function OnboardingWizard({
                     type="button"
                     aria-pressed={on}
                     onClick={() => setPowerOn((s) => ({ ...s, [p.key]: !s[p.key] }))}
-                    className={`shrink-0 rounded-lg border px-3.5 py-1.5 text-[13px] font-medium transition-colors ${
+                    className={`shrink-0 cursor-pointer rounded-lg border px-3.5 py-1.5 text-[13px] font-medium transition-colors ${
                       on
                         ? "border-violet-500 text-violet-400"
                         : "border-dashed border-neutral-700 text-neutral-500"
@@ -831,7 +924,7 @@ export function OnboardingWizard({
             <button
               type="button"
               onClick={() => setScreen("s3m")}
-              className="text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300"
+              className="cursor-pointer text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300"
             >
               ← Back
             </button>
@@ -839,7 +932,7 @@ export function OnboardingWizard({
               type="button"
               onClick={finishPowerups}
               disabled={pendingFinish}
-              className="rounded-lg bg-violet-500 px-5 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-violet-400 disabled:opacity-40"
+              className="cursor-pointer rounded-lg bg-violet-500 px-5 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {pendingFinish ? "Saving..." : "Continue"}
             </button>
@@ -882,14 +975,14 @@ export function OnboardingWizard({
             <button
               type="button"
               onClick={() => setScreen("s4")}
-              className="text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300"
+              className="cursor-pointer text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300"
             >
               ← Back
             </button>
             <button
               type="button"
               onClick={() => setScreen("s5")}
-              className="rounded-lg bg-violet-500 px-5 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-violet-400"
+              className="cursor-pointer rounded-lg bg-violet-500 px-5 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-violet-400"
             >
               Got it
             </button>
@@ -907,9 +1000,53 @@ export function OnboardingWizard({
             </svg>
           </StepIcon>
           <h2 className="text-lg font-semibold tracking-tight">You&apos;re live.</h2>
-          <p className="mb-3.5 text-sm text-neutral-400">Here is what got connected.</p>
-          <div className="rounded-xl bg-neutral-900 px-4 py-1.5">
-            <ul>
+          <p className="mb-3.5 text-sm text-neutral-400">
+            One command connects Claude Code to this project and installs the pipeline.
+          </p>
+
+          <div className="space-y-2">
+            <p className="text-sm text-neutral-300">
+              Paste this in a terminal, <b className="font-medium text-neutral-100">inside your
+              site&apos;s repo</b>:
+            </p>
+            <CopyBox emphasis text={created ? setupCommand(created.slug, origin, created.mcpToken) : ""} />
+          </div>
+
+          <div className="mt-4 rounded-lg bg-neutral-900 px-3.5 py-3 text-[13px] text-neutral-400">
+            <p className="mb-1.5 font-medium text-neutral-300">What it will ask of you:</p>
+            <ul className="space-y-1">
+              <li>· Confirm the folder is your site&apos;s repo (it detects and asks).</li>
+              <li>
+                · Approve once in the browser - your Claude Code token. It verifies the token
+                really works before saving it.
+              </li>
+              <li>
+                · Only if you connected DataForSEO: your account email and the API password
+                from app.dataforseo.com/api-access (not your login password).
+              </li>
+              <li>
+                · Needs Claude Code and the GitHub CLI (
+                <code className="font-mono text-neutral-300">gh</code>) installed - it tells
+                you exactly what&apos;s missing if anything is. Safe to re-run any time.
+              </li>
+            </ul>
+          </div>
+
+          <details className="group mt-4 rounded-xl bg-neutral-900 px-4 py-3">
+            <summary className="flex cursor-pointer select-none items-center justify-between text-[13px] font-medium text-neutral-400 transition-colors hover:text-neutral-200">
+              What got connected
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className="h-4 w-4 shrink-0 text-neutral-500 transition-transform group-open:rotate-180"
+                aria-hidden
+              >
+                <polyline points="6 9 12 15 18 9" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </summary>
+            <ul className="mt-1">
               {[
                 <>
                   <b className="font-medium text-neutral-200">{created?.name ?? "Your site"}</b> (
@@ -953,7 +1090,7 @@ export function OnboardingWizard({
                 ),
                 <>
                   <b className="font-medium text-neutral-200">Claude Code</b> connects with the
-                  setup command below - one paste does connection, secrets, and the pipeline
+                  setup command above - one paste does connection, secrets, and the pipeline
                 </>,
                 modeChoice === "auto" ? (
                   <>
@@ -969,14 +1106,14 @@ export function OnboardingWizard({
               ].map((item, i) => (
                 <li
                   key={i}
-                  className="flex items-start gap-2.5 border-b border-neutral-800 py-2.5 text-sm text-neutral-400 last:border-b-0"
+                  className="flex items-start gap-2.5 border-b border-neutral-800 py-2 text-[13px] text-neutral-500 last:border-b-0"
                 >
                   <svg
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
                     strokeWidth="2.2"
-                    className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400"
+                    className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400"
                     aria-hidden
                   >
                     <polyline points="20 6 9 17 4 12" strokeLinecap="round" strokeLinejoin="round" />
@@ -985,37 +1122,7 @@ export function OnboardingWizard({
                 </li>
               ))}
             </ul>
-          </div>
-          <div className="mt-4">
-            <p className="mb-2 text-sm text-neutral-400">
-              One last thing. Paste this in a terminal, <b className="text-neutral-300">inside
-              your site&apos;s repo</b> - it talks you through everything, checks each value
-              actually works before saving it, and ends with your own agent installing the
-              automation pipeline.
-            </p>
-            <CopyBox
-              text={created ? setupCommand(created.slug, origin, created.mcpToken) : ""}
-            />
-            <div className="mt-3 rounded-lg bg-neutral-900 px-3.5 py-3 text-[13px] text-neutral-400">
-              <p className="mb-1.5 font-medium text-neutral-300">What it will ask of you:</p>
-              <ul className="space-y-1">
-                <li>· Confirm the folder is your site&apos;s repo (it detects and asks).</li>
-                <li>
-                  · Approve once in the browser - your Claude Code token. It verifies the token
-                  really works before saving it.
-                </li>
-                <li>
-                  · Only if you connected DataForSEO: your account email and the API password
-                  from app.dataforseo.com/api-access (not your login password).
-                </li>
-                <li>
-                  · Needs Claude Code and the GitHub CLI (
-                  <code className="font-mono text-neutral-300">gh</code>) installed - it tells
-                  you exactly what&apos;s missing if anything is. Safe to re-run any time.
-                </li>
-              </ul>
-            </div>
-          </div>
+          </details>
           {created ? <FirstRunStatus slug={created.slug} /> : null}
         </section>
       ) : null}

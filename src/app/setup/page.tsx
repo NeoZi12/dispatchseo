@@ -1,9 +1,10 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { COOKIE_NAME, cookieValue } from "@/lib/dashboard-auth";
-import { claimInstance, getSetupState } from "@/lib/setup";
+import { claimInstance, getSetupState, type SetupState } from "@/lib/setup";
 import { missingMigrations } from "@/lib/schema-check";
 import { DispatchMark } from "@/components/logo";
+import { PasswordInput } from "@/app/setup/password-input";
 
 // First-boot setup wizard. Public by design: it only ever renders
 // instructions or the claim form, and claiming is race-safe (single-row PK).
@@ -37,13 +38,20 @@ async function claim(formData: FormData) {
   redirect("/setup/keys");
 }
 
+// Shared primary-action look for the three "advance the wizard" controls
+// (two plain <a> re-checks, one submit button) - always with a visible hover
+// state and an explicit pointer cursor (Tailwind v4 preflight sets buttons to
+// cursor: default).
+const primaryAction =
+  "rounded-lg bg-white px-4 py-3 font-medium text-neutral-950 transition-colors hover:bg-neutral-200 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-400";
+
 function Step({ n, children }: { n: number; children: React.ReactNode }) {
   return (
-    <li className="flex gap-3">
-      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-sm font-semibold text-neutral-300">
+    <li className="flex gap-3.5">
+      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-[15px] font-semibold text-neutral-300">
         {n}
       </span>
-      <span className="text-[15px] leading-relaxed text-neutral-300">{children}</span>
+      <span className="text-base leading-7 text-neutral-300">{children}</span>
     </li>
   );
 }
@@ -53,6 +61,65 @@ function Code({ children }: { children: React.ReactNode }) {
     <code className="rounded bg-neutral-800 px-1.5 py-0.5 font-mono text-[14px] text-neutral-200">
       {children}
     </code>
+  );
+}
+
+// The three-step rail. Bolder than the dashboard wizard's thin segmented
+// line - numbered, connected circles with labels - because this page has
+// nothing else competing for attention. Prior steps fill solid violet with a
+// check, the current step gets the same fill plus a soft ring, everything
+// after stays neutral.
+const SETUP_STEPS: { key: SetupState; label: string }[] = [
+  { key: "no-db", label: "Connect database" },
+  { key: "no-tables", label: "Create tables" },
+  { key: "unclaimed", label: "Choose password" },
+];
+
+function SetupProgress({ state }: { state: SetupState }) {
+  const idx = SETUP_STEPS.findIndex((s) => s.key === state);
+  return (
+    <ol className="flex" aria-label="Setup progress">
+      {SETUP_STEPS.map((s, i) => {
+        const done = i < idx;
+        const current = i === idx;
+        return (
+          <li key={s.key} className="relative flex flex-1 flex-col items-center">
+            {i < SETUP_STEPS.length - 1 && (
+              <span
+                aria-hidden
+                className={`absolute left-1/2 top-5 h-0.5 w-full -translate-y-1/2 transition-colors ${
+                  done ? "bg-violet-500" : "bg-neutral-800"
+                }`}
+              />
+            )}
+            <span
+              className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[15px] font-semibold transition-colors ${
+                done
+                  ? "bg-violet-500 text-neutral-950"
+                  : current
+                    ? "bg-violet-500 text-neutral-950 ring-4 ring-violet-500/20"
+                    : "bg-neutral-800 text-neutral-500"
+              }`}
+            >
+              {done ? (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="h-4 w-4" aria-hidden>
+                  <polyline points="20 6 9 17 4 12" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              ) : (
+                i + 1
+              )}
+            </span>
+            <span
+              className={`mt-2.5 max-w-[7.5rem] text-center text-[13px] font-medium leading-tight ${
+                current ? "text-violet-300" : done ? "text-neutral-300" : "text-neutral-600"
+              }`}
+            >
+              {s.label}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
@@ -70,22 +137,25 @@ export default async function SetupPage({
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-neutral-950 p-6">
-      <div className="w-full max-w-xl space-y-6">
-        <h1 className="flex items-center gap-2.5 text-xl font-semibold text-white">
-          <DispatchMark className="h-7 w-auto" />
-          DispatchSEO setup
-        </h1>
+      <div className="w-full max-w-2xl space-y-8">
+        <div className="space-y-6">
+          <h1 className="flex items-center gap-2.5 text-2xl font-semibold text-white">
+            <DispatchMark className="h-8 w-auto" />
+            DispatchSEO setup
+          </h1>
+          <SetupProgress state={state} />
+        </div>
 
         {state === "no-db" && (
-          <div className="space-y-5 rounded-xl border border-neutral-800 bg-neutral-900/60 p-6">
+          <div className="space-y-6 rounded-xl border border-neutral-800 bg-neutral-900/60 p-7">
             <div>
-              <h2 className="text-lg font-medium text-white">Step 1 of 3 - connect your database</h2>
-              <p className="mt-1 text-[15px] text-neutral-400">
+              <h2 className="text-xl font-semibold text-white">Step 1 of 3 - connect your database</h2>
+              <p className="mt-2 text-base leading-relaxed text-neutral-300">
                 DispatchSEO keeps everything in a Supabase database. You'll
                 move two values from Supabase into Vercel, one at a time.
               </p>
             </div>
-            <ol className="space-y-3">
+            <ol className="space-y-4">
               <Step n={1}>
                 Sign in to your{" "}
                 <a href="https://supabase.com/dashboard" className="text-indigo-400 underline" target="_blank" rel="noreferrer">
@@ -138,22 +208,22 @@ export default async function SetupPage({
             </ol>
             {/* Plain link, not a server action: the flow guarantees a redeploy
                 between page load and click, which kills any action reference. */}
-            <a href="/setup" className="block w-full rounded-lg bg-white px-4 py-3 text-center font-medium text-neutral-950">
+            <a href="/setup" className={`block w-full text-center ${primaryAction}`}>
               I did this - check again
             </a>
           </div>
         )}
 
         {state === "no-tables" && (
-          <div className="space-y-5 rounded-xl border border-neutral-800 bg-neutral-900/60 p-6">
+          <div className="space-y-6 rounded-xl border border-neutral-800 bg-neutral-900/60 p-7">
             <div>
-              <h2 className="text-lg font-medium text-white">Step 2 of 3 - create the tables</h2>
-              <p className="mt-1 text-[15px] text-neutral-400">
+              <h2 className="text-xl font-semibold text-white">Step 2 of 3 - create the tables</h2>
+              <p className="mt-2 text-base leading-relaxed text-neutral-300">
                 Your database is connected. Now it needs its tables - one
                 copy-paste of SQL, and it's safe to run more than once:
               </p>
             </div>
-            <ol className="space-y-3">
+            <ol className="space-y-4">
               <Step n={1}>
                 Open{" "}
                 <a
@@ -183,50 +253,41 @@ export default async function SetupPage({
               </Step>
             </ol>
             {missing.length > 0 && (
-              <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-sm text-amber-200">
                 Still missing: {missing.join(", ")}. Running setup.sql adds
                 exactly these and skips anything you already have.
               </p>
             )}
-            <a href="/setup" className="block w-full rounded-lg bg-white px-4 py-3 text-center font-medium text-neutral-950">
+            <a href="/setup" className={`block w-full text-center ${primaryAction}`}>
               Tables created - check again
             </a>
           </div>
         )}
 
         {state === "unclaimed" && (
-          <div className="space-y-5 rounded-xl border border-neutral-800 bg-neutral-900/60 p-6">
+          <div className="space-y-6 rounded-xl border border-neutral-800 bg-neutral-900/60 p-7">
             <div>
-              <h2 className="text-lg font-medium text-white">Step 3 of 3 - choose your password</h2>
-              <p className="mt-1 text-[15px] text-neutral-400">
+              <h2 className="text-xl font-semibold text-white">Step 3 of 3 - choose your password</h2>
+              <p className="mt-2 text-base leading-relaxed text-neutral-300">
                 Last step. Pick the password you'll use to log in to this
                 dashboard - everything else is generated for you on the next
                 screen.
               </p>
             </div>
-            <form action={claim} className="space-y-3">
-              <input
-                type="password"
+            <form action={claim} className="space-y-4">
+              <PasswordInput
                 name="password"
                 placeholder="Choose a password (10+ characters)"
                 autoFocus
-                className="w-full rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-3 text-white placeholder-neutral-500 focus:border-neutral-400 focus:outline-none"
               />
-              <input
-                type="password"
-                name="confirm"
-                placeholder="Repeat it"
-                className="w-full rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-3 text-white placeholder-neutral-500 focus:border-neutral-400 focus:outline-none"
-              />
+              <PasswordInput name="confirm" placeholder="Repeat it" />
               {error === "short" && (
                 <p className="text-sm text-red-400">At least 10 characters.</p>
               )}
               {error === "mismatch" && (
                 <p className="text-sm text-red-400">Passwords don't match.</p>
               )}
-              <button className="w-full rounded-lg bg-white px-4 py-3 font-medium text-neutral-950">
-                Claim instance
-              </button>
+              <button className={`w-full ${primaryAction}`}>Claim instance</button>
             </form>
           </div>
         )}
