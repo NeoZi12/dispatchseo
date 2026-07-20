@@ -35,7 +35,8 @@ whatever is left, in order:
 
 1. **Connect your database** (skipped on the marketplace path): pick any
    Supabase project you already have, or create a free one. Copy its
-   **Project URL** (the `Connect` button shows it) and its **secret key**
+   **Project URL** (shown on the project's home page, next to a Copy
+   button) and its **secret key**
    (Project Settings → API Keys; starts with `sb_secret_`, called
    `service_role` on older projects - both work) into Vercel env vars
    `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`, then redeploy. The

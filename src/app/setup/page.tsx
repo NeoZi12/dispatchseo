@@ -102,9 +102,9 @@ export default async function SetupPage({
                 two.
               </Step>
               <Step n={2}>
-                Copy the <b className="text-neutral-200">Project URL</b>:
-                click the <Code>Connect</Code> button at the top of your
-                project and it's right there. It looks like{" "}
+                Copy the <b className="text-neutral-200">Project URL</b>: it's
+                on your project's home page, right under the project name,
+                with a <Code>Copy</Code> button next to it. It looks like{" "}
                 <Code>https://abc123.supabase.co</Code>.
               </Step>
               <Step n={3}>
