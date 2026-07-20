@@ -15,6 +15,8 @@
 <p align="center">
   <a href="https://dispatchseo.com">Website</a>
   &nbsp;&middot;&nbsp;
+  <a href="https://dispatchseo.com/docs">Docs</a>
+  &nbsp;&middot;&nbsp;
   <a href="docs/SELF_HOSTING.md">Self-hosting guide</a>
   &nbsp;&middot;&nbsp;
   <a href="https://github.com/NeoZi12/dispatchseo/discussions">Discussions</a>

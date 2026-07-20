@@ -1,0 +1,47 @@
+---
+title: Connect your site
+description: The last step - one command into Claude Code, and your agent installs its own pipeline.
+---
+
+With the backend running, connecting your site is one paste. This is the
+step where DispatchSEO stops being a dashboard and becomes a pipeline.
+
+## What you need
+
+- Your site's source in a **GitHub repo**. The pipeline ships content as
+  pull requests, so git-based sites only - WordPress and other
+  database-backed CMSes won't work.
+- A **Claude subscription with Claude Code**. Your agent is the engine; it
+  runs on your existing plan.
+
+## The one command
+
+1. Log in to your dashboard and add your site as a project.
+2. The dashboard shows you a single command. Paste it into Claude Code
+   **inside your site's repo**.
+
+Your agent does the rest of the install itself: it connects to the MCP
+server, reads the served instructions, writes its own workflow files into
+your repo, and sets its own repo secrets. When it's done, your repo has a
+content pipeline and the dashboard knows about your site.
+
+## What happens after
+
+1. **Your agent researches.** It mines keywords from your Search Console
+   data, Google Autocomplete, and what it already knows about your product.
+   Ideas land in the dashboard queue with reasoning attached.
+2. **You approve, or don't.** Each idea is a card: the keyword, why it's
+   winnable, the angle. Approve, reject, reorder - or flip on auto mode and
+   skip the queue.
+3. **The pipeline builds.** Every morning a GitHub Action turns the oldest
+   approved idea into a real pull request against your repo - a guide or a
+   small free tool, checked against the live SERP.
+4. **It tracks what happened.** Daily rank checks, hourly Search Console
+   snapshots, index verification. When a job breaks, you get a red banner
+   and an email instead of silence.
+
+## Multi-site
+
+One deployment manages any number of sites. Each project gets its own MCP
+token, its own data, its own settings - add the next site the same way,
+from the dashboard.

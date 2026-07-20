@@ -1,0 +1,117 @@
+---
+title: Docker Compose
+description: Run the whole DispatchSEO backend on your own machine with one command - no cloud accounts.
+---
+
+The recommended way to self-host. One command starts everything - dashboard,
+MCP server, database, and cron schedules - as four small containers using
+about 1 GB of RAM. Any $5/month VPS, a Raspberry Pi, or your laptop will do.
+
+## Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) - Docker Desktop on Mac and
+  Windows, or `docker` with the compose plugin on Linux.
+- Nothing else. No Vercel, Supabase, or other cloud accounts.
+
+## Install
+
+```bash
+git clone https://github.com/NeoZi12/dispatchseo
+cd dispatchseo
+cp .env.docker.example .env
+```
+
+Open `.env` and set the two secrets:
+
+```bash
+# generate each with: openssl rand -hex 24
+CRON_SECRET=...        # required - authenticates the scheduled jobs
+POSTGRES_PASSWORD=...  # recommended - password for the bundled database
+```
+
+Then start the stack:
+
+```bash
+docker compose up -d
+```
+
+The first boot builds the app image (a few minutes) and applies the database
+schema automatically. When it settles, open
+[http://localhost:3000](http://localhost:3000) - the setup wizard walks you
+through choosing a dashboard password and connecting your site.
+
+## What's running
+
+| Container | Job |
+| --- | --- |
+| `app` | Dashboard, MCP server at `/api/mcp`, cron endpoints |
+| `postgres` | Your data - persists in the `dispatch-pgdata` volume |
+| `postgrest` | REST layer between app and database, internal network only |
+| `migrate` | One-shot schema apply on every boot (idempotent, exits when done) |
+| `cron` | Triggers rank checks, GSC snapshots, and weekly research on schedule |
+
+Check on it any time:
+
+```bash
+docker compose ps      # everything except the one-shot migrate should be running
+docker compose logs app
+docker compose logs cron
+```
+
+The `app` container reports `healthy` once it can reach the database through
+the whole chain.
+
+## Going beyond localhost
+
+The dashboard and MCP work fine on `localhost`. The content pipeline does
+not: DispatchSEO ships content by opening pull requests through GitHub
+Actions in *your site's* repo, and those workflows call back to this
+backend. Before you connect a repo, put the instance on a URL GitHub can
+reach - a reverse proxy with HTTPS, or a tunnel like Cloudflare Tunnel - and
+set it in `.env`:
+
+```bash
+APP_URL=https://dispatch.your-domain.com
+```
+
+Restart with `docker compose up -d` after changing `.env`.
+
+## Configuration
+
+Only `CRON_SECRET` is required. Everything else - dashboard password, MCP
+token, Search Console, DataForSEO - is handled in the dashboard's setup
+wizard, not in env vars. The optional overrides (and what they do) are
+annotated in
+[`.env.docker.example`](https://github.com/NeoZi12/dispatchseo/blob/main/.env.docker.example).
+
+Useful ones:
+
+```bash
+DISPATCH_PORT=3000   # host port the dashboard is published on
+APP_URL=             # public URL of this instance (see above)
+```
+
+## Upgrading
+
+```bash
+git pull
+docker compose build app
+docker compose up -d
+```
+
+Schema changes apply automatically on boot - the migration file is
+idempotent, so re-running it is always safe. Your data lives in the
+`dispatch-pgdata` volume and survives rebuilds.
+
+Back up before big upgrades:
+
+```bash
+docker compose exec postgres pg_dump -U dispatch dispatchseo > backup.sql
+```
+
+## Uninstall
+
+```bash
+docker compose down        # stop, keep data
+docker compose down -v     # stop and DELETE ALL DATA
+```

@@ -1,0 +1,66 @@
+---
+title: Troubleshooting
+description: Where to look when something breaks, and fixes for the common cases.
+---
+
+## Where failures surface
+
+Every scheduled job logs its runs. Failures show as a red banner on the
+dashboard Home page, and - if you set `RESEND_API_KEY` + `ALERT_EMAIL` -
+you get an email, at most one per job per day. Set those two if you run in
+auto mode: nobody opens the dashboard on a normal day, so the email is what
+actually surfaces a broken job.
+
+A skipped job is not a failed job: capabilities you haven't finished setting
+up (no Search Console yet, no DataForSEO) skip quietly by design, and the
+Home page's setup cards tell you what's missing.
+
+## Docker
+
+**Something won't start.** `docker compose ps` shows the state - everything
+except the one-shot `migrate` container should be `running`, and `app`
+turns `healthy` once it can reach the database. `docker compose logs app`
+(or `logs cron`, `logs postgrest`) has the detail.
+
+**Port 3000 is taken.** Set `DISPATCH_PORT=3100` (any free port) in `.env`
+and `docker compose up -d` again.
+
+**Cron jobs aren't running.** `docker compose logs cron` shows every hit -
+the schedule prints at startup, and each run logs a timestamped line. Cron
+failures also ride the dashboard banner + email rails like any other
+install.
+
+**Start over from scratch.** `docker compose down -v` deletes the database
+volume - **all data** - then `docker compose up -d` boots fresh.
+
+## Cloud (Vercel + Supabase)
+
+**The wizard says migrations are incomplete.** Paste
+[`setup.sql`](https://github.com/NeoZi12/dispatchseo/blob/main/supabase/migrations/setup.sql)
+into the Supabase SQL Editor and run it again - it's one idempotent file,
+re-running is safe. The wizard checks the actual tables, not just
+connectivity.
+
+**Env var changes don't take effect.** Vercel bakes env at build time -
+redeploy after saving variables.
+
+**GitHub Actions jobs never run.** Forks start with Actions disabled -
+enable them on your fork, and check the repository secret `CRON_SECRET`
+and variable `BACKEND_URL` are set.
+
+## Search Console
+
+**"No GSC data" after connecting.** Confirm the service account's email
+was added as a **Full** user on the property, and that `GSC_SITE_URL`
+matches the property type exactly - `sc-domain:example.com` for domain
+properties, `https://example.com/` (trailing slash) for URL-prefix ones.
+First data lands within an hour of a correct setup.
+
+## Still stuck
+
+Open a thread in
+[Discussions](https://github.com/NeoZi12/dispatchseo/discussions) - include
+the failing job's log lines if it's a cron issue. Vulnerabilities go
+through
+[private reporting](https://github.com/NeoZi12/dispatchseo/security/policy)
+instead.

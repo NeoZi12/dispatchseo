@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { getAllPosts } from "@/lib/blog";
+import { getDocSlugs } from "@/lib/docs";
 
 // Only the public surface belongs here - the dashboard is password-gated
 // and should never be crawled.
@@ -11,5 +12,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       url: `${base}/blog/${post.slug}`,
       lastModified: new Date(post.date),
     })),
+    { url: `${base}/docs` },
+    ...getDocSlugs().map((slug) => ({ url: `${base}/docs/${slug}` })),
   ];
 }

@@ -1,0 +1,55 @@
+---
+title: Google Search Console
+description: Connect free rankings and traffic data with a Google service account.
+---
+
+Search Console is DispatchSEO's free data backbone: real impressions,
+clicks, and positions for your site, snapshotted hourly. Connecting it
+takes a service account - a Google robot identity that can read your
+Search Console data without your password.
+
+## Create the service account
+
+1. In [Google Cloud Console](https://console.cloud.google.com), create a
+   project (or reuse any existing one).
+2. Enable the **Search Console API** for it (APIs & Services → Library).
+3. Create a **service account** (IAM & Admin → Service Accounts). No roles
+   needed - it only needs to exist.
+4. On the service account, create a **JSON key** (Keys → Add key → JSON)
+   and download it.
+
+## Grant it access to your site
+
+1. Open [Search Console](https://search.google.com/search-console) →
+   Settings → Users and permissions.
+2. Add the service account's email - it looks like
+   `name@project.iam.gserviceaccount.com` - as a **Full** user.
+
+## Give it to DispatchSEO
+
+Paste the JSON key when the setup wizard or the dashboard's
+**Connect Search Console** card asks for it. Env-var installs set it
+directly instead:
+
+```bash
+GSC_SERVICE_ACCOUNT_JSON=...   # the whole JSON, single line
+GSC_SITE_URL=sc-domain:example.com   # or https://example.com/ for URL-prefix properties
+```
+
+Within an hour the first snapshot lands and the dashboard's Search traffic
+page starts filling in. Historical data backfills from what Google exposes
+(up to ~16 months).
+
+## The data tiers
+
+Search Console is the free floor. The tiers stack - start free, add keys
+when you want more signal:
+
+| Tier | Price | What you get |
+| --- | --- | --- |
+| Search Console only | $0 | Rankings from GSC, keyword ideas from Autocomplete plus your own impression data |
+| + SerpApi free key | $0 | Live SERP checks, real positions weekly (250 free searches/month) |
+| + DataForSEO | pay per call | Search volume, keyword difficulty, domain rating |
+
+Free mode finds keywords you can win. Paid mode also knows which ones are
+worth winning.

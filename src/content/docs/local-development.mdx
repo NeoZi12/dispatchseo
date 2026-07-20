@@ -1,0 +1,50 @@
+---
+title: Local development
+description: Run DispatchSEO from source with pnpm for hacking on the code itself.
+---
+
+For working on DispatchSEO itself. If you just want to *use* it, the
+[Docker Compose](/docs/docker-compose) path is simpler.
+
+## Run from source
+
+```bash
+git clone https://github.com/NeoZi12/dispatchseo
+cd dispatchseo
+pnpm install
+cp .env.local.example .env.local   # fill in Supabase + the three secrets
+pnpm dev                           # dashboard on localhost:3000
+```
+
+You'll need a Supabase project (free tier is fine) with the migrations
+applied - paste `supabase/migrations/setup.sql` into its SQL Editor. The
+annotated env template explains every variable.
+
+## Checks
+
+```bash
+pnpm build
+```
+
+That's the typecheck - run it before opening a PR. There is no separate
+lint or test setup; the build is the gate.
+
+## Where things live
+
+| Path | What |
+| --- | --- |
+| `src/app/api/[transport]/route.ts` | The MCP server - every tool registers here |
+| `src/lib/` | All logic - dashboard actions and MCP tools both call into it |
+| `src/app/(dashboard)/` | The password-gated dashboard pages |
+| `src/app/api/cron/` | The scheduled jobs |
+| `supabase/migrations/` | Numbered, additive, applied manually |
+| `CLAUDE.md` | The conventions - written for agents, useful for people |
+
+One hard rule from the codebase: anything the dashboard can do must also be
+possible over MCP, and vice versa. A feature isn't done until both exist -
+see [CLAUDE.md](https://github.com/NeoZi12/dispatchseo/blob/main/CLAUDE.md)
+for the full conventions.
+
+Contributions: issues before PRs, and you must understand every line you
+submit. Details in
+[CONTRIBUTING.md](https://github.com/NeoZi12/dispatchseo/blob/main/CONTRIBUTING.md).
