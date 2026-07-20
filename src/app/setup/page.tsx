@@ -45,17 +45,17 @@ async function claim(formData: FormData) {
 function Step({ n, children }: { n: number; children: React.ReactNode }) {
   return (
     <li className="flex gap-3">
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-xs font-semibold text-neutral-300">
+      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-sm font-semibold text-neutral-300">
         {n}
       </span>
-      <span className="text-sm leading-relaxed text-neutral-300">{children}</span>
+      <span className="text-[15px] leading-relaxed text-neutral-300">{children}</span>
     </li>
   );
 }
 
 function Code({ children }: { children: React.ReactNode }) {
   return (
-    <code className="rounded bg-neutral-800 px-1.5 py-0.5 font-mono text-[13px] text-neutral-200">
+    <code className="rounded bg-neutral-800 px-1.5 py-0.5 font-mono text-[14px] text-neutral-200">
       {children}
     </code>
   );
@@ -75,7 +75,7 @@ export default async function SetupPage({
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-neutral-950 p-6">
-      <div className="w-full max-w-lg space-y-6">
+      <div className="w-full max-w-xl space-y-6">
         <h1 className="flex items-center gap-2.5 text-xl font-semibold text-white">
           <DispatchMark className="h-7 w-auto" />
           DispatchSEO setup
@@ -84,10 +84,10 @@ export default async function SetupPage({
         {state === "no-db" && (
           <div className="space-y-5 rounded-xl border border-neutral-800 bg-neutral-900/60 p-6">
             <div>
-              <h2 className="font-medium text-white">Step 1 of 3 - connect your database</h2>
-              <p className="mt-1 text-sm text-neutral-400">
-                DispatchSEO keeps everything in a Supabase database. Copy two
-                values from Supabase into Vercel and this step is done.
+              <h2 className="text-lg font-medium text-white">Step 1 of 3 - connect your database</h2>
+              <p className="mt-1 text-[15px] text-neutral-400">
+                DispatchSEO keeps everything in a Supabase database. You'll
+                move two values from Supabase into Vercel, one at a time.
               </p>
             </div>
             <ol className="space-y-3">
@@ -102,29 +102,34 @@ export default async function SetupPage({
                 two.
               </Step>
               <Step n={2}>
-                Copy the <b className="text-neutral-200">Project URL</b>: it's
-                on your project's home page, right under the project name,
-                with a <Code>Copy</Code> button next to it. It looks like{" "}
-                <Code>https://abc123.supabase.co</Code>.
-              </Step>
-              <Step n={3}>
-                Copy the <b className="text-neutral-200">secret key</b>: go to{" "}
-                <a href="https://supabase.com/dashboard/project/_/settings/api-keys" className="text-indigo-400 underline" target="_blank" rel="noreferrer">
-                  API Keys
-                </a>{" "}
-                (<Code>Project Settings</Code> → <Code>API Keys</Code>) and
-                reveal the key starting with <Code>sb_secret_</Code>. On older
-                projects it's called <Code>service_role</Code> - that one works
-                too.
-              </Step>
-              <Step n={4}>
-                Paste both into Vercel: open your project at{" "}
+                In a second tab, open your project at{" "}
                 <a href="https://vercel.com/dashboard" className="text-indigo-400 underline" target="_blank" rel="noreferrer">
                   vercel.com
                 </a>{" "}
-                → <Code>Settings</Code> → <Code>Environment Variables</Code>.
-                Add <Code>SUPABASE_URL</Code> with the Project URL, and{" "}
-                <Code>SUPABASE_SERVICE_ROLE_KEY</Code> with the key.
+                and pick your DispatchSEO project, then{" "}
+                <Code>Settings</Code> → <Code>Environment Variables</Code>.
+                Keep this tab open - the next two steps paste into it.
+              </Step>
+              <Step n={3}>
+                In Supabase, copy the{" "}
+                <b className="text-neutral-200">Project URL</b> - it's on your
+                project's home page, right under the project name, next to a{" "}
+                <Code>Copy</Code> button. In the Vercel tab, add a variable
+                named <Code>SUPABASE_URL</Code>, paste the URL as its value,
+                and save.
+              </Step>
+              <Step n={4}>
+                Back in Supabase, open{" "}
+                <a href="https://supabase.com/dashboard/project/_/settings/api-keys" className="text-indigo-400 underline" target="_blank" rel="noreferrer">
+                  API Keys
+                </a>{" "}
+                (<Code>Project Settings</Code> → <Code>API Keys</Code>; the
+                link asks which project - pick the one from step 1) and
+                copy the key starting with <Code>sb_secret_</Code> (on older
+                projects it's called <Code>service_role</Code> - that one works
+                too). In Vercel, add a second variable named{" "}
+                <Code>SUPABASE_SERVICE_ROLE_KEY</Code>, paste the key, and
+                save.
               </Step>
               <Step n={5}>
                 Restart the app so it sees them: in Vercel,{" "}
@@ -144,8 +149,8 @@ export default async function SetupPage({
         {state === "no-tables" && (
           <div className="space-y-5 rounded-xl border border-neutral-800 bg-neutral-900/60 p-6">
             <div>
-              <h2 className="font-medium text-white">Step 2 of 3 - create the tables</h2>
-              <p className="mt-1 text-sm text-neutral-400">
+              <h2 className="text-lg font-medium text-white">Step 2 of 3 - create the tables</h2>
+              <p className="mt-1 text-[15px] text-neutral-400">
                 Your database is connected. Now it needs its tables - one
                 copy-paste of SQL, and it's safe to run more than once:
               </p>
@@ -174,7 +179,8 @@ export default async function SetupPage({
                 >
                   SQL Editor
                 </a>{" "}
-                in Supabase, paste, and press <Code>Run</Code>. When it says{" "}
+                in Supabase (the link asks which project - pick yours),
+                paste, and press <Code>Run</Code>. When it says{" "}
                 <Code>Success. No rows returned</Code>, you're done.
               </Step>
             </ol>
@@ -195,8 +201,8 @@ export default async function SetupPage({
         {state === "unclaimed" && (
           <div className="space-y-5 rounded-xl border border-neutral-800 bg-neutral-900/60 p-6">
             <div>
-              <h2 className="font-medium text-white">Step 3 of 3 - choose your password</h2>
-              <p className="mt-1 text-sm text-neutral-400">
+              <h2 className="text-lg font-medium text-white">Step 3 of 3 - choose your password</h2>
+              <p className="mt-1 text-[15px] text-neutral-400">
                 Last step. Pick the password you'll use to log in to this
                 dashboard - everything else is generated for you on the next
                 screen.
