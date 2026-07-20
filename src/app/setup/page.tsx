@@ -114,9 +114,10 @@ export default async function SetupPage({
                 In Supabase, copy the{" "}
                 <b className="text-neutral-200">Project URL</b> - it's on your
                 project's home page, right under the project name, next to a{" "}
-                <Code>Copy</Code> button. In the Vercel tab, add a variable
-                named <Code>SUPABASE_URL</Code>, paste the URL as its value,
-                and save.
+                <Code>Copy</Code> button. In the Vercel tab, type{" "}
+                <Code>SUPABASE_URL</Code> in the <Code>Key</Code> box, paste
+                the URL in the <Code>Value</Code> box, and press{" "}
+                <Code>Save</Code>.
               </Step>
               <Step n={4}>
                 Back in Supabase, open{" "}
@@ -127,9 +128,11 @@ export default async function SetupPage({
                 link asks which project - pick the one from step 1) and
                 copy the key starting with <Code>sb_secret_</Code> (on older
                 projects it's called <Code>service_role</Code> - that one works
-                too). In Vercel, add a second variable named{" "}
-                <Code>SUPABASE_SERVICE_ROLE_KEY</Code>, paste the key, and
-                save.
+                too). In the Vercel tab, add a second variable: click{" "}
+                <Code>Add Another</Code> if there's no empty <Code>Key</Code>{" "}
+                box, type <Code>SUPABASE_SERVICE_ROLE_KEY</Code>, paste the
+                key in the <Code>Value</Code> box, and press{" "}
+                <Code>Save</Code> again.
               </Step>
               <Step n={5}>
                 Restart the app so it sees them: in Vercel,{" "}
