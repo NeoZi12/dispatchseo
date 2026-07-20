@@ -59,11 +59,15 @@ export default async function SetupKeysPage() {
             />
           )}
           <Link
-            href="/dashboard"
+            href="/onboarding"
             className="block w-full rounded-lg bg-white px-4 py-3 text-center font-medium text-neutral-950"
           >
-            Open the dashboard
+            Continue - add your site →
           </Link>
+          <p className="text-center text-xs text-neutral-500">
+            The next screens add your site, connect Google, and start your
+            first research run - about 10 minutes, one time.
+          </p>
         </div>
       </div>
     </main>

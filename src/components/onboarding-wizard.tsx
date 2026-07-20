@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useState, useTransition } from "react";
 import { JOURNEY_STAGES, STAGE_META } from "@/lib/journey-meta";
 import { mcpAddCommand, setupCommand } from "@/lib/mcp-connect";
+import { FirstRunStatus } from "@/components/first-run-status";
 import {
   chooseGscOnly,
   connectDataforseo,
@@ -1015,14 +1016,7 @@ export function OnboardingWizard({
               </ul>
             </div>
           </div>
-          <div className="mt-6 flex justify-center">
-            <a
-              href="/dashboard"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-700 px-5 py-2 text-sm font-medium text-neutral-300 transition-colors hover:border-neutral-500 hover:text-neutral-100"
-            >
-              Open dashboard →
-            </a>
-          </div>
+          {created ? <FirstRunStatus slug={created.slug} /> : null}
         </section>
       ) : null}
     </div>
