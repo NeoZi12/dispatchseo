@@ -56,8 +56,10 @@ the later Docker Compose answer is self-hosted Supabase, never a plain-Postgres 
 
 ## Step 2 — Landing page + waitlist (parallel with 1)
 
-- [ ] Public pages on dispatchseo.com coexisting with the gated dashboard:
-      homepage (describes the product — Google checks this), `/cloud`, `/privacy`
+- [x] Public pages on dispatchseo.com coexisting with the gated dashboard (built
+      pre-2026-07-20; verified live: homepage 200, /privacy 200). Waitlist lives on the
+      landing page. NOTE 2026-07-20: `/cloud` itself 307s to /login — either allowlist
+      it as a public page or drop the /cloud references; waitlist-on-homepage is fine
 - [ ] `/cloud`: what cloud adds (bundled DataForSEO, one-click GSC OAuth, managed crons),
       planned $49/$99/$149, FREE email waitlist → Supabase table (+ MCP-parity insert tool)
 - [ ] NO pre-orders / no Polar yet — payment provider (Stripe vs Polar MoR) is a
@@ -68,8 +70,12 @@ the later Docker Compose answer is self-hosted Supabase, never a plain-Postgres 
 - [x] "Connect Google Search Console" OAuth flow (2026-07-17): /google page (button →
       consent → properties list + live 28-day sample), /api/oauth/google/{start,callback},
       gsc-oauth.ts (HMAC-signed state, encrypted refresh token, migration 0023 applied).
-      Needs env: GOOGLE_OAUTH_CLIENT_ID/SECRET — Neo creates the OAuth client in GCP
-      (redirect URI https://dispatchseo.com/api/oauth/google/callback + localhost variant)
+      DONE 2026-07-20: GCP project `dispatchseo` created (dedicated, not My First Project),
+      OAuth client "DispatchSEO Web" (both redirect URIs), app published In production,
+      Search Console API enabled, branding saved (homepage + /privacy + dispatchseo.com
+      domain). GOOGLE_OAUTH_CLIENT_ID/SECRET set in Vercel + redeployed. Flow tested
+      end-to-end on prod: connected, 5 properties listed, live GSC data rendered.
+      NOTE: local `.env.local` still needs the two vars for localhost testing
 - [x] Privacy policy at /privacy (2026-07-17): public via proxy allowlist, includes the
       Google API Services Limited Use disclosure + deletion path. TODO: link it from the
       homepage footer once the landing page lands
@@ -78,7 +84,8 @@ the later Docker Compose answer is self-hosted Supabase, never a plain-Postgres 
 
 ## Step 4 — Submit Google verification
 
-- [ ] GCP: consent screen configured, publishing status "In production", domain verified
+- [x] GCP: consent screen configured, publishing status "In production" (2026-07-20;
+      domain dispatchseo.com is the authorized domain, branding saved)
 - [ ] Submit form: homepage, privacy policy link, scope justification, YouTube link
 - Facts: NO paywall/payment/live-product requirement (verified vs official docs).
   Sensitive scope = free checklist review, ~10 days official / 1–3 weeks real.
