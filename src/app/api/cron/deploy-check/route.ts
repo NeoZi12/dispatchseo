@@ -1,0 +1,130 @@
+import { db } from "@/lib/db";
+import { checkCron } from "@/lib/cron-auth";
+import { reportCronRun } from "@/lib/cron-alerts";
+import { listProjects } from "@/lib/projects";
+
+// Post-deploy smoke test. The deploy-check GitHub Action hits this after
+// every push to main: first polling with ?expect=<sha> until Vercel serves
+// the pushed commit, then letting the check run verify the app's internals
+// (core tables reachable, projects resolvable, GSC creds parse). Results go
+// through reportCronRun, so a broken deploy shows on the dashboard Home
+// banner and emails the owner immediately instead of surfacing as mystery
+// cron failures the next morning. The workflow also probes the outside
+// surface (/login, the MCP gate) and reports what it finds via ?fail=.
+//
+// The route doubles as the generic outcome-report door for GitHub-side
+// automation: the SEO workflows and the secrets canary call it with
+// ?job=<name>&ok=1 / &fail=<message>, which is how their failures reach the
+// dashboard instead of dying quietly in the Actions tab.
+
+export const maxDuration = 60;
+
+// One cheap head-count per table the app can't function without. Catches a
+// deploy pointed at the wrong Supabase, a dropped/renamed table, or a dead
+// service-role key - the failure modes that otherwise wait for the 4am cron.
+const CORE_TABLES = [
+  "projects",
+  "suggestions",
+  "keywords",
+  "pages",
+  "rank_checks",
+  "gsc_stats",
+  "cron_runs",
+] as const;
+
+async function checkTable(name: string): Promise<string | null> {
+  const { error } = await db().from(name).select("*", { count: "exact", head: true });
+  return error ? error.message : null;
+}
+
+export async function GET(req: Request): Promise<Response> {
+  const denied = await checkCron(req);
+  if (denied) return denied;
+
+  const url = new URL(req.url);
+  const liveSha = process.env.VERCEL_GIT_COMMIT_SHA ?? "";
+
+  // Poll mode: no side effects while the pushed commit isn't serving yet.
+  const expected = url.searchParams.get("expect");
+  if (expected && expected !== liveSha) {
+    return Response.json(
+      { waiting: true, live_sha: liveSha || null, expected },
+      { status: 202 },
+    );
+  }
+
+  // Report mode: an external reporter asks us to record an outcome so the
+  // banner + email rails fire. Two callers: the deploy-check workflow when it
+  // sees a failure this process can't see itself (deploy never went live,
+  // /login broken from outside), and the SEO workflows + secrets canary
+  // phoning their run outcomes home under their own job name (?job=seo-daily
+  // with either &fail=<message> or &ok=1; success rows clear the banner).
+  const jobParam = url.searchParams.get("job");
+  if (jobParam && !/^[a-z0-9_-]{1,40}$/.test(jobParam)) {
+    return Response.json({ error: "bad job name" }, { status: 400 });
+  }
+  const job = jobParam ?? "deploy-check";
+  const failMsg = url.searchParams.get("fail");
+  if (failMsg) {
+    const result = { sha: liveSha || null, error: failMsg.slice(0, 300) };
+    await reportCronRun(job, result, true);
+    return Response.json({ recorded: result.error, job });
+  }
+  if (url.searchParams.get("ok")) {
+    await reportCronRun(job, { sha: liveSha || null, reported: "ok" }, false);
+    return Response.json({ recorded: "ok", job });
+  }
+  if (jobParam) {
+    return Response.json({ error: "job param needs ok=1 or fail=<message>" }, { status: 400 });
+  }
+
+  // Check mode: run the internal smoke tests.
+  const checks: Record<string, unknown> = {};
+  let hadError = false;
+
+  const tableResults = await Promise.all(CORE_TABLES.map((t) => checkTable(t)));
+  CORE_TABLES.forEach((table, i) => {
+    const err = tableResults[i];
+    if (err) hadError = true;
+    checks[`table_${table}`] = err ? { error: err } : "ok";
+  });
+
+  try {
+    const projects = await listProjects();
+    if (projects.length === 0) {
+      hadError = true;
+      checks.projects_resolve = { error: "no projects resolvable (env fallback included)" };
+    } else {
+      checks.projects_resolve = `ok (${projects.length})`;
+    }
+  } catch (e) {
+    hadError = true;
+    checks.projects_resolve = { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  // Creds sanity: a service-account JSON that no longer parses (bad paste,
+  // truncated env edit) breaks every GSC feature quietly. Setup-wizard
+  // installs use OAuth instead and legitimately have no env here.
+  const gscRaw = process.env.GSC_SERVICE_ACCOUNT_JSON;
+  if (!gscRaw) {
+    checks.gsc_credentials = "skipped (no service-account env; OAuth installs manage theirs in setup)";
+  } else {
+    try {
+      const parsed = JSON.parse(gscRaw) as Record<string, unknown>;
+      if (typeof parsed.client_email === "string" && typeof parsed.private_key === "string") {
+        checks.gsc_credentials = "ok";
+      } else {
+        hadError = true;
+        checks.gsc_credentials = { error: "service-account JSON missing client_email/private_key" };
+      }
+    } catch {
+      hadError = true;
+      checks.gsc_credentials = { error: "GSC_SERVICE_ACCOUNT_JSON is not valid JSON" };
+    }
+  }
+
+  const result = { sha: liveSha || null, checks };
+  console.log("[deploy-check]", JSON.stringify(result));
+  await reportCronRun("deploy-check", result, hadError);
+  return Response.json(result, { status: hadError ? 500 : 200 });
+}

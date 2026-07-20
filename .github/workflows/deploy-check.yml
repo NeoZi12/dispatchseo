@@ -1,0 +1,78 @@
+name: Post-deploy check
+
+# Smoke-tests the live site after every push to main (Vercel auto-deploys the
+# same push). Polls /api/cron/deploy-check until the new commit is serving,
+# lets the endpoint verify its own internals (core tables, project resolution,
+# GSC creds), then probes the outside surface: the dashboard login page and
+# the MCP auth gate. Every failure is recorded on the backend, so the
+# dashboard Home banner and the owner's failure email fire immediately -
+# a broken deploy announces itself instead of waiting to be found in the
+# morning as mystery cron errors.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-check
+  cancel-in-progress: true # a newer push supersedes this check
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Wait for the deploy, then run backend self-checks
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          URL: ${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}
+          SHA: ${{ github.sha }}
+        run: |
+          # 40 tries x 15s = 10 minutes for Vercel to build + go live.
+          # 404 counts as "not live yet": the currently-serving deploy may
+          # predate the deploy-check route entirely.
+          for i in $(seq 1 40); do
+            code=$(curl -s -o body.json -w "%{http_code}" --max-time 30 \
+              -H "Authorization: Bearer $CRON_SECRET" \
+              "$URL/api/cron/deploy-check?expect=$SHA") || code=000
+            case "$code" in
+              200) echo "Backend self-checks passed:"; cat body.json; exit 0 ;;
+              500) echo "Backend self-checks FAILED (banner + email already fired):"; cat body.json; exit 1 ;;
+              202|404|000) echo "Waiting for $SHA to go live (HTTP $code, try $i/40)"; sleep 15 ;;
+              *) echo "Unexpected HTTP $code:"; cat body.json || true; sleep 15 ;;
+            esac
+          done
+          echo "Deploy for $SHA never went live within 10 minutes - Vercel build likely failed."
+          curl -sG --max-time 30 -H "Authorization: Bearer $CRON_SECRET" \
+            --data-urlencode "fail=deploy for ${SHA:0:7} not live after 10 minutes - check the Vercel build" \
+            "$URL/api/cron/deploy-check"
+          exit 1
+
+      - name: Probe the outside surface (dashboard + MCP gate)
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SEO_MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
+          URL: ${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}
+        run: |
+          # On failure, report back so the dashboard banner + email fire.
+          fail() {
+            echo "$1"
+            curl -sG --max-time 30 -H "Authorization: Bearer $CRON_SECRET" \
+              --data-urlencode "fail=$1" "$URL/api/cron/deploy-check"
+            exit 1
+          }
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$URL/login") || code=000
+          [ "$code" = "200" ] || fail "dashboard /login returned HTTP $code (expected 200)"
+          # Both directions of the token gate. Rejecting invalid callers is
+          # only half the contract - the 2026-07-19 setup-wizard deploy broke
+          # the other half (valid keys got 401), which took out auto-merge and
+          # every agent workflow until the next push. project-mode is the
+          # exact call seo-auto-merge makes, with the exact key it uses.
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
+            -X POST -H "Content-Type: application/json" -d '{}' "$URL/api/mcp") || code=000
+          [ "$code" = "401" ] || fail "MCP gate returned HTTP $code without a token (expected 401)"
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
+            -H "Authorization: Bearer $SEO_MCP_API_KEY" "$URL/api/project-mode") || code=000
+          [ "$code" = "200" ] || fail "project-mode returned HTTP $code with a valid MCP key (expected 200) - token auth is broken, agent workflows will fail"
+          echo "Surface checks passed: /login 200, tokenless MCP 401, valid-key project-mode 200."

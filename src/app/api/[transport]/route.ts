@@ -1176,12 +1176,17 @@ const mcpHandler = createMcpHandler(
       {
         title: "Get cron health",
         description:
-          "The latest run of every backend cron (daily-ranks, hourly-gsc, " +
-          "weekly-opportunities): ok/failed, error strings, and whether the job " +
-          "is stale (hasn't run inside its expected window). This is the " +
-          "dashboard's red 'background jobs need attention' banner as data - " +
-          "check it when rankings or GSC stats look frozen. Empty means no cron " +
-          "has ever logged a run (fresh install).",
+          "The latest run of every background job: the backend crons " +
+          "(daily-ranks, hourly-gsc, weekly-opportunities), deploy-check (the " +
+          "post-deploy smoke test after every push), the SEO GitHub workflows " +
+          "(seo-daily, seo-auto-merge, seo-tools, trend scans, weekly research - " +
+          "they phone their outcomes home), and the secrets canary that " +
+          "validates tokens/keys every 6h. Each entry: ok/failed, error strings, " +
+          "and whether the job is stale (hasn't run inside its expected window). " +
+          "This is the dashboard's red 'background jobs need attention' banner " +
+          "as data - check it when rankings or GSC stats look frozen, when a " +
+          "build seems missing, or to confirm the latest deploy passed its " +
+          "smoke test. Empty means no job has ever logged a run (fresh install).",
         inputSchema: {},
       },
       async () => {

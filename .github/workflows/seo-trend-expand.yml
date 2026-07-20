@@ -91,3 +91,25 @@ jobs:
           DATAFORSEO_LOGIN: ${{ secrets.DATAFORSEO_LOGIN }}
           DATAFORSEO_PASSWORD: ${{ secrets.DATAFORSEO_PASSWORD }}
           MCP_TIMEOUT: "120000"
+
+      # Phone the outcome home: failures land on the DispatchSEO dashboard
+      # banner + alert email (same rails as the crons); successes clear any
+      # earlier red banner row for this job.
+      - name: Report outcome to the dashboard
+        if: success() || failure()
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          URL: ${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          OUTCOME: ${{ job.status }}
+        run: |
+          if [ "$OUTCOME" = "success" ]; then
+            curl -sG --max-time 30 -H "Authorization: Bearer $CRON_SECRET" \
+              --data-urlencode "job=seo-trend-expand" --data-urlencode "ok=1" \
+              "$URL/api/cron/deploy-check" || true
+          else
+            curl -sG --max-time 30 -H "Authorization: Bearer $CRON_SECRET" \
+              --data-urlencode "job=seo-trend-expand" \
+              --data-urlencode "fail=workflow failed - $RUN_URL" \
+              "$URL/api/cron/deploy-check" || true
+          fi

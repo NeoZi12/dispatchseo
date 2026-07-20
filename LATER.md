@@ -19,6 +19,19 @@ Things that were tempting but deliberately not built. Add here instead of buildi
   return HTTP 500 on failure so Vercel's run log shows the failure. Add a webhook ping later
   if silent failures become a problem. (2026-07-13 review promoted this to a Phase 6 build item,
   gap A4 in SPEC.md - crons are now load-bearing, silent failure is a real risk.)
+  **Update 2026-07-20:** largely built - cron failures email via Resend + show on the Home
+  banner (`cron-alerts.ts`), a post-deploy smoke test (`deploy-check.yml` +
+  `/api/cron/deploy-check`) catches broken deploys the moment they go live, the SEO
+  workflows report their run outcomes to the same rails, and `secrets-canary.yml`
+  validates the token/key machinery every 6h. Telegram/webhook specifically remains
+  unbuilt.
+
+- **Propagate outcome reporting + canary to connected project repos.** The report step
+  and secrets canary live only in THIS repo's workflows for now. Connected repos run
+  pipeline-pack copies and authenticate with their project MCP token, not CRON_SECRET -
+  porting this needs the report endpoint to accept project-token auth (scoped to a
+  `job` prefixed per project) plus a pipeline-pack bump. Do it when a second site's
+  workflow failure actually goes unnoticed.
 - **Config table for seed keywords.** Seeds live in the `SEED_KEYWORDS` env var (editing
   needs a redeploy). Move to a DB table only if the edit cadence gets annoying.
 - **Exact cron timing.** Vercel Hobby crons fire approximately (within ~an hour) and cap at

@@ -499,7 +499,7 @@ export default async function Home() {
             </ul>
             <p className="mt-1 text-xs text-red-300/70">
               Full detail in your Vercel function logs (daily-ranks) and GitHub Actions runs
-              (hourly-gsc).
+              (hourly-gsc, deploy-check, the seo-* workflows, and the secrets canary).
             </p>
           </div>
         ) : null}

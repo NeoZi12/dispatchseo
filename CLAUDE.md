@@ -120,7 +120,31 @@ Vercel Hobby caps crons at once/day and 2 jobs total, so schedules are split:
 Every cron loops all projects and **isolates failures** with
 `Promise.allSettled` — one project or one half (SERP vs GSC) failing must not
 kill the rest — then returns **HTTP 500 if anything failed** so the Vercel run
-log surfaces it (there is no failure-notification channel yet; see `LATER.md`).
+log surfaces it. Every route also calls `reportCronRun()` (`cron-alerts.ts`):
+runs log to `cron_runs`, failures show on the dashboard Home banner and the
+`get_cron_health` MCP tool, and email the owner via Resend (debounced per job).
+
+**Post-deploy smoke test:** every push to main triggers
+`.github/workflows/deploy-check.yml`, which polls
+`/api/cron/deploy-check?expect=<sha>` until Vercel serves the pushed commit,
+lets the endpoint self-check its internals (core tables, project resolution,
+GSC creds), then probes `/login`, the MCP gate (tokenless → 401 AND valid key
+→ 200) from outside. Failures ride the same `cron_runs` → banner → email
+rails, so a broken deploy announces itself instead of surfacing as morning
+cron errors.
+
+**Workflow outcome reporting + secrets canary:** the SEO workflows
+(seo-daily, seo-auto-merge, seo-tools, seo-trend-scan, seo-trend-expand,
+seo-weekly-research) end with a "Report outcome to the dashboard" step that
+calls `/api/cron/deploy-check?job=<name>&ok=1|&fail=<msg>` — workflow
+failures hit the banner + email instead of dying quietly in the Actions tab
+(seo-tool-validate is deliberately excluded: its validate job runs
+LLM-authored PR code and must hold no secrets). `secrets-canary.yml` runs
+every 6h validating CRON_SECRET, the Claude token's shape (the line-wrapped
+paste gotcha), and that the backend accepts SEO_MCP_API_KEY — so a rotted
+secret is flagged hours before the overnight builders die on it. Any new
+scheduled workflow should add the same report step and, if relevant, a
+`STALE_HOURS` entry in `cron-alerts.ts`.
 
 ### DataForSEO (`dataforseo.ts`) & GSC (`gsc.ts`)
 
