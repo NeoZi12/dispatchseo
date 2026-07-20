@@ -201,7 +201,17 @@ does it from the CLI; fall back to telling the owner where to click).
    flips the owner's dashboard install card to its green done state;
    skipping it leaves the owner staring at an un-done card after you
    finished. Only call it now, at the end, with the PR open and setup run.
-4. **Kick off the first runs - a fresh install must never wait for the
+4. **Prove the PR machinery with the canary - before anything else runs.**
+   Once the install PR is merged, dispatch
+   \`gh workflow run seo-canary.yml --repo {{REPO}}\` and wait for its
+   conclusion (poll \`gh run list --workflow seo-canary.yml\`). It opens a
+   throwaway PR from inside a workflow - the exact thing GitHub's default
+   settings block - then closes it, merging nothing. If it FAILS, stop and
+   fix before continuing: the usual cause is "Allow GitHub Actions to
+   create and approve pull requests" being off (Part 3 set it; re-check).
+   A failed canary means every future builder run would write content it
+   cannot publish - never leave an install in that state.
+5. **Kick off the first runs - a fresh install must never wait for the
    calendar.** Every scheduled workflow anchors to a cron day (research on
    Mondays, builds daily), so a site installed on a Tuesday would sit idle
    for almost a week with an empty queue. Once the install PR is merged
@@ -235,9 +245,9 @@ does it from the CLI; fall back to telling the owner where to click).
    nothing runs until it merges, and give them the two dispatch commands
    above to fire right after they do (running \`/seo-research\` locally
    works as well).
-5. Report: the PR URL, every adaptation made, which secrets were set (names
-   only), whether the first research run was kicked off, and the
-   instructions version.
+6. Report: the PR URL, every adaptation made, which secrets were set (names
+   only), the canary verdict, whether the first research run was kicked
+   off, and the instructions version.
 
 If get_pipeline_pack or get_instructions is unavailable, fail loudly and
 change nothing.`;

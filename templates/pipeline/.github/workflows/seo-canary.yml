@@ -1,0 +1,66 @@
+name: SEO install canary
+
+# Install-time proof that the whole PR machinery works. setup.sh dispatches
+# this once at the end of an install: it creates a throwaway branch, opens a
+# real PR from inside a workflow (the exact thing GitHub's default settings
+# block on new repos), then closes it and deletes the branch - nothing is
+# ever merged, no deploy is triggered. If any switch is wrong, the install
+# fails HERE, in front of the owner, instead of on day 3 at 05:00.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Open and close a throwaway PR from a workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          branch="dispatchseo-canary-${GITHUB_RUN_ID}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          mkdir -p .dispatchseo
+          echo "run ${GITHUB_RUN_ID}" > .dispatchseo/canary
+          git add .dispatchseo/canary
+          git commit -m "chore: DispatchSEO install canary (auto-closed, never merged)"
+          git push origin "$branch"
+          pr=$(gh pr create --title "DispatchSEO install canary (auto-closes)" \
+            --body "Throwaway PR proving GitHub Actions may open pull requests on this repo. Closed automatically by the same run - never merge this." \
+            --base "${GITHUB_REF_NAME}" --head "$branch")
+          echo "Canary PR created: $pr"
+          gh pr close "$pr" --delete-branch
+          echo "Canary PR closed and branch deleted - PR machinery verified."
+
+      - name: Clean up the canary branch if the run failed
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git push origin --delete "dispatchseo-canary-${GITHUB_RUN_ID}" 2>/dev/null || true
+
+      - name: Report result to the dashboard
+        if: always()
+        env:
+          SEO_MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
+          OUTCOME: ${{ job.status }}
+        run: |
+          if [ "$OUTCOME" = "success" ]; then
+            curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
+              --data-urlencode "job=seo-canary" --data-urlencode "ok=1" \
+              "{{BACKEND_URL}}/api/cron/deploy-check" || true
+          else
+            curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
+              --data-urlencode "job=seo-canary" \
+              --data-urlencode "fail=install canary could not open a PR - enable 'Allow GitHub Actions to create and approve pull requests' (repo Settings -> Actions -> General) and re-run setup" \
+              "{{BACKEND_URL}}/api/cron/deploy-check" || true
+          fi

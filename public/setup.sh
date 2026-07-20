@@ -81,23 +81,6 @@ printf '%s' "$TOKEN" | gh secret set SEO_MCP_API_KEY --repo "$REPO" || \
   die "Could not save a secret to $REPO - does your GitHub login have admin access to it?"
 say "  Project key saved."
 
-# New repos block workflows from opening PRs ("Allow GitHub Actions to create
-# and approve pull requests" is off by default). Without it the daily builder
-# writes the whole guide, then gh pr create is refused and the branch strands
-# (2026-07-20 dogfood bug). The owner running this script has admin, so flip
-# it here once. Non-fatal: if the API call fails (org policy), tell them the
-# exact toggle instead of dying mid-setup.
-if gh api -X PUT "repos/$REPO/actions/permissions/workflow" \
-    -f default_workflow_permissions=read \
-    -F can_approve_pull_request_reviews=true >/dev/null 2>&1; then
-  say "  GitHub Actions may now open PRs on $REPO (required by the builders)."
-else
-  say "  WARNING: could not enable 'Allow GitHub Actions to create and approve"
-  say "  pull requests' (an org policy may control it). Turn it on by hand:"
-  say "  repo Settings -> Actions -> General -> check that box -> Save."
-  say "  Until then, builder runs can write content but not open the PR."
-fi
-
 # Claude Code token - minted fresh, verified with NO login fallback (a fake
 # HOME), because a keychain login otherwise masks a bad token.
 CLIP="pbpaste"
@@ -175,7 +158,10 @@ else
   say "  Skipping DataForSEO - the workflows handle its absence cleanly."
 fi
 
-# Allow Actions to open PRs (the builders publish via PRs).
+# Allow Actions to open PRs (the builders publish via PRs). The 2026-07-20
+# dogfood repo skipped setup.sh, missed this toggle, and its builder wrote a
+# whole guide it then couldn't open a PR for - hence the canary below, which
+# PROVES the toggle works instead of trusting this call succeeded.
 if gh api -X PUT "repos/$REPO/actions/permissions/workflow" \
      -f default_workflow_permissions=write \
      -F can_approve_pull_request_reviews=true >/dev/null 2>&1; then
@@ -184,6 +170,32 @@ else
   say "  ! Couldn't change Actions permissions automatically. In the repo's"
   say "    Settings > Actions > General, enable 'Allow GitHub Actions to"
   say "    create and approve pull requests'."
+fi
+
+# Prove the PR machinery end-to-end with a throwaway canary PR (opened from
+# inside a workflow, closed by the same run, never merged). Fresh installs
+# don't have the workflows yet - the agent's install playbook runs the canary
+# after its pipeline PR merges; this path covers re-runs and updates.
+if gh workflow run seo-canary.yml --repo "$REPO" >/dev/null 2>&1; then
+  say "  Proving workflows can open PRs (canary run, ~30s)..."
+  verdict=""
+  i=0
+  while [ $i -lt 24 ]; do
+    sleep 5; i=$((i+1))
+    verdict=$(gh run list --repo "$REPO" --workflow seo-canary.yml --limit 1 \
+      --json status,conclusion --jq '.[0] | select(.status=="completed") | .conclusion' 2>/dev/null)
+    [ -n "$verdict" ] && break
+  done
+  case "$verdict" in
+    success) say "  Canary passed - workflows can build and publish PRs on $REPO." ;;
+    "")      say "  ! Canary still running - check its result: gh run list --workflow seo-canary.yml" ;;
+    *)       say "  ! CANARY FAILED ($verdict) - workflows cannot open PRs yet. Enable"
+             say "    'Allow GitHub Actions to create and approve pull requests' in"
+             say "    Settings > Actions > General, then: gh workflow run seo-canary.yml" ;;
+  esac
+else
+  say "  (Canary workflow not in this repo yet - your agent runs it after the"
+  say "   pipeline install PR merges.)"
 fi
 
 # ---- 5. Hand off to the agent ----------------------------------------------

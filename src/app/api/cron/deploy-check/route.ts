@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { checkCron } from "@/lib/cron-auth";
 import { reportCronRun } from "@/lib/cron-alerts";
-import { listProjects } from "@/lib/projects";
+import { getProjectByToken, listProjects } from "@/lib/projects";
 
 // Post-deploy smoke test. The deploy-check GitHub Action hits this after
 // every push to main: first polling with ?expect=<sha> until Vercel serves
@@ -38,8 +38,20 @@ async function checkTable(name: string): Promise<string | null> {
 }
 
 export async function GET(req: Request): Promise<Response> {
+  // Two accepted callers. CRON_SECRET is the instance owner (full access,
+  // unscoped job names, all modes). A per-project MCP token is a connected
+  // repo's CI phoning an outcome home (report mode ONLY - no smoke tests, no
+  // poll mode); its job name gets suffixed with the project slug so two
+  // projects reporting "seo-daily" never overwrite each other's state.
+  let projectSuffix = "";
   const denied = await checkCron(req);
-  if (denied) return denied;
+  if (denied) {
+    const auth = req.headers.get("authorization") ?? "";
+    const token = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length).trim() : "";
+    const project = token ? await getProjectByToken(token) : null;
+    if (!project) return denied;
+    projectSuffix = `--${project.slug}`;
+  }
 
   const url = new URL(req.url);
   const liveSha = process.env.VERCEL_GIT_COMMIT_SHA ?? "";
@@ -63,7 +75,13 @@ export async function GET(req: Request): Promise<Response> {
   if (jobParam && !/^[a-z0-9_-]{1,40}$/.test(jobParam)) {
     return Response.json({ error: "bad job name" }, { status: 400 });
   }
-  const job = jobParam ?? "deploy-check";
+  if (projectSuffix && !jobParam) {
+    return Response.json(
+      { error: "project tokens may only report (job=<name> with ok=1 or fail=<message>)" },
+      { status: 403 },
+    );
+  }
+  const job = (jobParam ?? "deploy-check") + projectSuffix;
   const failMsg = url.searchParams.get("fail");
   if (failMsg) {
     const result = { sha: liveSha || null, error: failMsg.slice(0, 300) };

@@ -1,4 +1,5 @@
 import { effectiveAutomations, getProjectByToken } from "@/lib/projects";
+import pack from "@/lib/pipeline-pack.json";
 
 // Tiny read endpoint for the project repos' CI. Before acting, workflows ask
 // which automations this project has enabled: auto-merge checks
@@ -18,5 +19,9 @@ export async function GET(req: Request) {
     slug: project.slug,
     mode: project.mode,
     automations: effectiveAutomations(project),
+    // Current pipeline-pack version (content hash). Connected repos compare
+    // it against their installed .dispatchseo/pipeline-version stamp in the
+    // daily seo-token-check workflow and report when an update is available.
+    pipeline_version: (pack as { version?: string }).version ?? null,
   });
 }

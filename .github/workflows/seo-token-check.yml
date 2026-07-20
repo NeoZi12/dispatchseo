@@ -1,0 +1,91 @@
+name: SEO health check
+
+# Daily pre-flight, 30 minutes before the 05:00 builder: proves the Claude
+# token still works with one minimal model call, and checks whether the
+# installed pipeline is stale. Both outcomes phone home to the DispatchSEO
+# dashboard (banner + email on failure), so a dead token is a red alert at
+# 04:30 - not a mystery failed build at 05:00. Cost: one tiny Claude call per
+# day on the owner's own subscription.
+
+on:
+  schedule:
+    - cron: "30 4 * * *" # 04:30 UTC daily, before the 05:00 builder
+  workflow_dispatch:
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      # One minimal model call. If the token is dead/revoked/limited, this
+      # step fails and the failure handler below reports the real reason.
+      - name: Claude token liveness
+        id: liveness
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: "Reply with exactly: ok"
+          claude_args: |
+            --max-turns 1
+
+      - name: Report token OK
+        if: success()
+        env:
+          SEO_MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
+        run: |
+          curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
+            --data-urlencode "job=seo-token-check" --data-urlencode "ok=1" \
+            "${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}/api/cron/deploy-check" || true
+
+      # Surface the real API error (revoked? usage limit?) and phone it home.
+      # Full transcripts stay hidden - only the final result line is read.
+      - name: Report token failure with the reason
+        if: failure()
+        env:
+          SEO_MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
+        run: |
+          f="$RUNNER_TEMP/claude-execution-output.json"
+          reason="token check failed (no error detail captured)"
+          if [ -f "$f" ]; then
+            msg=$(jq -r 'if type=="array" then .[] else . end
+                         | select(.type? == "result")
+                         | (.result // .error // empty)' "$f" 2>/dev/null | tail -1)
+            [ -n "$msg" ] && reason="Claude token check failed: $msg"
+          fi
+          echo "::error::$reason - mint a fresh token (claude setup-token) and re-run the setup command from your DispatchSEO dashboard."
+          curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
+            --data-urlencode "job=seo-token-check" \
+            --data-urlencode "fail=$reason - re-run the setup command to mint a fresh token" \
+            "${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}/api/cron/deploy-check" || true
+
+      # Pipeline staleness: compare this repo's installed pack version stamp
+      # against the backend's current one. Stale is not broken - the report
+      # tells the owner an update is waiting; re-running the setup command
+      # applies it. Repos installed before version stamps skip silently.
+      - name: Pipeline update check
+        if: always()
+        env:
+          SEO_MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
+        run: |
+          [ -f .dispatchseo/pipeline-version ] || { echo "No version stamp (pre-stamp install) - skipping."; exit 0; }
+          installed=$(tr -d '[:space:]' < .dispatchseo/pipeline-version)
+          current=$(curl -s --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
+            "${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}/api/project-mode" | jq -r '.pipeline_version // empty')
+          if [ -z "$current" ]; then echo "Backend has no pipeline_version yet - skipping."; exit 0; fi
+          if [ "$installed" = "$current" ]; then
+            echo "Pipeline up to date ($installed)."
+            curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
+              --data-urlencode "job=seo-pipeline-version" --data-urlencode "ok=1" \
+              "${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}/api/cron/deploy-check" || true
+          else
+            echo "::warning::Pipeline update available (installed $installed, current $current). Re-run the setup command from your DispatchSEO dashboard to apply it."
+            curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
+              --data-urlencode "job=seo-pipeline-version" \
+              --data-urlencode "fail=pipeline update available (installed $installed, current $current) - re-run the setup command to apply" \
+              "${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}/api/cron/deploy-check" || true
+          fi
