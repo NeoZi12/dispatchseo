@@ -84,36 +84,35 @@ export default async function SetupPage({
         {state === "no-db" && (
           <div className="space-y-5 rounded-xl border border-neutral-800 bg-neutral-900/60 p-6">
             <div>
-              <h2 className="font-medium text-white">Step 1 of 3 - connect a database</h2>
+              <h2 className="font-medium text-white">Step 1 of 3 - connect your database</h2>
               <p className="mt-1 text-sm text-neutral-400">
-                Your deployment is live but has no database yet. It takes two
-                copy-pastes:
+                Your deployment is live. Point it at your Supabase project -
+                it takes two copy-pastes:
               </p>
             </div>
             <ol className="space-y-3">
               <Step n={1}>
-                Open the Supabase project you want to use - any existing one
-                works, or create a free project at{" "}
-                <a href="https://supabase.com" className="text-indigo-400 underline" target="_blank" rel="noreferrer">
-                  supabase.com
-                </a>{" "}
-                (any name, any region).
-              </Step>
-              <Step n={2}>
-                In that project: <Code>Project Settings</Code> → <Code>API</Code>. Copy the{" "}
+                In your Supabase project: <Code>Project Settings</Code> → <Code>API</Code>. Copy the{" "}
                 <b className="text-neutral-200">Project URL</b> and the{" "}
                 <b className="text-neutral-200">service_role key</b>.
               </Step>
-              <Step n={3}>
+              <Step n={2}>
                 In Vercel: your project → <Code>Settings</Code> →{" "}
                 <Code>Environment Variables</Code>. Add them as{" "}
                 <Code>SUPABASE_URL</Code> and <Code>SUPABASE_SERVICE_ROLE_KEY</Code>.
               </Step>
-              <Step n={4}>
+              <Step n={3}>
                 Redeploy so the new variables load: <Code>Deployments</Code> → latest →{" "}
                 <Code>Redeploy</Code>. Then come back here.
               </Step>
             </ol>
+            <p className="text-xs text-neutral-500">
+              No Supabase project yet? Create a free one at{" "}
+              <a href="https://supabase.com" className="text-neutral-400 underline" target="_blank" rel="noreferrer">
+                supabase.com
+              </a>{" "}
+              (any name, any region), then follow the steps above.
+            </p>
             <form action={recheck}>
               <button className="w-full rounded-lg bg-white px-4 py-3 font-medium text-neutral-950">
                 I did this - check again
