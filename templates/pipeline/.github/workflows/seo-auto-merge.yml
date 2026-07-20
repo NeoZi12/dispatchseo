@@ -4,8 +4,9 @@ name: SEO auto-merge
 # an hourly backstop) and merges an open PR labeled `seo` ONLY when both are
 # true:
 #   1. It is auto-mergeable content:
-#      - GUIDE PR: every changed file lives under src/content/blog/ or
-#        src/components/blog/ (guides ship bespoke visual components).
+#      - GUIDE PR: every changed file lives under src/content/blog/,
+#        src/components/blog/ (guides ship bespoke visual components), or
+#        public/blog/covers/ (the playbook's mandatory cover image).
 #      - TOOL PR (label `seo-tool`): carries the `tool-validated` label,
 #        meaning seo-tool-validate built the PR, exercised the LIVE page in a
 #        real browser, and proved the widget works.
@@ -106,7 +107,7 @@ jobs:
               echo "PR #$n is a validated tool PR - checking the status rollup."
             else
               outside=$(gh pr view "$n" --repo "$REPO" --json files \
-                --jq '[.files[].path | select((startswith("src/content/blog/") or startswith("src/components/blog/")) | not)] | length')
+                --jq '[.files[].path | select((startswith("src/content/blog/") or startswith("src/components/blog/") or startswith("public/blog/covers/")) | not)] | length')
               if [ "$outside" != "0" ]; then
                 echo "PR #$n touches $outside file(s) outside the blog dirs (structural change) - leaving for manual review."
                 echo "::endgroup::"
