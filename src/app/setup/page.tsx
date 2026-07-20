@@ -11,11 +11,6 @@ import { DispatchMark } from "@/components/logo";
 // to /login and never shows again.
 export const dynamic = "force-dynamic";
 
-async function recheck() {
-  "use server";
-  redirect("/setup");
-}
-
 async function claim(formData: FormData) {
   "use server";
   const password = String(formData.get("password") ?? "");
@@ -141,11 +136,11 @@ export default async function SetupPage({
                 then come back here.
               </Step>
             </ol>
-            <form action={recheck}>
-              <button className="w-full rounded-lg bg-white px-4 py-3 font-medium text-neutral-950">
-                I did this - check again
-              </button>
-            </form>
+            {/* Plain link, not a server action: the flow guarantees a redeploy
+                between page load and click, which kills any action reference. */}
+            <a href="/setup" className="block w-full rounded-lg bg-white px-4 py-3 text-center font-medium text-neutral-950">
+              I did this - check again
+            </a>
           </div>
         )}
 
@@ -193,11 +188,9 @@ export default async function SetupPage({
                 exactly these and skips anything you already have.
               </p>
             )}
-            <form action={recheck}>
-              <button className="w-full rounded-lg bg-white px-4 py-3 font-medium text-neutral-950">
-                Migrations ran - check again
-              </button>
-            </form>
+            <a href="/setup" className="block w-full rounded-lg bg-white px-4 py-3 text-center font-medium text-neutral-950">
+              Tables created - check again
+            </a>
           </div>
         )}
 
