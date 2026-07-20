@@ -283,6 +283,14 @@ the build-tool workflow and must never be picked up here.
    \`seo\` label if missing). Body includes: target keyword, volume/KD, the
    suggestion rationale, gate verdict (what page 1 lacks that this draft
    has), and a note that the deploy preview link is the review surface.
+   **If \`gh pr create\` fails, that is a FAILED run - never exit green.**
+   The usual cause is the repo setting "Allow GitHub Actions to create and
+   approve pull requests" being off (the default on new repos). Revert the
+   suggestion with \`update_suggestion(id, status="approved")\` so the next
+   run retries it, print the exact error plus that setting name in the run
+   report, and exit non-zero (e.g. \`exit 1\` from bash) so the workflow
+   goes red and the owner gets GitHub's failure email. A pushed branch
+   with no PR and a green run is the worst outcome - it strands silently.
 11. \`update_suggestion(id, status="done", result_pr_url=<pr url>)\` and
     \`log_page(url="https://{{DOMAIN}}/<path>", ...)\`.
 12. Report: what was built, the PR link, the gate verdict, the archetype and

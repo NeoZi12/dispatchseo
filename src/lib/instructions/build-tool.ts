@@ -165,6 +165,14 @@ swapping words and buttons is a build failure, not a shortcut.
     conversion rationale, gate verdict, the execution plan (search intent,
     core transformation, domain logic inventory, win statement), and what a
     validator should exercise (the widget's primary flow).
+    **If \`gh pr create\` fails, that is a FAILED run - never exit green.**
+    The usual cause is the repo setting "Allow GitHub Actions to create and
+    approve pull requests" being off (the default on new repos). Revert the
+    suggestion with \`update_suggestion(id, status="approved")\` so the next
+    run retries it, print the exact error plus that setting name in the run
+    report, and exit non-zero so the workflow goes red and the owner gets
+    GitHub's failure email. A pushed branch with no PR and a green run is
+    the worst outcome - it strands silently.
 11. \`update_suggestion(id, status="done", result_pr_url=<pr url>)\` and
     \`log_page(url="https://{{DOMAIN}}/<path>", ...)\`.
 12. Report: what was built, the PR link, the gate verdict, the one-line core

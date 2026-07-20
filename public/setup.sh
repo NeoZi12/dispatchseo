@@ -81,6 +81,23 @@ printf '%s' "$TOKEN" | gh secret set SEO_MCP_API_KEY --repo "$REPO" || \
   die "Could not save a secret to $REPO - does your GitHub login have admin access to it?"
 say "  Project key saved."
 
+# New repos block workflows from opening PRs ("Allow GitHub Actions to create
+# and approve pull requests" is off by default). Without it the daily builder
+# writes the whole guide, then gh pr create is refused and the branch strands
+# (2026-07-20 dogfood bug). The owner running this script has admin, so flip
+# it here once. Non-fatal: if the API call fails (org policy), tell them the
+# exact toggle instead of dying mid-setup.
+if gh api -X PUT "repos/$REPO/actions/permissions/workflow" \
+    -f default_workflow_permissions=read \
+    -F can_approve_pull_request_reviews=true >/dev/null 2>&1; then
+  say "  GitHub Actions may now open PRs on $REPO (required by the builders)."
+else
+  say "  WARNING: could not enable 'Allow GitHub Actions to create and approve"
+  say "  pull requests' (an org policy may control it). Turn it on by hand:"
+  say "  repo Settings -> Actions -> General -> check that box -> Save."
+  say "  Until then, builder runs can write content but not open the PR."
+fi
+
 # Claude Code token - minted fresh, verified with NO login fallback (a fake
 # HOME), because a keychain login otherwise masks a bad token.
 CLIP="pbpaste"
