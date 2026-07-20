@@ -1,0 +1,13 @@
+node_modules
+.next
+.git
+.env*
+!.env.docker.example
+.vercel
+.vscode
+.claude
+docs
+LATER.md
+*.md
+!README.md
+scripts/*.local.*

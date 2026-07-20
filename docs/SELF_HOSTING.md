@@ -1,10 +1,70 @@
 # Self-hosting DispatchSEO
 
-The whole product runs on free tiers: Vercel (Hobby) + Supabase (free) +
-GitHub Actions. You bring your own accounts, so hosting costs $0. Paid SERP
-data (DataForSEO) is optional - see [Data tiers](#data-tiers).
+Two ways to run it, both $0 hosting:
 
-## What you need
+- **[Docker](#option-a-docker-one-command)** - one command on your own
+  machine or any $5 VPS. No cloud accounts. The fastest way to try it.
+- **[Free cloud tiers](#option-b-free-cloud-deploy-vercel--supabase)** -
+  Vercel (Hobby) + Supabase (free) + GitHub Actions. No server to run;
+  you bring your own free accounts.
+
+Paid SERP data (DataForSEO) is optional either way - see
+[Data tiers](#data-tiers).
+
+## Option A: Docker (one command)
+
+Runs the whole backend - dashboard, MCP server, database, crons - as 4 small
+containers in ~1 GB RAM (any $5/month VPS, a Raspberry Pi, or your laptop).
+
+Prerequisite: [Docker](https://docs.docker.com/get-docker/) (Docker Desktop
+on Mac/Windows, `docker` + compose plugin on Linux).
+
+```bash
+git clone https://github.com/NeoZi12/dispatchseo
+cd dispatchseo
+cp .env.docker.example .env
+# edit .env: set CRON_SECRET (openssl rand -hex 24) and POSTGRES_PASSWORD
+docker compose up -d
+```
+
+First boot builds the app image (a few minutes) and applies the database
+schema automatically. Then open **http://localhost:3000** - the setup wizard
+takes it from there (dashboard password, connecting your repo, GSC).
+
+What's running:
+
+| Container | Job |
+|---|---|
+| `app` | Dashboard, MCP server (`/api/mcp`), cron endpoints |
+| `postgres` | Your data (persists in the `dispatch-pgdata` volume) |
+| `postgrest` | REST layer between app and database (internal network only) |
+| `migrate` | One-shot schema apply on each boot (idempotent) |
+| `cron` | Rank tracking / GSC snapshots / weekly research on schedule |
+
+Things to know:
+
+- **The content pipeline needs a reachable URL.** DispatchSEO ships content
+  by opening PRs via GitHub Actions in *your site's* repo, and those
+  workflows call back to this backend. `localhost` is fine for exploring the
+  dashboard and MCP locally, but before connecting a repo, put the instance
+  on a public URL (reverse proxy with HTTPS, or a tunnel like Cloudflare
+  Tunnel) and set `APP_URL` in `.env` to match.
+- **Upgrading:** `git pull && docker compose build app && docker compose up -d`.
+  Schema changes apply automatically (`setup.sql` is idempotent). Back up
+  with `docker compose exec postgres pg_dump -U dispatch dispatchseo > backup.sql`.
+- **Troubleshooting:** `docker compose ps` (everything except the one-shot
+  `migrate` should be running; `app` turns `healthy` once it reaches the
+  database), `docker compose logs app` / `logs cron`. Port taken? Set
+  `DISPATCH_PORT` in `.env`. Fresh start: `docker compose down -v` deletes
+  **all data**.
+
+Skip to [Connect your site](#5-connect-your-site) - the wizard covers
+everything in between. Google Search Console setup is the same as
+[step 3](#3-google-search-console-free-rankings--traffic-data) below.
+
+## Option B: free cloud deploy (Vercel + Supabase)
+
+### What you need
 
 - Your website's source in a **GitHub repo** (git-based sites only - the
   pipeline ships content as pull requests, so WordPress and other
@@ -16,7 +76,7 @@ data (DataForSEO) is optional - see [Data tiers](#data-tiers).
 - **Google Search Console** access to your site, plus a free Google Cloud
   service account (steps below).
 
-## 1. Deploy the backend
+### 1. Deploy the backend
 
 Click a deploy button in the README - neither asks you for anything:
 
@@ -52,7 +112,7 @@ whatever is left, in order:
    deploy's own URL so connected pipelines phone home to the right backend
    (no `APP_URL` env var needed in the normal path), and shows you both keys.
 
-## 2. Environment variables
+### 2. Environment variables
 
 The wizard handles the required ones. The rest go in Vercel (Project →
 Settings → Environment Variables); the full annotated list lives in
@@ -69,7 +129,7 @@ Settings → Environment Variables); the full annotated list lives in
 
 Redeploy after saving so the functions pick them up.
 
-## 3. Google Search Console (free rankings + traffic data)
+### 3. Google Search Console (free rankings + traffic data)
 
 1. In [Google Cloud Console](https://console.cloud.google.com), create a
    project (or reuse one), enable the **Search Console API**, and create a
@@ -79,7 +139,7 @@ Redeploy after saving so the functions pick them up.
    `name@project.iam.gserviceaccount.com`) as a **Full** user.
 3. Paste the JSON key (single line) into `GSC_SERVICE_ACCOUNT_JSON`.
 
-## 4. Schedules
+### 4. Schedules
 
 Two schedulers, split because Vercel Hobby caps crons at once daily:
 
@@ -99,7 +159,7 @@ Two schedulers, split because Vercel Hobby caps crons at once daily:
   your site gets its own copies during setup (next step), so leave the ones
   here disabled or delete them from your fork.
 
-## 5. Connect your site
+### 5. Connect your site
 
 Open your deployment, log in with your dashboard password, and add your site
 as a project. The dashboard gives you one command to paste into Claude Code

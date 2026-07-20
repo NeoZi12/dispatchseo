@@ -1,0 +1,123 @@
+# DispatchSEO self-hosted stack: one command, four small containers, ~1GB RAM.
+#
+#   cp .env.docker.example .env   # then fill in the two required values
+#   docker compose up -d
+#   open http://localhost:3000    # the setup wizard takes it from there
+#
+# Full guide: docs/SELF_HOSTING.md
+#
+# Services:
+#   postgres  - the database (data persists in the dispatch-pgdata volume)
+#   migrate   - one-shot: applies supabase/migrations/setup.sql (idempotent,
+#               safe on every boot - it's how upgrades pick up new tables)
+#   postgrest - REST layer the app talks to (internal network only, no auth
+#               needed because it is never exposed to the host)
+#   app       - the Next.js dashboard + MCP server + cron endpoints
+#   cron      - BusyBox crond that curls the app's cron endpoints on the same
+#               schedules Vercel/GitHub Actions use for the cloud deployment
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: dispatch
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dispatch-local-only}
+      POSTGRES_DB: dispatchseo
+    volumes:
+      - dispatch-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dispatch -d dispatchseo"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [dispatch]
+
+  migrate:
+    image: postgres:17-alpine
+    restart: "no"
+    environment:
+      PGHOST: postgres
+      PGUSER: dispatch
+      PGPASSWORD: ${POSTGRES_PASSWORD:-dispatch-local-only}
+      PGDATABASE: dispatchseo
+    volumes:
+      - ./supabase/migrations/setup.sql:/setup.sql:ro
+    # After applying the schema, tell a running PostgREST to reload its schema
+    # cache (it listens on the "pgrst" channel by default) - otherwise columns
+    # added by an upgrade are invisible until that container restarts. On
+    # first boot nobody is listening yet, which is harmless.
+    command:
+      - sh
+      - -c
+      - psql -v ON_ERROR_STOP=1 -f /setup.sql && psql -c "NOTIFY pgrst, 'reload schema'"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [dispatch]
+
+  postgrest:
+    image: postgrest/postgrest:v12.2.12
+    restart: always
+    environment:
+      PGRST_DB_URI: postgres://dispatch:${POSTGRES_PASSWORD:-dispatch-local-only}@postgres:5432/dispatchseo
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: dispatch
+      PGRST_DB_POOL: "10"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks: [dispatch]
+
+  app:
+    build: .
+    restart: always
+    environment:
+      POSTGREST_URL: http://postgrest:3000
+      CRON_SECRET: "${CRON_SECRET:?set CRON_SECRET in .env (generate one with openssl rand -hex 24)}"
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      # Optional overrides - the setup wizard handles all of these in the
+      # dashboard; env vars only force a value (see .env.docker.example).
+      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-}
+      MCP_API_KEY: ${MCP_API_KEY:-}
+      GSC_SERVICE_ACCOUNT_JSON: ${GSC_SERVICE_ACCOUNT_JSON:-}
+      GSC_SITE_URL: ${GSC_SITE_URL:-}
+      DATAFORSEO_LOGIN: ${DATAFORSEO_LOGIN:-}
+      DATAFORSEO_PASSWORD: ${DATAFORSEO_PASSWORD:-}
+      GH_MERGE_TOKEN: ${GH_MERGE_TOKEN:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      ALERT_EMAIL: ${ALERT_EMAIL:-}
+      ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:-}
+      SEED_KEYWORDS: ${SEED_KEYWORDS:-}
+    ports:
+      - "${DISPATCH_PORT:-3000}:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgrest:
+        condition: service_started
+    networks: [dispatch]
+
+  cron:
+    image: alpine:3.21
+    restart: always
+    environment:
+      CRON_SECRET: "${CRON_SECRET:?set CRON_SECRET in .env (generate one with openssl rand -hex 24)}"
+      APP_INTERNAL_URL: http://app:3000
+    volumes:
+      - ./docker/cron/crontab:/etc/crontabs/root:ro
+      - ./docker/cron/hit.sh:/usr/local/bin/hit.sh:ro
+      - ./docker/cron/entrypoint.sh:/entrypoint.sh:ro
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    depends_on:
+      app:
+        condition: service_started
+    networks: [dispatch]
+
+volumes:
+  dispatch-pgdata:
+
+networks:
+  dispatch:

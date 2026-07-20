@@ -1,0 +1,8 @@
+# Self-hosted cron schedule - mirrors the cloud deployment's split between
+# vercel.json (daily-ranks) and .github/workflows (hourly-gsc,
+# weekly-opportunities). Times are container-local (UTC). Output is redirected
+# to PID 1's stdout so `docker compose logs cron` shows every run (BusyBox
+# crond otherwise discards job output).
+0 4 * * * /bin/sh /usr/local/bin/hit.sh daily-ranks >> /proc/1/fd/1 2>&1
+7 */3 * * * /bin/sh /usr/local/bin/hit.sh hourly-gsc >> /proc/1/fd/1 2>&1
+0 5 * * 1 /bin/sh /usr/local/bin/hit.sh weekly-opportunities >> /proc/1/fd/1 2>&1

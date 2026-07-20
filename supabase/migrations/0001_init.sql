@@ -6,7 +6,7 @@
 -- tables open to anyone holding the public anon key.
 
 -- pages first: keywords.target_page_id references it.
-create table pages (
+create table if not exists pages (
   id uuid primary key default gen_random_uuid(),
   url text not null unique,
   title text,
@@ -18,7 +18,7 @@ create table pages (
 );
 
 -- tracked keywords
-create table keywords (
+create table if not exists keywords (
   id uuid primary key default gen_random_uuid(),
   keyword text not null unique,
   search_volume int,
@@ -31,7 +31,7 @@ create table keywords (
 );
 
 -- rank history (one row per keyword per check)
-create table rank_checks (
+create table if not exists rank_checks (
   id uuid primary key default gen_random_uuid(),
   keyword_id uuid references keywords(id) on delete cascade,
   position int,                       -- null = not in top 100
@@ -40,11 +40,11 @@ create table rank_checks (
 );
 
 -- the daily cron reads/writes per keyword ordered by time
-create index rank_checks_keyword_checked_idx
+create index if not exists rank_checks_keyword_checked_idx
   on rank_checks (keyword_id, checked_at desc);
 
 -- the suggestions queue (heart of the system)
-create table suggestions (
+create table if not exists suggestions (
   id uuid primary key default gen_random_uuid(),
   type text not null,                 -- guide | tool | backlink | update
   title text not null,
@@ -61,7 +61,7 @@ create table suggestions (
 );
 
 -- daily GSC snapshot
-create table gsc_stats (
+create table if not exists gsc_stats (
   id uuid primary key default gen_random_uuid(),
   date date not null unique,
   clicks int,
@@ -73,7 +73,7 @@ create table gsc_stats (
 );
 
 -- backlink prospects
-create table backlink_prospects (
+create table if not exists backlink_prospects (
   id uuid primary key default gen_random_uuid(),
   domain text not null,
   url text,
