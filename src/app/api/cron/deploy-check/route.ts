@@ -58,8 +58,10 @@ export async function GET(req: Request): Promise<Response> {
   const liveSha = process.env.VERCEL_GIT_COMMIT_SHA ?? "";
 
   // Poll mode: no side effects while the pushed commit isn't serving yet.
+  // Owner-only (project tokens are report-only by contract - they fall
+  // through to the job check below and 403 without a job param).
   const expected = url.searchParams.get("expect");
-  if (expected && expected !== liveSha) {
+  if (expected && expected !== liveSha && !projectSuffix) {
     return Response.json(
       { waiting: true, live_sha: liveSha || null, expected },
       { status: 202 },

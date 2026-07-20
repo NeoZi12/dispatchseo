@@ -225,7 +225,10 @@ jobs:
       # the ordinary "Claude succeeded, nothing to build" green path, which
       # Classify deliberately leaves unreported.
       - name: Report outcome to the dashboard
-        if: (success() || failure()) && steps.classify.outcome != 'failure'
+        # Owns reporting ONLY for the plain-success path: the classify step
+        # already reports the usage-limit deferral (ok) and real failures
+        # (fail) itself, so both are excluded here to avoid double rows.
+        if: (success() || failure()) && steps.classify.outcome != 'failure' && steps.claude.outcome != 'failure'
         env:
           SEO_MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

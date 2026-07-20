@@ -17,20 +17,20 @@ const STUCK_AFTER_HOURS = 3;
 export async function recoverStuckBuilds(): Promise<void> {
   try {
     const cutoff = new Date(Date.now() - STUCK_AFTER_HOURS * 3600_000).toISOString();
-    // Two passes because started_at only exists since migration 0027 and is
-    // null on rows marked in_progress before it: recent clock -> use it;
-    // no clock -> fall back to decided_at with a wider (24h) margin.
-    const dayCutoff = new Date(Date.now() - 24 * 3600_000).toISOString();
     const { data, error } = await db()
       .from("suggestions")
-      .select("id, title, project_id, started_at, decided_at")
+      .select("id, title, project_id, started_at")
       .eq("status", "in_progress");
     if (error || !data?.length) return; // missing column/table or nothing stuck
+    // Only rows with a build-start clock are judged. A null started_at means
+    // the row predates migration 0027 (or the instance hasn't applied it) -
+    // there is NO safe proxy: decided_at is approval time, and a suggestion
+    // can legitimately sit approved for days before FIFO reaches it, so
+    // reverting on it would kill healthy builds. Those rows stay untouched
+    // until a post-0027 run re-marks them with a real clock.
     const stuck = data.filter((row) => {
       const started = row.started_at as string | null;
-      if (started) return started < cutoff;
-      const decided = row.decided_at as string | null;
-      return !decided || decided < dayCutoff;
+      return started !== null && started < cutoff;
     });
     if (!stuck.length) return;
     for (const row of stuck) {

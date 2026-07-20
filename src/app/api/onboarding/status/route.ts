@@ -3,7 +3,7 @@ import { after } from "next/server";
 import { db } from "@/lib/db";
 import { isValidCookie, instanceSettings } from "@/lib/dashboard-auth";
 import { getProjectBySlug } from "@/lib/projects";
-import { getCronHealth } from "@/lib/cron-alerts";
+import { getCronHealth, reportCronRun } from "@/lib/cron-alerts";
 import { backendBaseUrl } from "@/lib/pipeline-pack";
 
 // The onboarding wizard's live finale polls this while the owner runs the
@@ -66,12 +66,26 @@ export async function GET(req: Request): Promise<Response> {
   const rankCount = rankChecks.count ?? 0;
   const gscCount = gscRows.count ?? 0;
 
-  // First-run triggers, exactly once each: real cron code paths, so a
-  // failure lands on the same alert rails as any scheduled run. after()
-  // keeps the poll response instant while the run continues server-side
-  // (a bare fire-and-forget would be killed with the lambda).
-  if (keywordCount > 0 && rankCount === 0) after(() => triggerCron("/api/cron/daily-ranks"));
-  if (project.gsc_site_url && gscCount === 0) after(() => triggerCron("/api/cron/hourly-gsc"));
+  // First-run triggers: real cron code paths, so a failure lands on the
+  // same alert rails as any scheduled run. after() keeps the poll response
+  // instant while the run continues server-side (a bare fire-and-forget
+  // would be killed with the lambda). Debounced through cron_runs: the
+  // wizard polls every 6s and a rank run takes up to a minute, so without
+  // the marker every poll would stack another full (paid) cron invocation
+  // across ALL projects. The marker row also documents the trigger in the
+  // same run log everything else uses.
+  const recently = (job: string) =>
+    health.some(
+      (h) => h.job === job && Date.now() - new Date(h.last_run_at).getTime() < 10 * 60_000,
+    );
+  if (keywordCount > 0 && rankCount === 0 && !recently(`first-run-ranks--${project.slug}`)) {
+    await reportCronRun(`first-run-ranks--${project.slug}`, { triggered: "daily-ranks" }, false);
+    after(() => triggerCron("/api/cron/daily-ranks"));
+  }
+  if (project.gsc_site_url && gscCount === 0 && !recently(`first-run-gsc--${project.slug}`)) {
+    await reportCronRun(`first-run-gsc--${project.slug}`, { triggered: "hourly-gsc" }, false);
+    after(() => triggerCron("/api/cron/hourly-gsc"));
+  }
 
   return Response.json({
     repo_connected: Boolean(project.pipeline_installed_at) || Boolean(canary),
