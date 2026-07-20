@@ -37,21 +37,50 @@ function ymd(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-// Whether the service account can read the property YET - distinguishes
-// "owner hasn't added the service-account user" (403) from "added, but the
-// first sync hasn't landed" so the Home setup card can say "waiting" instead
-// of re-explaining a step the owner already did. Any successful query counts,
-// even one returning zero rows.
-export async function gscAccessOk(site: string): Promise<boolean> {
+// Whether the service account can read the property YET, and if not, WHY -
+// the distinction the crons gate on. "pending" means the owner simply hasn't
+// finished setup (service account not added to the property, or no
+// service-account env on an OAuth-only install): an expected mid-setup state
+// that automations must skip quietly, never alarm on. "error" is everything
+// else - broken creds, network, Google 5xx - a real failure the caller may
+// surface loudly. Any successful query counts as ok, even one returning zero
+// rows.
+export type GscAccessProbe =
+  | { state: "ok" }
+  | { state: "pending"; why: string }
+  | { state: "error"; why: string };
+
+export async function gscAccessProbe(site: string): Promise<GscAccessProbe> {
+  let sc: ReturnType<typeof searchConsole>;
   try {
-    await searchConsole().searchanalytics.query({
+    sc = searchConsole();
+  } catch {
+    return { state: "pending", why: "no GSC service account configured on this deployment" };
+  }
+  try {
+    await sc.searchanalytics.query({
       siteUrl: site,
       requestBody: { startDate: "2020-01-01", endDate: "2020-01-02", rowLimit: 1 },
     });
-    return true;
-  } catch {
-    return false;
+    return { state: "ok" };
+  } catch (e) {
+    const err = e as { code?: number | string; response?: { status?: number }; message?: string };
+    const status = Number(err.code ?? err.response?.status ?? 0);
+    const msg = err.message ?? String(e);
+    // 403 = the service account isn't a user on the property (or the property
+    // string is a wrong onboarding guess - Google answers 403 for those too).
+    // Either way it's the owner's pending setup step, not an outage.
+    if (status === 403 || status === 404 || /permission|forbidden/i.test(msg)) {
+      return { state: "pending", why: `Search Console access not granted for ${site}` };
+    }
+    return { state: "error", why: msg };
   }
+}
+
+// Boolean view for the Home setup card: "owner already added the service
+// account" flips the card to "waiting on the first sync".
+export async function gscAccessOk(site: string): Promise<boolean> {
+  return (await gscAccessProbe(site)).state === "ok";
 }
 
 export type GscSnapshot = {

@@ -157,6 +157,19 @@ re-snapshot.
 
 ## Conventions & gotchas
 
+- **Crons never run what setup hasn't finished.** Every per-project capability
+  a cron touches must pass a readiness check first (pattern:
+  `src/lib/gsc-readiness.ts` + the setup gates at the top of each cron route's
+  `runProject`). Unmet setup returns `{ skipped: "setup incomplete: …" }` —
+  informational, never `hadError`/HTTP 500/alert email — because onboarding
+  deliberately leaves projects half-set-up (it even guesses a GSC property
+  before the owner grants access), so "prerequisite missing" is a normal state,
+  and the Home "Initial setup" cards are the user-facing surface for it.
+  Loudness is reserved for regressions: a capability that has verifiably worked
+  before (data rows exist / creds validated at save time) and fails now must
+  keep failing loudly (banner + email). Any new cron, or new per-project
+  prerequisite in an existing cron, must implement this split — never let a
+  mid-setup project 500 a run.
 - **Every feature ships with an MCP version.** The dashboard and the MCP server
   are two faces of the same state — anything the dashboard can do, the agent must
   be able to do over MCP, and vice versa. A feature is not done until both exist.

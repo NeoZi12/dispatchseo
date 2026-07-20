@@ -143,7 +143,25 @@ export async function GET(req: Request): Promise<Response> {
   // installs use OAuth instead and legitimately have no env here.
   const gscRaw = process.env.GSC_SERVICE_ACCOUNT_JSON;
   if (!gscRaw) {
-    checks.gsc_credentials = "skipped (no service-account env; OAuth installs manage theirs in setup)";
+    // Legitimate only while the service-account path has never produced
+    // data. Crons are the sole writer of gsc_stats and they read exclusively
+    // through the service account, so any row proves this instance depends
+    // on the env - a deploy without it is the 'worked-then-broke' class
+    // (2026-07-20: an env edit + redeploy race shipped exactly this, and the
+    // old skip here waved it through for the next cron to trip over).
+    const { count } = await db()
+      .from("gsc_stats")
+      .select("*", { count: "exact", head: true });
+    if ((count ?? 0) > 0) {
+      hadError = true;
+      checks.gsc_credentials = {
+        error:
+          "GSC_SERVICE_ACCOUNT_JSON is missing but Search Console data has synced through it before - restore the env var in Vercel project settings and redeploy",
+      };
+    } else {
+      checks.gsc_credentials =
+        "skipped (no service-account env; OAuth installs manage theirs in setup)";
+    }
   } else {
     try {
       const parsed = JSON.parse(gscRaw) as Record<string, unknown>;

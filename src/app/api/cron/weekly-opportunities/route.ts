@@ -23,6 +23,11 @@ const VOL_MIN = 500;
 const KD_MAX = 10;
 const TOOL_PATTERN = /calculator|generator|checker|template|converter|formatter|builder/i;
 
+// Setup gate marker: unmet prerequisites are an informational skip, never a
+// failed run (no 500, no banner, no alert email) - same contract as
+// gsc-readiness.ts in the other crons.
+class SetupIncomplete extends Error {}
+
 function classify(keyword: string): "guide" | "tool" {
   return TOOL_PATTERN.test(keyword) ? "tool" : "guide";
 }
@@ -38,7 +43,11 @@ export async function GET(req: Request): Promise<Response> {
     const project = await getProjectBySlug(DEFAULT_PROJECT_SLUG);
     if (!project) throw new Error("Default project not found");
     const creds = await credsForProject(project);
-    if (!creds) throw new Error("No DataForSEO credentials for the default project");
+    if (!creds) {
+      throw new SetupIncomplete(
+        "setup incomplete: no DataForSEO connected for the default project - connect it on Home before this cron can research",
+      );
+    }
 
     // --- gather seeds ---
     const seedEnv = (process.env.SEED_KEYWORDS ?? "")
@@ -139,8 +148,12 @@ export async function GET(req: Request): Promise<Response> {
     }
     result.update_suggestions = updateRows.length;
   } catch (e) {
-    hadError = true;
-    result.error = e instanceof Error ? e.message : String(e);
+    if (e instanceof SetupIncomplete) {
+      result.skipped = e.message;
+    } else {
+      hadError = true;
+      result.error = e instanceof Error ? e.message : String(e);
+    }
   }
 
   console.log("[weekly-opportunities]", JSON.stringify(result));

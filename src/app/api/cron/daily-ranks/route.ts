@@ -3,6 +3,7 @@ import { credsForProject, serpAiOverview } from "@/lib/dataforseo";
 import { serpProviderForProject, providerRank } from "@/lib/serp";
 import { refreshDomainRating } from "@/lib/domain-rating";
 import { getLatestSnapshot, gscQueryPositions } from "@/lib/gsc";
+import { gscCronReadiness, type GscReadiness } from "@/lib/gsc-readiness";
 import { checkCron } from "@/lib/cron-auth";
 import {
   buildGoogleAiSnapshot,
@@ -39,7 +40,10 @@ function isSerpapiCheckDay(): boolean {
   return new Date().getUTCDay() === 1;
 }
 
-async function runRanks(project: Project): Promise<Record<string, unknown>> {
+async function runRanks(
+  project: Project,
+  gscReady: GscReadiness,
+): Promise<Record<string, unknown>> {
   const { data: keywords, error } = await db()
     .from("keywords")
     .select("id, keyword")
@@ -51,9 +55,11 @@ async function runRanks(project: Project): Promise<Record<string, unknown>> {
 
   // --- GSC mode: positions from Search Console, no SERP provider ---
   if (project.keyword_source === "gsc") {
-    if (!project.gsc_site_url) return { skipped: "GSC mode but no GSC property connected" };
+    // Same setup gate as the GSC snapshot half - a GSC-mode project whose
+    // owner hasn't granted the service account yet skips, never errors.
+    if (!gscReady.ready) return { skipped: gscReady.skipped };
     const positions = await gscQueryPositions(
-      project.gsc_site_url,
+      project.gsc_site_url!,
       tracked.map((k) => k.keyword),
     );
     // No impressions in the window = unknown, not "not ranking" - skip those
@@ -153,9 +159,15 @@ async function runRanks(project: Project): Promise<Record<string, unknown>> {
 async function runProject(project: Project): Promise<Record<string, unknown>> {
   const result: Record<string, unknown> = {};
 
+  // Setup gate, computed once and shared by the two GSC consumers below
+  // (GSC-mode ranks + the snapshot half): a project whose owner hasn't
+  // finished the Search Console step skips as information, not as a failure
+  // that 500s the run and emails the owner. See gsc-readiness.ts.
+  const gscReady = await gscCronReadiness(project.id, project.gsc_site_url);
+
   // --- 1. Ranks (source follows the project's keyword_source) ---
   try {
-    const ranks = await runRanks(project);
+    const ranks = await runRanks(project, gscReady);
     result.ranks = ranks;
     if (Array.isArray(ranks.failed) && ranks.failed.length) result.hadError = true;
   } catch (e) {
@@ -165,10 +177,10 @@ async function runProject(project: Project): Promise<Record<string, unknown>> {
 
   // --- 2. GSC snapshot ---
   try {
-    if (!project.gsc_site_url) {
-      result.gsc = { skipped: "no GSC property connected" };
+    if (!gscReady.ready) {
+      result.gsc = { skipped: gscReady.skipped };
     } else {
-      const snap = await getLatestSnapshot(project.gsc_site_url);
+      const snap = await getLatestSnapshot(project.gsc_site_url!);
       if (!snap) {
         result.gsc = { skipped: "no GSC data in window" };
       } else {

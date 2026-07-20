@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { getFreshSnapshots, inspectIndexStatus } from "@/lib/gsc";
+import { gscCronReadiness } from "@/lib/gsc-readiness";
 import { checkCron } from "@/lib/cron-auth";
 import { reportCronRun } from "@/lib/cron-alerts";
 import { recoverStuckBuilds } from "@/lib/build-recovery";
@@ -61,8 +62,14 @@ async function verifyIndexing(project: Project): Promise<Record<string, unknown>
 }
 
 async function runProject(project: Project): Promise<Record<string, unknown>> {
-  if (!project.gsc_site_url) return { skipped: "no GSC property connected" };
-  const snaps = await getFreshSnapshots(project.gsc_site_url);
+  // Setup gate (gsc-readiness.ts): a project whose owner hasn't finished the
+  // Search Console step skips as information, not as a failure - a mid-setup
+  // project must never 500 the run, fail the GitHub Action, or email the
+  // owner. The index sweep below is gated too: it reads with the same
+  // service account, so without access it could only burn quota on failures.
+  const readiness = await gscCronReadiness(project.id, project.gsc_site_url);
+  if (!readiness.ready) return { skipped: readiness.skipped };
+  const snaps = await getFreshSnapshots(project.gsc_site_url!);
   // No snapshot data is no reason to skip index verification - a brand-new
   // site with zero impressions is exactly where it matters most.
   if (snaps.length === 0) {
