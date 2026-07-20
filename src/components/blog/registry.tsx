@@ -10,6 +10,9 @@ import { ProductionReadinessChecklist } from "./production-readiness-checklist";
 import { TriggerModeTable } from "./trigger-mode-table";
 import { AutonomousPipelineFlow } from "./autonomous-pipeline-flow";
 import { GuardrailGrid } from "./guardrail-grid";
+import { ScopeCompareTable } from "./scope-compare-table";
+import { ConnectionFactRow } from "./connection-fact-row";
+import { ConnectionChecklist } from "./connection-checklist";
 import { slugify } from "@/lib/slugify";
 
 // The components every blog MDX file renders with: typographic defaults that
@@ -93,4 +96,7 @@ export const mdxComponents: MDXComponents = {
   TriggerModeTable,
   AutonomousPipelineFlow,
   GuardrailGrid,
+  ScopeCompareTable,
+  ConnectionFactRow,
+  ConnectionChecklist,
 };
