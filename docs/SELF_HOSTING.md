@@ -40,10 +40,13 @@ whatever is left, in order:
    shows these exact steps.
 2. **Run the migrations**: in the Supabase SQL Editor, run every file in
    [`supabase/migrations/`](../supabase/migrations/) **in numeric order**
-   (0001 first). Each one is additive; a couple of minutes, one time.
+   (0001 first). Each one is additive; a couple of minutes, one time. `/setup`
+   checks that the full set has actually run - not just that the database is
+   reachable - before letting you move on.
 3. **Claim the instance**: choose your dashboard password. DispatchSEO
-   generates its agent key (MCP token) and cron key itself and shows you
-   both.
+   generates its agent key (MCP token) and cron key itself, captures this
+   deploy's own URL so connected pipelines phone home to the right backend
+   (no `APP_URL` env var needed in the normal path), and shows you both keys.
 
 ## 2. Environment variables
 
@@ -117,5 +120,7 @@ which ones are worth winning.
 
 Every scheduled job logs its runs. Failures show as a red banner on the
 dashboard Home page, and - if you set `RESEND_API_KEY` + `ALERT_EMAIL` - you
-get an email, at most one per job per day. Full detail lands in Vercel's
-function logs and the GitHub Actions run logs.
+get an email, at most one per job per day. Setting those two is strongly
+recommended if you run in auto mode: nobody opens the dashboard on a normal
+day, so the email is what actually surfaces a broken job. Full detail lands
+in Vercel's function logs and the GitHub Actions run logs.

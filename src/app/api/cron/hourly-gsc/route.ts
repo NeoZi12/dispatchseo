@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { getFreshSnapshots, inspectIndexStatus } from "@/lib/gsc";
 import { checkCron } from "@/lib/cron-auth";
 import { reportCronRun } from "@/lib/cron-alerts";
+import { recoverStuckBuilds } from "@/lib/build-recovery";
 import { listProjects, type Project } from "@/lib/projects";
 
 // Hourly GSC refresh, triggered by the hourly-gsc GitHub Action (Vercel Hobby
@@ -106,6 +107,11 @@ export async function GET(req: Request): Promise<Response> {
       result[slug] = { error: r.reason instanceof Error ? r.reason.message : String(r.reason) };
     }
   });
+
+  // Piggybacked maintenance: this is the most frequent backend heartbeat,
+  // so it also runs the stuck-build recovery sweep (see build-recovery.ts).
+  // Best-effort by contract - it must never affect the GSC result.
+  await recoverStuckBuilds();
 
   console.log("[hourly-gsc]", JSON.stringify(result));
   await reportCronRun("hourly-gsc", result, hadError);

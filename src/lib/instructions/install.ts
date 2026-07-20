@@ -187,6 +187,12 @@ Then enable PR creation for Actions: repo Settings -> Actions -> General ->
 (\`gh api -X PUT repos/{{REPO}}/actions/permissions/workflow -f default_workflow_permissions=write -F can_approve_pull_request_reviews=true\`
 does it from the CLI; fall back to telling the owner where to click).
 
+Then pre-create the pipeline's labels - \`gh pr create --label\` fails on a
+label that doesn't exist yet, so a repo without them passes install and dies
+on its FIRST real build:
+\`gh label create seo --repo {{REPO}} --color 0e8a16 --description "DispatchSEO SEO pipeline" 2>/dev/null; gh label create seo-tool --repo {{REPO}} --color 1d76db --description "DispatchSEO tool PR" 2>/dev/null\`
+(exit code 1 = already exists = fine).
+
 ### Part 4 - ship, then continue into setup
 
 1. Commit the shim on a branch and open a PR titled "Install the DispatchSEO

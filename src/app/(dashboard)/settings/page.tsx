@@ -51,7 +51,7 @@ export default async function SettingsPage() {
             value={
               project.dataforseo_login
                 ? `connected (${project.dataforseo_login})`
-                : credsForProject(project)
+                : (await credsForProject(project))
                   ? "connected (platform account)"
                   : "not connected - see the setup card on Home"
             }

@@ -80,7 +80,7 @@ async function runRanks(project: Project): Promise<Record<string, unknown>> {
   }
 
   // --- DataForSEO / SerpApi modes: live SERP via the provider layer ---
-  const provider = serpProviderForProject(project);
+  const provider = await serpProviderForProject(project);
   if (!provider) {
     return {
       skipped:
@@ -197,7 +197,7 @@ async function runProject(project: Project): Promise<Record<string, unknown>> {
   // --- 3. Domain Rating (billed to the project's own DataForSEO account).
   // Independent of keyword_source: any project with DataForSEO creds gets DR;
   // free modes without creds skip - there is no free backlink index.
-  const creds = credsForProject(project);
+  const creds = await credsForProject(project);
   if (!creds) {
     result.dr = { skipped: "no DataForSEO connected" };
   } else {

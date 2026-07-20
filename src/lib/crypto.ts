@@ -1,4 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { bustInstanceCache, instanceSettings } from "./dashboard-auth";
+import { db } from "./db";
 
 // App-level encryption for secrets stored at rest - right now the per-project
 // DataForSEO API password. AES-256-GCM (authenticated, so tampering fails
@@ -19,28 +21,53 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 
 const PREFIX = "enc:v1:";
 
-function key(): Buffer {
-  const raw = process.env.DATAFORSEO_ENC_KEY;
-  if (!raw) throw new Error("Missing DATAFORSEO_ENC_KEY");
-  return createHash("sha256").update(raw).digest(); // always 32 bytes
+// Key resolution, in priority order: DATAFORSEO_ENC_KEY env (explicit
+// override, classic installs) -> instance_settings.enc_key (auto-generated
+// at claim since migration 0027) -> generate one now and store it (heals
+// instances claimed before 0027). Only when all three fail - no env, no DB
+// column - does this throw, and the message says exactly what to do. Before
+// this chain, onboarding's own "Recommended: DataForSEO" button dead-ended
+// with a missing-env error on every zero-secrets install.
+async function key(): Promise<Buffer> {
+  const env = process.env.DATAFORSEO_ENC_KEY;
+  if (env) return createHash("sha256").update(env).digest(); // always 32 bytes
+  const stored = (await instanceSettings())?.enc_key;
+  if (stored) return createHash("sha256").update(stored).digest();
+  const generated = randomBytes(32).toString("base64");
+  const { error } = await db()
+    .from("instance_settings")
+    .update({ enc_key: generated })
+    .is("enc_key", null)
+    .select("enc_key")
+    .maybeSingle();
+  if (!error) {
+    bustInstanceCache();
+    // Re-read instead of trusting our value: a concurrent healer may have
+    // won the .is("enc_key", null) race, and their key is now canonical.
+    const fresh = (await instanceSettings())?.enc_key;
+    if (fresh) return createHash("sha256").update(fresh).digest();
+  }
+  throw new Error(
+    "No secrets-encryption key available: apply migration 0027_reliability.sql, or set DATAFORSEO_ENC_KEY in the deployment env (any random string; `openssl rand -base64 32`).",
+  );
 }
 
 export function isEncrypted(value: string): boolean {
   return value.startsWith(PREFIX);
 }
 
-export function encryptSecret(plain: string): string {
+export async function encryptSecret(plain: string): Promise<string> {
   const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key(), iv);
+  const cipher = createCipheriv("aes-256-gcm", await key(), iv);
   const data = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
   return PREFIX + [iv, tag, data].map((b) => b.toString("base64")).join(":");
 }
 
-export function decryptSecret(value: string): string {
+export async function decryptSecret(value: string): Promise<string> {
   if (!isEncrypted(value)) return value; // legacy plaintext, pre-encryption
   const [ivB64, tagB64, dataB64] = value.slice(PREFIX.length).split(":");
-  const decipher = createDecipheriv("aes-256-gcm", key(), Buffer.from(ivB64, "base64"));
+  const decipher = createDecipheriv("aes-256-gcm", await key(), Buffer.from(ivB64, "base64"));
   decipher.setAuthTag(Buffer.from(tagB64, "base64"));
   const data = Buffer.from(dataB64, "base64");
   return Buffer.concat([decipher.update(data), decipher.final()]).toString("utf8");

@@ -37,7 +37,7 @@ export async function GET(req: Request): Promise<Response> {
   try {
     const project = await getProjectBySlug(DEFAULT_PROJECT_SLUG);
     if (!project) throw new Error("Default project not found");
-    const creds = credsForProject(project);
+    const creds = await credsForProject(project);
     if (!creds) throw new Error("No DataForSEO credentials for the default project");
 
     // --- gather seeds ---

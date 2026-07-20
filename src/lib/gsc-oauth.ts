@@ -79,7 +79,7 @@ export async function connectProject(
     }
     const { error } = await db()
       .from("projects")
-      .update({ gsc_oauth_refresh_token: encryptSecret(tokens.refresh_token) })
+      .update({ gsc_oauth_refresh_token: await encryptSecret(tokens.refresh_token) })
       .eq("slug", projectSlug);
     return error ? error.message : null;
   } catch (e) {
@@ -94,9 +94,26 @@ export async function disconnectProject(projectSlug: string): Promise<void> {
     .eq("slug", projectSlug);
 }
 
-function oauthSearchConsole(refreshTokenEncrypted: string) {
+// Correct the tracked Search Console property. Onboarding GUESSES
+// `sc-domain:<domain>`, but plenty of real properties are URL-prefix
+// ("https://example.com/") - a wrong guess used to leave "waiting for the
+// service account" stuck forever with no code path able to fix it. Both the
+// dashboard's "use this property" button and the set_gsc_property MCP tool
+// land here.
+export async function setTrackedProperty(
+  projectId: string,
+  siteUrl: string,
+): Promise<string | null> {
+  const { error } = await db()
+    .from("projects")
+    .update({ gsc_site_url: siteUrl })
+    .eq("id", projectId);
+  return error ? error.message : null;
+}
+
+async function oauthSearchConsole(refreshTokenEncrypted: string) {
   const auth = client("postmessage"); // redirect uri unused for refresh flows
-  auth.setCredentials({ refresh_token: decryptSecret(refreshTokenEncrypted) });
+  auth.setCredentials({ refresh_token: await decryptSecret(refreshTokenEncrypted) });
   return google.searchconsole({ version: "v1", auth });
 }
 
@@ -104,7 +121,7 @@ function oauthSearchConsole(refreshTokenEncrypted: string) {
 export async function oauthListSites(
   refreshTokenEncrypted: string,
 ): Promise<Array<{ siteUrl: string; permissionLevel: string }>> {
-  const res = await oauthSearchConsole(refreshTokenEncrypted).sites.list();
+  const res = await (await oauthSearchConsole(refreshTokenEncrypted)).sites.list();
   return (res.data.siteEntry ?? []).map((s) => ({
     siteUrl: s.siteUrl ?? "",
     permissionLevel: s.permissionLevel ?? "",
@@ -123,7 +140,7 @@ export async function oauthSampleQuery(
   const end = new Date();
   const start = new Date(end.getTime() - 28 * 24 * 3600 * 1000);
   const ymd = (d: Date) => d.toISOString().slice(0, 10);
-  const res = await oauthSearchConsole(refreshTokenEncrypted).searchanalytics.query({
+  const res = await (await oauthSearchConsole(refreshTokenEncrypted)).searchanalytics.query({
     siteUrl,
     requestBody: {
       startDate: ymd(start),

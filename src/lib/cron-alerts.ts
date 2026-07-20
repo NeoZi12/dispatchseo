@@ -38,7 +38,30 @@ const STALE_HOURS: Record<string, number> = {
   "seo-tools": 9 * 24, // Wednesdays
   "seo-weekly-research": 9 * 24,
   "secrets-canary": 24, // every 6h - a silent canary is itself an alarm
+  // Daily per-repo health check (04:30 UTC). Its silence IS the signal that
+  // a repo's schedules stopped running (dead repo, GitHub's 60-day
+  // inactivity disable) - the one failure mode a workflow can never report
+  // itself, only the absence of its heartbeat can.
+  "seo-token-check": 30,
+  "seo-pipeline-version": 30,
 };
+
+// Jobs reported through a per-project MCP token arrive suffixed with the
+// project slug ("seo-daily--acme"). Staleness thresholds are keyed by the
+// bare job name; strip the suffix before the lookup or every tenant job
+// would silently default to never-stale.
+function baseJobName(job: string): string {
+  const i = job.indexOf("--");
+  return i === -1 ? job : job.slice(0, i);
+}
+
+// The project slug a reported job belongs to, or null for instance-wide
+// jobs (backend crons, deploy-check, the dogfood repo reporting with
+// CRON_SECRET before it switched to its project key).
+export function jobProjectSlug(job: string): string | null {
+  const i = job.indexOf("--");
+  return i === -1 ? null : job.slice(i + 2);
+}
 
 // Email debounce window per job. Scheduled jobs that stay broken retry on
 // their own, so one email per day is enough; a deploy-check run only happens
@@ -166,7 +189,13 @@ export async function reportCronRun(
 // Latest run per job, for the dashboard banner and the get_cron_health MCP
 // tool. A job that has never run is absent (a fresh install has nothing to
 // alert about - the setup cards own "crons not installed yet").
-export async function getCronHealth(): Promise<CronHealth[]> {
+//
+// projectSlug scoping: pass a slug to see only that project's world -
+// instance-wide jobs (backend crons cover every project) plus jobs suffixed
+// --<that slug>. This is the MCP boundary's contract: a project token must
+// never see a sibling project's job names or failure text. Omit the slug
+// for the owner's all-projects dashboard view.
+export async function getCronHealth(projectSlug?: string): Promise<CronHealth[]> {
   const { data, error } = await db()
     .from("cron_runs")
     .select("job, ok, errors, created_at")
@@ -180,16 +209,22 @@ export async function getCronHealth(): Promise<CronHealth[]> {
   for (const row of data) {
     if (!latest.has(row.job as string)) latest.set(row.job as string, row);
   }
-  return [...latest.values()].map((row) => {
-    const job = row.job as string;
-    const ageHours = (Date.now() - new Date(row.created_at as string).getTime()) / 3600000;
-    return {
-      job,
-      ok: Boolean(row.ok),
-      // Unlisted jobs run per push/dispatch - no schedule, never stale.
-      stale: ageHours > (STALE_HOURS[job] ?? Infinity),
-      last_run_at: row.created_at as string,
-      errors: (row.errors as string[]) ?? [],
-    };
-  });
+  return [...latest.values()]
+    .filter((row) => {
+      if (!projectSlug) return true;
+      const owner = jobProjectSlug(row.job as string);
+      return owner === null || owner === projectSlug;
+    })
+    .map((row) => {
+      const job = row.job as string;
+      const ageHours = (Date.now() - new Date(row.created_at as string).getTime()) / 3600000;
+      return {
+        job,
+        ok: Boolean(row.ok),
+        // Unlisted jobs run per push/dispatch - no schedule, never stale.
+        stale: ageHours > (STALE_HOURS[baseJobName(job)] ?? Infinity),
+        last_run_at: row.created_at as string,
+        errors: (row.errors as string[]) ?? [],
+      };
+    });
 }

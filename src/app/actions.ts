@@ -340,7 +340,7 @@ export async function connectDataforseo(
   // a server misconfig, not a user error, but surface it so the owner can fix.
   let storedPassword: string;
   try {
-    storedPassword = encryptSecret(password);
+    storedPassword = await encryptSecret(password);
   } catch {
     return {
       error: "Could not securely save the credentials - the server is missing its encryption key.",
@@ -385,7 +385,7 @@ export async function connectSerpapi(
 
   let storedKey: string;
   try {
-    storedKey = encryptSecret(key);
+    storedKey = await encryptSecret(key);
   } catch {
     return {
       error: "Could not securely save the key - the server is missing its encryption key.",

@@ -17,6 +17,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      issues: write # gh label create
     steps:
       - uses: actions/checkout@v4
 
@@ -34,9 +35,11 @@ jobs:
           git add .dispatchseo/canary
           git commit -m "chore: DispatchSEO install canary (auto-closed, never merged)"
           git push origin "$branch"
+          gh label create seo --color 0e8a16 --description "DispatchSEO SEO pipeline" 2>/dev/null || true
+          gh label create seo-tool --color 1d76db --description "DispatchSEO tool PR" 2>/dev/null || true
           pr=$(gh pr create --title "DispatchSEO install canary (auto-closes)" \
             --body "Throwaway PR proving GitHub Actions may open pull requests on this repo. Closed automatically by the same run - never merge this." \
-            --base "${GITHUB_REF_NAME}" --head "$branch")
+            --base "${GITHUB_REF_NAME}" --head "$branch" --label seo)
           echo "Canary PR created: $pr"
           gh pr close "$pr" --delete-branch
           echo "Canary PR closed and branch deleted - PR machinery verified."

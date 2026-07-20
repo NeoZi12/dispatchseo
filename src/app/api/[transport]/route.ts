@@ -43,6 +43,7 @@ import {
 } from "@/lib/similarity";
 import { requestTrendExpand, requestTrendScan } from "@/lib/trends";
 import { serpProviderForProject, providerOrganic } from "@/lib/serp";
+import { setTrackedProperty } from "@/lib/gsc-oauth";
 import { expandKeyword } from "@/lib/suggest";
 
 // The seo-manager MCP server. It is mostly a door to the Supabase state - the
@@ -279,6 +280,12 @@ const mcpHandler = createMcpHandler(
         if (effective === "approved" || effective === "rejected") {
           patch.decided_at = new Date().toISOString();
         }
+        // started_at feeds the stuck-build recovery sweep (a build that dies
+        // mid-run leaves in_progress forever; the sweep reverts rows stuck
+        // past the workflow timeout). Cleared on any other transition so a
+        // retried suggestion gets a fresh clock.
+        if (effective === "in_progress") patch.started_at = new Date().toISOString();
+        else if (effective) patch.started_at = null;
         if (effective === "done") patch.completed_at = new Date().toISOString();
         // Restore parity: approving a rejected item clears its stale
         // queue_position so it re-enters FIFO, same as the dashboard's
@@ -297,6 +304,17 @@ const mcpHandler = createMcpHandler(
           // Pre-0014 tolerance: retry without queue_position, like the
           // dashboard's restore does.
           delete patch.queue_position;
+          ({ data, error } = await db()
+            .from("suggestions")
+            .update(patch)
+            .eq("id", id)
+            .eq("project_id", p.id)
+            .select()
+            .single());
+        }
+        if (error && "started_at" in patch) {
+          // Pre-0027 tolerance: same posture, without the recovery clock.
+          delete patch.started_at;
           ({ data, error } = await db()
             .from("suggestions")
             .update(patch)
@@ -872,7 +890,7 @@ const mcpHandler = createMcpHandler(
       },
       async ({ keyword, top }) => {
         const p = currentProject();
-        const provider = serpProviderForProject(p);
+        const provider = await serpProviderForProject(p);
         if (!provider) {
           return fail(
             p.keyword_source === "gsc"
@@ -1052,6 +1070,27 @@ const mcpHandler = createMcpHandler(
       },
     );
 
+    server.registerTool(
+      "set_gsc_property",
+      {
+        title: "Set tracked Search Console property",
+        description:
+          "Correct which Google Search Console property this project tracks. " +
+          "Onboarding guesses `sc-domain:<domain>`, but many real properties " +
+          "are URL-prefix (`https://example.com/`) - if GSC data never arrives " +
+          "and access checks keep failing, the guess is likely wrong. Pass the " +
+          "property exactly as Search Console names it. Same write as the " +
+          "dashboard's 'use this property' button on /google.",
+        inputSchema: { site_url: z.string().min(1) },
+      },
+      async ({ site_url }) => {
+        const p = currentProject();
+        const err = await setTrackedProperty(p.id, site_url);
+        if (err) return fail(err);
+        return ok({ project: p.slug, gsc_site_url: site_url });
+      },
+    );
+
     // ---- dashboard parity (same lib functions the screens render from) -----
     // These tools answer "what's going on with my SEO" in Claude Code with the
     // exact numbers the dashboard shows - they call the same analytics/activity
@@ -1191,7 +1230,10 @@ const mcpHandler = createMcpHandler(
       },
       async () => {
         try {
-          return ok(await getCronHealth());
+          // Scoped to the calling project: instance-wide jobs plus this
+          // project's own --slug-suffixed reports. A project token must
+          // never read a sibling project's job names or failure text.
+          return ok(await getCronHealth(currentProject().slug));
         } catch (e) {
           return fail(e instanceof Error ? e.message : String(e));
         }
@@ -1404,8 +1446,8 @@ const mcpHandler = createMcpHandler(
           domain: p.domain,
           mode: p.mode,
           keyword_source: p.keyword_source,
-          serp_provider_connected: serpProviderForProject(p) != null,
-          dataforseo_connected: credsForProject(p) != null,
+          serp_provider_connected: (await serpProviderForProject(p)) != null,
+          dataforseo_connected: (await credsForProject(p)) != null,
           gsc_property: p.gsc_site_url,
           github_repo: p.github_repo,
           // The onboarding "does the site have a blog?" answer - the setup
@@ -1676,7 +1718,7 @@ const mcpHandler = createMcpHandler(
       },
       async () => {
         const p = currentProject();
-        return ok({ project: p.slug, files: getPipelinePack(p) });
+        return ok({ project: p.slug, files: await getPipelinePack(p) });
       },
     );
 

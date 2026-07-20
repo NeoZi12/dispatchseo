@@ -13,11 +13,19 @@ const MESSAGE = "seo-dashboard-v1";
 
 export { COOKIE_NAME };
 
-type InstanceRow = { dashboard_password_hash: string; cron_secret: string } | null;
+type InstanceRow = {
+  dashboard_password_hash: string;
+  cron_secret: string;
+  // Nullable, added by migration 0027; older rows simply lack them.
+  app_url?: string | null;
+  enc_key?: string | null;
+} | null;
 
 // Every protected page checks the cookie, so the instance row is cached for
 // a minute to keep auth from costing a DB round-trip per request. Claiming
-// busts it; env-only installs never populate it.
+// busts it; env-only installs never populate it. select("*") on purpose:
+// naming columns here would make auth itself fail on an instance that
+// hasn't applied the latest migration yet - star returns whatever exists.
 let cache: { row: InstanceRow; at: number } | null = null;
 const CACHE_TTL_MS = 60_000;
 
@@ -26,7 +34,7 @@ async function instanceRow(): Promise<InstanceRow> {
   try {
     const { data, error } = await db()
       .from("instance_settings")
-      .select("dashboard_password_hash, cron_secret")
+      .select("*")
       .maybeSingle();
     // Table missing or transient error: fall back to the last known row so a
     // DB hiccup can't flap sessions; never cache the failure.
@@ -40,6 +48,13 @@ async function instanceRow(): Promise<InstanceRow> {
 
 export function bustInstanceCache(): void {
   cache = null;
+}
+
+// Read-only access to the claimed instance's stored settings for modules
+// that need more than auth (pipeline-pack's app_url, crypto's enc_key).
+// Same cache, same tolerance: returns null on env-only installs.
+export async function instanceSettings(): Promise<InstanceRow> {
+  return instanceRow();
 }
 
 // The HMAC key for the session cookie. Env password wins; otherwise the

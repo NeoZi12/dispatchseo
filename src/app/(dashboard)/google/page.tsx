@@ -8,6 +8,7 @@ import {
   oauthConfigured,
   oauthListSites,
   oauthSampleQuery,
+  setTrackedProperty,
 } from "@/lib/gsc-oauth";
 import { PageHeader, SectionTitle } from "@/components/ui";
 
@@ -23,6 +24,17 @@ async function disconnect() {
   if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
   const project = await getActiveProject();
   await disconnectProject(project.slug);
+  revalidatePath("/google");
+}
+
+async function useProperty(formData: FormData) {
+  "use server";
+  const jar = await cookies();
+  if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
+  const siteUrl = String(formData.get("siteUrl") ?? "");
+  if (!siteUrl) return;
+  const project = await getActiveProject();
+  await setTrackedProperty(project.id, siteUrl);
   revalidatePath("/google");
 }
 
@@ -124,14 +136,26 @@ export default async function GooglePage({
           ) : (
             <>
               <div className="space-y-2">
-                <SectionTitle sub="Properties this Google account can read">
+                <SectionTitle sub="Properties this Google account can read. DispatchSEO tracks the one marked below - if it guessed wrong at onboarding, switch it here.">
                   Your properties
                 </SectionTitle>
-                <ul className="space-y-1 text-sm text-neutral-300">
+                <ul className="space-y-1.5 text-sm text-neutral-300">
                   {sites.map((s) => (
-                    <li key={s.siteUrl} className="font-mono text-xs">
+                    <li key={s.siteUrl} className="flex items-center gap-2 font-mono text-xs">
                       {s.siteUrl}{" "}
                       <span className="text-neutral-500">({s.permissionLevel})</span>
+                      {s.siteUrl === project.gsc_site_url ? (
+                        <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[11px] font-sans text-emerald-300">
+                          tracked
+                        </span>
+                      ) : (
+                        <form action={useProperty}>
+                          <input type="hidden" name="siteUrl" value={s.siteUrl} />
+                          <button className="rounded border border-neutral-700 px-1.5 py-0.5 text-[11px] font-sans text-neutral-300 hover:border-neutral-500">
+                            use this property
+                          </button>
+                        </form>
+                      )}
                     </li>
                   ))}
                 </ul>

@@ -5,7 +5,7 @@
   "packageManager": "pnpm@11.5.2",
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/generate-pipeline-pack.mjs && next build",
+    "build": "node scripts/generate-pipeline-pack.mjs && node scripts/generate-setup-sql.mjs && next build",
     "start": "next start"
   },
   "dependencies": {

@@ -218,7 +218,7 @@ export default async function Home() {
   const project = await getActiveProject();
   const isDefaultProject = project.slug === DEFAULT_PROJECT_SLUG;
   // Free-tier DIY: every DataForSEO call bills the project's own account.
-  const dfsCreds = credsForProject(project);
+  const dfsCreds = await credsForProject(project);
 
   const client = db();
   const [

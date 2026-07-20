@@ -46,18 +46,18 @@ const LOCATION_TO_GL: Record<number, string> = {
   2752: "se",
 };
 
-export function serpProviderForProject(project: Project): SerpProvider | null {
+export async function serpProviderForProject(project: Project): Promise<SerpProvider | null> {
   if (project.keyword_source === "serpapi") {
     if (!project.serpapi_key) return null;
     try {
-      return { kind: "serpapi", apiKey: decryptSecret(project.serpapi_key) };
+      return { kind: "serpapi", apiKey: await decryptSecret(project.serpapi_key) };
     } catch (err) {
       console.error(`SerpApi key decrypt failed for project ${project.slug}:`, err);
       return null;
     }
   }
   if (project.keyword_source === "dataforseo") {
-    const creds = credsForProject(project);
+    const creds = await credsForProject(project);
     return creds ? { kind: "dataforseo", creds } : null;
   }
   return null; // 'gsc' - Search Console only, no live SERP

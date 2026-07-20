@@ -118,7 +118,7 @@ export async function getAnalyticsOverview(project: Project): Promise<AnalyticsO
       .eq("project_id", project.id)
       .gte("checked_at", since30)
       .order("checked_at", { ascending: true }),
-    getDomainRating(project.id, project.domain, credsForProject(project)),
+    credsForProject(project).then((creds) => getDomainRating(project.id, project.domain, creds)),
     // Fresh data is a nice-to-have; a GSC hiccup must not take down the page.
     // No GSC property connected yet -> no fresh numbers, by definition.
     project.gsc_site_url

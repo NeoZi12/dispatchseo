@@ -1,24 +1,23 @@
-name: SEO weekly research
+name: SEO geo scan
 
-# Every Monday, research keywords from the product itself: the agent reads the
-# product surface in this repo AS IT EXISTS THAT WEEK (content registries,
-# existing slugs, the master build doc, free tips), derives keyword ideas from
-# what DispatchSEO actually is, validates them through DataForSEO, tracks the
-# winners, and fills the suggestions queue (guides pre-approved, tool ideas
-# pending). No PR - it only writes to the queue via the seo-manager MCP, which
-# you then see on the dashboard. This replaces the old REST opportunities cron.
+# Every Wednesday, measure AI visibility: the agent asks the questions
+# DispatchSEO's customers would ask an AI assistant (built from the tracked
+# keywords), answers them with real web search on the owner's own Claude
+# subscription, and records which answers cite dispatchseo.com via the seo-manager
+# MCP. Google's AI Overview side needs no agent - the daily rank cron already
+# snapshots it. No PR - results land on the dashboard's AI-visibility section.
 
 on:
   schedule:
-    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+    - cron: "0 6 * * 3" # Wednesdays 06:00 UTC
   workflow_dispatch:
 
 concurrency:
-  group: seo-research
+  group: seo-geo-scan
   cancel-in-progress: false
 
 jobs:
-  research:
+  geo-scan:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -28,11 +27,6 @@ jobs:
       - uses: actions/checkout@v4
 
       # Fail fast, in plain language, when the Claude token secret is broken.
-      # Without this the claude-code-action dies minutes in with a cryptic
-      # "Environment variable validation failed" (empty secret) or a 401
-      # (wrapped/wrong token) - the 2026-07-17 dogfood install burned four
-      # runs on exactly that. setup.sh verifies the token before storing it,
-      # so this preflight should only ever fire on hand-set secrets.
       - name: Preflight - Claude token secret usable
         env:
           CLAUDE_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -48,9 +42,8 @@ jobs:
               exit 1 ;;
           esac
 
-      # Fail loudly if the seo-manager MCP is unreachable. Without this, a
-      # stale URL in mcp-ci.json makes Claude see an empty toolset and "exit
-      # cleanly" - a green run that built nothing (2026-07-14 domain-move bug).
+      # Fail loudly if the seo-manager MCP is unreachable - without this a
+      # stale URL makes Claude see an empty toolset and "exit cleanly".
       - name: Preflight - seo-manager MCP reachable
         env:
           SEO_MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
@@ -67,17 +60,13 @@ jobs:
           fi
           echo "seo-manager MCP OK ($url)"
 
-      - name: Run the SEO researcher
+      - name: Run the geo scan
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          # Print the full execution transcript in the step log, so a run's
-          # summary tables (what was considered, what passed, what was queued)
-          # stay readable after the fact - without this, a "success" that
-          # queued nothing is indistinguishable from one that found gold.
           show_full_output: true
-          prompt: "FIRST call the seo-manager MCP tool get_instructions with workflow research, then follow the returned markdown exactly - it is the current playbook and overrides any cached knowledge of this pipeline. Also read .dispatchseo/conventions.md for this repo's product-surface files. Cover the whole product (no topic filter). In brief: derive keyword candidates from product knowledge, validate them via the dataforseo MCP, track winners via track_keywords, queue suggestions with propose_suggestion, then approve every queued idea - guides AND tools - via update_suggestion. (On semi-automatic projects the backend records agent approvals as pending for the owner to decide; the tool response says so and that counts as success, do not retry.) Honor the weekly quota, report the quota status and the instructions version, and output the two summary tables at the end. If get_instructions is unavailable, fail loudly and exit without changes."
+          prompt: "FIRST call the seo-manager MCP tool get_instructions with workflow geo-scan, then follow the returned markdown exactly - it is the current playbook and overrides any cached knowledge of this pipeline. In brief: build ~15 customer questions from the tracked keywords and conventions, answer each with REAL web search (never from memory), judge whether the site is among the cited sources, record every result via record_ai_citations with verbatim answer excerpts, then read get_ai_visibility and report the citation counts and gap domains. If get_instructions is unavailable, fail loudly and exit without changes."
           claude_args: |
             --mcp-config ./.github/mcp-ci.json
             --permission-mode bypassPermissions
@@ -85,8 +74,6 @@ jobs:
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           SEO_MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
-          DATAFORSEO_LOGIN: ${{ secrets.DATAFORSEO_LOGIN }}
-          DATAFORSEO_PASSWORD: ${{ secrets.DATAFORSEO_PASSWORD }}
           MCP_TIMEOUT: "120000"
 
       # Phone the outcome home: failures land on the DispatchSEO dashboard
@@ -102,11 +89,11 @@ jobs:
         run: |
           if [ "$OUTCOME" = "success" ]; then
             curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
-              --data-urlencode "job=seo-weekly-research" --data-urlencode "ok=1" \
+              --data-urlencode "job=seo-geo-scan" --data-urlencode "ok=1" \
               "$URL/api/cron/deploy-check" || true
           else
             curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
-              --data-urlencode "job=seo-weekly-research" \
+              --data-urlencode "job=seo-geo-scan" \
               --data-urlencode "fail=workflow failed - $RUN_URL" \
               "$URL/api/cron/deploy-check" || true
           fi

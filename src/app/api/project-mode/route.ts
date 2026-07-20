@@ -1,5 +1,32 @@
 import { effectiveAutomations, getProjectByToken } from "@/lib/projects";
+import { db } from "@/lib/db";
 import pack from "@/lib/pipeline-pack.json";
+
+// Whether a guide/tool build already completed today (UTC). The build
+// workflows now run several scheduled attempts per day (05:00/12:00/19:00)
+// so a failed morning self-heals by lunch; each attempt asks this flag and
+// exits cleanly when the day's build is already done. Tolerant: any query
+// error reads as "not built" - the workflows' own PR-open guard still
+// prevents double-building, so a wrong "false" costs one no-op run, while a
+// wrong "true" would silently skip a day.
+async function builtToday(projectId: string): Promise<{ guide: boolean; tool: boolean }> {
+  try {
+    const utcMidnight = new Date().toISOString().slice(0, 10) + "T00:00:00Z";
+    const { data, error } = await db()
+      .from("suggestions")
+      .select("type")
+      .eq("project_id", projectId)
+      .eq("status", "done")
+      .gte("completed_at", utcMidnight);
+    if (error || !data) return { guide: false, tool: false };
+    return {
+      guide: data.some((r) => r.type === "guide"),
+      tool: data.some((r) => r.type === "tool"),
+    };
+  } catch {
+    return { guide: false, tool: false };
+  }
+}
 
 // Tiny read endpoint for the project repos' CI. Before acting, workflows ask
 // which automations this project has enabled: auto-merge checks
@@ -23,5 +50,6 @@ export async function GET(req: Request) {
     // it against their installed .dispatchseo/pipeline-version stamp in the
     // daily seo-token-check workflow and report when an update is available.
     pipeline_version: (pack as { version?: string }).version ?? null,
+    built_today: await builtToday(project.id),
   });
 }

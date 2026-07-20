@@ -25,17 +25,17 @@ export type DataforseoCreds = { login: string; password: string };
 // A project's DataForSEO identity. Explicit-creds first; ONLY the default
 // project may ride the platform env credentials - a free-tier project without
 // its own account gets null, and callers skip the paid features gracefully.
-export function credsForProject(project: {
+export async function credsForProject(project: {
   slug: string;
   dataforseo_login: string | null;
   dataforseo_password: string | null;
-}): DataforseoCreds | null {
+}): Promise<DataforseoCreds | null> {
   if (project.dataforseo_login && project.dataforseo_password) {
     // The password is stored encrypted at rest; the login (an email) is not.
     // A missing/rotated key must not 500 the dashboard or a cron, so a decrypt
     // failure degrades to "not connected" - the paid features just skip.
     try {
-      return { login: project.dataforseo_login, password: decryptSecret(project.dataforseo_password) };
+      return { login: project.dataforseo_login, password: await decryptSecret(project.dataforseo_password) };
     } catch (err) {
       console.error(`DataForSEO password decrypt failed for project ${project.slug}:`, err);
       return null;
@@ -81,6 +81,16 @@ async function post<T = unknown>(
   // Top-level 20000 = ok. Task-level errors surface per task below.
   if (json.status_code !== 20000) {
     throw new Error(`DataForSEO ${path} error ${json.status_code}: ${json.status_message}`);
+  }
+  // Task-level failures (40xxx: negative balance, rate limit, bad request)
+  // arrive wrapped in an overall-OK envelope. Before this check, every
+  // caller read a failed task's missing result as legitimate empty data -
+  // an exhausted account looked like "keyword fell out of the top 100" and
+  // "0 keyword ideas" instead of an error. Fabricated data is worse than a
+  // loud failure: throw, so crons report it and the dashboard shows it.
+  const task = json.tasks?.[0];
+  if (task && task.status_code >= 40000) {
+    throw new Error(`DataForSEO ${path} task error ${task.status_code}: ${task.status_message}`);
   }
   return json as T;
 }

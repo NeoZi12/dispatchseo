@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { checkCron } from "@/lib/cron-auth";
 import { reportCronRun } from "@/lib/cron-alerts";
 import { getProjectByToken, listProjects } from "@/lib/projects";
+import { missingMigrations } from "@/lib/schema-check";
 
 // Post-deploy smoke test. The deploy-check GitHub Action hits this after
 // every push to main: first polling with ?expect=<sha> until Vercel serves
@@ -118,6 +119,21 @@ export async function GET(req: Request): Promise<Response> {
   } catch (e) {
     hadError = true;
     checks.projects_resolve = { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  // Schema drift: code ships migrations faster than a self-hosted operator
+  // applies them. Name the exact missing files here so the gap surfaces as
+  // a post-deploy banner + email instead of features that mysteriously
+  // never activate (or the projects env-fallback answering for the wrong
+  // tenant - the 0027 audit's nastiest silent failure mode).
+  const missing = await missingMigrations();
+  if (missing.length > 0) {
+    hadError = true;
+    checks.schema_migrations = {
+      error: `missing migration(s): ${missing.join(", ")} - run supabase/migrations/setup.sql (idempotent, safe to re-run) or paste the named files in the Supabase SQL editor`,
+    };
+  } else {
+    checks.schema_migrations = "ok";
   }
 
   // Creds sanity: a service-account JSON that no longer parses (bad paste,

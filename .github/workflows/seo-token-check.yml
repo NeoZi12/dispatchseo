@@ -66,7 +66,10 @@ jobs:
       # Pipeline staleness: compare this repo's installed pack version stamp
       # against the backend's current one. Stale is not broken - the report
       # tells the owner an update is waiting; re-running the setup command
-      # applies it. Repos installed before version stamps skip silently.
+      # applies it. Repos installed before version stamps skip silently. A
+      # non-200/404 response (401, 5xx, timeout) means the project key itself
+      # is rejected, not that pipeline_version is unsupported - that must be
+      # loud, not folded into the same silent skip.
       - name: Pipeline update check
         if: always()
         env:
@@ -74,8 +77,21 @@ jobs:
         run: |
           [ -f .dispatchseo/pipeline-version ] || { echo "No version stamp (pre-stamp install) - skipping."; exit 0; }
           installed=$(tr -d '[:space:]' < .dispatchseo/pipeline-version)
-          current=$(curl -s --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
-            "${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}/api/project-mode" | jq -r '.pipeline_version // empty')
+          code=$(curl -s -o /tmp/mode.json -w "%{http_code}" --max-time 30 \
+            -H "Authorization: Bearer $SEO_MCP_API_KEY" \
+            "${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}/api/project-mode")
+          if [ "$code" = "404" ]; then
+            echo "Backend has no pipeline_version yet - skipping."
+            exit 0
+          elif [ "$code" != "200" ]; then
+            echo "::error::project-mode returned HTTP $code - the project key looks rejected by the backend. Re-run the setup command from your DispatchSEO dashboard to mint a fresh key."
+            curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
+              --data-urlencode "job=seo-token-check" \
+              --data-urlencode "fail=project key rejected by backend (HTTP $code) - re-run the setup command" \
+              "${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}/api/cron/deploy-check" || true
+            exit 1
+          fi
+          current=$(jq -r '.pipeline_version // empty' /tmp/mode.json)
           if [ -z "$current" ]; then echo "Backend has no pipeline_version yet - skipping."; exit 0; fi
           if [ "$installed" = "$current" ]; then
             echo "Pipeline up to date ($installed)."
