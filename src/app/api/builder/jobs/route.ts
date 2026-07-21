@@ -51,6 +51,11 @@ const CADENCE_HOURS: Record<string, number> = {
 export async function GET(req: Request): Promise<Response> {
   const denied = await checkCron(req);
   if (denied) return denied;
+  // Claiming is opt-in: only the builder's poll loop sends ?claim=1. A bare
+  // GET is a free dry-run for diagnostics - the first live test lost its
+  // whole night because a handoff checklist's curl silently claimed every
+  // due job. Listing must never cost a cadence window.
+  const claim = new URL(req.url).searchParams.get("claim") === "1";
 
   type Job = {
     key: string;
@@ -102,7 +107,7 @@ export async function GET(req: Request): Promise<Response> {
       const key = `builder-${wf}--${p.slug}`;
       // Claim: log the hand-out so the next poll skips it. The container
       // overwrites this with the real outcome via deploy-check reporting.
-      await reportCronRun(key, { claimed: "builder", handed_out: true }, false);
+      if (claim) await reportCronRun(key, { claimed: "builder", handed_out: true }, false);
       jobs.push({
         key,
         workflow: wf,

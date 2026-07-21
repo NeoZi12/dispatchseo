@@ -160,7 +160,7 @@ while :; do
        sleep 1800; continue ;;
   esac
 
-  feed=$(curl -s --max-time 60 -H "Authorization: Bearer ${CRON_SECRET}" "$APP/api/builder/jobs")
+  feed=$(curl -s --max-time 60 -H "Authorization: Bearer ${CRON_SECRET}" "$APP/api/builder/jobs?claim=1")
   if [ -z "$feed" ] || ! echo "$feed" | jq -e . >/dev/null 2>&1; then
     log "backend not reachable yet - retrying in 60s"
     sleep 60; continue
