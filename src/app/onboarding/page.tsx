@@ -80,10 +80,23 @@ export default async function OnboardingPage({
   return (
     <main className="min-h-screen px-5 py-8 sm:px-6 sm:py-10">
       <div className="mx-auto w-full max-w-3xl">
-        <p className="mb-8 flex items-center gap-2.5 text-lg font-semibold text-white">
-          <DispatchMark className="h-7 w-auto" />
-          DispatchSEO
-        </p>
+        <div className="mb-8 flex items-center justify-between">
+          <p className="flex items-center gap-2.5 text-lg font-semibold text-white">
+            <DispatchMark className="h-7 w-auto" />
+            DispatchSEO
+          </p>
+          {/* Escape hatch to the plain-English walkthrough - the wizard's
+              only external help surface, so keep the anchor in sync with
+              docs/SELF_HOSTING.md's wizard section heading. */}
+          <a
+            href="https://github.com/NeoZi12/dispatchseo/blob/main/docs/SELF_HOSTING.md#the-setup-wizard-step-by-step"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300"
+          >
+            Stuck? Open the quick guide ↗
+          </a>
+        </div>
         <OnboardingWizard saEmail={await serviceAccountEmail()} origin={origin} resume={resume} />
       </div>
     </main>

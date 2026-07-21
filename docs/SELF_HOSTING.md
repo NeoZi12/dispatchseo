@@ -1,23 +1,43 @@
 # Self-hosting DispatchSEO
 
-Two ways to run it, both $0 hosting:
+This guide takes you from nothing to a working DispatchSEO install, in plain
+English. If you've never touched Docker or heard the words "service account"
+before, you're in the right place - every step is spelled out.
+
+There are two ways to run it. Both cost $0 to host:
 
 - **[Docker](#option-a-docker-one-command)** - one command on your own
-  machine or any $5 VPS. No cloud accounts. The fastest way to try it.
-- **[Free cloud tiers](#option-b-free-cloud-deploy-vercel--supabase)** -
-  Vercel (Hobby) + Supabase (free) + GitHub Actions. No server to run;
-  you bring your own free accounts.
+  computer or any $5/month server. No cloud accounts. The fastest way in.
+- **[Free cloud](#option-b-free-cloud-vercel--supabase)** - Vercel +
+  Supabase + GitHub Actions, all on their free tiers. Nothing runs on your
+  machine; you bring your own free accounts.
 
-Paid SERP data (DataForSEO) is optional either way - see
-[Data tiers](#data-tiers).
+Both roads end at the same place: a **setup wizard** in your browser that
+walks you through connecting your site, checks every step on the spot, and
+unlocks the dashboard once everything is verified. The whole wizard is
+covered below in [The setup wizard, step by step](#the-setup-wizard-step-by-step).
+
+## What you need (either way)
+
+- **Your website's code in a GitHub repo.** DispatchSEO publishes every
+  article and tool as a pull request - a suggested change you can look at
+  before it goes live. That means git-based sites only; WordPress and other
+  database-backed CMSes won't work.
+- **Claude Code with a Claude subscription.** Your own AI agent does the
+  research and the writing, on the plan you already pay for. DispatchSEO
+  bills you nothing.
+- **Google Search Console access to your site.** That's Google's free tool
+  showing how your site performs in search. If your site isn't on it yet,
+  add it first at [search.google.com/search-console](https://search.google.com/search-console).
 
 ## Option A: Docker (one command)
 
-Runs the whole backend - dashboard, MCP server, database, crons - as 4 small
-containers in ~1 GB RAM (any $5/month VPS, a Raspberry Pi, or your laptop).
+Runs the whole backend - dashboard, MCP server, database, scheduled jobs -
+as a few small containers in about 1 GB of RAM. A $5/month VPS, a Raspberry
+Pi, or your laptop all work.
 
-Prerequisite: [Docker](https://docs.docker.com/get-docker/) (Docker Desktop
-on Mac/Windows, `docker` + compose plugin on Linux).
+The one prerequisite is [Docker](https://docs.docker.com/get-docker/)
+(Docker Desktop on Mac/Windows, `docker` + the compose plugin on Linux).
 
 ```bash
 git clone https://github.com/NeoZi12/dispatchseo &&
@@ -25,166 +45,230 @@ git clone https://github.com/NeoZi12/dispatchseo &&
   sh start.sh
 ```
 
-When it finishes it prints your dashboard URL. `start.sh` does four
-things, each skipped if already done, so re-running it is always safe:
+On Windows, paste that in WSL or Git Bash. The first boot builds the app
+image, which takes a few minutes; the database schema applies itself.
 
-1. Creates `.env` from `.env.docker.example`.
+When it finishes, it prints your dashboard URL - usually
+**http://localhost:3000**. Open it, choose a dashboard password, and the
+setup wizard starts. From here, jump to
+[The setup wizard, step by step](#the-setup-wizard-step-by-step).
+
+### What the command actually did
+
+`start.sh` does four things, and it skips whatever is already done, so
+re-running it is always safe:
+
+1. Creates a `.env` file from the template.
 2. Generates the one required secret (`CRON_SECRET`).
-3. Picks the host port: 3000, or the next free port up if something (a
-   dev server, another app) already holds it. Set `DISPATCH_PORT` in
-   `.env` to pin one.
-4. `docker compose up -d`.
+3. Picks the port: 3000, or the next free one if something already uses it.
+   Want a specific port? Set `DISPATCH_PORT` in `.env`.
+4. Starts everything with `docker compose up -d`.
 
-The stack also has a pinned compose project name, so a second clone
-anywhere on the machine updates the existing instance instead of creating
-a duplicate. On Windows, paste the block in WSL or Git Bash.
-
-Want your own Postgres password? Set `POSTGRES_PASSWORD` in `.env` **before
-the first `up`** - it gets baked into the database volume at creation, so
-changing it later requires wiping the volume (`docker compose down -v`,
-which deletes all data). The default is fine for most setups: postgres is
-only reachable inside the compose network, never from the host or the
-internet.
-
-First boot builds the app image (a few minutes) and applies the database
-schema automatically. Then open **http://localhost:3000** - the setup wizard
-takes it from there (dashboard password, connecting your repo, GSC).
-
-What's running:
+The stack has a pinned name (`dispatchseo`), so cloning the repo a second
+time somewhere else updates your existing install instead of creating a
+duplicate.
 
 | Container | Job |
 |---|---|
 | `app` | Dashboard, MCP server (`/api/mcp`), cron endpoints |
 | `postgres` | Your data (persists in the `dispatch-pgdata` volume) |
-| `postgrest` | REST layer between app and database (internal network only) |
-| `migrate` | One-shot schema apply on each boot (idempotent) |
-| `cron` | Rank tracking / GSC snapshots / weekly research on schedule |
+| `postgrest` | REST layer between app and database (internal only) |
+| `migrate` | Applies the database schema on each boot (safe to repeat) |
+| `cron` | Rank tracking, Search Console snapshots, weekly research |
 
-Things to know:
+### The one localhost catch
 
-- **The content pipeline needs a reachable URL.** DispatchSEO ships content
-  by opening PRs via GitHub Actions in *your site's* repo, and those
-  workflows call back to this backend. `localhost` is fine for exploring the
-  dashboard and MCP locally, but before connecting a repo, put the instance
-  on a public URL (reverse proxy with HTTPS, or a tunnel like Cloudflare
-  Tunnel) and set `APP_URL` in `.env` to match.
+Everything in the wizard works on localhost. One thing doesn't, later on:
+the content pipeline runs as GitHub Actions in *your site's* repo, and
+those jobs need to call back to your DispatchSEO instance. GitHub's servers
+can't reach an address that only exists on your machine.
+
+So: explore, set up, research keywords, track rankings - all fine locally.
+When you want articles built automatically, put the instance on a public
+URL (a reverse proxy with HTTPS, or a tunnel like Cloudflare Tunnel) and
+set `APP_URL` in `.env` to match. The wizard reminds you about this too.
+
+### Good to know
+
+- **Your own database password:** set `POSTGRES_PASSWORD` in `.env`
+  **before the very first start**. It gets baked into the database volume,
+  so changing it later means wiping the volume (`docker compose down -v` -
+  which deletes all data). The default is fine for most people: the
+  database is only reachable inside Docker's private network, never from
+  the internet.
 - **Upgrading:** `git pull && docker compose build app && docker compose up -d`.
-  Schema changes apply automatically (`setup.sql` is idempotent). Back up
-  with `docker compose exec postgres pg_dump -U dispatch dispatchseo > backup.sql`.
-- **Troubleshooting:** `docker compose ps` (everything except the one-shot
-  `migrate` should be running; `app` turns `healthy` once it reaches the
-  database), `docker compose logs app` / `logs cron`. Port taken? Set
-  `DISPATCH_PORT` in `.env`. Fresh start: `docker compose down -v` deletes
-  **all data**.
+  Schema changes apply themselves.
+- **Backups:** `docker compose exec postgres pg_dump -U dispatch dispatchseo > backup.sql`
+- **Troubleshooting:** `docker compose ps` shows what's running (everything
+  except the one-shot `migrate` should be up; `app` turns `healthy` once it
+  reaches the database). `docker compose logs app` shows the app's logs.
+  Fresh start: `docker compose down -v` - deletes **all data**.
 
-Skip to [Connect your site](#5-connect-your-site) - the wizard covers
-everything in between. Google Search Console setup is the same as
-[step 3](#3-google-search-console-free-rankings--traffic-data) below.
+## Option B: free cloud (Vercel + Supabase)
 
-## Option B: free cloud deploy (Vercel + Supabase)
-
-### What you need
-
-- Your website's source in a **GitHub repo** (git-based sites only - the
-  pipeline ships content as pull requests, so WordPress and other
-  database-backed CMSes are out).
-- A **Claude subscription with Claude Code** - your agent does the research
-  and writing; DispatchSEO is the state, scheduling, and approval layer it
-  works against.
-- Free accounts: **GitHub**, **Vercel**, **Supabase**.
-- **Google Search Console** access to your site, plus a free Google Cloud
-  service account (steps below).
+You'll need free accounts on **GitHub**, **Vercel**, and **Supabase**.
 
 ### 1. Deploy the backend
 
-Click a deploy button in the README - neither asks you for anything:
+Click a deploy button in the [README](../README.md) - neither asks you for
+anything up front:
 
-- **Deploy · new database** clones the repo to your GitHub and provisions a
-  free Supabase database through the Vercel Marketplace (its env vars get
-  injected automatically).
-- **Deploy · your own database** deploys the same app without creating a
-  database. Use it if your Supabase account is already at its free-project
-  limit (the free tier allows 2 active projects) or you want to reuse an
-  existing project.
-- **Manual path:** fork this repo, then import it into Vercel (Add New →
-  Project → your fork). Equivalent to the second button.
+- **Deploy · new database** clones the repo to your GitHub and creates a
+  free Supabase database for you through the Vercel Marketplace. Easiest.
+- **Deploy · your own database** deploys the app without creating a
+  database. Use it if your Supabase account is already at its 2-project
+  free limit, or you want to reuse an existing project.
+- **Manual path:** fork this repo, then import the fork into Vercel
+  (Add New → Project). Same result as the second button.
 
-Then **open your new site**. It shows a setup wizard that walks you through
-whatever is left, in order:
+### 2. First open: claim your instance
 
-1. **Connect your database** (skipped on the marketplace path): pick any
-   Supabase project you already have, or create a free one. Copy its
-   **Project URL** (shown on the project's home page, next to a Copy
-   button) and its **secret key**
-   (Project Settings → API Keys; starts with `sb_secret_`, called
-   `service_role` on older projects - both work) into Vercel env vars
-   `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`, then redeploy. The
-   wizard shows these exact steps with links.
-2. **Run the migrations**: paste
-   [`supabase/migrations/setup.sql`](../supabase/migrations/setup.sql)
-   (every migration in one file, safe to re-run) into the Supabase SQL
-   Editor and press Run. `/setup` checks that the full set has actually
-   run - not just that the database is reachable - before letting you
-   move on.
-3. **Claim the instance**: choose your dashboard password. DispatchSEO
-   generates its agent key (MCP token) and cron key itself, captures this
-   deploy's own URL so connected pipelines phone home to the right backend
-   (no `APP_URL` env var needed in the normal path), and shows you both keys.
+Open your new site. A short setup flow walks you through whatever is left,
+with exact instructions and links on each screen:
 
-### 2. Environment variables
+1. **Connect your database** (skipped if the marketplace created one):
+   copy your Supabase project's URL and secret key into two Vercel
+   environment variables, redeploy.
+2. **Run the database setup**: paste one SQL file into Supabase's SQL
+   Editor and press Run. It checks the result before letting you continue.
+3. **Choose your dashboard password.** DispatchSEO generates its own agent
+   key and cron key and shows you both.
 
-The wizard handles the required ones. The rest go in Vercel (Project →
-Settings → Environment Variables); the full annotated list lives in
-[`.env.local.example`](../.env.local.example).
+### 3. Turn on the schedules
 
-| Variable | What it is |
-| --- | --- |
-| `SUPABASE_URL` | Wizard step 1 (the marketplace path injects it for you) |
-| `SUPABASE_SERVICE_ROLE_KEY` | Wizard step 1 - server-only, never expose it. The marketplace injects it as `SUPABASE_SECRET_KEY`; both names work |
-| `GSC_SERVICE_ACCOUNT_JSON` | Step 3 below (one line, the whole JSON) |
-| `GSC_SITE_URL` | Your property, e.g. `sc-domain:example.com` |
-| `DATAFORSEO_*`, `RESEND_API_KEY`, `ALERT_EMAIL` | Optional - volumes and failure emails |
-| `DASHBOARD_PASSWORD`, `CRON_SECRET`, `MCP_API_KEY` | Optional overrides. Setting them bypasses the wizard's stored values (classic installs work this way); most people never set them |
+Two schedulers share the work (Vercel's free tier only allows one daily
+cron, so the rest run on GitHub Actions):
 
-Redeploy after saving so the functions pick them up.
-
-### 3. Google Search Console (free rankings + traffic data)
-
-1. In [Google Cloud Console](https://console.cloud.google.com), create a
-   project (or reuse one), enable the **Search Console API**, and create a
-   **service account** (no roles needed). Create a JSON key and download it.
-2. In [Search Console](https://search.google.com/search-console) → Settings
-   → Users and permissions, add the service account's email (it looks like
-   `name@project.iam.gserviceaccount.com`) as a **Full** user.
-3. Paste the JSON key (single line) into `GSC_SERVICE_ACCOUNT_JSON`.
-
-### 4. Schedules
-
-Two schedulers, split because Vercel Hobby caps crons at once daily:
-
-- **Vercel cron** - `vercel.json` already runs the daily rank check. Nothing
+- **Vercel cron** - already configured, runs the daily rank check. Nothing
   to do.
-- **GitHub Actions** - the higher-frequency jobs live in
-  [`.github/workflows/`](../.github/workflows/). On your fork: enable
-  Actions (forks start disabled), then set
-  - repository **secret** `CRON_SECRET` = your cron key. The setup wizard
-    generated it and shows it at `https://your-app.vercel.app/setup/keys`
-    (classic installs: whatever you set as the `CRON_SECRET` env var),
-  - repository **variable** `BACKEND_URL` = your deployment URL
-    (e.g. `https://your-app.vercel.app`).
+- **GitHub Actions** - on your fork of this repo: enable Actions (forks
+  start with them off), then add
+  - repository **secret** `CRON_SECRET` = your cron key (shown at
+    `https://your-app.vercel.app/setup/keys`),
+  - repository **variable** `BACKEND_URL` = your deployment URL.
 
   Only `hourly-gsc.yml` matters for a fresh install. The `seo-*.yml`
-  workflows are this repo's own content pipeline for dispatchseo.com's blog -
-  your site gets its own copies during setup (next step), so leave the ones
-  here disabled or delete them from your fork.
+  workflows in this repo are dispatchseo.com's own content pipeline - your
+  site gets its own copies during the install, so leave these disabled.
 
-### 5. Connect your site
+### 4. The wizard takes it from here
 
-Open your deployment, log in with your dashboard password, and add your site
-as a project. The dashboard gives you one command to paste into Claude Code
-**inside your site's repo** - your agent connects to the MCP server, follows
-the served instructions, writes the workflow files, and sets its own repo
-secrets. That's the whole install: your agent sets you up.
+Log in with your password and the setup wizard starts - Search Console,
+keyword data, publish mode, connecting Claude Code, all of it. Keep
+reading.
+
+## The setup wizard, step by step
+
+This is the same wizard on Docker and cloud - it knows which install you
+have and only shows what applies. It takes about 10 minutes, checks each
+step on the spot, and saves your progress as you go: close the tab
+whenever, and it reopens exactly where you stopped.
+
+**Stuck? Every screen also has a link back to this guide.**
+
+### Step 1 - Add your site
+
+Name, domain, and GitHub repo of **your website** - the site you want
+Google traffic for, not the machine DispatchSEO runs on. The repo is the
+`owner/repo` part of its GitHub URL. Then one question: does your site have
+a blog? "Not sure" is a valid answer - Claude checks the repo and decides
+during setup.
+
+### Step 2 - Connect Google Search Console
+
+This is where your ranking and traffic numbers come from. DispatchSEO
+reads them through a **service account** - a robot Google account that it
+signs in as. You create one once and it works for every site you ever add.
+
+The wizard walks you through it with direct links: create a Google Cloud
+project, enable the Search Console API, create the service account,
+download its key file, and paste the file's contents into the wizard. The
+key is stored encrypted in your own database.
+
+Then you add the service account's email as a user in Search Console
+(the wizard shows the exact clicks) and press **Verify connection** - it
+asks Google right then and tells you if it worked. Google occasionally
+takes a few minutes to catch up; you can continue and it re-checks on its
+own.
+
+### Step 3 - Pick a keyword data source
+
+Two choices, switchable later in Settings:
+
+- **DataForSEO (paid, recommended):** real Google search volumes and
+  difficulty scores - the same data most SEO tools resell. Pay as you go;
+  a typical site costs $2-5/month, and new accounts get $1 free.
+- **Free mode ($0 forever):** Claude finds opportunities in your own
+  Search Console data and Google's autocomplete suggestions. If you go
+  free, the wizard offers one optional upgrade: a free SerpApi key
+  (250 searches/month, no credit card) that lets Claude look at the real
+  Google results page before writing, to judge whether a keyword is
+  winnable.
+
+Whatever you pick, the wizard verifies the credentials against the real
+service before saving them.
+
+### Step 4 - Claude Code
+
+Nothing to do here - it just explains the division of labor: Claude Code is
+the brain, DispatchSEO is its memory and dashboard. The connection itself
+happens at the finish line.
+
+### Step 5 - Publish mode
+
+Should anything go live without you?
+
+- **Semi-automatic (recommended to start):** Claude researches and builds
+  on its own, but you approve ideas and click Merge on finished pages. A
+  few minutes of your attention a week.
+- **Automatic:** everything runs itself; pages that pass their checks
+  publish without anyone touching them. You can watch and undo from the
+  dashboard.
+
+There's a Semi/Auto toggle in the dashboard's top bar, so this is never a
+final answer.
+
+### Step 6 - One-tap merge (optional)
+
+Claude ships pages as GitHub pull requests. If you give the dashboard a
+GitHub token, its Approve button also merges - approve = live on your site.
+The wizard links you to a pre-filled GitHub page, you press Generate,
+paste the token, and it's verified against your repo before saving
+(encrypted, like everything else). Skipping is fine: you'll just merge each
+PR on GitHub yourself.
+
+### Step 7 - The honest timeline
+
+A month-by-month picture of what SEO actually looks like, so a quiet first
+month reads as "on schedule" instead of "broken". Just read it.
+
+### The finish line: two pastes
+
+The last screen gives you two things to copy:
+
+1. **A terminal command** that connects your Claude Code to this project.
+   Run it inside your site's repo folder.
+2. **A chat message** to paste into Claude Code itself (open the repo,
+   type `claude`, paste). This one does the actual install.
+
+From that second paste, your agent takes over: it writes the automation
+workflow files into your repo, sets the repo secrets, opens one pull
+request with all of it, and kicks off your first keyword research. You
+approve its steps in the chat as it goes. It needs Claude Code and the
+GitHub CLI (`gh`) installed, and it's safe to re-run if anything is
+interrupted.
+
+The wizard tracks all of it live. When the pipeline PR is open, it shows
+**"Your move: merge the pipeline PR"** with a direct link - merging that PR
+is your one required click. The agent then verifies the full checklist
+(workflows on the main branch, permissions, labels, secrets) and reports
+back over MCP; the backend double-checks it independently. The dashboard
+only unlocks once everything genuinely works. If the wizard says
+it's still waiting, the agent isn't done yet - check its chat.
+
+There's also an optional third paste that personalizes the backlink
+playbook for your product. Skip it if you want; you can run it any time
+later.
 
 ## Data tiers
 
@@ -192,18 +276,38 @@ The tiers stack - start free, add keys when you want more signal:
 
 | Tier | Costs | You get |
 | --- | --- | --- |
-| **GSC-only** (default) | $0 | Rankings from Search Console, keyword research from Google Autocomplete + your own impression data |
+| **GSC-only** (default) | $0 | Rankings from Search Console, keyword ideas from Google Autocomplete + your own impression data |
 | **+ SerpApi key** | $0 (250 searches/mo free) | Live SERP checks: real positions weekly, page-1 recon before writing |
-| **+ DataForSEO** | ~pay-per-call, prepaid | Search volumes, keyword difficulty, domain rating - the "is this keyword worth winning" numbers |
+| **+ DataForSEO** | pay per call, prepaid | Search volumes, keyword difficulty, domain rating - the "is this keyword worth winning" numbers |
 
 Honest framing: free mode finds keywords you can win; paid mode also knows
 which ones are worth winning.
 
+## Advanced: environment variables
+
+The wizard stores everything it collects (encrypted) in your own database,
+so a normal install needs no hand-set variables beyond what the deploy
+creates. Power users can still set any of these - an environment variable
+always wins over the wizard's stored value:
+
+| Variable | What it is |
+| --- | --- |
+| `GSC_SERVICE_ACCOUNT_JSON` | The service-account key, as one line - instead of pasting it in the wizard |
+| `GSC_SITE_URL` | Your Search Console property, e.g. `sc-domain:example.com` |
+| `GH_MERGE_TOKEN` | The one-tap-merge GitHub token - instead of the wizard |
+| `DATAFORSEO_*`, `RESEND_API_KEY`, `ALERT_EMAIL` | Keyword volumes and failure-alert emails |
+| `DASHBOARD_PASSWORD`, `CRON_SECRET`, `MCP_API_KEY` | Classic-install overrides; setting them bypasses the stored values |
+
+The full annotated list lives in
+[`.env.local.example`](../.env.local.example) (cloud) and
+[`.env.docker.example`](../.env.docker.example) (Docker).
+
 ## When something breaks
 
 Every scheduled job logs its runs. Failures show as a red banner on the
-dashboard Home page, and - if you set `RESEND_API_KEY` + `ALERT_EMAIL` - you
-get an email, at most one per job per day. Setting those two is strongly
-recommended if you run in auto mode: nobody opens the dashboard on a normal
+dashboard's Home page, and - if you set `RESEND_API_KEY` + `ALERT_EMAIL` -
+you get an email, at most one per job per day. Setting those two is
+strongly recommended in auto mode: nobody opens the dashboard on a normal
 day, so the email is what actually surfaces a broken job. Full detail lands
-in Vercel's function logs and the GitHub Actions run logs.
+in Vercel's function logs (cloud) or `docker compose logs` (Docker), plus
+the GitHub Actions run logs.

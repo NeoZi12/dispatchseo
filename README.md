@@ -144,9 +144,9 @@ worth winning.
 Two ways in, same product either way
 ([docs/SELF_HOSTING.md](docs/SELF_HOSTING.md) covers both):
 
-- **Docker** - the clone + `docker compose up -d` above. Database,
-  migrations, and cron schedules are all bundled; open the dashboard and the
-  setup wizard takes over.
+- **Docker** - the one command above. Database, migrations, and cron
+  schedules are all bundled; open the dashboard and the setup wizard takes
+  over.
 - **Free cloud tiers** - click a deploy button above (Vercel + Supabase),
   run the one-file database setup, and enable the GitHub Actions schedule.
 
