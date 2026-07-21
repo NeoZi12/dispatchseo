@@ -48,6 +48,7 @@ import { getPacing } from "@/lib/pacing";
 import { mcpAddCommand, setupCommand } from "@/lib/mcp-connect";
 import { PacingLine } from "@/components/pacing-info";
 import { AgentStatus } from "@/components/agent-status";
+import { FirstRunBackground } from "@/components/first-run-background";
 import AiVisibilitySection from "./ai-visibility-section";
 
 export const dynamic = "force-dynamic";
@@ -421,7 +422,13 @@ export default async function Home() {
   // "Build your first page" assumes the pipeline exists - that's true for the
   // default project; a newly added project gets the pipeline-install card
   // instead until content starts landing.
-  const needsFirstPage = isDefaultProject && (pageCount.count ?? 0) === 0 && !hasShipped;
+  // In auto mode the daily builder handles the first page on schedule - the
+  // "build it right now" nudge only makes sense when a human drives.
+  const needsFirstPage =
+    isDefaultProject &&
+    (pageCount.count ?? 0) === 0 &&
+    !hasShipped &&
+    !effectiveAutomations(project).auto_build_guides;
   const needsPipeline =
     !isDefaultProject && (pageCount.count ?? 0) === 0 && !hasShipped && !skippedPowerup("pipeline");
   // The install's footprint: the workflow's final step stamps
@@ -707,6 +714,10 @@ export default async function Home() {
         </div>
       </section>
       ) : null}
+
+      {/* Background first runs (research / rank check) - the wizard tracks
+          only owner actions, so the machine work shows here, self-hiding. */}
+      {pipelineInstalled ? <FirstRunBackground slug={project.slug} /> : null}
 
       {/* ---------- THE GRAPH ---------- */}
       <section className="space-y-3">

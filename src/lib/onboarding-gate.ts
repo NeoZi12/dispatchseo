@@ -1,18 +1,37 @@
 import { redirect } from "next/navigation";
+import { db } from "./db";
 import { listProjects } from "./projects";
 
-// "The wizard is a must": a fresh instance has exactly one NEUTRAL project
-// (the fixed-id row setup.sql seeds) and zero sites connected, and every
-// dashboard surface assumes a configured project behind it. Until the
-// onboarding wizard's first step has run - which claims that row with a real
-// domain + repo - the dashboard pages funnel back to /onboarding instead of
-// rendering half-broken. Settings and the wizard itself stay reachable.
+// "The wizard is a must": the dashboard stays locked until the OWNER'S side
+// of setup is genuinely done - which means the pipeline install completed
+// (the agent stamps pipeline_installed_at after the install PR merges).
+// Until then every dashboard page funnels back to /onboarding, which
+// resumes at the exact screen the owner stood on. Settings and the wizard
+// itself stay reachable.
 //
-// "Configured" = any project with a GitHub repo connected, the one field
-// onboarding cannot skip. listProjects' env-fallback row (deploy-window DB
-// tolerance) carries a repo, so a transient DB error can never lock the
-// owner out of their dashboard.
+// Grandfathering + tolerance: projects created before the wizard tracked
+// screens (onboarding_screen null, pre-0030) pass on a connected repo
+// alone, and any DB error fails OPEN via listProjects (whose env-fallback
+// row carries a repo) - a transient outage must never lock the owner out.
 export async function hasConfiguredProject(): Promise<boolean> {
+  try {
+    const { data, error } = await db()
+      .from("projects")
+      .select("github_repo, pipeline_installed_at, onboarding_screen");
+    if (!error && data) {
+      return (data as Array<{
+        github_repo: string | null;
+        pipeline_installed_at: string | null;
+        onboarding_screen: string | null;
+      }>).some(
+        (p) =>
+          p.pipeline_installed_at != null ||
+          (Boolean(p.github_repo) && p.onboarding_screen == null),
+      );
+    }
+  } catch {
+    // fall through to the tolerant path
+  }
   const all = await listProjects();
   return all.some((p) => Boolean(p.github_repo));
 }

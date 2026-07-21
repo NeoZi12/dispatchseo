@@ -72,17 +72,15 @@ export function FirstRunStatus({
   onSkipPlaybook?: () => void;
 }) {
   const [status, setStatus] = useState<Status | null>(null);
-  const [startedAt] = useState(() => Date.now());
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // "Done" = every step the OWNER owns is done. Background work (first
+  // research, rank checks, GSC data) deliberately doesn't gate this - it
+  // shows on Home's "working in the background" strip instead.
   const playbookSettled = Boolean(status?.profile_written) || Boolean(playbookSkipped);
   const done = Boolean(
-    status &&
-      status.pipeline_installed &&
-      status.canary_ok &&
-      status.ideas_queued > 0 &&
-      (playbookCommand ? playbookSettled : true),
+    status && status.pipeline_installed && (playbookCommand ? playbookSettled : true),
   );
 
   useEffect(() => {
@@ -110,7 +108,6 @@ export function FirstRunStatus({
   }, [done]);
 
   const s = status;
-  const waitedMinutes = Math.floor((Date.now() - startedAt) / 60000);
 
   return (
     <div className="mt-4 rounded-xl bg-neutral-900 px-4 py-1.5">
@@ -165,38 +162,12 @@ export function FirstRunStatus({
             }
           />
         ) : null}
-        <Row
-          state={s && s.ideas_queued > 0 ? "done" : s?.pipeline_installed ? "active" : "pending"}
-          label={
-            s && s.ideas_queued > 0
-              ? `First research done - ${s.ideas_queued} content ideas queued`
-              : "First keyword research (fills your queue, ~10-20 min)"
-          }
-        />
-        <Row
-          state={s && s.rank_checks > 0 ? "done" : s && s.keywords_tracked > 0 ? "active" : "pending"}
-          label={
-            s && s.rank_checks > 0
-              ? `First rank check done - ${s.keywords_tracked} keywords tracked`
-              : s && s.keywords_tracked > 0
-                ? "Running your first rank check…"
-                : "First rank check (starts once research picks keywords)"
-          }
-        />
-        <Row
-          state={s && s.gsc_rows > 0 ? "done" : "pending"}
-          label={
-            s && s.gsc_rows > 0
-              ? "Search Console data flowing"
-              : "Search Console data (arrives once Google grants the access you added)"
-          }
-        />
       </ul>
       {playbookCommand && !playbookSkipped && !s?.profile_written ? (
         <div className="border-t border-neutral-800 py-3">
           <p className="mb-2 text-sm text-neutral-300">
-            Second paste, same terminal - it researches your product and
-            prefills every backlink submission for you:
+            Second paste, same Claude Code chat - it researches your product
+            and prefills every backlink submission for you:
           </p>
           <div className="flex items-center gap-2.5 rounded-lg border border-neutral-800 bg-neutral-950 py-2.5 pl-3.5 pr-3">
             <code className="flex-1 overflow-x-auto whitespace-nowrap font-mono text-sm text-neutral-300 [scrollbar-width:none]">
@@ -235,16 +206,12 @@ export function FirstRunStatus({
             href="/dashboard"
             className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-neutral-950"
           >
-            Everything&apos;s running - open your dashboard →
+            Setup complete - open your dashboard →
           </a>
         ) : (
-          <p className="text-[13px] text-neutral-500">
-            {waitedMinutes >= 3
-              ? "Taking a while? That's normal for the research step. You can open the dashboard now - it fills in live as the runs finish."
-              : "This page updates itself - leave it open while the command runs."}{" "}
-            <a href="/dashboard" className="text-neutral-400 underline">
-              Open dashboard anyway
-            </a>
+          <p className="text-sm text-neutral-500">
+            This page updates itself - your agent&apos;s chat shows what it&apos;s doing, and
+            anything that needs YOU appears above with a link.
           </p>
         )}
       </div>
