@@ -66,7 +66,11 @@ html:has(.ld) { scroll-behavior: smooth; }
 /* Fills the first viewport. Top padding is sized so the description paragraph
    sits at the vertical center of the window (50vh minus the 68px nav, the
    title block, and half the paragraph). */
-.ld .hero { min-height: calc(100vh - 68px); display: flex; flex-direction: column; justify-content: flex-start; padding: max(48px, calc(50vh - 230px)) 0 60px; text-align: center; position: relative; }
+.ld .hero { min-height: calc(100vh - 68px); display: flex; flex-direction: column; justify-content: flex-start; padding: max(28px, calc(50vh - 470px)) 0 60px; text-align: center; position: relative; }
+
+/* pixel dispatcher scene above the title */
+.ld .pixel-stage { width: min(460px, 92vw); margin: 0 auto 18px; }
+.ld .pixel-stage svg { display: block; width: 100%; height: auto; }
 .ld .hero h1 { font-size: clamp(40px, 6.4vw, 70px); line-height: 1.1; font-weight: 800; margin: 0 auto 22px; max-width: 880px; }
 /* "Claude Code" selection-block highlight: a pseudo-element behind the glyphs,
    inset to hug cap-height and baseline so it never bleeds into the line above,

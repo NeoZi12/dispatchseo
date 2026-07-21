@@ -6,6 +6,7 @@ import { DispatchMark } from "@/components/logo";
 import { joinWaitlist, waitlistAttemptAllowed } from "@/lib/waitlist";
 import { clientIp } from "@/lib/login-lockout";
 import { FeatureShowcase } from "./feature-showcase";
+import { PixelDispatcher } from "@/components/pixel-dispatcher";
 import "./landing.css";
 
 // Public landing page - cloud deployment only. Self-hosted installs never set
@@ -116,6 +117,7 @@ export default async function LandingPage({
         <svg className="doodle doodle-arrow" viewBox="0 0 80 60" aria-hidden="true"><path d="M6 9 C 33 13, 55 27, 63 49 M63 49 L50 44 M63 49 L66 35" /></svg>
 
         <div className="wrap">
+          <PixelDispatcher />
           <h1>Automate your SEO<br />with <span className="hl">Claude Code</span></h1>
           <p className="sub">The agent that built your product now runs your SEO: keyword research, guides, interactive tools, rank tracking - all automatic.</p>
 
