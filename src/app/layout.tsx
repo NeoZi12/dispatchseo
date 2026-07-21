@@ -21,7 +21,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://dispatchseo.com"),
   title: "DispatchSEO",
-  description: "Turn Claude Code into your SEO manager - keywords, rankings, backlinks and automations, tracked daily",
+  description: "Automate your SEO with Claude Code - keywords, rankings, backlinks and automations, tracked daily",
   twitter: {
     card: "summary_large_image",
   },

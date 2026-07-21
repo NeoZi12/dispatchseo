@@ -24,9 +24,9 @@ const GITHUB_URL = "#";
 const DOCS_URL = "#";
 
 export const metadata: Metadata = {
-  title: "DispatchSEO — Turn Claude Code into your SEO manager",
+  title: "DispatchSEO — Automate your SEO with Claude Code",
   description:
-    "The Claude Code that built your product now manages its SEO: trends, guides, interactive tools, reviews, rank tracking. Open source, free to self-host.",
+    "Claude Code researches keywords, writes guides, builds interactive tools, and tracks your ranks automatically. Every piece is a pull request you approve. Open source, free to self-host.",
 };
 
 async function join(formData: FormData) {
@@ -116,8 +116,8 @@ export default async function LandingPage({
         <svg className="doodle doodle-arrow" viewBox="0 0 80 60" aria-hidden="true"><path d="M6 9 C 33 13, 55 27, 63 49 M63 49 L50 44 M63 49 L66 35" /></svg>
 
         <div className="wrap">
-          <h1>Turn Claude Code into<br />your SEO manager</h1>
-          <p className="sub">The Claude Code that built your product now manages its SEO: trends, guides, interactive tools, reviews, rank tracking.</p>
+          <h1>Automate your SEO<br />with Claude Code</h1>
+          <p className="sub">The Claude Code that built your product now runs its SEO automatically: it researches keywords, writes guides, builds interactive tools, and tracks your ranks. You review every piece as a pull request.</p>
 
           <div className="cta-row" id="waitlist">
             <WaitlistForm joined={isJoined} error={isError} source="hero" />
@@ -434,7 +434,7 @@ export default async function LandingPage({
                 <DispatchMark className="logo-mark" />
                 DispatchSEO
               </a>
-              <p>The open-source SEO manager for Claude Code. The agent that knows your product, running its SEO.</p>
+              <p>The open-source SEO autopilot for Claude Code. The agent that knows your product, running its SEO for you.</p>
             </div>
             <div className="foot-col">
               <h4>Product</h4>
