@@ -240,7 +240,7 @@ export async function verifyPipelinePrereqs(
   const h = await headers();
   const problems: string[] = [];
   try {
-    const [wf, labels, perms] = await Promise.all([
+    const [wf, labels, perms, wfStates] = await Promise.all([
       fetch(`${API}/repos/${repo}/contents/.github/workflows/seo-daily.yml`, {
         headers: h,
         signal: AbortSignal.timeout(8000),
@@ -250,6 +250,10 @@ export async function verifyPipelinePrereqs(
         signal: AbortSignal.timeout(8000),
       }),
       fetch(`${API}/repos/${repo}/actions/permissions/workflow`, {
+        headers: h,
+        signal: AbortSignal.timeout(8000),
+      }),
+      fetch(`${API}/repos/${repo}/actions/workflows?per_page=100`, {
         headers: h,
         signal: AbortSignal.timeout(8000),
       }),
@@ -264,6 +268,24 @@ export async function verifyPipelinePrereqs(
       for (const want of ["seo", "seo-tool"]) {
         if (!names.includes(want)) {
           problems.push(`label '${want}' does not exist (gh label create ${want} --repo ${repo})`);
+        }
+      }
+    }
+    // GitHub keeps workflow state keyed by file path, so a repo that had
+    // the pipeline before (deleted + reinstalled) can silently inherit
+    // "disabled" workflows - runs then never fire and nothing errors. A
+    // disabled seo workflow means the install does NOT work, whatever the
+    // files on the branch say.
+    if (wfStates.ok) {
+      const { workflows = [] } = (await wfStates.json()) as {
+        workflows?: Array<{ path: string; state: string }>;
+      };
+      for (const w of workflows) {
+        if (/\/seo-[^/]+\.ya?ml$/.test(w.path) && w.state !== "active") {
+          const file = w.path.split("/").pop();
+          problems.push(
+            `workflow ${file} is ${w.state.replaceAll("_", " ")} on GitHub - enable it: gh workflow enable ${file} --repo ${repo}`,
+          );
         }
       }
     }

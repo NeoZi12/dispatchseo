@@ -235,6 +235,14 @@ on its FIRST real build:
      https://github.com/{{REPO}}/settings/actions with the exact toggle
      name ("Allow GitHub Actions to create and approve pull requests"),
      then RE-CHECK via the API.
+   - **Every seo workflow is ACTIVE:** \`gh workflow list --all --repo {{REPO}}\`
+     shows every seo-*.yml as active. A repo that had the pipeline before
+     (uninstalled, reset, or long-idle - GitHub also auto-disables
+     schedules after 60 quiet days) silently inherits DISABLED workflows
+     even after the files are re-merged: nothing errors, nothing ever
+     runs. Fix any: \`gh workflow enable <file> --repo {{REPO}}\`, then
+     re-list. The backend re-checks this and refuses the unlock stamp
+     while any seo workflow is disabled.
    - **Labels exist:** \`gh label list --repo {{REPO}}\` includes both
      \`seo\` and \`seo-tool\`.
    - **Secrets set:** \`gh secret list --repo {{REPO}}\` shows every secret
