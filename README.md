@@ -164,9 +164,12 @@ you'd rather point an agent at this repo and let it figure the setup out.
 git clone https://github.com/NeoZi12/dispatchseo
 cd dispatchseo
 pnpm install
-cp .env.local.example .env.local   # fill in Supabase + the three secrets
-pnpm dev                           # dashboard on localhost:3000
+cp .env.local.example .env.local
+pnpm dev
 ```
+
+Fill in `.env.local` (Supabase + the three secrets) before starting, then
+open the dashboard on **localhost:3000**.
 
 `pnpm build` is the typecheck - run it before opening a PR. There is no
 separate lint or test setup.
