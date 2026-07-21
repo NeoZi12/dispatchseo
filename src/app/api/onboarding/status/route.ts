@@ -117,6 +117,16 @@ export async function GET(req: Request): Promise<Response> {
     canary_ok: canary?.ok ?? null, // null = hasn't run yet
     canary_error: canary && !canary.ok ? (canary.errors[0] ?? null) : null,
     pipeline_installed: Boolean(project.pipeline_installed_at),
+    // The install's last step kicks off the first research run (the agent
+    // dispatches it, or runs it in-session on localhost backends). If the
+    // queue is still empty well past that promise, Home's background strip
+    // switches from "nothing to do" to an actionable nudge instead of
+    // spinning forever on a run that never started.
+    research_overdue: Boolean(
+      project.pipeline_installed_at &&
+        (suggestions.count ?? 0) === 0 &&
+        Date.now() - new Date(project.pipeline_installed_at).getTime() > 30 * 60_000,
+    ),
     open_pr: openPr,
     // The backlink playbook's "agent wrote the site profile" signal - lets
     // the wizard finale watch that paste complete live, like everything else.

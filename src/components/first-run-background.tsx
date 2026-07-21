@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from "react";
 
 type Status = {
   pipeline_installed: boolean;
+  research_overdue: boolean;
   ideas_queued: number;
   keywords_tracked: number;
   rank_checks: number;
@@ -47,6 +48,27 @@ export function FirstRunBackground({ slug }: { slug: string }) {
   }, [settled]);
 
   if (!status || !status.pipeline_installed || settled) return null;
+
+  // Honesty fallback: the strip's promise is backed by the install's
+  // kick-off-research step. If the queue is still empty long past that,
+  // stop claiming "nothing to do" and hand the owner the one command that
+  // unblocks it - the same story the agent's rescue path uses.
+  if (status.ideas_queued === 0 && status.research_overdue) {
+    return (
+      <div className="flex items-center gap-2.5 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] px-4 py-3">
+        <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400" aria-hidden />
+        <p className="text-sm text-amber-100/90">
+          <b className="font-medium text-amber-200">The first keyword research hasn&apos;t landed.</b>{" "}
+          Paste{" "}
+          <code className="rounded bg-neutral-900 px-1.5 py-0.5 font-mono text-[13px] text-neutral-200">
+            /seo-research
+          </code>{" "}
+          into Claude Code (in your site&apos;s repo) to run it now - ideas show up here in
+          about 10-20 minutes.
+        </p>
+      </div>
+    );
+  }
 
   const line =
     status.ideas_queued === 0

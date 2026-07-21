@@ -261,6 +261,16 @@ on its FIRST real build:
    for almost a week with an empty queue. Once the install PR is merged
    (the smoke test in Part 3 already required that; if it has not merged
    yet, ask the owner to merge now):
+   - **Local backend? Run research yourself instead of dispatching.** If
+     the backend URL this connection uses is only reachable from this
+     machine (localhost / 127.x / 0.0.0.0), GitHub-hosted runs cannot
+     phone home to it, so dispatching workflows proves nothing. Skip the
+     dispatches below; instead run the research workflow YOURSELF, right
+     now, in this session (get_instructions workflow=research, follow
+     it), then confirm with get_suggestions that ideas landed. Either
+     way the owner does nothing: the dashboard tells them research is
+     running in the background, so never hand them /seo-research as a
+     required step - it is the rescue path, not the install path.
    - Dispatch \`gh workflow run seo-weekly-research.yml --repo {{REPO}}\`.
      This first research run fills the suggestions queue immediately -
      tell the owner ideas land on their dashboard in roughly 10-20
