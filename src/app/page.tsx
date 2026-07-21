@@ -398,6 +398,7 @@ export default async function LandingPage({
               <h4>Company</h4>
               <a href="#waitlist">Cloud waitlist</a>
               <a href="/blog">Blog</a>
+              <a href="/privacy">Privacy policy</a>
               <a href="/login">Log in</a>
             </div>
           </div>
