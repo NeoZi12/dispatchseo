@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useState, useTransition } from "react";
 import { JOURNEY_STAGES, STAGE_META } from "@/lib/journey-meta";
-import { mcpAddCommand, setupCommand } from "@/lib/mcp-connect";
+import { mcpAddCommand } from "@/lib/mcp-connect";
 import { FirstRunStatus } from "@/components/first-run-status";
 import {
   chooseGscOnly,
@@ -63,6 +63,14 @@ const META: Record<Exclude<Screen, "s5">, { name: string; time: string }> = {
 // wording the Home card used before this lived in the wizard.
 const PLAYBOOK_COMMAND =
   "Call the seo-manager MCP tool get_instructions with workflow setup and follow it exactly.";
+
+// The pipeline install, as a paste INTO Claude Code (not a terminal
+// script): the agent fetches the centrally-versioned install instructions
+// and takes care of everything - workflows, secrets, first research. The
+// old curl|bash setup path kept stranding owners at interactive prompts
+// half-buried in a terminal; the agent chat is where this belongs.
+const INSTALL_COMMAND =
+  "Call the seo-manager MCP tool get_instructions with workflow install and follow it exactly.";
 
 // The honest SEO timeline, month by month - the same stage copy the Home
 // journey card and get_overview use (journey-meta.ts is the one source of
@@ -1143,35 +1151,32 @@ export function OnboardingWizard({
           </StepIcon>
           <h2 className="text-2xl font-semibold tracking-tight">You&apos;re live.</h2>
           <p className="mb-4 text-base text-neutral-400">
-            One command connects Claude Code to this project and installs the pipeline.
+            Two pastes and your Claude Code takes care of the rest.
           </p>
 
           <div className="space-y-2">
-            <p className="text-sm text-neutral-300">
-              Paste this in a terminal, <b className="font-medium text-neutral-100">inside your
-              site&apos;s repo</b>:
+            <p className="text-[15px] text-neutral-300">
+              <b className="font-semibold text-neutral-100">1.</b> Connect Claude Code to this
+              project - run this in a terminal,{" "}
+              <b className="font-medium text-neutral-100">inside your site&apos;s repo</b>:
             </p>
-            <CopyBox emphasis text={created ? setupCommand(created.slug, origin, created.mcpToken) : ""} />
+            <CopyBox text={created ? mcpAddCommand(created.slug, origin, created.mcpToken) : ""} />
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <p className="text-[15px] text-neutral-300">
+              <b className="font-semibold text-neutral-100">2.</b> Open Claude Code in that repo
+              (type <b className="font-medium text-neutral-100">claude</b>) and paste:
+            </p>
+            <CopyBox emphasis text={INSTALL_COMMAND} />
           </div>
 
           <div className="mt-4 rounded-lg bg-neutral-900 px-3.5 py-3 text-sm text-neutral-400">
-            <p className="mb-1.5 font-medium text-neutral-300">What it will ask of you:</p>
-            <ul className="space-y-1">
-              <li>· Confirm the folder is your site&apos;s repo (it detects and asks).</li>
-              <li>
-                · Approve once in the browser - your Claude Code token. It verifies the token
-                really works before saving it.
-              </li>
-              <li>
-                · Only if you connected DataForSEO: your account email and the API password
-                from app.dataforseo.com/api-access (not your login password).
-              </li>
-              <li>
-                · Needs Claude Code and the GitHub CLI (
-                <code className="font-mono text-neutral-300">gh</code>) installed - it tells
-                you exactly what&apos;s missing if anything is. Safe to re-run any time.
-              </li>
-            </ul>
+            Your agent takes it from there: it writes the automation workflows into your repo,
+            sets the secrets, and starts the first keyword research - approving its steps as
+            you go in the chat. Needs Claude Code and the GitHub CLI (
+            <code className="font-mono text-neutral-300">gh</code>) installed; safe to re-run
+            any time.
           </div>
 
           <details className="group mt-4 rounded-xl bg-neutral-900 px-4 py-3">
