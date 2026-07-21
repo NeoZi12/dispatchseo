@@ -109,9 +109,14 @@ invented volumes, difficulties, positions, or stats, ever.
   projects the backend records agent approvals as pending for the owner to
   decide; the tool response says so and that counts as success - do not
   retry.)
-- **Tools are approve-idea-first**: tool ideas stay \`pending\` with a
-  conversion rationale and the intended widget functionality in \`spec\`. The
-  owner greenlights the concept on the dashboard before any build.
+- **Tools are approve-first with a per-project gate**: propose with a
+  conversion rationale and the intended widget functionality in \`spec\`, then
+  \`update_suggestion(id, status="approved")\` exactly like guides. Projects
+  with tool auto-approval ON record it approved - it queues for the WEEKLY
+  tool build (never pass \`build:"now"\` from an autonomous run). Projects
+  with it OFF record the approval as pending for the owner to greenlight on
+  the dashboard; the tool response says so and that counts as success - do
+  not retry.
 - Builders take the FIRST approved item \`get_suggestions\` returns for their
   type - that is the owner's queue in build order, never to be re-ranked. An
   empty queue is a clean exit, never an invented task - with ONE exception:

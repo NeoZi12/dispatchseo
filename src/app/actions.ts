@@ -661,8 +661,9 @@ export async function wizardCreateProject(
 // owner approves ideas and merges PRs) and automatic (fully hands-off
 // publishing). Picking a preset also writes its flag values so the row always
 // reads coherently. Enforcement lives with the consumers: the MCP converts
-// agent approvals to pending when auto_approve is off, and the project repo's
-// CI asks /api/project-mode before building or merging.
+// agent approvals to pending when the type's approval flag is off
+// (auto_approve for guides, auto_approve_tools for tools), and the project
+// repo's CI asks /api/project-mode before building or merging.
 export async function setProjectMode(mode: "semi" | "auto") {
   await assertAuthed();
   if (mode !== "semi" && mode !== "auto") throw new Error("Bad mode");
@@ -702,6 +703,7 @@ export async function setAutomationToggle(flag: keyof AutomationFlags, enabled: 
   await assertAuthed();
   const allowed: (keyof AutomationFlags)[] = [
     "auto_approve",
+    "auto_approve_tools",
     "auto_build_guides",
     "auto_build_tools",
     "auto_merge",

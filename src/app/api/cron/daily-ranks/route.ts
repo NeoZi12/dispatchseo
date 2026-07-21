@@ -28,11 +28,14 @@ import { listProjects, type Project } from "@/lib/projects";
 //     under 24h old between daily runs). DataForSEO-only - free modes skip.
 // SERP calls run in parallel across keywords, but a DataForSEO keyword now
 // makes TWO sequential live calls (~6s each): the rank check plus the depth-10
-// AI Overview check - ~12s per keyword chain, still fine inside the 60s
-// function limit since chains run concurrently. If the combined keyword set
+// AI Overview check - and on transient vendor errors each call may retry or
+// step down the depth ladder (dataforseo.ts), so the slowest chain can run
+// well past a minute. 60s here 504'd the run the first time the retries
+// actually fired (2026-07-21); 300 is the Hobby-with-Fluid ceiling and this
+// route bills nothing for the extra wall clock. If the combined keyword set
 // grows past ~30, move to task-based SERP - see LATER.md.
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 // SerpApi free tier = 250 searches/month. Weekly checks keep ~60 tracked
 // keywords inside that budget; Monday is arbitrary but stable.

@@ -259,17 +259,18 @@ const mcpHandler = createMcpHandler(
         const p = currentProject();
         // The human approval gate: an agent asking for "approved" lands as
         // "pending" instead, and the owner decides on the dashboard. Research
-        // ideas are gated by the auto_approve flag (semi mode / custom with
-        // it off); trend-scan ideas are approve-idea-first BY DESIGN, like
-        // tools - they always wait for the owner, whatever the mode. Build
-        // lifecycle statuses (in_progress/done) and rejections always pass
-        // through. decided_by 'owner' means the owner just said so in chat -
-        // that IS the human approval, so the gate steps aside (honor system,
-        // like propose_suggestion's source 'manual'). A failed lookup
-        // (migration 0013 pending) falls back to the auto_approve gate.
+        // ideas are gated per type - guides by auto_approve, tools by
+        // auto_approve_tools (semi mode / custom with the flag off);
+        // trend-scan ideas are approve-idea-first BY DESIGN - they always
+        // wait for the owner, whatever the mode. Build lifecycle statuses
+        // (in_progress/done) and rejections always pass through. decided_by
+        // 'owner' means the owner just said so in chat - that IS the human
+        // approval, so the gate steps aside (honor system, like
+        // propose_suggestion's source 'manual'). A failed lookup (migration
+        // 0013 pending) falls back to the approval flags alone.
         const owner = decided_by === "owner";
         let coerced = false;
-        let existing: { source?: string; status?: string } | null = null;
+        let existing: { source?: string; status?: string; type?: string } | null = null;
         if (status === "approved") {
           const { data: row } = await db()
             .from("suggestions")
@@ -277,9 +278,12 @@ const mcpHandler = createMcpHandler(
             .eq("id", id)
             .eq("project_id", p.id)
             .maybeSingle();
-          existing = row as { source?: string; status?: string } | null;
+          existing = row as { source?: string; status?: string; type?: string } | null;
           const trendSourced = existing?.source === "trend-scan";
-          coerced = !owner && (trendSourced || !effectiveAutomations(p).auto_approve);
+          const flags = effectiveAutomations(p);
+          const autoApproved =
+            existing?.type === "tool" ? flags.auto_approve_tools : flags.auto_approve;
+          coerced = !owner && (trendSourced || !autoApproved);
         }
         const effective = coerced ? "pending" : status;
         const patch: Record<string, unknown> = {};
@@ -332,18 +336,26 @@ const mcpHandler = createMcpHandler(
             .single());
         }
         if (error) return fail(error.message);
-        // Approving a TOOL idea (from whichever client) wakes the project's
-        // tool-builder workflow immediately; guides wait for the daily cron.
+        // OWNER-approving a TOOL idea wakes the project's tool-builder
+        // workflow immediately; guides wait for the daily cron. Agent
+        // approvals (the auto-approve path) deliberately do NOT dispatch -
+        // they queue for the weekly tool sweep, so auto mode keeps the
+        // one-tool-a-week cadence instead of bursting on research day.
         // A no-op dispatch (no pipeline yet) is said out loud instead of
         // letting the approval read like a build is coming.
         let buildNote: string | undefined;
         if (effective === "approved" && data?.type === "tool") {
-          const dispatch = await dispatchToolBuild(p.github_repo, id);
-          if (!dispatch.dispatched) {
+          if (owner) {
+            const dispatch = await dispatchToolBuild(p.github_repo, id);
+            if (!dispatch.dispatched) {
+              buildNote =
+                dispatch.reason === "no-repo"
+                  ? "Approved, but no content pipeline is connected yet - nothing can build until the pipeline install step on Home is done."
+                  : "Approved, but the instant build trigger could not reach GitHub - the Wednesday tool sweep will pick it up.";
+            }
+          } else {
             buildNote =
-              dispatch.reason === "no-repo"
-                ? "Approved, but no content pipeline is connected yet - nothing can build until the pipeline install step on Home is done."
-                : "Approved, but the instant build trigger could not reach GitHub - the Wednesday tool sweep will pick it up.";
+              "Approved into the tool queue - the weekly tool sweep builds it (one tool a week). No instant build fires for agent approvals.";
           }
         }
         // Owner-approving a trend take puts it at the FRONT of the queue -
@@ -357,8 +369,8 @@ const mcpHandler = createMcpHandler(
             note:
               "This approval was recorded as 'pending' for the owner to decide " +
               "on the dashboard (trend-scan ideas always wait for the owner; " +
-              "research ideas wait when auto-approve is off). This is " +
-              "expected - do not retry.",
+              "guide ideas wait when guide auto-approval is off, tool ideas " +
+              "when tool auto-approval is off). This is expected - do not retry.",
             suggestion: data,
           });
         }

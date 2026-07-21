@@ -63,7 +63,8 @@ product:
    spots (forums, thin listicles, outdated posts) in serp_notes.
 5. **Persist**: \`track_keywords\` the winners, then \`propose_suggestion\`
    for the best ones with a real rationale and a spec brief, following the
-   queue policies (guides build-first, tools approve-idea-first). Every
+   queue policies (guides build-first, tools approve-first behind the
+   project's tool-approval gate). Every
    rationale NAMES the query's intent class, and an informational idea says
    in one clause what it is doing for the site - feeding a commercial cluster
    through internal links, or claiming a term in AI answers. (Both are real
@@ -82,9 +83,12 @@ ONE guide per day - up to **7 guides per week** - and the tool builder ONE
 approved tool per week. That cadence is a PROMISE to the owner, and this
 run is the only thing that fills the tank - so the run may not end short
 while ladder rungs remain. Target: end the run with **7 approved guides**
-and **1-2 pending tool ideas** in the queue. Count what is already queued
-first (\`get_suggestions\` for approved and pending) and top up the
-DIFFERENCE - never overfill past ~9 approved guides.
+and **1-2 tool ideas** in the queue - propose each tool idea, then
+\`update_suggestion(id, status="approved")\` it like a guide; on projects
+that gate tool concepts the backend records that as pending for the owner,
+which counts (see the queue policies). Count what is already queued first
+(\`get_suggestions\` for approved and pending) and top up the DIFFERENCE -
+never overfill past ~9 approved guides or ~2 queued tools.
 
 Short of quota? Work down this ladder IN ORDER - each rung costs more than
 the one above it, so exhaust a rung before descending:
@@ -136,6 +140,6 @@ Two markdown tables: (a) keyword opportunities - keyword, volume, KD, intent,
 type, angle; (b) recommended tools/interactive pages - idea, target keyword,
 why it converts, status. Then a one-line summary of what was queued, the
 quota status, and the HONEST intent mix - never a forced one - e.g. "queue
-now holds 7 approved guides, 1 pending tool; 3 of 7 commercial, the rest were
+now holds 7 approved guides, 1 queued tool; 3 of 7 commercial, the rest were
 the only keywords under the KD ceiling this week".
 `;

@@ -19,9 +19,9 @@ export const BUILD_TOOL_STEPS = [
 export const BUILD_TOOL = `## Workflow: build-tool (tools ONLY)
 
 The tool pipeline is TEMPLATE -> GATE -> THEME -> PLAN -> BUILD ->
-HUMANIZER -> VERIFY -> PR. Tools are approve-idea-first: this workflow only
-ever builds a suggestion the user already greenlit on the dashboard. It must
-never build guides.
+HUMANIZER -> VERIFY -> PR. This workflow only ever builds a suggestion that
+is already APPROVED - by the owner on the dashboard, or auto-approved on
+projects with tool auto-approval on. It must never build guides.
 
 Two ideas govern every step. The PAGE SHELL is invariant: large centered
 title, one value line, the tool itself, CTA, description copy, FAQ - every

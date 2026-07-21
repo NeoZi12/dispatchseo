@@ -244,35 +244,18 @@ type SerpRegularJson = {
   }>;
 };
 
-// Depth fallback for the transient path: 40101 correlates with paginating
-// past Google's real last page - an ultra-niche query with only a page or two
-// of results makes the deep fetch fail near-deterministically, not as a
-// one-off blip (verified live 2026-07-21: one sparse query failed 6/6 at
-// depth 100 across ~10 minutes while depths 10 and 30 succeeded). So after
-// post()'s same-depth retries are exhausted, step the depth down: a query
-// that only fails deep has few results, so the shallow fetch is the whole
-// SERP and the rank check loses nothing. Single attempt per rung (postOnce,
-// not post) so the whole ladder stays inside the 60s function budget.
-const SERP_FALLBACK_DEPTHS = [30, 10];
-
-async function serpOrganicShallow(
-  task: { keyword: string; location_code: number; language_code: string },
-  creds: DataforseoCreds,
-  lastError: unknown,
-): Promise<SerpRegularJson> {
-  for (const depth of SERP_FALLBACK_DEPTHS) {
-    console.warn(
-      `[dataforseo] deep SERP fetch failed transiently for ${JSON.stringify(task.keyword)}, falling back to depth ${depth}`,
-    );
-    try {
-      return await postOnce<SerpRegularJson>(SERP_REGULAR_PATH, [{ ...task, depth }], creds);
-    } catch (e) {
-      if (!(e instanceof DataforseoError && e.transient)) throw e;
-      lastError = e;
-    }
-  }
-  throw lastError;
-}
+// Depth ladder for the rank check: 40101 correlates with paginating past
+// Google's real last page - an ultra-niche query with only a page or two of
+// results makes the deep fetch fail near-deterministically, not as a one-off
+// blip (verified live 2026-07-21: one sparse query failed 6/6 at depth 100
+// across ~10 minutes while depths 10 and 30 succeeded). So a second depth-100
+// try covers pure blips, then the depth steps down: a query that only fails
+// deep has few results, so the shallow fetch is the whole SERP and the rank
+// check loses nothing. Single attempt per rung with a short fixed pause
+// (postOnce, not post - post's own backoff ladder on top of this one pushed
+// the slowest keyword chains past the function budget and 504'd the run).
+const SERP_DEPTH_LADDER = [100, 100, 30, 10];
+const SERP_LADDER_PAUSE_MS = 1000;
 
 // One live SERP call: the organic results for a keyword, top-down. Shared by
 // rank tracking (find the target domain) and the check_serp MCP tool (show the
@@ -280,10 +263,10 @@ async function serpOrganicShallow(
 // 10 results, so depth 100 here is $0.006 - the advanced endpoint (the only
 // one that returns ai_overview) would be $0.02 for the same depth. AI
 // Overview checks therefore live in serpAiOverview below, a separate
-// depth-10 advanced call at $0.002. On a persistent transient failure the
-// depth steps down (see SERP_FALLBACK_DEPTHS) - a rank from a shallow rescue
-// means "position within the fallback depth", which for the sparse queries
-// that trigger it is the full SERP anyway.
+// depth-10 advanced call at $0.002. On a transient failure the depth steps
+// down (see SERP_DEPTH_LADDER) - a rank from a shallow rescue means "position
+// within the fallback depth", which for the sparse queries that trigger it is
+// the full SERP anyway.
 export async function serpOrganic(
   keyword: string,
   creds: DataforseoCreds,
@@ -291,12 +274,23 @@ export async function serpOrganic(
   languageCode: string = LANGUAGE_CODE,
 ): Promise<{ results: OrganicResult[]; cost: number }> {
   const task = { keyword, location_code: locationCode, language_code: languageCode };
-  let json: SerpRegularJson;
-  try {
-    json = await post<SerpRegularJson>(SERP_REGULAR_PATH, [{ ...task, depth: 100 }], creds);
-  } catch (e) {
-    if (!(e instanceof DataforseoError && e.transient)) throw e;
-    json = await serpOrganicShallow(task, creds, e);
+  let json: SerpRegularJson | null = null;
+  for (let i = 0; json === null; i++) {
+    try {
+      json = await postOnce<SerpRegularJson>(
+        SERP_REGULAR_PATH,
+        [{ ...task, depth: SERP_DEPTH_LADDER[i] }],
+        creds,
+      );
+    } catch (e) {
+      const transient = e instanceof DataforseoError && e.transient;
+      if (!transient || i >= SERP_DEPTH_LADDER.length - 1) throw e;
+      console.warn(
+        `[dataforseo] SERP fetch at depth ${SERP_DEPTH_LADDER[i]} failed transiently for ${JSON.stringify(keyword)}, trying depth ${SERP_DEPTH_LADDER[i + 1]}:`,
+        e instanceof Error ? e.message : e,
+      );
+      await new Promise((r) => setTimeout(r, SERP_LADDER_PAUSE_MS));
+    }
   }
 
   const items = json.tasks?.[0]?.result?.[0]?.items ?? [];

@@ -34,10 +34,11 @@ export type Project = {
   location_code: number; // DataForSEO market
   language_code: string;
   // 'semi'/'auto' mean their preset regardless of the flag columns below;
-  // 'custom' means the four automation flags are the source of truth. Use
+  // 'custom' means the five automation flags are the source of truth. Use
   // effectiveAutomations() instead of reading either directly.
   mode: "semi" | "auto" | "custom";
   auto_approve: boolean;
+  auto_approve_tools: boolean;
   auto_build_guides: boolean;
   auto_build_tools: boolean;
   auto_merge: boolean;
@@ -64,12 +65,13 @@ export type Project = {
   created_at: string;
 };
 
-// The four automations a project owner can toggle (migration 0011). Locked
-// automations - weekly research, rank checks, GSC snapshots, tool validation,
-// IndexNow - deliberately have no flags: they collect data or gate safety and
-// publish nothing by themselves.
+// The five automations a project owner can toggle (migrations 0011 + 0028).
+// Locked automations - weekly research, rank checks, GSC snapshots, tool
+// validation, IndexNow - deliberately have no flags: they collect data or gate
+// safety and publish nothing by themselves.
 export type AutomationFlags = {
-  auto_approve: boolean;
+  auto_approve: boolean; // guide ideas (research runs)
+  auto_approve_tools: boolean; // tool ideas - split out because tools are new code pages
   auto_build_guides: boolean;
   auto_build_tools: boolean;
   auto_merge: boolean;
@@ -77,6 +79,7 @@ export type AutomationFlags = {
 
 export const SEMI_PRESET: AutomationFlags = {
   auto_approve: false, // researched ideas wait for the owner
+  auto_approve_tools: false,
   auto_build_guides: true, // approved work still builds itself
   auto_build_tools: true,
   auto_merge: false, // the owner clicks Merge
@@ -84,6 +87,7 @@ export const SEMI_PRESET: AutomationFlags = {
 
 export const AUTO_PRESET: AutomationFlags = {
   auto_approve: true,
+  auto_approve_tools: true,
   auto_build_guides: true,
   auto_build_tools: true,
   auto_merge: true,
@@ -95,6 +99,9 @@ export function effectiveAutomations(p: Project): AutomationFlags {
   if (p.mode === "auto") return AUTO_PRESET;
   return {
     auto_approve: p.auto_approve,
+    // Pre-0028 rows come back undefined - read as true (the column default)
+    // so a custom-mode project keeps today's behavior until the migration runs.
+    auto_approve_tools: p.auto_approve_tools ?? true,
     auto_build_guides: p.auto_build_guides,
     auto_build_tools: p.auto_build_tools,
     auto_merge: p.auto_merge,
@@ -106,6 +113,7 @@ export function effectiveAutomations(p: Project): AutomationFlags {
 export function modeForFlags(flags: AutomationFlags): "semi" | "auto" | "custom" {
   const same = (a: AutomationFlags, b: AutomationFlags) =>
     a.auto_approve === b.auto_approve &&
+    a.auto_approve_tools === b.auto_approve_tools &&
     a.auto_build_guides === b.auto_build_guides &&
     a.auto_build_tools === b.auto_build_tools &&
     a.auto_merge === b.auto_merge;
@@ -121,7 +129,7 @@ export const DEFAULT_PROJECT_ID = "00000000-0000-4000-8000-000000000001";
 
 // mcp_token deliberately excluded - only fetchProjectToken exposes it.
 const COLS =
-  "id, slug, name, domain, gsc_site_url, github_repo, content_mode, content_path_hint, dataforseo_login, dataforseo_password, keyword_source, serpapi_key, powerups_skipped, location_code, language_code, mode, auto_approve, auto_build_guides, auto_build_tools, auto_merge, last_trend_scan_at, site_launched_at, pipeline_installed_at, content_prefs, gsc_oauth_refresh_token, created_at";
+  "id, slug, name, domain, gsc_site_url, github_repo, content_mode, content_path_hint, dataforseo_login, dataforseo_password, keyword_source, serpapi_key, powerups_skipped, location_code, language_code, mode, auto_approve, auto_approve_tools, auto_build_guides, auto_build_tools, auto_merge, last_trend_scan_at, site_launched_at, pipeline_installed_at, content_prefs, gsc_oauth_refresh_token, created_at";
 
 // Until migration 0004 runs, the projects table doesn't exist. Synthesizing
 // ClockedCode from env keeps the deployed dashboard working in that window -
@@ -145,6 +153,7 @@ function envFallbackProject(): Project {
     language_code: "en",
     mode: "auto",
     auto_approve: true,
+    auto_approve_tools: true,
     auto_build_guides: true,
     auto_build_tools: true,
     auto_merge: true,
