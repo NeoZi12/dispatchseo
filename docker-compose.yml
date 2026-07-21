@@ -2,11 +2,15 @@
 #
 #   cp .env.docker.example .env
 #   echo "CRON_SECRET=$(openssl rand -hex 24)" >> .env
-#   echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)" >> .env
 #   docker compose up -d
 #   open http://localhost:3000    # the setup wizard takes it from there
 #
 # Full guide: docs/SELF_HOSTING.md
+#
+# The project name is pinned so the stack has one identity no matter which
+# folder the repo was cloned into - re-running the quickstart from a second
+# clone updates the existing stack instead of spawning a broken duplicate.
+name: dispatchseo
 #
 # Services:
 #   postgres  - the database (data persists in the dispatch-pgdata volume)

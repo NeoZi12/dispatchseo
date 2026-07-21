@@ -53,7 +53,6 @@ git clone https://github.com/NeoZi12/dispatchseo &&
   cd dispatchseo &&
   cp .env.docker.example .env &&
   echo "CRON_SECRET=$(openssl rand -hex 24)" >> .env &&
-  echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)" >> .env &&
   docker compose up -d
 ```
 

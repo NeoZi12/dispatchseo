@@ -24,13 +24,22 @@ git clone https://github.com/NeoZi12/dispatchseo &&
   cd dispatchseo &&
   cp .env.docker.example .env &&
   echo "CRON_SECRET=$(openssl rand -hex 24)" >> .env &&
-  echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)" >> .env &&
   docker compose up -d
 ```
 
 The block is one chained command - if any step fails (folder already
 exists, no network), everything after it stops instead of running in the
-wrong directory. On Windows, paste it in WSL or Git Bash.
+wrong directory. It is also safe to re-run: the stack has a pinned project
+name, so a second clone anywhere on the machine updates the existing
+instance instead of creating a duplicate. On Windows, paste it in WSL or
+Git Bash.
+
+Want your own Postgres password? Set `POSTGRES_PASSWORD` in `.env` **before
+the first `up`** - it gets baked into the database volume at creation, so
+changing it later requires wiping the volume (`docker compose down -v`,
+which deletes all data). The default is fine for most setups: postgres is
+only reachable inside the compose network, never from the host or the
+internet.
 
 First boot builds the app image (a few minutes) and applies the database
 schema automatically. Then open **http://localhost:3000** - the setup wizard
