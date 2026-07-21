@@ -51,21 +51,13 @@ for you; the second is for connecting a database you already have
 ```bash
 git clone https://github.com/NeoZi12/dispatchseo &&
   cd dispatchseo &&
-  cp .env.docker.example .env &&
-  echo "CRON_SECRET=$(openssl rand -hex 24)" >> .env &&
-  docker compose up -d &&
-  echo '
-  DispatchSEO is running.
-
-  Next step -> open  http://localhost:3000  in your browser.
-  The setup wizard takes it from there.
-
-  (first boot can take ~20 seconds before the page answers - just refresh)
-'
+  sh start.sh
 ```
 
-<p align="center">Then open <b>http://localhost:3000</b> - the setup wizard
-takes it from there. On Windows, paste this in WSL or Git Bash.</p>
+<p align="center">When it finishes it prints your dashboard URL - open it
+and the setup wizard takes it from there. Already running something on
+port 3000? It picks the next free port automatically. On Windows, paste
+this in WSL or Git Bash.</p>
 
 <p align="center"><i>Self-hosted has zero feature limitations. Everything the
 paid cloud will do, this repo does today, in your own accounts, at $0.</i></p>

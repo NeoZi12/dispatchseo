@@ -22,25 +22,22 @@ on Mac/Windows, `docker` + compose plugin on Linux).
 ```bash
 git clone https://github.com/NeoZi12/dispatchseo &&
   cd dispatchseo &&
-  cp .env.docker.example .env &&
-  echo "CRON_SECRET=$(openssl rand -hex 24)" >> .env &&
-  docker compose up -d &&
-  echo '
-  DispatchSEO is running.
-
-  Next step -> open  http://localhost:3000  in your browser.
-  The setup wizard takes it from there.
-
-  (first boot can take ~20 seconds before the page answers - just refresh)
-'
+  sh start.sh
 ```
 
-The block is one chained command - if any step fails (folder already
-exists, no network), everything after it stops instead of running in the
-wrong directory. It is also safe to re-run: the stack has a pinned project
-name, so a second clone anywhere on the machine updates the existing
-instance instead of creating a duplicate. On Windows, paste it in WSL or
-Git Bash.
+When it finishes it prints your dashboard URL. `start.sh` does four
+things, each skipped if already done, so re-running it is always safe:
+
+1. Creates `.env` from `.env.docker.example`.
+2. Generates the one required secret (`CRON_SECRET`).
+3. Picks the host port: 3000, or the next free port up if something (a
+   dev server, another app) already holds it. Set `DISPATCH_PORT` in
+   `.env` to pin one.
+4. `docker compose up -d`.
+
+The stack also has a pinned compose project name, so a second clone
+anywhere on the machine updates the existing instance instead of creating
+a duplicate. On Windows, paste the block in WSL or Git Bash.
 
 Want your own Postgres password? Set `POSTGRES_PASSWORD` in `.env` **before
 the first `up`** - it gets baked into the database volume at creation, so
