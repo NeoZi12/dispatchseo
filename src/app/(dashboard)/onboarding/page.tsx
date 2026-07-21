@@ -5,7 +5,8 @@ import { serviceAccountEmail } from "@/lib/gsc";
 import { db } from "@/lib/db";
 import { getActiveProject } from "@/lib/active-project";
 import { fetchProjectToken } from "@/lib/projects";
-import { OnboardingWizard, WIZARD_SCREENS, type WizardResume } from "@/components/onboarding-wizard";
+import { OnboardingWizard, type WizardResume } from "@/components/onboarding-wizard";
+import { WIZARD_SCREENS } from "@/lib/wizard-screens";
 
 export const dynamic = "force-dynamic";
 

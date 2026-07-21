@@ -22,6 +22,7 @@ import {
   type WizardCreateState,
 } from "@/app/actions";
 import type { GscAccessProbe } from "@/lib/gsc";
+import type { WizardScreen } from "@/lib/wizard-screens";
 
 // The onboarding wizard - the approved mockup, wired to real actions. Eight
 // screens over five rail steps: site -> GSC -> keyword-data pick (+ one detail
@@ -29,30 +30,7 @@ import type { GscAccessProbe } from "@/lib/gsc";
 // persists on the project row the moment its screen completes, so closing the
 // tab mid-wizard loses nothing: the Home setup cards cover whatever is left.
 
-type Screen =
-  | "s0"
-  | "s1"
-  | "s2a"
-  | "s2b_paid"
-  | "s2b_free"
-  | "s3"
-  | "s3m"
-  | "s_gh"
-  | "s4b"
-  | "s5";
-
-export const WIZARD_SCREENS: readonly Screen[] = [
-  "s0",
-  "s1",
-  "s2a",
-  "s2b_paid",
-  "s2b_free",
-  "s3",
-  "s3m",
-  "s_gh",
-  "s4b",
-  "s5",
-];
+type Screen = WizardScreen;
 
 const RAIL: Record<Screen, number> = {
   s0: 0,
