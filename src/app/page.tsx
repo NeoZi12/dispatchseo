@@ -117,7 +117,7 @@ export default async function LandingPage({
 
         <div className="wrap">
           <h1>Automate your SEO<br />with Claude Code</h1>
-          <p className="sub">The Claude Code that built your product now runs its SEO automatically: it researches keywords, writes guides, builds interactive tools, and tracks your ranks. You review every piece as a pull request.</p>
+          <p className="sub">The same agent that built your product now runs your SEO automatically: it researches keywords, writes guides, builds interactive tools, and tracks your ranks. You review every piece as a pull request.</p>
 
           <div className="cta-row" id="waitlist">
             <WaitlistForm joined={isJoined} error={isError} source="hero" />
