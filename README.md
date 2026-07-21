@@ -53,7 +53,15 @@ git clone https://github.com/NeoZi12/dispatchseo &&
   cd dispatchseo &&
   cp .env.docker.example .env &&
   echo "CRON_SECRET=$(openssl rand -hex 24)" >> .env &&
-  docker compose up -d
+  docker compose up -d &&
+  echo '
+  DispatchSEO is running.
+
+  Next step -> open  http://localhost:3000  in your browser.
+  The setup wizard takes it from there.
+
+  (first boot can take ~20 seconds before the page answers - just refresh)
+'
 ```
 
 <p align="center">Then open <b>http://localhost:3000</b> - the setup wizard
