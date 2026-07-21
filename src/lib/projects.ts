@@ -131,6 +131,27 @@ export const DEFAULT_PROJECT_ID = "00000000-0000-4000-8000-000000000001";
 const COLS =
   "id, slug, name, domain, gsc_site_url, github_repo, content_mode, content_path_hint, dataforseo_login, dataforseo_password, keyword_source, serpapi_key, powerups_skipped, location_code, language_code, mode, auto_approve, auto_approve_tools, auto_build_guides, auto_build_tools, auto_merge, last_trend_scan_at, site_launched_at, pipeline_installed_at, content_prefs, gsc_oauth_refresh_token, created_at";
 
+// COLS minus 0028's auto_approve_tools, for databases where that migration
+// hasn't run yet (migrations are applied manually, so code can reach prod
+// first). Selecting the new column unconditionally errored EVERY projects
+// query on such a database - per-project MCP tokens 401'd and crons collapsed
+// to the env-fallback project (2026-07-21 deploy check caught it live).
+const COLS_PRE_0028 =
+  "id, slug, name, domain, gsc_site_url, github_repo, content_mode, content_path_hint, dataforseo_login, dataforseo_password, keyword_source, serpapi_key, powerups_skipped, location_code, language_code, mode, auto_approve, auto_build_guides, auto_build_tools, auto_merge, last_trend_scan_at, site_launched_at, pipeline_installed_at, content_prefs, gsc_oauth_refresh_token, created_at";
+
+// Every projects select goes through this: try the full column list, and if
+// the database says a column doesn't exist (a pending migration), retry with
+// the pre-migration list - effectiveAutomations defaults the missing flag, so
+// rows stay coherent. A pending migration must degrade one toggle, never gate
+// the whole tenant axis.
+async function selectProjects<T>(
+  run: (cols: string) => PromiseLike<{ data: T | null; error: { message: string } | null }>,
+): Promise<{ data: T | null; error: { message: string } | null }> {
+  const first = await run(COLS);
+  if (!first.error || !first.error.message.includes("does not exist")) return first;
+  return run(COLS_PRE_0028);
+}
+
 // Until migration 0004 runs, the projects table doesn't exist. Synthesizing
 // ClockedCode from env keeps the deployed dashboard working in that window -
 // the same tolerance pattern site_profile and playbook_status use.
@@ -167,22 +188,25 @@ function envFallbackProject(): Project {
 }
 
 export async function listProjects(): Promise<Project[]> {
-  const { data, error } = await db()
-    .from("projects")
-    .select(COLS)
-    .order("created_at", { ascending: true });
+  const { data, error } = await selectProjects((cols) =>
+    db().from("projects").select(cols).order("created_at", { ascending: true }),
+  );
   if (error || !data || data.length === 0) return [envFallbackProject()];
   return data as unknown as Project[];
 }
 
 export async function getProjectBySlug(slug: string): Promise<Project | null> {
-  const { data, error } = await db().from("projects").select(COLS).eq("slug", slug).maybeSingle();
+  const { data, error } = await selectProjects((cols) =>
+    db().from("projects").select(cols).eq("slug", slug).maybeSingle(),
+  );
   if (error) return slug === DEFAULT_PROJECT_SLUG ? envFallbackProject() : null;
   return (data as unknown as Project) ?? null;
 }
 
 export async function getProjectById(id: string): Promise<Project | null> {
-  const { data, error } = await db().from("projects").select(COLS).eq("id", id).maybeSingle();
+  const { data, error } = await selectProjects((cols) =>
+    db().from("projects").select(cols).eq("id", id).maybeSingle(),
+  );
   if (error) return id === DEFAULT_PROJECT_ID ? envFallbackProject() : null;
   return (data as unknown as Project) ?? null;
 }
@@ -192,11 +216,9 @@ export async function getProjectById(id: string): Promise<Project | null> {
 // without rotation.
 export async function getProjectByToken(token: string): Promise<Project | null> {
   if (!token) return null;
-  const { data, error } = await db()
-    .from("projects")
-    .select(COLS)
-    .eq("mcp_token", token)
-    .maybeSingle();
+  const { data, error } = await selectProjects((cols) =>
+    db().from("projects").select(cols).eq("mcp_token", token).maybeSingle(),
+  );
   if (!error && data) return data as unknown as Project;
   const legacy = process.env.MCP_API_KEY;
   if (legacy) {
