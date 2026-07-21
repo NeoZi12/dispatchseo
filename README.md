@@ -49,16 +49,16 @@ for you; the second is for connecting a database you already have
 <p align="center">Prefer your own machine? No cloud accounts, one command:</p>
 
 ```bash
-git clone https://github.com/NeoZi12/dispatchseo
-cd dispatchseo
-cp .env.docker.example .env
-echo "CRON_SECRET=$(openssl rand -hex 24)" >> .env
-echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)" >> .env
-docker compose up -d
+git clone https://github.com/NeoZi12/dispatchseo &&
+  cd dispatchseo &&
+  cp .env.docker.example .env &&
+  echo "CRON_SECRET=$(openssl rand -hex 24)" >> .env &&
+  echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)" >> .env &&
+  docker compose up -d
 ```
 
 <p align="center">Then open <b>http://localhost:3000</b> - the setup wizard
-takes it from there.</p>
+takes it from there. On Windows, paste this in WSL or Git Bash.</p>
 
 <p align="center"><i>Self-hosted has zero feature limitations. Everything the
 paid cloud will do, this repo does today, in your own accounts, at $0.</i></p>

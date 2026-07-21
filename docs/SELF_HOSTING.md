@@ -20,13 +20,17 @@ Prerequisite: [Docker](https://docs.docker.com/get-docker/) (Docker Desktop
 on Mac/Windows, `docker` + compose plugin on Linux).
 
 ```bash
-git clone https://github.com/NeoZi12/dispatchseo
-cd dispatchseo
-cp .env.docker.example .env
-echo "CRON_SECRET=$(openssl rand -hex 24)" >> .env
-echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)" >> .env
-docker compose up -d
+git clone https://github.com/NeoZi12/dispatchseo &&
+  cd dispatchseo &&
+  cp .env.docker.example .env &&
+  echo "CRON_SECRET=$(openssl rand -hex 24)" >> .env &&
+  echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)" >> .env &&
+  docker compose up -d
 ```
+
+The block is one chained command - if any step fails (folder already
+exists, no network), everything after it stops instead of running in the
+wrong directory. On Windows, paste it in WSL or Git Bash.
 
 First boot builds the app image (a few minutes) and applies the database
 schema automatically. Then open **http://localhost:3000** - the setup wizard
