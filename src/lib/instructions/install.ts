@@ -216,10 +216,35 @@ on its FIRST real build:
    home, writes .dispatchseo/conventions.md, and personalizes the site
    profile. If setup lands on a different content home than the auto-merge
    path gate assumes, update the gate paths on the same install branch.
-3. Call \`mark_pipeline_installed\` - one call, no arguments. This is what
-   flips the owner's dashboard install card to its green done state;
-   skipping it leaves the owner staring at an un-done card after you
-   finished. Only call it now, at the end, with the PR open and setup run.
+3. **Verify everything, then unlock.** \`mark_pipeline_installed\` is not a
+   status update - it is what UNLOCKS the owner's dashboard, so it may only
+   be called when every line below is verifiably green. Check each one NOW;
+   anything that fails, fix it or hand the owner the exact link and WAIT,
+   then re-check - never proceed on a promise:
+   - **Install PR merged** - the workflows must be live on the default
+     branch. Not merged? Ask the owner to merge (link the PR) and wait.
+   - **Actions can open PRs** (required in BOTH modes - the daily builder
+     opens every content PR from inside a workflow; semi vs auto only
+     changes who merges): \`gh api repos/{{REPO}}/actions/permissions/workflow\`
+     shows \`default_workflow_permissions: write\` and
+     \`can_approve_pull_request_reviews: true\` (the approve half is what
+     auto-merge needs - if the project is semi mode and the owner
+     deliberately leaves approval off, write permission alone passes this
+     check; note it so flipping to auto later knows to revisit). If your
+     Part 3 PUT was permission-blocked, send the owner to
+     https://github.com/{{REPO}}/settings/actions with the exact toggle
+     name ("Allow GitHub Actions to create and approve pull requests"),
+     then RE-CHECK via the API.
+   - **Labels exist:** \`gh label list --repo {{REPO}}\` includes both
+     \`seo\` and \`seo-tool\`.
+   - **Secrets set:** \`gh secret list --repo {{REPO}}\` shows every secret
+     Part 3 required.
+   - **Setup ran:** conventions.md is on its PR/branch and the site profile
+     saved (get_site_profile returns it).
+   Only when all pass, call \`mark_pipeline_installed\` - one call, no
+   arguments. Calling it with failing checks hands the owner an unlocked
+   dashboard that breaks on its first real run - the exact failure this
+   checklist exists to prevent.
 4. **Prove the PR machinery with the canary - before anything else runs.**
    Once the install PR is merged, dispatch
    \`gh workflow run seo-canary.yml --repo {{REPO}}\` and wait for its

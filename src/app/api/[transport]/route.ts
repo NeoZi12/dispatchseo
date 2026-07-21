@@ -1836,8 +1836,11 @@ const mcpHandler = createMcpHandler(
         title: "Mark pipeline installed",
         description:
           "Stamp this project as pipeline-installed. Called ONCE, by the " +
-          "install workflow's final step - after the shim PR is open and the " +
-          "setup workflow has run. It flips the dashboard's install card to " +
+          "install workflow's final step - and ONLY after its verification " +
+          "checklist passes (install PR merged, Actions PR permission on, " +
+          "labels, secrets, setup run). This call UNLOCKS the owner's " +
+          "dashboard, so stamping an unverified install ships a broken " +
+          "setup. It flips the dashboard's install card to " +
           "its green done state; never call it before the install actually " +
           "completed.",
         inputSchema: {},
