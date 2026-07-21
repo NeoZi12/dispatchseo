@@ -13,6 +13,9 @@ import { GuardrailGrid } from "./guardrail-grid";
 import { ScopeCompareTable } from "./scope-compare-table";
 import { ConnectionFactRow } from "./connection-fact-row";
 import { ConnectionChecklist } from "./connection-checklist";
+import { SelfHostPatternTable } from "./self-host-pattern-table";
+import { AgentStackFactRow } from "./agent-stack-fact-row";
+import { OpenCoreChecklist } from "./open-core-checklist";
 import { slugify } from "@/lib/slugify";
 
 // The components every blog MDX file renders with: typographic defaults that
@@ -99,4 +102,7 @@ export const mdxComponents: MDXComponents = {
   ScopeCompareTable,
   ConnectionFactRow,
   ConnectionChecklist,
+  SelfHostPatternTable,
+  AgentStackFactRow,
+  OpenCoreChecklist,
 };
