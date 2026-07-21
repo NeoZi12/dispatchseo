@@ -2,7 +2,7 @@
 // rail, and the first step's form card.
 export default function OnboardingLoading() {
   return (
-    <div className="mx-auto w-full max-w-2xl animate-pulse">
+    <div className="mx-auto mt-8 w-full max-w-3xl animate-pulse px-6">
       <div className="flex items-center justify-between pb-4 pt-1">
         <div className="h-4 w-40 rounded-lg bg-neutral-900" />
         <div className="h-3 w-32 rounded-lg bg-neutral-900" />

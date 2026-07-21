@@ -7,6 +7,7 @@ import { getActiveProject } from "@/lib/active-project";
 import { fetchProjectToken } from "@/lib/projects";
 import { OnboardingWizard, type WizardResume } from "@/components/onboarding-wizard";
 import { WIZARD_SCREENS } from "@/lib/wizard-screens";
+import { DispatchMark } from "@/components/logo";
 
 export const dynamic = "force-dynamic";
 
@@ -73,7 +74,18 @@ export default async function OnboardingPage({
   const { new: isNew } = await searchParams;
   const resume = isNew === "1" ? null : await buildResume();
 
+  // Standalone shell on purpose - no sidebar, no dashboard chrome. The
+  // owner sees the wizard and only the wizard until setup verifies and
+  // unlocks the dashboard (this route lives OUTSIDE the (dashboard) group).
   return (
-    <OnboardingWizard saEmail={await serviceAccountEmail()} origin={origin} resume={resume} />
+    <main className="min-h-screen px-5 py-8 sm:px-6 sm:py-10">
+      <div className="mx-auto w-full max-w-3xl">
+        <p className="mb-8 flex items-center gap-2.5 text-lg font-semibold text-white">
+          <DispatchMark className="h-7 w-auto" />
+          DispatchSEO
+        </p>
+        <OnboardingWizard saEmail={await serviceAccountEmail()} origin={origin} resume={resume} />
+      </div>
+    </main>
   );
 }
