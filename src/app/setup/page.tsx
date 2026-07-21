@@ -47,21 +47,19 @@ const primaryAction =
 
 function Step({ n, children }: { n: number; children: React.ReactNode }) {
   return (
-    <li className="flex gap-3.5">
-      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-[15px] font-semibold text-neutral-300">
+    <li className="flex gap-4">
+      <span className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-base font-semibold text-neutral-300">
         {n}
       </span>
-      <span className="text-base leading-7 text-neutral-300">{children}</span>
+      <span className="text-lg leading-8 text-neutral-300">{children}</span>
     </li>
   );
 }
 
+// UI labels and values inside instructions. Bold, no chip - the boxed-code
+// look made every step read as denser than it is.
 function Code({ children }: { children: React.ReactNode }) {
-  return (
-    <code className="rounded bg-neutral-800 px-1.5 py-0.5 font-mono text-[14px] text-neutral-200">
-      {children}
-    </code>
-  );
+  return <b className="font-semibold text-white">{children}</b>;
 }
 
 // The three-step rail. Bolder than the dashboard wizard's thin segmented
@@ -141,7 +139,7 @@ export default async function SetupPage({
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-neutral-950 p-6">
-      <div className="w-full max-w-2xl space-y-8">
+      <div className="w-full max-w-3xl space-y-10">
         <div className="space-y-6">
           <h1 className="flex items-center gap-2.5 text-2xl font-semibold text-white">
             <DispatchMark className="h-8 w-auto" />
@@ -153,14 +151,14 @@ export default async function SetupPage({
         {state === "no-db" && docker && (
           <div className="space-y-6 rounded-xl border border-neutral-800 bg-neutral-900/60 p-7">
             <div>
-              <h2 className="text-xl font-semibold text-white">Step 1 of 3 - waiting for the database</h2>
-              <p className="mt-2 text-base leading-relaxed text-neutral-300">
+              <h2 className="text-2xl font-semibold text-white">Step 1 of 3 - waiting for the database</h2>
+              <p className="mt-3 text-lg leading-relaxed text-neutral-400">
                 Your stack bundles its own Postgres - nothing to sign up for.
                 The app just can't reach it yet, which usually means the
                 database container is still starting.
               </p>
             </div>
-            <ol className="space-y-4">
+            <ol className="space-y-6">
               <Step n={1}>
                 Give it ~20 seconds, then press the button below - on most
                 machines that's all it takes.
@@ -182,61 +180,46 @@ export default async function SetupPage({
         {state === "no-db" && !docker && (
           <div className="space-y-6 rounded-xl border border-neutral-800 bg-neutral-900/60 p-7">
             <div>
-              <h2 className="text-xl font-semibold text-white">Step 1 of 3 - connect your database</h2>
-              <p className="mt-2 text-base leading-relaxed text-neutral-300">
-                DispatchSEO keeps everything in a Supabase database. You'll
-                move two values from Supabase into Vercel, one at a time.
+              <h2 className="text-2xl font-semibold text-white">Step 1 of 3 - connect your database</h2>
+              <p className="mt-3 text-lg leading-relaxed text-neutral-400">
+                You'll copy two values from Supabase into Vercel. Two browser
+                tabs, about five minutes.
               </p>
             </div>
-            <ol className="space-y-4">
+            <ol className="space-y-6">
               <Step n={1}>
-                Sign in to your{" "}
+                Sign in to{" "}
                 <a href="https://supabase.com/dashboard" className="text-indigo-400 underline" target="_blank" rel="noreferrer">
-                  Supabase dashboard
+                  Supabase
                 </a>{" "}
-                and open the project you want to use. Any project you already
-                have is fine. No project yet? Click{" "}
-                <Code>New project</Code> - it's free and ready in a minute or
-                two.
+                and open any project - or click <Code>New project</Code>,
+                it's free and ready in a minute.
               </Step>
               <Step n={2}>
-                In a second tab, open your project at{" "}
+                In a second tab, open your DispatchSEO project on{" "}
                 <a href="https://vercel.com/dashboard" className="text-indigo-400 underline" target="_blank" rel="noreferrer">
                   vercel.com
-                </a>{" "}
-                and pick your DispatchSEO project, then{" "}
-                <Code>Settings</Code> → <Code>Environment Variables</Code>.
-                Keep this tab open - the next two steps paste into it.
+                </a>
+                , then <Code>Settings</Code> → <Code>Environment Variables</Code>.
+                The next two steps paste into it.
               </Step>
               <Step n={3}>
-                In Supabase, copy the{" "}
-                <b className="text-neutral-200">Project URL</b> - it's on your
-                project's home page, right under the project name, next to a{" "}
-                <Code>Copy</Code> button. In the Vercel tab, type{" "}
-                <Code>SUPABASE_URL</Code> in the <Code>Key</Code> box, paste
-                the URL in the <Code>Value</Code> box, and press{" "}
-                <Code>Save</Code>.
+                In Supabase, copy the <Code>Project URL</Code> from your
+                project's home page. In Vercel, save it as{" "}
+                <Code>SUPABASE_URL</Code>.
               </Step>
               <Step n={4}>
-                Back in Supabase, open{" "}
+                In Supabase, open{" "}
                 <a href="https://supabase.com/dashboard/project/_/settings/api-keys" className="text-indigo-400 underline" target="_blank" rel="noreferrer">
                   API Keys
                 </a>{" "}
-                (<Code>Project Settings</Code> → <Code>API Keys</Code>; the
-                link asks which project - pick the one from step 1) and
-                copy the key starting with <Code>sb_secret_</Code> (on older
-                projects it's called <Code>service_role</Code> - that one works
-                too). In the Vercel tab, add a second variable: click{" "}
-                <Code>Add Another</Code> if there's no empty <Code>Key</Code>{" "}
-                box, type <Code>SUPABASE_SERVICE_ROLE_KEY</Code>, paste the
-                key in the <Code>Value</Code> box, and press{" "}
-                <Code>Save</Code> again.
+                and copy the <Code>sb_secret_</Code> key (called{" "}
+                <Code>service_role</Code> on older projects). In Vercel, save
+                it as <Code>SUPABASE_SERVICE_ROLE_KEY</Code>.
               </Step>
               <Step n={5}>
-                Restart the app so it sees them: in Vercel,{" "}
-                <Code>Deployments</Code> → the <Code>⋯</Code> menu on the top
-                deployment → <Code>Redeploy</Code>. Wait for it to finish,
-                then come back here.
+                In Vercel: <Code>Deployments</Code> → <Code>⋯</Code> →{" "}
+                <Code>Redeploy</Code>. When it finishes, come back here.
               </Step>
             </ol>
             {/* Plain link, not a server action: the flow guarantees a redeploy
@@ -250,14 +233,14 @@ export default async function SetupPage({
         {state === "no-tables" && docker && (
           <div className="space-y-6 rounded-xl border border-neutral-800 bg-neutral-900/60 p-7">
             <div>
-              <h2 className="text-xl font-semibold text-white">Step 2 of 3 - waiting for the tables</h2>
-              <p className="mt-2 text-base leading-relaxed text-neutral-300">
+              <h2 className="text-2xl font-semibold text-white">Step 2 of 3 - waiting for the tables</h2>
+              <p className="mt-3 text-lg leading-relaxed text-neutral-400">
                 The <Code>migrate</Code> container creates every table
                 automatically on boot - no SQL to paste. It hasn't finished
                 (or hit an error) on this stack yet.
               </p>
             </div>
-            <ol className="space-y-4">
+            <ol className="space-y-6">
               <Step n={1}>
                 In the folder you installed from, run{" "}
                 <Code>docker compose up -d</Code> - it re-runs the migration,
@@ -283,13 +266,13 @@ export default async function SetupPage({
         {state === "no-tables" && !docker && (
           <div className="space-y-6 rounded-xl border border-neutral-800 bg-neutral-900/60 p-7">
             <div>
-              <h2 className="text-xl font-semibold text-white">Step 2 of 3 - create the tables</h2>
-              <p className="mt-2 text-base leading-relaxed text-neutral-300">
-                Your database is connected. Now it needs its tables - one
-                copy-paste of SQL, and it's safe to run more than once:
+              <h2 className="text-2xl font-semibold text-white">Step 2 of 3 - create the tables</h2>
+              <p className="mt-3 text-lg leading-relaxed text-neutral-400">
+                Database connected. One paste of SQL creates every table, and
+                it's safe to run more than once.
               </p>
             </div>
-            <ol className="space-y-4">
+            <ol className="space-y-6">
               <Step n={1}>
                 Open{" "}
                 <a
@@ -300,11 +283,10 @@ export default async function SetupPage({
                 >
                   setup.sql
                 </a>{" "}
-                and copy the whole file - the copy icon at the top right of
-                the code does it in one click.
+                and copy the whole file (the copy icon, top right).
               </Step>
               <Step n={2}>
-                Open your project's{" "}
+                Paste it into your project's{" "}
                 <a
                   href="https://supabase.com/dashboard/project/_/sql/new"
                   className="text-indigo-400 underline"
@@ -313,9 +295,8 @@ export default async function SetupPage({
                 >
                   SQL Editor
                 </a>{" "}
-                in Supabase (the link asks which project - pick yours),
-                paste, and press <Code>Run</Code>. When it says{" "}
-                <Code>Success. No rows returned</Code>, you're done.
+                in Supabase and press <Code>Run</Code>.{" "}
+                <Code>Success. No rows returned</Code> means you're done.
               </Step>
             </ol>
             {missing.length > 0 && (
@@ -333,8 +314,8 @@ export default async function SetupPage({
         {state === "unclaimed" && (
           <div className="space-y-6 rounded-xl border border-neutral-800 bg-neutral-900/60 p-7">
             <div>
-              <h2 className="text-xl font-semibold text-white">Step 3 of 3 - choose your password</h2>
-              <p className="mt-2 text-base leading-relaxed text-neutral-300">
+              <h2 className="text-2xl font-semibold text-white">Step 3 of 3 - choose your password</h2>
+              <p className="mt-3 text-lg leading-relaxed text-neutral-400">
                 Last step. Pick the password you'll use to log in to this
                 dashboard - everything else is generated for you on the next
                 screen.
