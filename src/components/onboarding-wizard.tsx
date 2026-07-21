@@ -392,12 +392,14 @@ export function OnboardingWizard({
           {isLocalInstance ? (
             <div className="mb-3.5 rounded-xl border border-amber-500/25 bg-amber-500/[0.07] p-3.5 text-sm leading-relaxed text-amber-100/90">
               <b className="font-semibold text-amber-200">Running on {origin.replace(/^https?:\/\//, "")}.</b>{" "}
-              Setup, keyword research and rank tracking all work from here. One
-              thing doesn&apos;t: the automated content pipeline runs in your
-              site repo&apos;s GitHub Actions, and GitHub can&apos;t reach an
-              address that only exists on this machine. When you want articles
-              built automatically, put this instance on a public URL or tunnel
-              first - everything you set up now carries over.
+              Everything works from here - including automatic article builds,
+              through the bundled builder: it runs your Claude Code inside
+              Docker, so nothing needs to reach this machine from outside. One
+              thing to do for that, once: put your Claude token
+              (<code className="font-mono text-amber-100">claude setup-token</code>) in{" "}
+              <code className="font-mono text-amber-100">.env</code> as{" "}
+              <code className="font-mono text-amber-100">CLAUDE_CODE_OAUTH_TOKEN</code>{" "}
+              - the quick guide (top right) has the steps.
             </div>
           ) : null}
           <form action={createAction} className="space-y-3 rounded-xl bg-neutral-900 p-4">

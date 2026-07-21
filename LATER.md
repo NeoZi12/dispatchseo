@@ -68,3 +68,14 @@ chatbot in dashboard, charts libraries, dark mode, settings pages, mobile app.
   URL waits for the next crawl. Ship a generic `indexnow.yml` in `templates/pipeline/`
   so every connected repo gets instant Bing/Yandex pings, not just repos that already
   had one (RELIABILITY.md tracks this as Deferred).
+
+- **In-stack builder, v2 niceties (v1 shipped 2026-07-21).** The docker `builder`
+  container polls `/api/builder/jobs` and runs due work with headless Claude Code.
+  Deferred from v1: (1) a wizard screen that collects CLAUDE_CODE_OAUTH_TOKEN into
+  encrypted instance_settings so owners never edit .env; (2) on-demand triggers -
+  "Build now" / trend-scan / trend-expand still fire repository_dispatch to GitHub,
+  the jobs feed should carry them for localhost instances; (3) the auto-merge sweep
+  covers guide PRs only - validated tool PRs (tool-validated label) still wait for
+  the owner on docker; (4) a GitHub App instead of the PAT, for zero-token setup;
+  (5) install instructions could skip shipping schedule workflows entirely when the
+  backend is a docker instance with the builder on.

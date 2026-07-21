@@ -76,17 +76,40 @@ duplicate.
 | `migrate` | Applies the database schema on each boot (safe to repeat) |
 | `cron` | Rank tracking, Search Console snapshots, weekly research |
 
-### The one localhost catch
+### Automatic builds, fully local: the builder
 
-Everything in the wizard works on localhost. One thing doesn't, later on:
-the content pipeline runs as GitHub Actions in *your site's* repo, and
-those jobs need to call back to your DispatchSEO instance. GitHub's servers
-can't reach an address that only exists on your machine.
+The stack includes a `builder` container - your own Claude Code, running
+headlessly inside Docker. Every 10 minutes it asks the backend what's due
+and runs it: the daily guide build, the weekly keyword research, approved
+tool builds, the weekly AI-visibility scan - and, on auto-mode projects,
+it merges guide PRs once every check passes. Nothing on the internet ever
+needs to reach your machine; the builder only makes outbound connections
+(to GitHub and Anthropic). This is what makes a laptop or home-server
+install fully automatic, no public URL, no tunnel.
 
-So: explore, set up, research keywords, track rankings - all fine locally.
-When you want articles built automatically, put the instance on a public
-URL (a reverse proxy with HTTPS, or a tunnel like Cloudflare Tunnel) and
-set `APP_URL` in `.env` to match. The wizard reminds you about this too.
+Turning it on is one token:
+
+1. On your own computer, run `claude setup-token` and copy the
+   `sk-ant-oat...` token it prints. (This runs the builds on your existing
+   Claude subscription - DispatchSEO bills nothing, same as everywhere
+   else.)
+2. Put it in `.env`: `CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat...`
+3. Run `docker compose up -d builder`.
+
+For GitHub access (cloning your repo, opening and merging PRs) it reuses
+the token you connect in the wizard's **One-tap merge** step - nothing to
+configure twice. Until the Claude token is set, the container just idles
+and prints what it's waiting for: `docker compose logs builder`.
+
+### So when DO you need a public URL?
+
+Only if you skip the builder and want the GitHub-hosted schedules (the
+workflow files the install puts in your repo) to do the building instead -
+those run on GitHub's servers and must call back to your instance, which
+localhost can't offer. In that case put the instance behind a public URL
+(reverse proxy with HTTPS, or a tunnel like Cloudflare Tunnel) and set
+`APP_URL` in `.env` to match. PR checks (like tool validation) run on
+GitHub either way and work fine regardless.
 
 ### Good to know
 

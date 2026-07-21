@@ -19,6 +19,11 @@ name: dispatchseo
 #   app       - the Next.js dashboard + MCP server + cron endpoints
 #   cron      - BusyBox crond that curls the app's cron endpoints on the same
 #               schedules Vercel/GitHub Actions use for the cloud deployment
+#   builder   - headless Claude Code executor: polls the app for due content
+#               jobs (daily guide, weekly research, tool builds, geo-scan)
+#               and runs them in-stack, so the pipeline works without any
+#               public URL. Idles politely until CLAUDE_CODE_OAUTH_TOKEN is
+#               set in .env (see .env.docker.example).
 
 services:
   postgres:
@@ -120,8 +125,25 @@ services:
         condition: service_started
     networks: [dispatch]
 
+  builder:
+    build: ./docker/builder
+    restart: always
+    environment:
+      CRON_SECRET: "${CRON_SECRET:?set CRON_SECRET in .env (generate one with openssl rand -hex 24)}"
+      APP_INTERNAL_URL: http://app:3000
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      BUILDER_GH_TOKEN: ${BUILDER_GH_TOKEN:-}
+      BUILDER_POLL_SECONDS: ${BUILDER_POLL_SECONDS:-600}
+    volumes:
+      - dispatch-builder:/data
+    depends_on:
+      app:
+        condition: service_started
+    networks: [dispatch]
+
 volumes:
   dispatch-pgdata:
+  dispatch-builder:
 
 networks:
   dispatch:
