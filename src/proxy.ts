@@ -30,6 +30,9 @@ export function proxy(req: NextRequest) {
     pathname === "/setup" ||
     pathname === "/blog" ||
     pathname.startsWith("/blog/") ||
+    // Landing-page slideshow assets - the marketing page must load them
+    // logged-out (they are product screenshots, nothing sensitive).
+    pathname.startsWith("/screenshots/") ||
     // Privacy policy must be public: Google's OAuth consent screen links to
     // it and the verification reviewers open it logged-out.
     pathname === "/privacy" ||

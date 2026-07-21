@@ -134,8 +134,15 @@ export default async function LandingPage({
         </div>
       </header>
 
+      {/* ==================== FEATURES ==================== */}
+      <section className="band-alt" id="features">
+        <div className="wrap">
+          <FeatureShowcase />
+        </div>
+      </section>
+
       {/* ==================== HOW IT WORKS ==================== */}
-      <section className="band-alt" id="how">
+      <section id="how">
         <div className="wrap">
           <div className="sec-h">
             <h2>Connect it once,<br />then watch it work</h2>
@@ -167,7 +174,7 @@ export default async function LandingPage({
       </section>
 
       {/* ==================== WHY NOW / WHO FOR ==================== */}
-      <section>
+      <section className="band-alt">
         <div className="wrap">
           <div className="sec-h">
             <h2>Who is DispatchSEO for?</h2>
@@ -190,13 +197,6 @@ export default async function LandingPage({
               <p>You know it works. You still put it off every week. Now the research, the writing, and the rank checks happen on a schedule, whether you feel like it or not.</p>
             </div>
           </div>
-        </div>
-      </section>
-
-      {/* ==================== FEATURES ==================== */}
-      <section className="band-alt" id="features">
-        <div className="wrap">
-          <FeatureShowcase />
         </div>
       </section>
 
