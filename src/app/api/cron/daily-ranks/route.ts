@@ -101,7 +101,9 @@ async function runRanks(
 
   const aiRows: AiSnapshotInput[] = [];
   const checks = await Promise.allSettled(
-    tracked.map(async (kw) => {
+    // Wrapped so every failure names its keyword - a bare "task error 40101"
+    // in the alert email gives the owner nothing to act on.
+    tracked.map((kw) => (async () => {
       const rank = await providerRank(
         provider,
         kw.keyword,
@@ -115,7 +117,7 @@ async function runRanks(
         position: rank.position,
         url: rank.url,
       });
-      if (insErr) throw new Error(`${kw.keyword}: ${insErr.message}`);
+      if (insErr) throw new Error(insErr.message);
       // Google AI Overview snapshot. SerpApi carries it inline in the rank
       // pull (free); DataForSEO needs a separate depth-10 advanced call
       // ($0.002, vs $0.02 to fold it into the depth-100 rank call). Best
@@ -137,7 +139,9 @@ async function runRanks(
       }
       if (ai) aiRows.push(buildGoogleAiSnapshot(kw.keyword, project.domain, ai));
       return { keyword: kw.keyword, position: rank.position };
-    }),
+    })().catch((e: unknown) => {
+      throw new Error(`"${kw.keyword}": ${e instanceof Error ? e.message : String(e)}`);
+    })),
   );
   const succeeded = checks.filter((c) => c.status === "fulfilled").length;
   const failed = checks

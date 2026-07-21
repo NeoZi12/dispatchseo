@@ -55,22 +55,89 @@ function authHeader(creds: DataforseoCreds): string {
   return "Basic " + Buffer.from(`${creds.login}:${creds.password}`).toString("base64");
 }
 
+// Vendor failures come in two kinds and must not be treated alike. Transient:
+// DataForSEO's upstream search-engine fetch broke (task 40101 "Internal SE
+// Server Error" - the 2026-07-21 morning email), their API had an internal
+// error (task/top-level 50xxx), the HTTP layer 5xx'd, or the network dropped.
+// Their documented remedy is "retry the task", and failed tasks are not
+// billed, so post() retries these in-call before giving up. Fatal: bad creds,
+// negative balance, malformed request - retrying cannot help, throw at once.
+// Errors that survive the retries carry TRANSIENT_MARKER in their message so
+// cron-alerts can require two consecutive failed runs before emailing (the
+// banner still shows the first one) - a one-off vendor blip must not wake the
+// owner, a sustained outage must.
+export const TRANSIENT_MARKER = "[transient]";
+
+export function isTransientErrorMessage(message: string): boolean {
+  return message.includes(TRANSIENT_MARKER);
+}
+
+class DataforseoError extends Error {
+  readonly transient: boolean;
+  constructor(message: string, transient: boolean) {
+    super(transient ? `${message} ${TRANSIENT_MARKER}` : message);
+    this.transient = transient;
+  }
+}
+
+const TRANSIENT_TASK_CODES = new Set([40101]); // Internal SE Server Error
+
+// Backoff kept short on purpose: daily-ranks chains two ~6s live calls per
+// keyword inside a 60s function budget, so the retries must fit alongside
+// the calls themselves, not double the wall clock.
+const RETRY_DELAYS_MS = [1000, 3000];
+
 async function post<T = unknown>(
   path: string,
   tasks: unknown[],
   creds: DataforseoCreds,
 ): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method: "POST",
-    headers: {
-      Authorization: authHeader(creds),
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(tasks),
-  });
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await postOnce<T>(path, tasks, creds);
+    } catch (e) {
+      const transient = e instanceof DataforseoError && e.transient;
+      if (!transient || attempt >= RETRY_DELAYS_MS.length) throw e;
+      console.warn(
+        `[dataforseo] transient ${path} failure (attempt ${attempt + 1} of ${RETRY_DELAYS_MS.length + 1}), retrying:`,
+        e instanceof Error ? e.message : e,
+      );
+      await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]));
+    }
+  }
+}
+
+async function postOnce<T = unknown>(
+  path: string,
+  tasks: unknown[],
+  creds: DataforseoCreds,
+): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      method: "POST",
+      headers: {
+        Authorization: authHeader(creds),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(tasks),
+      // A hung call previously ate the whole 60s function budget and killed
+      // the project's entire run with it; cap it so it becomes a retryable
+      // failure instead. Live SERP calls typically answer in ~6s.
+      signal: AbortSignal.timeout(25000),
+    });
+  } catch (e) {
+    throw new DataforseoError(
+      `DataForSEO ${path} network error: ${e instanceof Error ? e.message : String(e)}`,
+      true,
+    );
+  }
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`DataForSEO ${path} HTTP ${res.status}: ${body.slice(0, 300)}`);
+    throw new DataforseoError(
+      `DataForSEO ${path} HTTP ${res.status}: ${body.slice(0, 300)}`,
+      res.status >= 500,
+    );
   }
   const json = (await res.json()) as {
     status_code: number;
@@ -80,7 +147,10 @@ async function post<T = unknown>(
   };
   // Top-level 20000 = ok. Task-level errors surface per task below.
   if (json.status_code !== 20000) {
-    throw new Error(`DataForSEO ${path} error ${json.status_code}: ${json.status_message}`);
+    throw new DataforseoError(
+      `DataForSEO ${path} error ${json.status_code}: ${json.status_message}`,
+      json.status_code >= 50000,
+    );
   }
   // Task-level failures (40xxx: negative balance, rate limit, bad request)
   // arrive wrapped in an overall-OK envelope. Before this check, every
@@ -90,7 +160,10 @@ async function post<T = unknown>(
   // loud failure: throw, so crons report it and the dashboard shows it.
   const task = json.tasks?.[0];
   if (task && task.status_code >= 40000) {
-    throw new Error(`DataForSEO ${path} task error ${task.status_code}: ${task.status_message}`);
+    throw new DataforseoError(
+      `DataForSEO ${path} task error ${task.status_code}: ${task.status_message}`,
+      TRANSIENT_TASK_CODES.has(task.status_code) || task.status_code >= 50000,
+    );
   }
   return json as T;
 }
@@ -160,34 +233,71 @@ function safeHostname(url: string): string | null {
   }
 }
 
+const SERP_REGULAR_PATH = "/serp/google/organic/live/regular";
+
+type SerpRegularJson = {
+  cost: number;
+  tasks: Array<{
+    result?: Array<{
+      items?: SerpItem[];
+    }>;
+  }>;
+};
+
+// Depth fallback for the transient path: 40101 correlates with paginating
+// past Google's real last page - an ultra-niche query with only a page or two
+// of results makes the deep fetch fail near-deterministically, not as a
+// one-off blip (verified live 2026-07-21: one sparse query failed 6/6 at
+// depth 100 across ~10 minutes while depths 10 and 30 succeeded). So after
+// post()'s same-depth retries are exhausted, step the depth down: a query
+// that only fails deep has few results, so the shallow fetch is the whole
+// SERP and the rank check loses nothing. Single attempt per rung (postOnce,
+// not post) so the whole ladder stays inside the 60s function budget.
+const SERP_FALLBACK_DEPTHS = [30, 10];
+
+async function serpOrganicShallow(
+  task: { keyword: string; location_code: number; language_code: string },
+  creds: DataforseoCreds,
+  lastError: unknown,
+): Promise<SerpRegularJson> {
+  for (const depth of SERP_FALLBACK_DEPTHS) {
+    console.warn(
+      `[dataforseo] deep SERP fetch failed transiently for ${JSON.stringify(task.keyword)}, falling back to depth ${depth}`,
+    );
+    try {
+      return await postOnce<SerpRegularJson>(SERP_REGULAR_PATH, [{ ...task, depth }], creds);
+    } catch (e) {
+      if (!(e instanceof DataforseoError && e.transient)) throw e;
+      lastError = e;
+    }
+  }
+  throw lastError;
+}
+
 // One live SERP call: the organic results for a keyword, top-down. Shared by
 // rank tracking (find the target domain) and the check_serp MCP tool (show the
 // agent who's on page 1). Stays on the REGULAR endpoint: DataForSEO bills per
 // 10 results, so depth 100 here is $0.006 - the advanced endpoint (the only
 // one that returns ai_overview) would be $0.02 for the same depth. AI
 // Overview checks therefore live in serpAiOverview below, a separate
-// depth-10 advanced call at $0.002.
+// depth-10 advanced call at $0.002. On a persistent transient failure the
+// depth steps down (see SERP_FALLBACK_DEPTHS) - a rank from a shallow rescue
+// means "position within the fallback depth", which for the sparse queries
+// that trigger it is the full SERP anyway.
 export async function serpOrganic(
   keyword: string,
   creds: DataforseoCreds,
   locationCode: number = LOCATION_CODE,
   languageCode: string = LANGUAGE_CODE,
 ): Promise<{ results: OrganicResult[]; cost: number }> {
-  const json = await post<{
-    cost: number;
-    tasks: Array<{
-      result?: Array<{
-        items?: SerpItem[];
-      }>;
-    }>;
-  }>("/serp/google/organic/live/regular", [
-    {
-      keyword,
-      location_code: locationCode,
-      language_code: languageCode,
-      depth: 100,
-    },
-  ], creds);
+  const task = { keyword, location_code: locationCode, language_code: languageCode };
+  let json: SerpRegularJson;
+  try {
+    json = await post<SerpRegularJson>(SERP_REGULAR_PATH, [{ ...task, depth: 100 }], creds);
+  } catch (e) {
+    if (!(e instanceof DataforseoError && e.transient)) throw e;
+    json = await serpOrganicShallow(task, creds, e);
+  }
 
   const items = json.tasks?.[0]?.result?.[0]?.items ?? [];
   const results = items

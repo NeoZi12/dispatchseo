@@ -1,11 +1,14 @@
 import { db } from "./db";
+import { isTransientErrorMessage } from "./dataforseo";
 
 // Cron failure alerts (LATER.md gap A4). Every cron route calls
 // reportCronRun() with its result JSON right before responding; this module
 // logs the run to cron_runs (migration 0020), and on a failed run emails the
 // owner through Resend - debounced per job (24h for scheduled crons, so an
 // hourly cron that stays broken sends one email, not twenty-four; none for
-// deploy-check, where each run is a distinct human push). The post-deploy
+// deploy-check, where each run is a distinct human push). Failures that are
+// purely transient vendor errors (see TRANSIENT_MARKER in dataforseo.ts)
+// additionally need two consecutive failed runs before the first email. The post-deploy
 // smoke test (deploy-check route + .github/workflows/deploy-check.yml) rides
 // the same rails: same run log, same banner, same email.
 //
@@ -148,6 +151,25 @@ export async function reportCronRun(
     let emailedAt: string | null = null;
 
     if (hadError) {
+      // Transient vendor blips (tagged by dataforseo.ts / serp.ts AFTER
+      // their in-call retries already failed) get one grace run: the run
+      // still logs as failed and the banner shows it immediately, but the
+      // email only goes out if the previous run of this job also failed -
+      // a sustained outage wakes the owner, a one-off SERP hiccup doesn't.
+      // Any untagged error in the mix (creds, balance, our own bugs) keeps
+      // emailing on the first failure, as before.
+      let persistedAcrossRuns = true;
+      if (errors.length > 0 && errors.every(isTransientErrorMessage)) {
+        const { data: prev } = await db()
+          .from("cron_runs")
+          .select("ok")
+          .eq("job", job)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        persistedAcrossRuns = prev != null && !prev.ok;
+      }
+
       // Debounce: skip the email if this job already emailed inside its
       // window (a zero-hour window means every failure emails).
       const hours = DEBOUNCE_HOURS[job] ?? DEFAULT_DEBOUNCE_HOURS;
@@ -163,7 +185,7 @@ export async function reportCronRun(
           .limit(1);
         alreadyEmailed = Boolean(recent && recent.length > 0);
       }
-      if (!alreadyEmailed) {
+      if (!alreadyEmailed && persistedAcrossRuns) {
         try {
           if (await sendFailureEmail(job, errors)) emailedAt = new Date().toISOString();
         } catch (e) {

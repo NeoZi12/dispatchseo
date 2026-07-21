@@ -14,6 +14,7 @@
 import {
   credsForProject,
   serpOrganic,
+  TRANSIENT_MARKER,
   type AiOverviewData,
   type DataforseoCreds,
   type OrganicResult,
@@ -89,7 +90,10 @@ async function serpapiOrganic(
   });
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`SerpApi HTTP ${res.status}: ${body.slice(0, 300)}`);
+    // A 5xx is SerpApi's outage, not our config - tag it transient so
+    // cron-alerts holds the email until it persists across runs.
+    const tag = res.status >= 500 ? ` ${TRANSIENT_MARKER}` : "";
+    throw new Error(`SerpApi HTTP ${res.status}: ${body.slice(0, 300)}${tag}`);
   }
   const json = (await res.json()) as {
     error?: string;
