@@ -131,6 +131,10 @@ export default async function SetupPage({
   const state = await getSetupState();
   if (state === "ready") redirect("/login");
   const { error } = await searchParams;
+  // Docker self-host: the stack bundles its own Postgres, so the two
+  // database gates only appear when a container is unhealthy - show
+  // docker triage instead of the cloud (Supabase/Vercel) walkthrough.
+  const docker = Boolean(process.env.POSTGREST_URL);
   // Which migrations the probe says are absent - names the exact gap on the
   // tables step so a partial paste is diagnosable at a glance.
   const missing = state === "no-tables" ? await missingMigrations() : [];
@@ -146,7 +150,36 @@ export default async function SetupPage({
           <SetupProgress state={state} />
         </div>
 
-        {state === "no-db" && (
+        {state === "no-db" && docker && (
+          <div className="space-y-6 rounded-xl border border-neutral-800 bg-neutral-900/60 p-7">
+            <div>
+              <h2 className="text-xl font-semibold text-white">Step 1 of 3 - waiting for the database</h2>
+              <p className="mt-2 text-base leading-relaxed text-neutral-300">
+                Your stack bundles its own Postgres - nothing to sign up for.
+                The app just can't reach it yet, which usually means the
+                database container is still starting.
+              </p>
+            </div>
+            <ol className="space-y-4">
+              <Step n={1}>
+                Give it ~20 seconds, then press the button below - on most
+                machines that's all it takes.
+              </Step>
+              <Step n={2}>
+                Still here? In the folder you installed from, run{" "}
+                <Code>docker compose ps</Code> - the <Code>postgres</Code> row
+                should say <Code>healthy</Code>. If it doesn't,{" "}
+                <Code>docker compose logs postgres</Code> shows why, and{" "}
+                <Code>docker compose up -d</Code> restarts anything stopped.
+              </Step>
+            </ol>
+            <a href="/setup" className={`block w-full text-center ${primaryAction}`}>
+              Check again
+            </a>
+          </div>
+        )}
+
+        {state === "no-db" && !docker && (
           <div className="space-y-6 rounded-xl border border-neutral-800 bg-neutral-900/60 p-7">
             <div>
               <h2 className="text-xl font-semibold text-white">Step 1 of 3 - connect your database</h2>
@@ -214,7 +247,40 @@ export default async function SetupPage({
           </div>
         )}
 
-        {state === "no-tables" && (
+        {state === "no-tables" && docker && (
+          <div className="space-y-6 rounded-xl border border-neutral-800 bg-neutral-900/60 p-7">
+            <div>
+              <h2 className="text-xl font-semibold text-white">Step 2 of 3 - waiting for the tables</h2>
+              <p className="mt-2 text-base leading-relaxed text-neutral-300">
+                The <Code>migrate</Code> container creates every table
+                automatically on boot - no SQL to paste. It hasn't finished
+                (or hit an error) on this stack yet.
+              </p>
+            </div>
+            <ol className="space-y-4">
+              <Step n={1}>
+                In the folder you installed from, run{" "}
+                <Code>docker compose up -d</Code> - it re-runs the migration,
+                and running it again is always safe.
+              </Step>
+              <Step n={2}>
+                If this screen keeps coming back,{" "}
+                <Code>docker compose logs migrate</Code> shows what went
+                wrong.
+              </Step>
+            </ol>
+            {missing.length > 0 && (
+              <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-sm text-amber-200">
+                Still missing: {missing.join(", ")}.
+              </p>
+            )}
+            <a href="/setup" className={`block w-full text-center ${primaryAction}`}>
+              Check again
+            </a>
+          </div>
+        )}
+
+        {state === "no-tables" && !docker && (
           <div className="space-y-6 rounded-xl border border-neutral-800 bg-neutral-900/60 p-7">
             <div>
               <h2 className="text-xl font-semibold text-white">Step 2 of 3 - create the tables</h2>

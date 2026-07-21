@@ -15,9 +15,14 @@ export type SetupState = "no-db" | "no-tables" | "unclaimed" | "ready";
 
 export async function getSetupState(): Promise<SetupState> {
   if (process.env.DASHBOARD_PASSWORD) return "ready";
+  // Docker self-host mode: POSTGREST_URL is the database connection (db.ts),
+  // so the instance is born past the "connect a database" gate - and the
+  // migrate container applies the schema on every boot, so a healthy stack
+  // lands straight on the claim step. "no-db"/"no-tables" can still surface
+  // if those containers are down; the wizard shows docker-specific help then.
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY;
-  if (!url || !key) return "no-db";
+  if (!process.env.POSTGREST_URL && (!url || !key)) return "no-db";
   try {
     const { data, error } = await db()
       .from("instance_settings")
