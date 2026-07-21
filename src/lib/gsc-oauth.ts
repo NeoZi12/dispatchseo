@@ -118,7 +118,7 @@ export async function setTrackedProperty(
 async function oauthSearchConsole(refreshTokenEncrypted: string) {
   const auth = client("postmessage"); // redirect uri unused for refresh flows
   auth.setCredentials({ refresh_token: await decryptSecret(refreshTokenEncrypted) });
-  return google.searchconsole({ version: "v1", auth });
+  return google.searchconsole({ version: "v1", auth, timeout: 25000 });
 }
 
 // The connected Google account's Search Console properties.

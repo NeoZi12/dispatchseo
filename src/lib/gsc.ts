@@ -17,7 +17,9 @@ function searchConsole() {
     credentials,
     scopes: ["https://www.googleapis.com/auth/webmasters.readonly"],
   });
-  return google.searchconsole({ version: "v1", auth });
+  // timeout bounds a hung GSC call (same posture as dataforseo.ts's 25s) so a
+  // single slow request can't silently eat a cron's whole function budget.
+  return google.searchconsole({ version: "v1", auth, timeout: 25000 });
 }
 
 // The service account's email - onboarding shows this so the user can add it

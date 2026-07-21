@@ -174,11 +174,21 @@ export async function mergePr(
   if (!canMerge()) return { ok: false, message: "GH_MERGE_TOKEN not configured" };
   const target = repoOrDefault(repo);
   if (!target) return { ok: false, message: "No repo connected for this project" };
-  const res = await fetch(`${API}/repos/${target}/pulls/${number}/merge`, {
-    method: "PUT",
-    headers: { ...headers(), "Content-Type": "application/json" },
-    body: JSON.stringify({ merge_method: "squash" }),
-  });
-  const body = (await res.json().catch(() => ({}))) as { message?: string };
-  return { ok: res.ok, message: body.message ?? (res.ok ? "merged" : `HTTP ${res.status}`) };
+  try {
+    const res = await fetch(`${API}/repos/${target}/pulls/${number}/merge`, {
+      method: "PUT",
+      headers: { ...headers(), "Content-Type": "application/json" },
+      body: JSON.stringify({ merge_method: "squash" }),
+      // Bound a hung GitHub response so it can't occupy the MCP's 60s budget
+      // until the platform kills it. Every sibling call already fails
+      // gracefully; so must the one mutation here (it used to throw straight
+      // out of the merge_pr tool / dashboard action).
+      signal: AbortSignal.timeout(20000),
+    });
+    const body = (await res.json().catch(() => ({}))) as { message?: string };
+    return { ok: res.ok, message: body.message ?? (res.ok ? "merged" : `HTTP ${res.status}`) };
+  } catch (e) {
+    const timedOut = e instanceof Error && e.name === "TimeoutError";
+    return { ok: false, message: timedOut ? "GitHub timed out - try again." : "Could not reach GitHub - try again." };
+  }
 }
