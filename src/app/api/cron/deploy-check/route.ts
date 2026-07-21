@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { checkCron } from "@/lib/cron-auth";
 import { reportCronRun } from "@/lib/cron-alerts";
-import { getProjectByToken, listProjects } from "@/lib/projects";
+import { getProjectByToken, listProjectsChecked } from "@/lib/projects";
 import { missingMigrations } from "@/lib/schema-check";
 
 // Post-deploy smoke test. The deploy-check GitHub Action hits this after
@@ -111,8 +111,15 @@ export async function GET(req: Request): Promise<Response> {
   });
 
   try {
-    const projects = await listProjects();
-    if (projects.length === 0) {
+    const { projects, degraded } = await listProjectsChecked();
+    if (degraded) {
+      // Query errored for a non-schema reason and collapsed to the synthetic
+      // fallback - a populated multi-tenant install would be silently skipping
+      // real tenants. This is the detection the length check alone can't do
+      // (the fallback array is never empty). (2026-07-21 audit.)
+      hadError = true;
+      checks.projects_resolve = { error: `degraded - collapsed to env fallback: ${degraded}` };
+    } else if (projects.length === 0) {
       hadError = true;
       checks.projects_resolve = { error: "no projects resolvable (env fallback included)" };
     } else {

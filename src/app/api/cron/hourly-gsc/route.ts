@@ -4,7 +4,7 @@ import { gscCronReadiness } from "@/lib/gsc-readiness";
 import { checkCron } from "@/lib/cron-auth";
 import { reportCronRun } from "@/lib/cron-alerts";
 import { recoverStuckBuilds } from "@/lib/build-recovery";
-import { listProjects, type Project } from "@/lib/projects";
+import { listProjectsChecked, type Project } from "@/lib/projects";
 
 // Hourly GSC refresh, triggered by the hourly-gsc GitHub Action (Vercel Hobby
 // crons cap at once/day, so the hourly schedule lives outside Vercel). This is
@@ -100,11 +100,17 @@ export async function GET(req: Request): Promise<Response> {
   const denied = await checkCron(req);
   if (denied) return denied;
 
-  const projects = await listProjects();
+  const { projects, degraded } = await listProjectsChecked();
   const runs = await Promise.allSettled(projects.map((p) => runProject(p)));
 
   const result: Record<string, unknown> = {};
   let hadError = false;
+  if (degraded) {
+    // Non-schema projects-query failure: only the synthetic fallback ran, so
+    // real tenants may have been skipped. Alert instead of a false success.
+    hadError = true;
+    result._projects_degraded = degraded;
+  }
   runs.forEach((r, i) => {
     const slug = projects[i].slug;
     if (r.status === "fulfilled") {

@@ -11,7 +11,7 @@ import {
   type AiSnapshotInput,
 } from "@/lib/ai-visibility";
 import { reportCronRun } from "@/lib/cron-alerts";
-import { listProjects, type Project } from "@/lib/projects";
+import { listProjectsChecked, type Project } from "@/lib/projects";
 
 // Daily cron, now per project: for EVERY project, three independent halves - one
 // failing must not kill the other, and one project failing must not kill the
@@ -241,11 +241,18 @@ export async function GET(req: Request): Promise<Response> {
   const denied = await checkCron(req);
   if (denied) return denied;
 
-  const projects = await listProjects();
+  const { projects, degraded } = await listProjectsChecked();
   const runs = await Promise.allSettled(projects.map((p) => runProject(p)));
 
   const result: Record<string, unknown> = {};
   let hadError = false;
+  if (degraded) {
+    // The projects query failed for a non-schema reason: we're running only the
+    // synthetic fallback and may be skipping real tenants. Fail loudly so it
+    // alerts instead of reporting a false success. (2026-07-21 audit.)
+    hadError = true;
+    result._projects_degraded = degraded;
+  }
   runs.forEach((r, i) => {
     const slug = projects[i].slug;
     if (r.status === "fulfilled") {

@@ -187,26 +187,39 @@ function envFallbackProject(): Project {
   };
 }
 
-export async function listProjects(): Promise<Project[]> {
+// Result-returning variant for callers that must treat a real DB failure as an
+// ERROR rather than silently running the synthetic fallback (the crons +
+// deploy-check). `degraded` is non-null ONLY when the projects query failed for
+// a NON-schema reason (a transient blip / outage) - meaning we fell back to the
+// synthetic ClockedCode project and may be SKIPPING real tenants. A genuinely-
+// absent table (pre-0004) returns degraded:null with the fallback, because that
+// IS the correct answer during first-boot, before migration 0004 runs.
+export async function listProjectsChecked(): Promise<{
+  projects: Project[];
+  degraded: string | null;
+}> {
   const { data, error } = await selectProjects((cols) =>
     db().from("projects").select(cols).order("created_at", { ascending: true }),
   );
   if (error) {
-    // A genuinely-absent projects table (pre-0004) is the expected fallback.
-    // Any OTHER error (transient blip, timeout) must not pass silently:
-    // collapsing a populated multi-tenant install to the single synthetic
-    // project makes a cron skip every real tenant yet still report success.
-    // Log loudly so it surfaces in platform logs; the fuller fix propagates
-    // this to the cron's hadError so it alerts. (2026-07-21 audit.)
-    if (!/does not exist|could not find|PGRST205|42P01/i.test(error.message)) {
-      console.error(
-        `[projects] listProjects collapsed to the synthetic fallback on a non-schema error: ${error.message}`,
-      );
+    if (/does not exist|could not find|PGRST205|42P01/i.test(error.message)) {
+      return { projects: [envFallbackProject()], degraded: null };
     }
-    return [envFallbackProject()];
+    console.error(
+      `[projects] listProjects collapsed to the synthetic fallback on a non-schema error: ${error.message}`,
+    );
+    return { projects: [envFallbackProject()], degraded: error.message };
   }
-  if (!data || data.length === 0) return [envFallbackProject()];
-  return data as unknown as Project[];
+  if (!data || data.length === 0) return { projects: [envFallbackProject()], degraded: null };
+  return { projects: data as unknown as Project[], degraded: null };
+}
+
+// The tolerant array form every non-cron caller uses (dashboard layout,
+// active-project): never throws, always returns at least the synthetic fallback
+// so the UI keeps working through first-boot or a hiccup. Crons that need to
+// alert on a collapse use listProjectsChecked() instead.
+export async function listProjects(): Promise<Project[]> {
+  return (await listProjectsChecked()).projects;
 }
 
 export async function getProjectBySlug(slug: string): Promise<Project | null> {
