@@ -127,7 +127,7 @@ export function FirstRunStatus({
               ? "Repo check failed"
               : s?.canary_ok || s?.pipeline_installed
                 ? "Repo connected - PR machinery proven"
-                : "Waiting for the setup command to run in your terminal…"
+                : "Waiting for the install paste to run in Claude Code…"
           }
           detail={s?.canary_error}
         />
