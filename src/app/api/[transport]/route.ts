@@ -9,7 +9,7 @@ import { getJourney } from "@/lib/journey";
 import { getWeeklyProgress } from "@/lib/progress";
 import { AUTOMATIONS, gatherEvidence } from "@/lib/automations";
 import { credsForProject } from "@/lib/dataforseo";
-import { canMerge, dispatchToolBuild, mergePr, openSeoPrs } from "@/lib/github";
+import { canMerge, dispatchToolBuild, mergePr, openSeoPrs, verifyPipelinePrereqs } from "@/lib/github";
 import {
   indexingBrowserCommand,
   indexingQueue,
@@ -1847,12 +1847,30 @@ const mcpHandler = createMcpHandler(
       },
       async () => {
         const p = currentProject();
+        // The stamp unlocks the owner's dashboard, so the backend verifies
+        // what it can instead of taking the agent's word: workflows merged,
+        // labels, Actions PR permission (approve half only when auto-merge
+        // is on). Verifiable problem = no stamp, with the fix spelled out.
+        let verified = false;
+        if (p.github_repo) {
+          const verdict = await verifyPipelinePrereqs(
+            p.github_repo,
+            effectiveAutomations(p).auto_merge,
+          );
+          if (verdict.problems.length > 0) {
+            return fail(
+              "Install NOT verified - the dashboard stays locked. Fix these, then call mark_pipeline_installed again: " +
+                verdict.problems.join("; "),
+            );
+          }
+          verified = verdict.checked;
+        }
         const { error } = await db()
           .from("projects")
           .update({ pipeline_installed_at: new Date().toISOString() })
           .eq("id", p.id);
         if (error) return fail(error.message);
-        return ok({ marked: true, project: p.slug });
+        return ok({ marked: true, project: p.slug, backend_verified: verified });
       },
     );
 

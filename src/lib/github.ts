@@ -221,3 +221,69 @@ export async function mergePr(
     return { ok: false, message: timedOut ? "GitHub timed out - try again." : "Could not reach GitHub - try again." };
   }
 }
+
+// Server-side proof that a repo is actually ready for the pipeline.
+// mark_pipeline_installed is what UNLOCKS the owner's dashboard, so it
+// refuses the stamp on any problem this can verify from here - the agent's
+// self-reported checklist is not taken on faith. Mode-aware: requireApprove
+// (auto-merge on) additionally demands the approve half of the Actions
+// toggle. Unverifiable situations (no merge token connected, GitHub down)
+// return checked:false with no problems - the agent's own gh-based
+// checklist is the verifier of record then; a network hiccup must not
+// hard-block an honest install.
+export async function verifyPipelinePrereqs(
+  repo: string,
+  requireApprove: boolean,
+): Promise<{ checked: boolean; problems: string[] }> {
+  const token = await mergeToken();
+  if (!token) return { checked: false, problems: [] };
+  const h = await headers();
+  const problems: string[] = [];
+  try {
+    const [wf, labels, perms] = await Promise.all([
+      fetch(`${API}/repos/${repo}/contents/.github/workflows/seo-daily.yml`, {
+        headers: h,
+        signal: AbortSignal.timeout(8000),
+      }),
+      fetch(`${API}/repos/${repo}/labels?per_page=100`, {
+        headers: h,
+        signal: AbortSignal.timeout(8000),
+      }),
+      fetch(`${API}/repos/${repo}/actions/permissions/workflow`, {
+        headers: h,
+        signal: AbortSignal.timeout(8000),
+      }),
+    ]);
+    if (wf.status === 404) {
+      problems.push(
+        "the pipeline workflows are not on the default branch yet - merge the install PR first",
+      );
+    }
+    if (labels.ok) {
+      const names = ((await labels.json()) as Array<{ name: string }>).map((l) => l.name);
+      for (const want of ["seo", "seo-tool"]) {
+        if (!names.includes(want)) {
+          problems.push(`label '${want}' does not exist (gh label create ${want} --repo ${repo})`);
+        }
+      }
+    }
+    if (perms.ok) {
+      const p = (await perms.json()) as {
+        default_workflow_permissions?: string;
+        can_approve_pull_request_reviews?: boolean;
+      };
+      if (p.default_workflow_permissions !== "write") {
+        problems.push(
+          "GitHub Actions cannot open PRs - enable 'Allow GitHub Actions to create and approve pull requests' in the repo's Settings → Actions → General",
+        );
+      } else if (requireApprove && !p.can_approve_pull_request_reviews) {
+        problems.push(
+          "auto mode needs the approve half of 'Allow GitHub Actions to create and approve pull requests' (auto-merge approves PRs from a workflow)",
+        );
+      }
+    }
+    return { checked: true, problems };
+  } catch {
+    return { checked: false, problems: [] };
+  }
+}
