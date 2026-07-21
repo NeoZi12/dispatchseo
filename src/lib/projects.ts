@@ -191,7 +191,21 @@ export async function listProjects(): Promise<Project[]> {
   const { data, error } = await selectProjects((cols) =>
     db().from("projects").select(cols).order("created_at", { ascending: true }),
   );
-  if (error || !data || data.length === 0) return [envFallbackProject()];
+  if (error) {
+    // A genuinely-absent projects table (pre-0004) is the expected fallback.
+    // Any OTHER error (transient blip, timeout) must not pass silently:
+    // collapsing a populated multi-tenant install to the single synthetic
+    // project makes a cron skip every real tenant yet still report success.
+    // Log loudly so it surfaces in platform logs; the fuller fix propagates
+    // this to the cron's hadError so it alerts. (2026-07-21 audit.)
+    if (!/does not exist|could not find|PGRST205|42P01/i.test(error.message)) {
+      console.error(
+        `[projects] listProjects collapsed to the synthetic fallback on a non-schema error: ${error.message}`,
+      );
+    }
+    return [envFallbackProject()];
+  }
+  if (!data || data.length === 0) return [envFallbackProject()];
   return data as unknown as Project[];
 }
 

@@ -20,5 +20,5 @@ export async function GET(): Promise<Response> {
   const hdrs = await headers();
   const origin = `${hdrs.get("x-forwarded-proto") ?? "https"}://${hdrs.get("host")}`;
   const project = await getActiveProject();
-  redirect(consentUrl(`${origin}/api/oauth/google/callback`, project.slug));
+  redirect(await consentUrl(`${origin}/api/oauth/google/callback`, project.slug));
 }

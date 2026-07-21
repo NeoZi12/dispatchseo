@@ -19,9 +19,8 @@ export const dynamic = "force-dynamic";
 const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-jakarta" });
 const dmSans = DM_Sans({ subsets: ["latin"], variable: "--font-dm" });
 
-// TODO at public flip: point these at the real repo/docs URLs.
-const GITHUB_URL = "#";
-const DOCS_URL = "#";
+const GITHUB_URL = "https://github.com/NeoZi12/dispatchseo";
+const DOCS_URL = "/docs";
 
 export const metadata: Metadata = {
   title: "DispatchSEO — Automate your SEO with Claude Code",

@@ -669,10 +669,17 @@ export async function setProjectMode(mode: "semi" | "auto") {
   if (mode !== "semi" && mode !== "auto") throw new Error("Bad mode");
   const project = await getActiveProject();
   const preset = mode === "auto" ? AUTO_PRESET : SEMI_PRESET;
-  const { error } = await db()
+  let { error } = await db()
     .from("projects")
     .update({ mode, ...preset })
     .eq("id", project.id);
+  if (error && error.message.includes("auto_approve_tools")) {
+    // 0028 not applied yet: drop the new flag and retry so the mode switch
+    // still works in that window (effectiveAutomations defaults it to true).
+    const retry: Record<string, unknown> = { mode, ...preset };
+    delete retry.auto_approve_tools;
+    ({ error } = await db().from("projects").update(retry).eq("id", project.id));
+  }
   if (error) throw new Error(error.message);
   revalidatePath("/", "layout");
 }
@@ -711,10 +718,17 @@ export async function setAutomationToggle(flag: keyof AutomationFlags, enabled: 
   if (!allowed.includes(flag)) throw new Error("Bad automation flag");
   const project = await getActiveProject();
   const next = { ...effectiveAutomations(project), [flag]: Boolean(enabled) };
-  const { error } = await db()
+  let { error } = await db()
     .from("projects")
     .update({ mode: modeForFlags(next), ...next })
     .eq("id", project.id);
+  if (error && error.message.includes("auto_approve_tools")) {
+    // 0028 not applied yet: drop the new flag and retry (the read side already
+    // defaults it to true via effectiveAutomations).
+    const retry: Record<string, unknown> = { mode: modeForFlags(next), ...next };
+    delete retry.auto_approve_tools;
+    ({ error } = await db().from("projects").update(retry).eq("id", project.id));
+  }
   if (error) throw new Error(error.message);
   revalidatePath("/", "layout");
 }

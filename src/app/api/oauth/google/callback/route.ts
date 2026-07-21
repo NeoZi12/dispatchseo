@@ -17,7 +17,7 @@ export async function GET(req: Request): Promise<Response> {
 
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
-  const slug = state ? verifyState(state) : null;
+  const slug = state ? await verifyState(state) : null;
   if (!code || !slug) redirect("/google?error=bad_state");
 
   const hdrs = await headers();

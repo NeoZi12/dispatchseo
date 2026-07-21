@@ -59,7 +59,7 @@ export async function instanceSettings(): Promise<InstanceRow> {
 
 // The HMAC key for the session cookie. Env password wins; otherwise the
 // stored scrypt hash doubles as the key (re-claiming rotates it).
-async function authSecret(): Promise<string | null> {
+export async function authSecret(): Promise<string | null> {
   const env = process.env.DASHBOARD_PASSWORD;
   if (env) return env;
   const row = await instanceRow();

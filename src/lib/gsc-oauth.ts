@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { google } from "googleapis";
 import { db } from "./db";
+import { authSecret } from "./dashboard-auth";
 import { decryptSecret, encryptSecret } from "./crypto";
 
 // Google OAuth for Search Console - the "Connect Google Search Console"
@@ -25,28 +26,31 @@ function client(redirectUri: string) {
   );
 }
 
-// CSRF state: HMAC-signed project slug + timestamp, keyed by the dashboard
-// password (same key model as the auth cookie - rotating the password
-// invalidates in-flight OAuth states, which is fine, they live minutes).
+// CSRF state: HMAC-signed project slug + timestamp, keyed by authSecret() -
+// the DASHBOARD_PASSWORD env (classic installs) or the stored password hash
+// (wizard-claimed installs), exactly like the session cookie. Keying only to
+// the env var used to throw on every claimed install - the common cloud/demo
+// case - and 500 the connect flow. Rotating the password invalidates in-flight
+// OAuth states, which is fine: they live minutes.
 const STATE_TTL_MS = 10 * 60 * 1000;
 
-function sign(payload: string): string {
-  const secret = process.env.DASHBOARD_PASSWORD;
-  if (!secret) throw new Error("Missing DASHBOARD_PASSWORD");
+async function sign(payload: string): Promise<string> {
+  const secret = await authSecret();
+  if (!secret) throw new Error("No dashboard password: instance unclaimed and DASHBOARD_PASSWORD unset");
   return createHmac("sha256", secret).update(payload).digest("hex");
 }
 
-export function makeState(projectSlug: string): string {
+export async function makeState(projectSlug: string): Promise<string> {
   const payload = `${projectSlug}.${Date.now()}`;
-  return `${payload}.${sign(payload)}`;
+  return `${payload}.${await sign(payload)}`;
 }
 
-export function verifyState(state: string): string | null {
+export async function verifyState(state: string): Promise<string | null> {
   const lastDot = state.lastIndexOf(".");
   if (lastDot < 0) return null;
   const payload = state.slice(0, lastDot);
   const mac = state.slice(lastDot + 1);
-  const expected = sign(payload);
+  const expected = await sign(payload);
   const a = Buffer.from(mac);
   const b = Buffer.from(expected);
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
@@ -55,12 +59,12 @@ export function verifyState(state: string): string | null {
   return slug;
 }
 
-export function consentUrl(redirectUri: string, projectSlug: string): string {
+export async function consentUrl(redirectUri: string, projectSlug: string): Promise<string> {
   return client(redirectUri).generateAuthUrl({
     access_type: "offline", // refresh token, so the connection survives
     prompt: "consent", // force the consent screen even on re-connect (demo video needs it)
     scope: [GSC_SCOPE],
-    state: makeState(projectSlug),
+    state: await makeState(projectSlug),
   });
 }
 
