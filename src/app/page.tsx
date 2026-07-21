@@ -115,28 +115,26 @@ export default async function LandingPage({
         <svg className="doodle doodle-arrow" viewBox="0 0 80 60" aria-hidden="true"><path d="M6 9 C 33 13, 55 27, 63 49 M63 49 L50 44 M63 49 L66 35" /></svg>
 
         <div className="wrap">
-          <h1>Automate your SEO<br />with Claude Code</h1>
+          <h1>Automate your SEO<br />with <span className="hl">Claude Code</span></h1>
           <p className="sub">The same agent that built your product now runs your SEO automatically: it researches keywords, writes guides, builds interactive tools, and tracks your ranks. You review every piece as a pull request.</p>
 
           <div className="cta-row" id="waitlist">
             <WaitlistForm joined={isJoined} error={isError} source="hero" />
-            {!isJoined ? (
-              <a className="btn btn-ghost" href={GITHUB_URL}>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25z" /></svg>
-                Star on GitHub
-              </a>
-            ) : null}
           </div>
+          <a className="btn btn-ghost btn-sm hero-selfhost" href={GITHUB_URL}>
+            <GithubIcon />
+            Self-host now for free
+          </a>
           <p className="hero-note">
             <svg className="gift-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="4" rx="1" /><path d="M12 8v13" /><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7" /><path d="M7.5 8a2.5 2.5 0 0 1 0-5C9.5 3 11 5 12 8c1-3 2.5-5 4.5-5a2.5 2.5 0 0 1 0 5" /></svg>
-            Waitlist members lock in founding pricing at launch. <a href="#oss">Self-hosting is free today.</a>
+            Waitlist members lock in founding pricing at launch.
           </p>
 
         </div>
       </header>
 
       {/* ==================== HOW IT WORKS ==================== */}
-      <section id="how">
+      <section className="band-alt" id="how">
         <div className="wrap">
           <div className="sec-h">
             <h2>Connect it once,<br />then watch it work</h2>
@@ -168,7 +166,7 @@ export default async function LandingPage({
       </section>
 
       {/* ==================== WHY NOW / WHO FOR ==================== */}
-      <section className="band-alt">
+      <section>
         <div className="wrap">
           <div className="sec-h">
             <h2>Who is DispatchSEO for?</h2>
@@ -195,7 +193,7 @@ export default async function LandingPage({
       </section>
 
       {/* ==================== FEATURES ==================== */}
-      <section id="features">
+      <section className="band-alt" id="features">
         <div className="wrap">
           <div className="sec-h">
             <h2>Everything an SEO operation needs, in one place</h2>
@@ -249,7 +247,7 @@ export default async function LandingPage({
       </section>
 
       {/* ==================== PRICING ==================== */}
-      <section id="pricing">
+      <section className="band-alt" id="pricing">
         <div className="wrap">
           <div className="sec-h">
             <h2>Self-host free.<br />Cloud, when it lands.</h2>
@@ -355,7 +353,7 @@ export default async function LandingPage({
       </section>
 
       {/* ==================== FINAL CTA ==================== */}
-      <section className="final" id="waitlist-final">
+      <section className="final band-alt" id="waitlist-final">
         <svg className="doodle doodle-f1" viewBox="0 0 48 56" aria-hidden="true"><path d="M10 7 L30 7 L38 15 L38 49 L10 49 Z M30 7 L30 15 L38 15 M17 27 L31 27 M17 35 L27 35" /></svg>
         <svg className="doodle doodle-f2" viewBox="0 0 64 64" aria-hidden="true"><path d="M8 52 L24 38 L34 46 L56 20 M56 20 L45 22 M56 20 L55 32" /></svg>
         <div className="wrap">

@@ -63,11 +63,19 @@ html:has(.ld) { scroll-behavior: smooth; }
 .ld .btn-sm { padding: 8px 16px; font-size: 14px; border-radius: 8px; }
 
 /* ---------- hero ---------- */
-/* Fills the first viewport. Extra bottom padding offsets the 68px sticky nav
-   above, so the pitch centers on the whole window, not the area below the nav. */
-.ld .hero { min-height: calc(100vh - 68px); display: flex; flex-direction: column; justify-content: center; padding: 32px 0 100px; text-align: center; position: relative; }
+/* Fills the first viewport. Top padding is sized so the description paragraph
+   sits at the vertical center of the window (50vh minus the 68px nav, the
+   title block, and half the paragraph). */
+.ld .hero { min-height: calc(100vh - 68px); display: flex; flex-direction: column; justify-content: flex-start; padding: max(48px, calc(50vh - 230px)) 0 60px; text-align: center; position: relative; }
 .ld .hero h1 { font-size: clamp(38px, 6.2vw, 68px); font-weight: 800; margin: 0 auto 22px; max-width: 880px; }
-.ld .hero .sub { font-size: clamp(16.5px, 2vw, 19.5px); color: var(--mut); max-width: 680px; margin: 0 auto 34px; }
+/* "Claude Code" selection-block highlight: a pseudo-element behind the glyphs,
+   inset to hug cap-height and baseline so it never bleeds into the line above,
+   wiping in left-to-right on load. */
+.ld .hero .hl { position: relative; display: inline-block; color: #fff; }
+.ld .hero .hl::before { content: ""; position: absolute; z-index: -1; top: 0.05em; bottom: 0.04em; left: -0.08em; right: -0.08em; background: var(--vio); border-radius: 0.07em; transform-origin: left center; animation: ld-hl-in 0.5s 0.35s cubic-bezier(0.3, 0.9, 0.4, 1) both; }
+@keyframes ld-hl-in { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@media (prefers-reduced-motion: reduce) { .ld .hero .hl::before { animation: none; transform: scaleX(1); } }
+.ld .hero .sub { font-size: clamp(16.5px, 2vw, 19.5px); color: var(--txt); max-width: 680px; margin: 0 auto 34px; }
 .ld .cta-row { display: flex; gap: 12px; justify-content: center; align-items: stretch; flex-wrap: wrap; }
 .ld .email-group { display: flex; background: var(--card); border: 1.5px solid var(--line3); border-radius: 12px; padding: 5px; width: min(430px, 100%); transition: border-color 0.15s; }
 .ld .email-group:focus-within { border-color: var(--vio); }
@@ -78,6 +86,7 @@ html:has(.ld) { scroll-behavior: smooth; }
 .ld .joined { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line2); background: var(--card); border-radius: 12px; padding: 14px 22px; font-weight: 600; color: var(--txt); }
 .ld .joined svg { width: 16px; height: 16px; color: var(--up); }
 .ld .form-error { margin-top: 12px; font-size: 14px; color: #f87171; }
+.ld .hero-selfhost { margin-top: 16px; }
 .ld .hero-note { margin-top: 16px; font-size: 14px; color: var(--dim); }
 .ld .hero-note a { font-weight: 600; color: var(--txt); }
 .ld .gift-ic { width: 14px; height: 14px; color: var(--vio2); vertical-align: -2px; margin-right: 6px; display: inline-block; }
@@ -125,7 +134,6 @@ html:has(.ld) { scroll-behavior: smooth; }
 .ld .feat p { font-size: 14px; color: var(--mut); line-height: 1.5; }
 
 /* ---------- open source ---------- */
-.ld .oss { background: var(--bg2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .ld .oss-in { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; }
 .ld .oss-copy h2 { font-size: clamp(28px, 3.8vw, 40px); font-weight: 800; margin-bottom: 20px; }
 .ld .oss-copy p { color: var(--mut); margin-bottom: 16px; font-size: 16.5px; }
@@ -161,7 +169,6 @@ html:has(.ld) { scroll-behavior: smooth; }
 .ld .ca-pill svg { width: 16px; height: 16px; color: var(--vio2); flex-shrink: 0; }
 
 /* ---------- faq ---------- */
-.ld .faq { background: var(--bg2); border-top: 1px solid var(--line); }
 .ld .faq-list { max-width: 760px; margin: 0 auto; }
 .ld details { border: 1px solid var(--line); border-radius: 12px; background: var(--card); margin-bottom: 12px; overflow: hidden; }
 .ld summary { cursor: pointer; padding: 20px 24px; font-weight: 600; font-size: 16.5px; font-family: var(--disp); color: #fff; list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
@@ -204,6 +211,7 @@ html:has(.ld) { scroll-behavior: smooth; }
 }
 @media (max-width: 600px) {
   .ld section { padding: 64px 0; }
+  .ld .hero { justify-content: center; padding: 32px 0 64px; }
   .ld .steps, .ld .feat-grid, .ld .plans { grid-template-columns: 1fr; }
   .ld .foot-grid { grid-template-columns: 1fr 1fr; }
   .ld .email-group { flex-direction: column; gap: 8px; border-radius: 14px; }

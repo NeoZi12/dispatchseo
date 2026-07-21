@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DispatchSEO — Hero Keyword-Highlight Variants</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0a0a0b;
+    --bg2: #0f0f11;
+    --card: #121215;
+    --card2: #17171b;
+    --line: #232329;
+    --line2: #2e2e35;
+    --line3: #3a3a42;
+    --dim: #6e6e78;
+    --mut: #a5a5ae;
+    --txt: #f4f4f5;
+    --vio: #8b5cf6;
+    --vio2: #a78bfa;
+    --up: #4ade80;
+    --disp: "Plus Jakarta Sans", system-ui, sans-serif;
+    --body: "DM Sans", system-ui, sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: var(--body);
+    color: var(--txt);
+    background: var(--bg);
+    line-height: 1.6;
+    font-size: 17px;
+    -webkit-font-smoothing: antialiased;
+    padding-top: 48px; /* offset for fixed picker bar */
+  }
+  h1 { font-family: var(--disp); line-height: 1.12; letter-spacing: -0.02em; color: #fff; }
+  a { color: inherit; }
+  ::selection { background: var(--vio); color: #fff; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 2; }
+
+  /* ---------- picker bar ---------- */
+  .picker-bar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100; height: 48px;
+    display: flex; align-items: center; gap: 4px; padding: 0 20px;
+    background: rgba(10, 10, 11, 0.92); backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+    font-family: var(--disp); font-weight: 700; font-size: 13px;
+  }
+  .picker-bar .pb-label { color: var(--dim); font-weight: 600; margin-right: 14px; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; }
+  .picker-bar a {
+    text-decoration: none; color: var(--mut); padding: 7px 13px; border-radius: 7px;
+    border: 1px solid transparent; transition: color 0.12s, border-color 0.12s, background 0.12s;
+  }
+  .picker-bar a:hover { color: #fff; background: var(--card2); border-color: var(--line2); }
+
+  /* ---------- section label / divider ---------- */
+  .dir-label {
+    scroll-margin-top: 48px;
+    background: var(--bg2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+    padding: 22px 24px; text-align: center;
+  }
+  .dir-label .dl-name { font-family: var(--disp); font-weight: 800; font-size: 15px; color: #fff; letter-spacing: -0.01em; }
+  .dir-label .dl-desc { font-size: 13.5px; color: var(--dim); margin-top: 4px; }
+
+  /* ---------- shared hero shell ---------- */
+  .hero {
+    min-height: 90vh; display: flex; flex-direction: column; justify-content: center;
+    padding: 72px 0; text-align: center; position: relative; overflow: hidden;
+  }
+  .hero h1 { font-size: clamp(34px, 5.6vw, 62px); font-weight: 800; margin: 0 auto 22px; max-width: 880px; position: relative; z-index: 2; }
+  .hero .sub { font-size: clamp(16px, 1.9vw, 18.5px); color: var(--txt); max-width: 660px; margin: 0 auto 32px; position: relative; z-index: 2; }
+  .cta-row { display: flex; gap: 12px; justify-content: center; align-items: stretch; flex-wrap: wrap; position: relative; z-index: 2; }
+  .email-group { display: flex; background: var(--card); border: 1.5px solid var(--line3); border-radius: 12px; padding: 5px; width: min(410px, 100%); }
+  .email-group input[type="email"] { border: 0; outline: 0; flex: 1; padding: 8px 14px; font-family: var(--body); font-size: 15px; background: transparent; color: var(--txt); min-width: 0; }
+  .email-group input[type="email"]::placeholder { color: var(--dim); }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-family: var(--body); font-weight: 600; font-size: 15px; padding: 12px 20px; border-radius: 9px; border: 1px solid #fff; cursor: pointer; text-decoration: none; white-space: nowrap; transition: transform 0.12s ease, box-shadow 0.12s ease; }
+  .btn:hover { transform: translateY(-1px); }
+  .btn-solid { background: #fff; color: var(--bg); border-radius: 8px; }
+  .btn-solid:hover { box-shadow: 0 6px 22px rgba(255, 255, 255, 0.14); }
+  .btn-ghost { background: transparent; color: var(--txt); border-color: var(--line3); }
+  .btn-ghost:hover { background: var(--card2); }
+  .hero-note { margin-top: 16px; font-size: 13.5px; color: var(--dim); position: relative; z-index: 2; }
+  .hero-note a { font-weight: 600; color: var(--txt); }
+  .gift-ic { width: 14px; height: 14px; color: var(--vio2); vertical-align: -2px; margin-right: 5px; display: inline-block; }
+
+  /* shared doodles (from the live hero) */
+  .doodle { position: absolute; pointer-events: none; z-index: 1; }
+  .doodle path { fill: none; stroke: #4b4b55; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .doodle-l { left: 4%; top: 30%; width: 62px; transform: rotate(-12deg); }
+  .doodle-r { right: 5%; top: 24%; width: 50px; transform: rotate(14deg); }
+  .doodle-arrow { right: 12%; top: 66%; width: 72px; }
+
+  /* =====================================================
+     VARIANT A — Highlighter swipe
+     A translucent violet marker stroke swipes in behind the
+     plain white keyword, like it was highlighted by hand.
+     ===================================================== */
+  .hero--a .hl-wrap {
+    position: relative; display: inline-block; color: #fff; padding: 0 2px;
+  }
+  .hero--a .hl-wrap::before {
+    content: ""; position: absolute; left: -8px; right: -8px; top: 6%; bottom: 2%;
+    background: rgba(139, 92, 246, 0.38);
+    clip-path: polygon(1% 18%, 99% 6%, 100% 84%, 2% 94%);
+    z-index: -1; transform-origin: left center;
+    animation: hl-wipe 0.65s 0.4s cubic-bezier(.3,.8,.4,1) both;
+  }
+  @keyframes hl-wipe {
+    from { transform: rotate(-1.6deg) scaleX(0); }
+    to { transform: rotate(-1.6deg) scaleX(1); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hero--a .hl-wrap::before { animation: none; transform: rotate(-1.6deg) scaleX(1); }
+  }
+
+  /* =====================================================
+     VARIANT B — Selected, just typed
+     "Claude Code" sits in a solid violet selection block,
+     like an editor highlight, with a blinking caret after it.
+     ===================================================== */
+  .hero--b .sel-wrap { position: relative; display: inline-block; color: #fff; }
+  /* The highlight is a pseudo-element behind the glyphs, inset to hug the
+     cap-height and baseline ("Claude Code" has no descenders), so it never
+     bleeds into the line above or hangs below the baseline. */
+  .hero--b .sel-wrap::before {
+    content: ""; position: absolute; z-index: -1;
+    top: 0.05em; bottom: 0.04em; left: -0.08em; right: -0.08em;
+    background: var(--vio); border-radius: 0.07em;
+    transform-origin: left center;
+    animation: sel-in 0.5s 0.35s cubic-bezier(.3,.9,.4,1) both;
+  }
+  @keyframes sel-in { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  @media (prefers-reduced-motion: reduce) {
+    .hero--b .sel-wrap::before { animation: none; transform: scaleX(1); }
+  }
+
+  /* =====================================================
+     VARIANT C — Scribble underline + sparkle flourish
+     Solid violet text, a rougher double-stroke underline
+     that draws in, finished with a small hand-drawn sparkle.
+     ===================================================== */
+  .hero--c .sc-wrap { position: relative; display: inline-block; color: var(--vio2); }
+  .hero--c .scribble-draw {
+    position: absolute; left: -6px; right: -22px; bottom: -12px; width: calc(100% + 28px); height: 22px;
+    overflow: visible; display: block;
+  }
+  .hero--c .scribble-draw .s1 {
+    fill: none; stroke: var(--vio2); stroke-width: 4; stroke-linecap: round;
+    stroke-dasharray: 300; stroke-dashoffset: 300;
+    animation: sc-draw 0.9s 0.45s cubic-bezier(.3,.9,.4,1) forwards;
+  }
+  .hero--c .scribble-draw .s2 {
+    fill: none; stroke: var(--vio); stroke-width: 3; stroke-linecap: round; opacity: 0.7;
+    stroke-dasharray: 300; stroke-dashoffset: 300;
+    animation: sc-draw 0.9s 0.55s cubic-bezier(.3,.9,.4,1) forwards;
+  }
+  @keyframes sc-draw { to { stroke-dashoffset: 0; } }
+  .hero--c .scribble-draw .spark {
+    transform-origin: 208px 6px; opacity: 0; transform: scale(0.3);
+    animation: sc-spark 0.4s 1.15s cubic-bezier(.2,1.4,.5,1) forwards;
+  }
+  @keyframes sc-spark { to { opacity: 1; transform: scale(1); } }
+  @media (prefers-reduced-motion: reduce) {
+    .hero--c .scribble-draw .s1, .hero--c .scribble-draw .s2 { animation: none; stroke-dashoffset: 0; }
+    .hero--c .scribble-draw .spark { animation: none; opacity: 1; transform: scale(1); }
+  }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 720px) {
+    .picker-bar { overflow-x: auto; }
+  }
+</style>
+</head>
+<body>
+
+  <nav class="picker-bar">
+    <span class="pb-label">Highlight variants</span>
+    <a href="#va">A — Highlighter swipe</a>
+    <a href="#vb">B — Selected / just typed</a>
+    <a href="#vc">C — Scribble + sparkle</a>
+  </nav>
+
+  <main>
+
+    <!-- ============ VARIANT A ============ -->
+    <div class="dir-label" id="va">
+      <div class="dl-name">Variant A — Highlighter swipe</div>
+      <div class="dl-desc">A translucent violet marker stroke swipes in behind plain white text, angled like a real highlighter pass</div>
+    </div>
+    <header class="hero hero--a">
+      <svg class="doodle doodle-l" viewBox="0 0 64 64" aria-hidden="true"><path d="M6 50 L22 35 L33 43 L56 15 M56 15 L45 18 M56 15 L54 27" /></svg>
+      <svg class="doodle doodle-r" viewBox="0 0 48 48" aria-hidden="true"><path d="M19 17 L30 43 L33.5 32 L44 29 Z M9 8 L13 12 M6 19 L11.5 20.5 M19 5 L20.5 10.5" /></svg>
+      <svg class="doodle doodle-arrow" viewBox="0 0 80 60" aria-hidden="true"><path d="M6 9 C 33 13, 55 27, 63 49 M63 49 L50 44 M63 49 L66 35" /></svg>
+
+      <div class="wrap">
+        <h1>Automate your SEO<br />with <span class="hl-wrap">Claude Code</span></h1>
+        <p class="sub">The same agent that built your product now runs your SEO automatically: it researches keywords, writes guides, builds interactive tools, and tracks your ranks. You review every piece as a pull request.</p>
+
+        <div class="cta-row">
+          <div class="email-group">
+            <input type="email" placeholder="you@company.com" disabled />
+            <button class="btn btn-solid" type="button">Join the waitlist</button>
+          </div>
+          <a class="btn btn-ghost" href="#" onclick="return false;">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25z" /></svg>
+            Star on GitHub
+          </a>
+        </div>
+        <p class="hero-note">
+          <svg class="gift-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="4" rx="1" /><path d="M12 8v13" /><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7" /><path d="M7.5 8a2.5 2.5 0 0 1 0-5C9.5 3 11 5 12 8c1-3 2.5-5 4.5-5a2.5 2.5 0 0 1 0 5" /></svg>
+          Waitlist members lock in founding pricing at launch. <a href="#" onclick="return false;">Self-hosting is free today.</a>
+        </p>
+      </div>
+    </header>
+
+    <!-- ============ VARIANT B ============ -->
+    <div class="dir-label" id="vb">
+      <div class="dl-name">Variant B — Selected, just typed</div>
+      <div class="dl-desc">"Claude Code" sits in a solid violet selection block, like text the agent just selected</div>
+    </div>
+    <header class="hero hero--b">
+      <svg class="doodle doodle-l" viewBox="0 0 64 64" aria-hidden="true"><path d="M6 50 L22 35 L33 43 L56 15 M56 15 L45 18 M56 15 L54 27" /></svg>
+      <svg class="doodle doodle-r" viewBox="0 0 48 48" aria-hidden="true"><path d="M19 17 L30 43 L33.5 32 L44 29 Z M9 8 L13 12 M6 19 L11.5 20.5 M19 5 L20.5 10.5" /></svg>
+      <svg class="doodle doodle-arrow" viewBox="0 0 80 60" aria-hidden="true"><path d="M6 9 C 33 13, 55 27, 63 49 M63 49 L50 44 M63 49 L66 35" /></svg>
+
+      <div class="wrap">
+        <h1>Automate your SEO<br />with <span class="sel-wrap">Claude Code</span></h1>
+        <p class="sub">The same agent that built your product now runs your SEO automatically: it researches keywords, writes guides, builds interactive tools, and tracks your ranks. You review every piece as a pull request.</p>
+
+        <div class="cta-row">
+          <div class="email-group">
+            <input type="email" placeholder="you@company.com" disabled />
+            <button class="btn btn-solid" type="button">Join the waitlist</button>
+          </div>
+          <a class="btn btn-ghost" href="#" onclick="return false;">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25z" /></svg>
+            Star on GitHub
+          </a>
+        </div>
+        <p class="hero-note">
+          <svg class="gift-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="4" rx="1" /><path d="M12 8v13" /><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7" /><path d="M7.5 8a2.5 2.5 0 0 1 0-5C9.5 3 11 5 12 8c1-3 2.5-5 4.5-5a2.5 2.5 0 0 1 0 5" /></svg>
+          Waitlist members lock in founding pricing at launch. <a href="#" onclick="return false;">Self-hosting is free today.</a>
+        </p>
+      </div>
+    </header>
+
+    <!-- ============ VARIANT C ============ -->
+    <div class="dir-label" id="vc">
+      <div class="dl-name">Variant C — Scribble underline + sparkle</div>
+      <div class="dl-desc">Solid violet text under a rougher double-stroke scribble underline that draws in and finishes with a hand-drawn sparkle</div>
+    </div>
+    <header class="hero hero--c">
+      <svg class="doodle doodle-l" viewBox="0 0 64 64" aria-hidden="true"><path d="M6 50 L22 35 L33 43 L56 15 M56 15 L45 18 M56 15 L54 27" /></svg>
+      <svg class="doodle doodle-r" viewBox="0 0 48 48" aria-hidden="true"><path d="M19 17 L30 43 L33.5 32 L44 29 Z M9 8 L13 12 M6 19 L11.5 20.5 M19 5 L20.5 10.5" /></svg>
+      <svg class="doodle doodle-arrow" viewBox="0 0 80 60" aria-hidden="true"><path d="M6 9 C 33 13, 55 27, 63 49 M63 49 L50 44 M63 49 L66 35" /></svg>
+
+      <div class="wrap">
+        <h1>Automate your SEO<br />with <span class="sc-wrap">Claude Code
+          <svg class="scribble-draw" viewBox="0 0 220 24" preserveAspectRatio="none" aria-hidden="true">
+            <path class="s1" d="M4 12 C 36 20, 70 4, 110 13 S 170 20, 202 9" />
+            <path class="s2" d="M6 16 C 40 8, 76 19, 112 10 S 172 6, 200 15" />
+            <g class="spark">
+              <path d="M208 -1 L210.4 4.2 L216 6 L210.4 7.8 L208 13 L205.6 7.8 L200 6 L205.6 4.2 Z" fill="var(--vio2)" />
+            </g>
+          </svg>
+        </span></h1>
+        <p class="sub">The same agent that built your product now runs your SEO automatically: it researches keywords, writes guides, builds interactive tools, and tracks your ranks. You review every piece as a pull request.</p>
+
+        <div class="cta-row">
+          <div class="email-group">
+            <input type="email" placeholder="you@company.com" disabled />
+            <button class="btn btn-solid" type="button">Join the waitlist</button>
+          </div>
+          <a class="btn btn-ghost" href="#" onclick="return false;">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25z" /></svg>
+            Star on GitHub
+          </a>
+        </div>
+        <p class="hero-note">
+          <svg class="gift-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="4" rx="1" /><path d="M12 8v13" /><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7" /><path d="M7.5 8a2.5 2.5 0 0 1 0-5C9.5 3 11 5 12 8c1-3 2.5-5 4.5-5a2.5 2.5 0 0 1 0 5" /></svg>
+          Waitlist members lock in founding pricing at launch. <a href="#" onclick="return false;">Self-hosting is free today.</a>
+        </p>
+      </div>
+    </header>
+
+  </main>
+</body>
+</html>
