@@ -421,12 +421,6 @@ export function OnboardingWizard({
                 .
               </span>
             </label>
-            {createState && "error" in createState && createState.code === "repo-not-found" ? (
-              <label className="flex items-center gap-2 text-sm text-neutral-200">
-                <input type="checkbox" name="repo_private" value="1" className="h-4 w-4 accent-violet-500" />
-                It&apos;s a private repo - it exists, continue anyway
-              </label>
-            ) : null}
             <div className="space-y-1.5">
               <span className="block text-base font-medium text-neutral-200">
                 Does the site have a blog or content section?

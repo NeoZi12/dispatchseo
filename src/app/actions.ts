@@ -587,10 +587,7 @@ export async function deleteProject(
 // reusable if a non-wizard entry point ever returns.
 async function createProjectCore(
   formData: FormData,
-): Promise<
-  | { error: string; code?: "repo-not-found" }
-  | { slug: string; name: string; domain: string; mcpToken: string }
-> {
+): Promise<{ error: string } | { slug: string; name: string; domain: string; mcpToken: string }> {
   const name = String(formData.get("name") ?? "").trim();
   const rawDomain = String(formData.get("domain") ?? "").trim();
   const mode = String(formData.get("mode") ?? "semi");
@@ -634,12 +631,6 @@ async function createProjectCore(
   if (!(await domainAnswers(domain))) {
     return {
       error: `We could not reach ${domain}. Check the spelling - it should be your live website's address.`,
-    };
-  }
-  if ((await githubRepoExists(repo)) === "missing" && formData.get("repo_private") !== "1") {
-    return {
-      error: `GitHub has no public repo called ${repo}. If it's private that's fine - confirm below and continue. Otherwise fix the name.`,
-      code: "repo-not-found",
     };
   }
 
@@ -735,13 +726,15 @@ async function createProjectCore(
 }
 
 export type WizardCreateState =
-  | { error: string; code?: "repo-not-found" }
+  | { error: string }
   | { ok: true; slug: string; name: string; domain: string; mcpToken: string }
   | null;
 
-// On-the-spot liveness checks for wizard step 1. A typo'd domain or repo
-// surfaces weeks later as a mystery cron failure, so the wizard refuses
-// input it can prove wrong right now.
+// On-the-spot liveness check for wizard step 1: a typo'd domain surfaces
+// weeks later as a mystery cron failure, so the wizard refuses one it can
+// prove wrong right now. The repo deliberately gets NO such check - private
+// repos are the common case and answer 404 publicly, indistinguishable from
+// a typo, and blocking the majority to catch the rarity read as a bug.
 async function domainAnswers(domain: string): Promise<boolean> {
   for (const proto of ["https", "http"] as const) {
     try {
@@ -756,20 +749,6 @@ async function domainAnswers(domain: string): Promise<boolean> {
     }
   }
   return false;
-}
-
-async function githubRepoExists(repo: string): Promise<"ok" | "missing" | "unknown"> {
-  try {
-    const res = await fetch(`https://api.github.com/repos/${repo}`, {
-      headers: { "user-agent": "dispatchseo-onboarding", accept: "application/vnd.github+json" },
-      signal: AbortSignal.timeout(6000),
-    });
-    if (res.ok) return "ok";
-    if (res.status === 404) return "missing"; // typo OR private - the wizard asks which
-    return "unknown"; // rate-limited etc. - never block on GitHub's mood
-  } catch {
-    return "unknown";
-  }
 }
 
 // The onboarding wizard's step 1. Same creation, but no redirect - the wizard
