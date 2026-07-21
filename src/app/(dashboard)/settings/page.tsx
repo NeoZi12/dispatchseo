@@ -4,7 +4,7 @@ import { mcpAddCommand } from "@/lib/mcp-connect";
 import { isValidCookie } from "@/lib/dashboard-auth";
 import { getActiveProject } from "@/lib/active-project";
 import { credsForProject } from "@/lib/dataforseo";
-import { DEFAULT_PROJECT_SLUG, fetchProjectToken } from "@/lib/projects";
+import { DEFAULT_PROJECT_ID, fetchProjectToken } from "@/lib/projects";
 import { DeleteProjectForm } from "@/components/delete-project";
 import { KeywordSourceSettings } from "@/components/keyword-source-settings";
 import { SiteLaunchedRow } from "@/components/site-launched";
@@ -27,7 +27,7 @@ export default async function SettingsPage() {
   if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
 
   const project = await getActiveProject();
-  const isDefault = project.slug === DEFAULT_PROJECT_SLUG;
+  const isDefault = project.id === DEFAULT_PROJECT_ID;
   const mcpToken = await fetchProjectToken(project.id);
   const hdrs = await headers();
   const dashOrigin = `${hdrs.get("x-forwarded-proto") ?? "https"}://${hdrs.get("host") ?? "dispatchseo.com"}`;

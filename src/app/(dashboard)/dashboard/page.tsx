@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { isValidCookie } from "@/lib/dashboard-auth";
+import { requireOnboarded } from "@/lib/onboarding-gate";
 import { canMerge, openSeoPrs } from "@/lib/github";
 import { dataforseoBalance } from "@/lib/dataforseo-balance";
 import {
@@ -33,7 +34,7 @@ import { getWeeklyProgress } from "@/lib/progress";
 import { JourneyCard } from "@/components/journey-card";
 import { NextUpdate } from "@/components/next-update";
 import { getActiveProject } from "@/lib/active-project";
-import { DEFAULT_PROJECT_SLUG, effectiveAutomations, fetchProjectToken } from "@/lib/projects";
+import { DEFAULT_PROJECT_ID, effectiveAutomations, fetchProjectToken } from "@/lib/projects";
 import { credsForProject } from "@/lib/dataforseo";
 import { DataforseoConnectForm } from "@/components/dataforseo-connect";
 import { gscAccessOk, serviceAccountEmail } from "@/lib/gsc";
@@ -216,9 +217,10 @@ function PlaybookColumn({
 export default async function Home() {
   const jar = await cookies();
   if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
+  await requireOnboarded();
 
   const project = await getActiveProject();
-  const isDefaultProject = project.slug === DEFAULT_PROJECT_SLUG;
+  const isDefaultProject = project.id === DEFAULT_PROJECT_ID;
   // Free-tier DIY: every DataForSEO call bills the project's own account.
   const dfsCreds = await credsForProject(project);
 

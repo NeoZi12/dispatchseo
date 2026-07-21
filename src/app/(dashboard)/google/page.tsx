@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { isValidCookie } from "@/lib/dashboard-auth";
+import { requireOnboarded } from "@/lib/onboarding-gate";
 import { getActiveProject } from "@/lib/active-project";
 import {
   disconnectProject,
@@ -22,6 +23,7 @@ async function disconnect() {
   "use server";
   const jar = await cookies();
   if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
+  await requireOnboarded();
   const project = await getActiveProject();
   await disconnectProject(project.slug);
   revalidatePath("/google");

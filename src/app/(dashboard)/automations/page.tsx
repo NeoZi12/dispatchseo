@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { isValidCookie } from "@/lib/dashboard-auth";
+import { requireOnboarded } from "@/lib/onboarding-gate";
 import { getActiveProject } from "@/lib/active-project";
 import { AUTOMATIONS, gatherEvidence, type Automation } from "@/lib/automations";
 import { effectiveAutomations, type AutomationFlags } from "@/lib/projects";
@@ -126,6 +127,7 @@ function AutomationCard({
 export default async function AutomationsPage() {
   const jar = await cookies();
   if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
+  await requireOnboarded();
 
   const project = await getActiveProject();
   const [evidence, flags] = [await gatherEvidence(db(), project.id), effectiveAutomations(project)];

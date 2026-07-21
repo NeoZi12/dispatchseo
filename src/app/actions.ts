@@ -11,7 +11,7 @@ import { getActiveProject, PROJECT_COOKIE } from "@/lib/active-project";
 import {
   AUTO_PRESET,
   SEMI_PRESET,
-  DEFAULT_PROJECT_SLUG,
+  DEFAULT_PROJECT_ID,
   effectiveAutomations,
   getProjectById,
   getProjectBySlug,
@@ -25,6 +25,7 @@ import { validateSerpapiKey } from "@/lib/serp";
 import { placeAtFront, writeQueueOrder } from "@/lib/queue";
 import { requestTrendExpand, requestTrendScan } from "@/lib/trends";
 import { fetchDomainRegistrationDate } from "@/lib/domain-age";
+import { gscAccessProbe, type GscAccessProbe } from "@/lib/gsc";
 
 // Every action re-validates the auth cookie server-side - the proxy only does
 // presence routing, this is the real check.
@@ -431,6 +432,19 @@ export async function chooseDataforseoSource() {
 
 // Pure free mode: Search Console positions + autocomplete research, no SERP
 // provider. Also the wizard's "Not interested, let's continue" path.
+// Wizard step 2's "Verify connection" button: probe Search Console access
+// for the active project's (guessed) property right now, so the owner knows
+// on the spot whether adding the service-account email worked instead of
+// finding out from a paused automation next week.
+export async function wizardCheckGscAccess(): Promise<GscAccessProbe> {
+  await assertAuthed();
+  const project = await getActiveProject();
+  if (!project.gsc_site_url) {
+    return { state: "error", why: "no Search Console property is set on this project yet" };
+  }
+  return gscAccessProbe(project.gsc_site_url);
+}
+
 export async function chooseGscOnly() {
   await assertAuthed();
   const project = await getActiveProject();
@@ -496,7 +510,7 @@ export async function deleteProject(
 
   const project = await getProjectBySlug(slug);
   if (!project) return { error: "Unknown project." };
-  if (project.slug === DEFAULT_PROJECT_SLUG) {
+  if (project.id === DEFAULT_PROJECT_ID) {
     return { error: "The home project can't be deleted." };
   }
   if (confirm !== project.domain) {
@@ -506,13 +520,11 @@ export async function deleteProject(
   const { error } = await db().from("projects").delete().eq("id", project.id);
   if (error) return { error: error.message };
 
+  // Drop the cookie instead of pinning a slug: the default project's slug
+  // is user-defined since the wizard claims that row, and getActiveProject
+  // falls back to the fixed-id project on a missing cookie anyway.
   const jar = await cookies();
-  jar.set(PROJECT_COOKIE, DEFAULT_PROJECT_SLUG, {
-    path: "/",
-    httpOnly: true,
-    sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 365,
-  });
+  jar.delete(PROJECT_COOKIE);
   revalidatePath("/", "layout");
   redirect("/dashboard");
 }
@@ -523,7 +535,10 @@ export async function deleteProject(
 // reusable if a non-wizard entry point ever returns.
 async function createProjectCore(
   formData: FormData,
-): Promise<{ error: string } | { slug: string; name: string; domain: string; mcpToken: string }> {
+): Promise<
+  | { error: string; code?: "repo-not-found" }
+  | { slug: string; name: string; domain: string; mcpToken: string }
+> {
   const name = String(formData.get("name") ?? "").trim();
   const rawDomain = String(formData.get("domain") ?? "").trim();
   const mode = String(formData.get("mode") ?? "semi");
@@ -564,6 +579,18 @@ async function createProjectCore(
   }
   if (mode !== "semi" && mode !== "auto") return { error: "Pick a mode." };
 
+  if (!(await domainAnswers(domain))) {
+    return {
+      error: `We could not reach ${domain}. Check the spelling - it should be your live website's address.`,
+    };
+  }
+  if ((await githubRepoExists(repo)) === "missing" && formData.get("repo_private") !== "1") {
+    return {
+      error: `GitHub has no public repo called ${repo}. If it's private that's fine - confirm below and continue. Otherwise fix the name.`,
+      code: "repo-not-found",
+    };
+  }
+
   // The "does the site have a blog?" answer - a hint the setup workflow
   // reconciles against the actual repo (0017). The path hint only means
   // something alongside "existing".
@@ -603,7 +630,22 @@ async function createProjectCore(
   };
   if (contentPathHint && contentMode === "existing") row.content_path_hint = contentPathHint;
   if (siteLaunchedAt) row.site_launched_at = siteLaunchedAt;
-  let { error } = await db().from("projects").insert(row);
+  // A fresh instance's fixed-id default project (setup.sql seeds it NEUTRAL,
+  // no domain/repo) is claimed in place by the first real site: same row,
+  // same id - the project_id column defaults keep pointing at a real project
+  // and no ghost "Your site" lingers in the switcher.
+  const { data: defRow } = await db()
+    .from("projects")
+    .select("id, domain, github_repo")
+    .eq("id", DEFAULT_PROJECT_ID)
+    .maybeSingle();
+  const claimDefault = Boolean(defRow && !defRow.github_repo && !defRow.domain);
+  const write = (r: Record<string, unknown>) =>
+    claimDefault
+      ? db().from("projects").update(r).eq("id", DEFAULT_PROJECT_ID)
+      : db().from("projects").insert(r);
+
+  let { error } = await write(row);
   if (error) {
     // Same pre-migration tolerance as manual suggestions: drop the columns
     // the error names (0015 and/or 0017 not applied yet) and retry once so
@@ -619,7 +661,7 @@ async function createProjectCore(
       delete retry.site_launched_at;
       dropped = true;
     }
-    if (dropped) ({ error } = await db().from("projects").insert(retry));
+    if (dropped) ({ error } = await write(retry));
   }
   if (error) {
     if (error.code === "23505") return { error: "A project for that domain already exists." };
@@ -641,9 +683,42 @@ async function createProjectCore(
 }
 
 export type WizardCreateState =
-  | { error: string }
+  | { error: string; code?: "repo-not-found" }
   | { ok: true; slug: string; name: string; domain: string; mcpToken: string }
   | null;
+
+// On-the-spot liveness checks for wizard step 1. A typo'd domain or repo
+// surfaces weeks later as a mystery cron failure, so the wizard refuses
+// input it can prove wrong right now.
+async function domainAnswers(domain: string): Promise<boolean> {
+  for (const proto of ["https", "http"] as const) {
+    try {
+      await fetch(`${proto}://${domain}`, {
+        method: "GET",
+        redirect: "follow",
+        signal: AbortSignal.timeout(6000),
+      });
+      return true; // any HTTP answer counts - even an error page proves DNS + a server
+    } catch {
+      // try the next protocol
+    }
+  }
+  return false;
+}
+
+async function githubRepoExists(repo: string): Promise<"ok" | "missing" | "unknown"> {
+  try {
+    const res = await fetch(`https://api.github.com/repos/${repo}`, {
+      headers: { "user-agent": "dispatchseo-onboarding", accept: "application/vnd.github+json" },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (res.ok) return "ok";
+    if (res.status === 404) return "missing"; // typo OR private - the wizard asks which
+    return "unknown"; // rate-limited etc. - never block on GitHub's mood
+  } catch {
+    return "unknown";
+  }
+}
 
 // The onboarding wizard's step 1. Same creation, but no redirect - the wizard
 // advances client-side and shows the MCP token in its Claude Code step.

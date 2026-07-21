@@ -12,7 +12,7 @@ export const BUILD_GUIDE_STEPS = [
   { title: "Gate", plain: "Checks Google's current page 1. What those results cover becomes the guide's must-cover list - the searcher's job gets done start to finish - and if the draft can't beat page 1, it refuses to build." },
   { title: "Own it", plain: "Adds at least one thing no competitor page has - a command it actually ran, a real measurement, or your site's own numbers - before writing a word. This is what ranks and what AI answers cite." },
   { title: "Draft", plain: "Writes from current official docs - never from memory - and tests every command it includes. If the idea grew from a viral video or thread, it writes from that source too: credited, quoted, embedded - then goes beyond it." },
-  { title: "Visuals", plain: "Builds 2-3 custom graphics about this exact topic, in your site's own colors and components - plus an AI-generated cover image for the blog card, when the image generator is connected." },
+  { title: "Visuals", plain: "Builds 2-3 custom graphics about this exact topic, in your site's own colors and components - plus a cover it draws itself as vector art on your site's house style, so blog cards show the actual subject instead of generic AI imagery." },
   { title: "Humanize", plain: "Rewrites anything that reads AI-generated until it sounds like you wrote it." },
   { title: "Verify", plain: "Runs your site's build to prove nothing breaks - then checks the new guide against your whole back catalogue and rewrites it if it reads like a repeat, so your posts never converge into one template." },
   { title: "PR", plain: "Opens a pull request for your review - it never touches your live site directly." },
@@ -234,35 +234,43 @@ the build-tool workflow and must never be picked up here.
      only by this guide, with a top-of-file comment explaining what it shows
      and why.
    **COVER IMAGE (when the repo supports it).** If the repo has
-   \`scripts/generate-cover.mjs\` AND the \`CLOUDFLARE_ACCOUNT_ID\` /
-   \`CLOUDFLARE_API_TOKEN\` env vars are set, every guide also ships with an
-   AI-generated cover: run the script with the guide's slug and a --subject
-   describing the topic as a VISUAL SCENE (concrete objects and actions, not
-   the keyword - "a glowing server rack exchanging labeled message packets
-   with a small robot" beats "mcp server"). Keep it MINIMAL and CLEAN -
-   one simple subject, calm space around it, never mascots, characters, or
-   busy scenes (the script's negative prompt enforces this; do not fight
-   it). Make it relevant: for a topic tied to a recognizable product, pass
-   \`--icon <name>\` (e.g. \`--icon github\`) so the script composites the
-   EXACT official mark onto a minimal generated backdrop - never ask the
-   model to draw a logo, it mangles them. If the needed mark is missing
-   from the script's ICONS map, add its official SVG path in the same PR.
-   For concept topics, one simple object does it: a glass cube assembling
-   for "build", a row of small cubes for "examples", a gauge for rankings.
-   A reader should guess the post's topic from the image alone. The script
-   owns the base art direction (dark, minimal, no text) so covers stay one
-   family - put the scene in the subject, never restate style there.
-   VARIETY IS MANDATORY:
-   the script takes \`--style hero|spread|flow|burst\` and
-   \`--hue violet|cyan|magenta|amber\` - look at the last 2 published posts'
-   covers (\`public/blog/covers/\`, newest by the posts' dates) and pass a
-   style AND hue that differ from both, same anti-sameness rule as article
-   shapes. Commit the generated file under \`public/blog/covers/\` and set
-   frontmatter
-   \`cover: /blog/covers/<slug>.webp\`. If the script or env vars are
-   absent, skip WITHOUT failing the run and note "no cover - generator not
-   configured" in the report; the card falls back to its generated plate.
-   Never hotlink an external image or fabricate a cover path.
+   \`scripts/generate-cover.mjs\`, every guide also ships with a cover YOU
+   author as vector art - no image model is involved. You know exactly what
+   this post is about; draw that, don't describe it to a generator. Write a
+   subject-layer SVG to a temp file (full \`<svg>\` document,
+   \`viewBox="0 0 1600 900"\`, TRANSPARENT background - no full-canvas
+   rects), then run the script with \`--slug <slug> --svg <file> --hue <hue>\`;
+   it composites your layer onto the house base (dark field, hue glow, dot
+   grid) so every cover stays one family. Subject rules:
+   - Draw the post's ACTUAL subject as a minimal line diagram: the thing a
+     reader would sketch on a whiteboard to explain the topic (a client and
+     server exchanging labeled calls, a cron clock feeding a PR, a grid of
+     example cards). A reader should guess the topic from the image alone.
+     Never an abstract metaphor object (cube, orb, monolith) - that is the
+     slop this system replaced.
+   - Style: stroke-based line art, 3-5px strokes, rounded caps and joins,
+     generous empty space, one clear focal structure - never a busy scene.
+     Use the active hue's palette from the script's header comment plus
+     white/neutral strokes at moderate opacity.
+   - Tiny UPPERCASE mono labels (\`font-family="ui-monospace, Menlo, monospace"\`,
+     letter-spaced, ~20-26px) on diagram parts are ENCOURAGED - they carry
+     the relevance ("TOOLS/CALL", "CRON", "PR") - but never the post title,
+     and never more than a handful of words total.
+   - Real product marks are composite-only: pass \`--icon <name>\`
+     (e.g. \`--icon github\`) so the script overlays the EXACT official
+     glyph, and design your layer around a clear center. NEVER draw a logo
+     by hand; if a needed mark is missing from the script's ICONS map, add
+     its official SVG path in the same PR.
+   VARIETY IS MANDATORY: look at the last 2 published posts' covers
+   (\`public/blog/covers/\`, newest by the posts' dates) and pick a \`--hue\`
+   (violet|cyan|magenta|amber) AND a composition (centered subject, left-to-
+   right flow, grid, split) that differ from both - same anti-sameness rule
+   as article shapes. Commit the generated file under
+   \`public/blog/covers/\` and set frontmatter
+   \`cover: /blog/covers/<slug>.webp\`. If the script is absent, skip
+   WITHOUT failing the run and note "no cover - generator not configured"
+   in the report; the card falls back to its generated plate. Never hotlink
+   an external image or fabricate a cover path.
 8. **HUMANIZER (mandatory, not optional).** Apply the humanizer pass the
    conventions file points at (or its principles if the repo carries no
    skill copy): kill AI tells, tighten, match the first-person practitioner

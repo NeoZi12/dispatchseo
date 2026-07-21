@@ -26,22 +26,26 @@ create table if not exists projects (
 -- service-role key (the dashboard + MCP server) can read or write.
 alter table projects enable row level security;
 
--- ClockedCode is project #1, with a FIXED id so it can be the column default
--- below. Its MCP access keeps working through the MCP_API_KEY env var (the
--- code maps that token to this row), so the random token generated here is a
--- spare that can be rotated in later without touching CI.
+-- Project #1, with a FIXED id so it can be the column default below. Seeded
+-- NEUTRAL: the onboarding wizard claims this row in place for the owner's
+-- first site (keeping the fixed id every project_id default points at), so
+-- a fresh instance is never born configured for someone else's product.
+-- The legacy MCP_API_KEY env var maps to this row by its fixed id, whatever
+-- slug/name the wizard later gives it. Conflict target is the id: existing
+-- installs (whose row may be renamed, or the pre-2026-07-21 ClockedCode
+-- seed) keep their row untouched.
 insert into projects (id, slug, name, domain, gsc_site_url, github_repo, mcp_token, mode)
 values (
   '00000000-0000-4000-8000-000000000001',
-  'clockedcode',
-  'ClockedCode',
-  'clockedcode.com',
-  'sc-domain:clockedcode.com',
-  'NeoZi12/clockedcode',
+  'default',
+  'Your site',
+  '',
+  null,
+  null,
   encode(gen_random_bytes(24), 'hex'),
-  'auto'
+  'semi'
 )
-on conflict (slug) do nothing;
+on conflict (id) do nothing;
 
 -- ---- add project_id everywhere (default = ClockedCode) ---------------------
 

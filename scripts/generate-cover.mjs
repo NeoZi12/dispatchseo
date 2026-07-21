@@ -1,71 +1,60 @@
-// Generate a blog cover image via Cloudflare Workers AI (free tier) and save
-// it under public/blog/covers/<slug>.webp. Used by hand and by the build-guide
-// agent in CI - one command, one image, deterministic output path.
+// Render a blog cover from a Claude-authored subject SVG and save it under
+// public/blog/covers/<slug>.webp. Used by hand and by the build-guide agent
+// in CI - one command, one image, deterministic output path.
 //
-//   node --env-file=.env.local scripts/generate-cover.mjs \
+//   node scripts/generate-cover.mjs \
 //     --slug how-to-build-an-mcp-server \
-//     --subject "a glowing server rack exchanging JSON messages with an AI agent"
+//     --svg /tmp/mcp-cover-subject.svg \
+//     --hue cyan
 //
-// Env: CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN (API token with Workers AI
-// permission). Free tier: 10,000 neurons/day - orders of magnitude above the
-// pipeline's ~5 images/week.
+// No env vars, no network. Earlier versions prompted a diffusion model
+// (Cloudflare Workers AI SDXL); every technical topic came back as the same
+// generic 3D-render metaphor. The agent building the guide already knows
+// exactly what the post is about, so it AUTHORS the cover as vector art
+// instead of describing it to a weaker model.
 //
-// Model: SDXL base 1.0 (@cf/stabilityai/stable-diffusion-xl-base-1.0), the
-// Cloudflare image model that honors width/height, so covers are native 16:9.
-// (FLUX-schnell on Workers AI ignores size params and always returns a square.)
-// Output is converted to webp via sharp when available; falls back to writing
-// the raw PNG with a size warning if sharp is missing.
+// Division of labor:
+//   - This script owns the house BASE: 1600x900 dark field (site neutral-950),
+//     a soft off-center glow in the chosen hue, a faint dot grid, a vignette.
+//     That keeps every cover in one family regardless of who authors the
+//     subject.
+//   - The --svg file is the SUBJECT LAYER: a full <svg> document with
+//     viewBox="0 0 1600 900" and a TRANSPARENT background (no full-canvas
+//     rects), containing the topic-specific artwork. It is composited over
+//     the base.
+//   - --icon composites an EXACT official product mark (from ICONS below)
+//     on top, centered - vector-drawn logos by hand are banned because they
+//     come out subtly wrong; diffusion-drawn ones are banned because they
+//     come out very wrong.
+//
+// Palette per hue - subject layers should draw from the active hue's colors
+// (plus white/neutral strokes) so subject and glow agree:
+//   violet:  accent #8b5cf6  bright #a78bfa  deep #6d28d9
+//   cyan:    accent #06b6d4  bright #22d3ee  deep #0e7490
+//   magenta: accent #d946ef  bright #e879f9  deep #a21caf
+//   amber:   accent #f59e0b  bright #fbbf24  deep #b45309
 
-import { writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-// The house art direction keeps covers in one family (dark field, neon
-// accents, no text) while COMPOSITION and LIGHT HUE rotate per post so
-// neighboring covers never read as the same image. The subject comes FIRST
-// in the prompt - SDXL weights early tokens hardest, and a style-first
-// prompt is exactly what made every cover converge into the same isometric
-// purple clutter.
-// Art direction: clean 3D PRODUCT ILLUSTRATION (the Postiz-blog look) - one
-// clear concept per cover, few elements, readable at card size. Explicitly
-// NOT cinematic renders: the earlier "neon factory / creature" direction
-// produced generic AI-art clutter.
-const COMPOSITIONS = {
-  hero: "one large centered object, generous empty space around it, simple composition",
-  spread: "a small set of floating elements arranged in a loose grid, evenly spaced",
-  flow: "elements flowing left to right in a clear sequence connected by a single line",
-  burst: "elements radiating from one central object, symmetrical composition",
-};
 const HUES = {
-  violet: "violet and purple as the dominant accent colors",
-  cyan: "teal and cyan as the dominant accent colors",
-  magenta: "magenta and pink as the dominant accent colors",
-  amber: "warm orange and amber as the dominant accent colors",
+  violet: { accent: "#8b5cf6", bright: "#a78bfa", deep: "#6d28d9" },
+  cyan: { accent: "#06b6d4", bright: "#22d3ee", deep: "#0e7490" },
+  magenta: { accent: "#d946ef", bright: "#e879f9", deep: "#a21caf" },
+  amber: { accent: "#f59e0b", bright: "#fbbf24", deep: "#b45309" },
 };
-// Art direction: DARK, MINIMAL, CLEAN. One simple subject, lots of calm
-// dark space, subtle glow - premium tech aesthetic that sits naturally on
-// the neutral-950 site. No mascots, no characters, no cartoon anything
-// (owner's explicit rule), no busy cinematic scenes.
-const STYLE =
-  "minimal clean 3D render, dark charcoal background, soft studio lighting, " +
-  "simple composition with generous empty space, subtle glow, premium tech aesthetic";
-// "logo" is deliberately NOT banned: a real, recognizable mark (composited
-// via --icon, or a simple glyph the subject names) is what makes a cover
-// read as being ABOUT the post.
-const NEGATIVE =
-  "text, words, letters, typography, watermark, signature, low quality, blurry, " +
-  "photo, photograph, human faces, cluttered, busy, cinematic, " +
-  "cartoon, cute, mascot, character, creature, animal, octopus, tentacles, toy, " +
-  "horror, grunge, machinery clutter, industrial pipes";
 
-// Optional crisp icon composite (--icon github): AI models mangle real
-// logos, so recognizable marks are overlaid EXACTLY, centered, after
-// generation. Add marks here as needed; paths are the official glyphs.
+// Exact official product marks for --icon compositing. Add marks here as
+// needed; paths are the official glyphs.
 const ICONS = {
   github: {
     viewBox: "0 0 16 16",
     path: "M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z",
   },
 };
+
+const W = 1600;
+const H = 900;
 
 function arg(name, fallback = undefined) {
   const i = process.argv.indexOf(`--${name}`);
@@ -80,29 +69,15 @@ function hash(s) {
 }
 
 const slug = arg("slug");
-const subject = arg("subject");
+const svgPath = arg("svg");
 const outDir = arg("out", "public/blog/covers");
-// Composition + hue default from the slug hash (stable, spreads across the
-// catalogue) and can be forced with --style / --hue to differ from recent
-// covers - the playbook's COVER step tells the agent to check what the last
-// two posts used and pick something else.
-const styleKey = arg("style", Object.keys(COMPOSITIONS)[hash(slug) % 4]);
-const hueKey = arg("hue", Object.keys(HUES)[hash(slug + "hue") % 4]);
+const hueKey = arg("hue", Object.keys(HUES)[hash(slug ?? "") % 4]);
 const iconKey = arg("icon");
-if (iconKey && !ICONS[iconKey]) {
-  console.error(`Unknown --icon "${iconKey}". Available: ${Object.keys(ICONS).join(", ")}`);
-  process.exit(1);
-}
-if (!slug || !subject) {
+
+if (!slug || !svgPath) {
   console.error(
-    'Usage: node scripts/generate-cover.mjs --slug <slug> --subject "<visual scene>" ' +
-      "[--style hero|diorama|flow|abstract] [--hue violet|cyan|magenta|amber]",
-  );
-  process.exit(1);
-}
-if (!COMPOSITIONS[styleKey] || !HUES[hueKey]) {
-  console.error(
-    `Unknown --style "${styleKey}" or --hue "${hueKey}". Styles: ${Object.keys(COMPOSITIONS).join(", ")}. Hues: ${Object.keys(HUES).join(", ")}.`,
+    "Usage: node scripts/generate-cover.mjs --slug <slug> --svg <subject.svg> " +
+      "[--hue violet|cyan|magenta|amber] [--icon github]",
   );
   process.exit(1);
 }
@@ -110,84 +85,79 @@ if (!/^[a-z0-9-]+$/.test(slug)) {
   console.error(`Bad slug "${slug}" - kebab-case only, it becomes a filename.`);
   process.exit(1);
 }
-
-const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-const token = process.env.CLOUDFLARE_API_TOKEN;
-if (!accountId || !token) {
-  console.error(
-    "CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN missing. Create a free " +
-      "Cloudflare account, then an API token with the Workers AI permission, " +
-      "and set both (locally in .env.local, in CI as repo secrets).",
-  );
+if (!HUES[hueKey]) {
+  console.error(`Unknown --hue "${hueKey}". Hues: ${Object.keys(HUES).join(", ")}.`);
+  process.exit(1);
+}
+if (iconKey && !ICONS[iconKey]) {
+  console.error(`Unknown --icon "${iconKey}". Available: ${Object.keys(ICONS).join(", ")}`);
   process.exit(1);
 }
 
-const MODEL = "@cf/stabilityai/stable-diffusion-xl-base-1.0";
-const prompt = `${subject}, ${COMPOSITIONS[styleKey]}, ${HUES[hueKey]}, ${STYLE}`;
-
-console.log(`Generating cover for "${slug}" (style: ${styleKey}, hue: ${hueKey})...`);
-const res = await fetch(
-  `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${MODEL}`,
-  {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      prompt,
-      negative_prompt: NEGATIVE,
-      width: 1600,
-      height: 896, // multiples of 64; displayed in 16:9 frames
-      num_steps: 20,
-      guidance: 7.5,
-    }),
-  },
-);
-
-if (!res.ok) {
-  console.error(`Cloudflare AI returned ${res.status}: ${await res.text()}`);
+let subjectSvg;
+try {
+  subjectSvg = readFileSync(svgPath, "utf8");
+} catch {
+  console.error(`Cannot read subject SVG at ${svgPath}`);
+  process.exit(1);
+}
+if (!/<svg[\s>]/.test(subjectSvg)) {
+  console.error(`${svgPath} does not look like an SVG document.`);
+  process.exit(1);
+}
+if (!subjectSvg.includes(`viewBox="0 0 ${W} ${H}"`)) {
+  console.error(`Subject SVG must declare viewBox="0 0 ${W} ${H}" so it maps 1:1 onto the cover.`);
   process.exit(1);
 }
 
-// SDXL streams the image binary; some Workers AI models answer JSON with a
-// base64 field instead. Handle both so a model swap doesn't break the script.
-const contentType = res.headers.get("content-type") ?? "";
-let raw;
-if (contentType.includes("application/json")) {
-  const body = await res.json();
-  const b64 = body?.result?.image;
-  if (!b64) {
-    console.error(`Unexpected JSON response: ${JSON.stringify(body).slice(0, 300)}`);
-    process.exit(1);
-  }
-  raw = Buffer.from(b64, "base64");
-} else {
-  raw = Buffer.from(await res.arrayBuffer());
-}
+const hue = HUES[hueKey];
+
+// The house base. Glow position varies by slug hash so a shelf of covers
+// doesn't share one identical light source, but stays in the upper half
+// where card crops keep it visible.
+const glowX = 300 + (hash(slug) % 1000);
+const glowY = 180 + (hash(slug + "y") % 300);
+const baseSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <defs>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="${hue.accent}" stop-opacity="0.34"/>
+      <stop offset="45%" stop-color="${hue.deep}" stop-opacity="0.14"/>
+      <stop offset="100%" stop-color="${hue.deep}" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="vignette" cx="0.5" cy="0.5" r="0.72">
+      <stop offset="60%" stop-color="#000" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#000" stop-opacity="0.5"/>
+    </radialGradient>
+    <pattern id="dots" width="36" height="36" patternUnits="userSpaceOnUse">
+      <circle cx="1.5" cy="1.5" r="1.5" fill="#ffffff" fill-opacity="0.05"/>
+    </pattern>
+  </defs>
+  <rect width="${W}" height="${H}" fill="#0a0a0a"/>
+  <rect width="${W}" height="${H}" fill="url(#dots)"/>
+  <ellipse cx="${glowX}" cy="${glowY}" rx="820" ry="560" fill="url(#glow)"/>
+  <rect width="${W}" height="${H}" fill="url(#vignette)"/>
+</svg>`;
 
 mkdirSync(outDir, { recursive: true });
+const outPath = join(outDir, `${slug}.webp`);
 
-let outPath;
-try {
-  const sharp = (await import("sharp")).default;
-  outPath = join(outDir, `${slug}.webp`);
-  let img = sharp(raw).resize(1600, 900, { fit: "cover" });
-  if (iconKey) {
-    // Center the exact mark, white, at ~46% of cover height.
-    const { viewBox, path } = ICONS[iconKey];
-    const size = 414;
-    const svg = Buffer.from(
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="${viewBox}"><path fill="#fff" d="${path}"/></svg>`,
-    );
-    const icon = await sharp(svg).png().toBuffer();
-    img = sharp(await img.toBuffer()).composite([{ input: icon, gravity: "center" }]);
-  }
-  await img.webp({ quality: 82 }).toFile(outPath);
-} catch {
-  // sharp unavailable - keep the raw image rather than failing the run, but
-  // say so: committed PNGs at this size bloat the repo.
-  outPath = join(outDir, `${slug}.png`);
-  writeFileSync(outPath, raw);
-  console.warn("sharp not installed - wrote raw PNG. `pnpm add -D sharp` for small webp covers.");
+const sharp = (await import("sharp")).default;
+console.log(`Rendering cover for "${slug}" (hue: ${hueKey})...`);
+
+const base = await sharp(Buffer.from(baseSvg)).png().toBuffer();
+const subject = await sharp(Buffer.from(subjectSvg)).resize(W, H, { fit: "contain" }).png().toBuffer();
+
+const layers = [{ input: subject }];
+if (iconKey) {
+  const { viewBox, path } = ICONS[iconKey];
+  const size = 414;
+  const iconSvg = Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="${viewBox}"><path fill="#fff" d="${path}"/></svg>`,
+  );
+  layers.push({ input: await sharp(iconSvg).png().toBuffer(), gravity: "center" });
 }
 
+await sharp(base).composite(layers).webp({ quality: 82 }).toFile(outPath);
+
 console.log(`Wrote ${outPath}`);
-console.log(`Add to the post frontmatter:\n  cover: /blog/covers/${slug}.${outPath.endsWith(".webp") ? "webp" : "png"}`);
+console.log(`Add to the post frontmatter:\n  cover: /blog/covers/${slug}.webp`);

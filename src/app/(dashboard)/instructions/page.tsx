@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { isValidCookie } from "@/lib/dashboard-auth";
+import { requireOnboarded } from "@/lib/onboarding-gate";
 import { getActiveProject } from "@/lib/active-project";
 import { loadConventions, type ConventionsData } from "@/lib/conventions";
 import {
@@ -206,6 +207,7 @@ function SecondaryStrip() {
 export default async function InstructionsPage() {
   const jar = await cookies();
   if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
+  await requireOnboarded();
 
   const project = await getActiveProject();
   const conventions = await loadConventions(project);

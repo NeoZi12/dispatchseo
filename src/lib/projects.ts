@@ -252,7 +252,9 @@ export async function getProjectByToken(token: string): Promise<Project | null> 
     const a = Buffer.from(token);
     const b = Buffer.from(legacy);
     if (a.length === b.length && timingSafeEqual(a, b)) {
-      return getProjectBySlug(DEFAULT_PROJECT_SLUG);
+      // By fixed id, not slug: the wizard renames the seeded default row
+      // when the first site claims it, but its id never changes.
+      return getProjectById(DEFAULT_PROJECT_ID);
     }
   }
   return null;

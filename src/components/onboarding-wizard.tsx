@@ -10,11 +10,13 @@ import {
   connectSerpapi,
   setPowerupsSkipped,
   setProjectMode,
+  wizardCheckGscAccess,
   wizardCreateProject,
   type ConnectDataforseoState,
   type ConnectSerpapiState,
   type WizardCreateState,
 } from "@/app/actions";
+import type { GscAccessProbe } from "@/lib/gsc";
 
 // The onboarding wizard - the approved mockup, wired to real actions. Eight
 // screens over five rail steps: site -> GSC -> keyword-data pick (+ one detail
@@ -223,6 +225,18 @@ export function OnboardingWizard({
   const [pendingSkip, startSkip] = useTransition();
   const [pendingMode, startMode] = useTransition();
   const [pendingFinish, startFinish] = useTransition();
+  // Step 2's on-the-spot Search Console probe.
+  const [gscCheck, setGscCheck] = useState<GscAccessProbe | null>(null);
+  const [gscChecking, startGscCheck] = useTransition();
+  function checkGsc() {
+    startGscCheck(async () => {
+      setGscCheck(await wizardCheckGscAccess());
+    });
+  }
+  // Self-hosted on localhost: everything in the wizard works, but the
+  // content pipeline (GitHub Actions in the site's repo) cannot call back
+  // into an address only this machine can reach.
+  const isLocalInstance = /^https?:\/\/(localhost|127\.|0\.0\.0\.0)/.test(origin);
 
   // Step 1: create the project.
   const [createState, createAction, createPending] = useActionState<WizardCreateState, FormData>(
@@ -350,8 +364,21 @@ export function OnboardingWizard({
           </StepIcon>
           <h2 className="text-lg font-semibold tracking-tight">Add your site</h2>
           <p className="mb-3.5 text-sm text-neutral-400">
-            This takes 30 seconds. Everything else is connecting your accounts.
+            Everything on this page is about <b className="font-medium text-neutral-200">your website</b> -
+            the site you want Google traffic for. DispatchSEO itself is already
+            running; now point it at your site. Takes 30 seconds.
           </p>
+          {isLocalInstance ? (
+            <div className="mb-3.5 rounded-xl border border-amber-500/25 bg-amber-500/[0.07] p-3.5 text-[13px] leading-relaxed text-amber-100/90">
+              <b className="font-semibold text-amber-200">Running on {origin.replace(/^https?:\/\//, "")}.</b>{" "}
+              Setup, keyword research and rank tracking all work from here. One
+              thing doesn&apos;t: the automated content pipeline runs in your
+              site repo&apos;s GitHub Actions, and GitHub can&apos;t reach an
+              address that only exists on this machine. When you want articles
+              built automatically, put this instance on a public URL or tunnel
+              first - everything you set up now carries over.
+            </div>
+          ) : null}
           <form action={createAction} className="space-y-3 rounded-xl bg-neutral-900 p-4">
             {createState && "error" in createState ? <ErrorLine msg={createState.error} /> : null}
             <label className="block space-y-1.5">
@@ -359,15 +386,20 @@ export function OnboardingWizard({
               <input name="name" required placeholder="UsageCut" autoComplete="off" className={inputClass} />
             </label>
             <label className="block space-y-1.5">
-              <span className="text-sm font-medium text-neutral-200">Domain</span>
+              <span className="text-sm font-medium text-neutral-200">Your site&apos;s domain</span>
               <input name="domain" required placeholder="usagecut.com" autoComplete="off" className={inputClass} />
+              <span className="block text-xs leading-relaxed text-neutral-500">
+                The website whose rankings DispatchSEO will grow and track - not
+                where DispatchSEO is hosted.
+              </span>
             </label>
             <label className="block space-y-1.5">
-              <span className="text-sm font-medium text-neutral-200">GitHub repo</span>
+              <span className="text-sm font-medium text-neutral-200">Your site&apos;s GitHub repo</span>
               <input name="repo" required placeholder="owner/repo" autoComplete="off" className={inputClass} />
               <span className="block text-xs leading-relaxed text-neutral-500">
-                Claude publishes content as pull requests to this repo. It&apos;s the owner/repo
-                part of your repository&apos;s URL on{" "}
+                The repo your website deploys from - Claude ships every article
+                and tool to it as a pull request you review. It&apos;s the
+                owner/repo part of the URL on{" "}
                 <a
                   href="https://github.com"
                   target="_blank"
@@ -379,6 +411,12 @@ export function OnboardingWizard({
                 .
               </span>
             </label>
+            {createState && "error" in createState && createState.code === "repo-not-found" ? (
+              <label className="flex items-center gap-2 text-sm text-neutral-200">
+                <input type="checkbox" name="repo_private" value="1" className="h-4 w-4 accent-violet-500" />
+                It&apos;s a private repo - it exists, continue anyway
+              </label>
+            ) : null}
             <div className="space-y-1.5">
               <span className="block text-sm font-medium text-neutral-200">
                 Does the site have a blog or content section?
@@ -463,9 +501,41 @@ export function OnboardingWizard({
                 <div className="mt-3.5">
                   <GscSteps domain={created?.domain ?? "your site"} />
                 </div>
-                <p className="mt-3 text-[13px] text-neutral-400">
-                  This step confirms itself automatically once the first data arrives.
-                </p>
+                <div className="mt-3.5 flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={checkGsc}
+                    disabled={gscChecking}
+                    className={`cursor-pointer rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                      gscCheck?.state === "ok"
+                        ? "bg-emerald-400/15 text-emerald-300"
+                        : "bg-neutral-800 text-neutral-200 hover:bg-neutral-700"
+                    }`}
+                  >
+                    {gscChecking
+                      ? "Checking with Google..."
+                      : gscCheck?.state === "ok"
+                        ? "Connected ✓"
+                        : gscCheck
+                          ? "Check again"
+                          : "Verify connection"}
+                  </button>
+                  {gscCheck?.state === "ok" ? (
+                    <span className="text-[13px] text-emerald-300">
+                      Search Console is connected - data starts flowing today.
+                    </span>
+                  ) : gscCheck ? (
+                    <span className="text-[13px] text-amber-200/90">
+                      Not yet: {gscCheck.why}. Google can take a few minutes
+                      after you add the email - you can continue, Home re-checks
+                      automatically.
+                    </span>
+                  ) : (
+                    <span className="text-[13px] text-neutral-500">
+                      Added the email? Check right away - it&apos;s usually instant.
+                    </span>
+                  )}
+                </div>
               </>
             ) : (
               <>
@@ -502,9 +572,11 @@ export function OnboardingWizard({
                     >
                       self-hosting guide
                     </a>
-                    : create the account, download its JSON key, paste it into a Vercel env var
-                    named <code className="font-mono text-neutral-300">GSC_SERVICE_ACCOUNT_JSON</code>,
-                    and redeploy.
+                    : create the account, download its JSON key, and add it to your
+                    deployment&apos;s environment as{" "}
+                    <code className="font-mono text-neutral-300">GSC_SERVICE_ACCOUNT_JSON</code>{" "}
+                    (the <code className="font-mono text-neutral-300">.env</code> file for docker,
+                    an environment variable on Vercel), then restart.
                   </p>
                   <p className="mt-2 text-[13px] leading-relaxed text-neutral-400">
                     Then come back here - or to the Home setup cards - and the email to add will

@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { DispatchMark } from "@/components/logo";
 import { joinWaitlist, waitlistAttemptAllowed } from "@/lib/waitlist";
 import { clientIp } from "@/lib/login-lockout";
+import { FeatureShowcase } from "./feature-showcase";
 import "./landing.css";
 
 // Public landing page - cloud deployment only. Self-hosted installs never set
@@ -116,19 +117,19 @@ export default async function LandingPage({
 
         <div className="wrap">
           <h1>Automate your SEO<br />with <span className="hl">Claude Code</span></h1>
-          <p className="sub">The same agent that built your product now runs your SEO automatically: it researches keywords, writes guides, builds interactive tools, and tracks your ranks. You review every piece as a pull request.</p>
+          <p className="sub">The agent that built your product now runs your SEO: keyword research, guides, interactive tools, rank tracking - all automatic.</p>
 
           <div className="cta-row" id="waitlist">
             <WaitlistForm joined={isJoined} error={isError} source="hero" />
           </div>
-          <a className="btn btn-ghost btn-sm hero-selfhost" href={GITHUB_URL}>
-            <GithubIcon />
-            Self-host now for free
-          </a>
           <p className="hero-note">
             <svg className="gift-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="4" rx="1" /><path d="M12 8v13" /><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7" /><path d="M7.5 8a2.5 2.5 0 0 1 0-5C9.5 3 11 5 12 8c1-3 2.5-5 4.5-5a2.5 2.5 0 0 1 0 5" /></svg>
             Waitlist members lock in founding pricing at launch.
           </p>
+          <a className="btn btn-ghost btn-sm hero-selfhost" href={GITHUB_URL}>
+            <GithubIcon />
+            Self-host now for free
+          </a>
 
         </div>
       </header>
@@ -195,20 +196,7 @@ export default async function LandingPage({
       {/* ==================== FEATURES ==================== */}
       <section className="band-alt" id="features">
         <div className="wrap">
-          <div className="sec-h">
-            <h2>Everything an SEO operation needs, in one place</h2>
-            <p>Research, building, reviewing, and tracking live in one backend that both you and your agent can drive.</p>
-          </div>
-          <div className="feat-grid">
-            <div className="feat"><div className="f-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.6-3.6" /></svg></div><h3>Keyword research</h3><p>The agent finds terms with real demand that you can actually rank for, and shows you its reasoning.</p></div>
-            <div className="feat"><div className="f-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M22 7 13.5 15.5 8.5 10.5 2 17" /><path d="M16 7h6v6" /></svg></div><h3>Rank tracking</h3><p>Daily SERP checks on every keyword you track. See what moved, per site, without opening a spreadsheet.</p></div>
-            <div className="feat"><div className="f-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="m15.5 8.5-2 5.5-5.5 2 2-5.5 5.5-2Z" /></svg></div><h3>Search Console insights</h3><p>Clicks, impressions, and position, synced through the day and mined for queries you&apos;re already close to winning.</p></div>
-            <div className="feat"><div className="f-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z" /><path d="M14 3v6h6" /><path d="M9 13h6" /><path d="M9 17h4" /></svg></div><h3>Auto guide builder</h3><p>Approved ideas build themselves into full guides on schedule, written from your product&apos;s real facts.</p></div>
-            <div className="feat"><div className="f-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" /></svg></div><h3>Auto tool builder</h3><p>Ships small interactive tools: calculators, checkers, generators. The pages that earn links on their own.</p></div>
-            <div className="feat"><div className="f-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1.6" /><path d="M16.24 7.76a6 6 0 0 1 0 8.49" /><path d="M7.76 16.24a6 6 0 0 1 0-8.49" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" /><path d="M4.93 19.07a10 10 0 0 1 0-14.14" /></svg></div><h3>Trend topics</h3><p>Catch rising topics in your niche early, and expand the good ones into article clusters.</p></div>
-            <div className="feat"><div className="f-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="m8.5 12.5 2.5 2.5 5-6" /></svg></div><h3>Built-in reviewer</h3><p>Every draft is checked for quality and sameness against your existing content before it becomes a PR.</p></div>
-            <div className="feat"><div className="f-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M23 4v6h-6" /><path d="M1 20v-6h6" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10" /><path d="M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg></div><h3>Full MCP parity</h3><p>Anything the dashboard can do, your agent can do over MCP. Both stay in sync, by design.</p></div>
-          </div>
+          <FeatureShowcase />
         </div>
       </section>
 

@@ -6,6 +6,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { isValidCookie } from "@/lib/dashboard-auth";
+import { requireOnboarded } from "@/lib/onboarding-gate";
 import { getActiveProject } from "@/lib/active-project";
 import { ENGINE_LABELS, getAiVisibility, type AiVisibility } from "@/lib/ai-visibility";
 import { BigStatTile, EmptyState, PageHeader, SectionTitle } from "@/components/ui";
@@ -66,6 +67,7 @@ function AnswerLog({ answers }: { answers: AiVisibility["recent_answers"] }) {
 export default async function AiVisibilityPage() {
   const jar = await cookies();
   if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
+  await requireOnboarded();
 
   const project = await getActiveProject();
   const visibility = await getAiVisibility(project.id, project.domain, { maxAnswers: 50 });

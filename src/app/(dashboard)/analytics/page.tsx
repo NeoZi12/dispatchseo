@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { isValidCookie } from "@/lib/dashboard-auth";
+import { requireOnboarded } from "@/lib/onboarding-gate";
 import { getActiveProject } from "@/lib/active-project";
 import { getAnalyticsOverview } from "@/lib/analytics-data";
 import { halfDelta } from "@/lib/metrics";
@@ -34,6 +35,7 @@ export const dynamic = "force-dynamic";
 export default async function AnalyticsPage() {
   const jar = await cookies();
   if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
+  await requireOnboarded();
 
   const project = await getActiveProject();
   const o = await getAnalyticsOverview(project);

@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import {
-  DEFAULT_PROJECT_SLUG,
+  DEFAULT_PROJECT_ID,
   getProjectBySlug,
   listProjects,
   type Project,
@@ -19,5 +19,5 @@ export async function getActiveProject(): Promise<Project> {
     if (p) return p;
   }
   const all = await listProjects();
-  return all.find((p) => p.slug === DEFAULT_PROJECT_SLUG) ?? all[0];
+  return all.find((p) => p.id === DEFAULT_PROJECT_ID) ?? all[0];
 }

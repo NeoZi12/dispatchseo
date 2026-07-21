@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { isValidCookie } from "@/lib/dashboard-auth";
+import { requireOnboarded } from "@/lib/onboarding-gate";
 import { getActiveProject } from "@/lib/active-project";
 import { browserCommand, resolveField, type PlaybookItem } from "@/lib/playbook";
 import { loadSiteProfile, type SiteProfile } from "@/lib/site-profile";
@@ -133,6 +134,7 @@ function ItemCard({
 export default async function BacklinksPage() {
   const jar = await cookies();
   if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
+  await requireOnboarded();
 
   // Playbook progress, the outreach prospects, and the profile the copy
   // personalizes from, together. If the playbook_status table hasn't been

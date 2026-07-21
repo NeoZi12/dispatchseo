@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { isValidCookie } from "@/lib/dashboard-auth";
+import { requireOnboarded } from "@/lib/onboarding-gate";
 import { getActiveProject } from "@/lib/active-project";
 import { getAnalyticsOverview } from "@/lib/analytics-data";
 import { sortQueue, type Suggestion, type TrendTopic } from "@/lib/metrics";
@@ -83,6 +84,7 @@ function topicEvidenceLines(evidence: TrendTopic["evidence"]) {
 export default async function TrendsPage() {
   const jar = await cookies();
   if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
+  await requireOnboarded();
 
   const project = await getActiveProject();
   const [sugRes, topicRes, scanRes, overview] = await Promise.all([

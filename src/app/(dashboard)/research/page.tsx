@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { isValidCookie } from "@/lib/dashboard-auth";
+import { requireOnboarded } from "@/lib/onboarding-gate";
 import { getActiveProject } from "@/lib/active-project";
 import { sortQueue, type Suggestion } from "@/lib/metrics";
 import { AddIdeaCard, RestoreButton } from "@/components/client";
@@ -66,6 +67,7 @@ function fmtHistoryDate(s: SuggestionRow): string {
 export default async function ResearchPage() {
   const jar = await cookies();
   if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
+  await requireOnboarded();
 
   const project = await getActiveProject();
   const client = db();

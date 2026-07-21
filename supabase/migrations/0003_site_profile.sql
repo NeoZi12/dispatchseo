@@ -22,18 +22,8 @@ create table if not exists site_profile (
 
 alter table site_profile enable row level security;
 
--- Seed for THIS instance (clockedcode.com). A fresh deployment for a different
--- product deletes this insert and runs /seo-setup instead - the dashboard shows
--- the setup card until the row exists.
-insert into site_profile (id, name, url, tagline, short_description, long_description, categories, tags)
-values (
-  1,
-  'ClockedCode',
-  'https://clockedcode.com',
-  'Upgrade your Claude Code setup in one paste',
-  'A curated Claude Code setup: vetted tools, subagents, and a tuned CLAUDE.md, compiled into one master prompt you paste once. One-time $39, lifetime access.',
-  'ClockedCode upgrades a developer''s Claude Code setup in one paste. You get a curated, continuously updated set of vetted tools, subagents, and CLAUDE.md instructions - the stuff power users assemble by hand over months - compiled into a single master prompt. Check off what you want, paste once, and your Claude Code works like a senior engineer''s. One-time $39 purchase, lifetime updates, and a free tips library at clockedcode.com/free.',
-  array['Developer Tools', 'AI', 'Productivity'],
-  array['claude-code', 'ai-coding', 'developer-tools', 'cli', 'anthropic']
-)
-on conflict (id) do nothing;
+-- No seed. The dashboard shows its "set up your site profile" card (and the
+-- agent's /seo-setup writes the row) once the owner's real site exists - a
+-- fresh instance must never be born describing someone else's product.
+-- (Until 2026-07-21 this seeded ClockedCode, this repo's original tenant;
+-- existing installs keep whatever row they already have.)

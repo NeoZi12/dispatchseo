@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 import { credsForProject, keywordIdeas, type KeywordIdea } from "@/lib/dataforseo";
 import { checkCron } from "@/lib/cron-auth";
 import { reportCronRun } from "@/lib/cron-alerts";
-import { DEFAULT_PROJECT_SLUG, getProjectBySlug } from "@/lib/projects";
+import { DEFAULT_PROJECT_ID, getProjectById } from "@/lib/projects";
 
 // RETIRED from vercel.json (the Claude weekly-research workflow replaced it)
 // but kept callable. Scoped to the default project only - it predates
@@ -40,7 +40,7 @@ export async function GET(req: Request): Promise<Response> {
   let hadError = false;
 
   try {
-    const project = await getProjectBySlug(DEFAULT_PROJECT_SLUG);
+    const project = await getProjectById(DEFAULT_PROJECT_ID);
     if (!project) throw new Error("Default project not found");
     const creds = await credsForProject(project);
     if (!creds) {
