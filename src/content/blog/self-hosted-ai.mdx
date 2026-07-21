@@ -1,0 +1,71 @@
+---
+title: Self-hosted AI, but for one job - running your own SEO agent
+description: What "self-hosted AI" usually means today (a local chat runtime) and the different, growing category it leaves out - a single-purpose agent - shown with DispatchSEO's own real numbers.
+date: 2026-07-21
+keyword: self-hosted ai
+cover: /blog/covers/self-hosted-ai.webp
+---
+
+Ask what "self-hosted AI" means and Google answers with a shopping list before you even click a result: install Ollama, pair it with Open WebUI, and budget 16GB of RAM plus a GPU if you want it fast. That's a real, correct answer - and it's an answer about hosting a model, not about doing a job. A second, far-less-covered category of self-hosted AI has nothing to do with chat: a single-purpose agent that runs on your own infrastructure, wakes up on a schedule instead of a prompt, and does one recurring job start to finish. This guide covers both, then goes deep on the second kind with a live example - DispatchSEO, the agent that wrote the sentence you're reading.
+
+> **TL;DR** - "Self-hosted AI" usually means a local chat runtime: an engine like Ollama running model weights on your own hardware, paired with a browser interface like Open WebUI, sized by RAM/VRAM to whatever model you want to run. That's real self-hosting, but it stops at the model - you still start every session yourself. The other pattern is a self-hosted **agent**: state (a queue, history, credentials) plus a reasoning loop that acts on that state on its own clock, in infrastructure you own end to end. DispatchSEO is one - a 46-tool backend that runs in the owner's own Vercel, Supabase, and GitHub accounts, driven by the Claude subscription they already pay for, with no per-seat SaaS fee stacked on top.
+
+## What "self-hosted AI" means right now
+
+Every current guide to the phrase converges on the same stack, and for good reason - it's the fastest path to a private, no-per-token-fee alternative to a hosted chatbot. Ollama (or a comparable engine) downloads and runs model weights locally and exposes them over a local API; Open WebUI or LM Studio sits on top as the chat interface; how much hardware you need scales with model size, from an 8GB-RAM machine for a 1-3B model up to 32-64GB RAM and a serious consumer GPU for anything in the 14-70B range. That combination is well covered - Google's own AI Overview leads with it, and so does most of page 1 for this exact query. This guide isn't re-deriving that setup step by step; it's naming what it doesn't get you.
+
+## Where that definition stops
+
+A self-hosted chat runtime hosts a model. It doesn't host a job. Every session still starts because you opened a tab and typed something - the runtime never decides, on its own, that today is the day to check something, write something, or ship something. That's fine for the thing it's built for: private, ad hoc conversation. It's a different problem from "run this recurring task without me starting it," and self-hosting the model doesn't automatically solve that second problem, no matter how good the model is.
+
+## Two different things called "self-hosted AI"
+
+<SelfHostPatternTable />
+
+The stack barely overlaps. A chat runtime's whole job is serving inference fast enough for a human to wait on it. A task-built agent's whole job is holding state between runs it doesn't control the timing of, so the interesting infrastructure isn't the model at all - it's the database and the scheduler sitting next to it.
+
+## The real example: DispatchSEO, an agent built for one job
+
+DispatchSEO is a single-owner SEO manager: it tracks a site's rankings and Search Console stats, queues content ideas, and builds guides as pull requests - one job, run daily, with no dashboard-driven chat loop in sight. The reasoning happens in Claude Code, connected the same way [any MCP client connects to any server](/blog/claude-code-mcp-server); the backend itself holds no model at all. What it hosts is the state that makes a headless run possible: the suggestions queue, keyword history, rank checks, and the bearer token that says which site a given run is allowed to touch.
+
+<AgentStackFactRow />
+
+That tool count is worth pausing on: [this same production server was profiled at 44 tools](/blog/mcp-server-examples) two days before this guide was built, and a plain grep against its own route file just now returned 46 - the surface area of a self-hosted agent grows the same way any other backend does, in commits, not in a vendor's changelog you have no visibility into. The run that's building this guide right now is [the scheduled, autonomous pattern](/blog/claude-code-github-actions) this site documented separately: a cron tick, not a person, decided today was the day.
+
+## What week one of a self-hosted agent actually looks like
+
+Self-hosting doesn't buy you a head start on results - it buys you visibility into your own zero. This site is six days into Search Console data: 35 total impressions across that window, zero clicks yet, and its oldest guide sitting anywhere from position 15 to 90 depending on the query. Those are small, unglamorous numbers, and that's the honest state of a brand-new domain - self-hosting doesn't change the timeline Google runs on. What it changes is who's watching: that history lives in this project's own database, queryable at any point, not locked inside a vendor's analytics tab that resets access the day a subscription lapses.
+
+## Two more genuinely self-hosted AI patterns
+
+Two other patterns earn the label honestly, for contrast:
+
+- **A local LLM runtime** - the mainstream pattern above, and the right call when the job really is "have a private conversation with a model," nothing more.
+- **A self-hosted workflow automation platform** - tools like n8n (which shows up in its own right on this exact SERP, packaged as a self-hosted AI starter kit) let you wire triggers to actions without writing a backend from scratch. They sit between a chat runtime and a purpose-built agent: more state and scheduling than a chat UI, less domain-specific than a backend built around one job's data model.
+
+## How to tell real self-hosting from open-core bait
+
+<OpenCoreChecklist />
+
+## When this doesn't fit
+
+Skip self-hosting - either kind - if any of these are true: you don't want to hold your own infrastructure credentials and be the one who rotates them; you need a vendor support contract or an SLA behind the thing failing at 2am; you don't already pay for an agent CLI or API access, so the "no per-seat fee" pitch doesn't actually save you anything; or you want a polished, multi-user dashboard out of the box rather than one you're willing to read the code of. A hosted SaaS is simpler in every one of those cases, and simpler is the right trade there.
+
+## FAQ
+
+**Is DispatchSEO actually self-hosted, or just self-managed?**
+Actually self-hosted - it deploys to Vercel and Supabase accounts you create and own. DispatchSEO ships the code, not the hosting; there's no shared instance with your name on it.
+
+**Do I need a GPU to run a self-hosted AI agent like this?**
+No. Unlike a local chat runtime, the reasoning happens in Claude Code against Anthropic's hosted model - what's self-hosted is the state and the scheduling, not model inference.
+
+**What does it actually cost per month?**
+$0 in software fees beyond the Claude subscription you likely already have. Vercel and Supabase's free tiers cover a single site, and usage-based costs (DataForSEO, Search Console) scale with what you do, not with seats.
+
+**Can I run a chat runtime and an agent like this side by side?**
+Yes - they solve different problems and don't conflict. Ollama for ad hoc private chat, an agent like DispatchSEO for the one job that recurs on a schedule.
+
+**Does self-hosting the agent mean writing the automation myself?**
+No. The backend and its instructions ship as code you deploy; what you own is the infrastructure and the data, not a blank canvas you have to fill in from scratch.
+
+The chat-runtime answer to "self-hosted AI" is correct and worth having - private inference, no per-token bill, full control of the model. It just answers a narrower question than the phrase implies. The wider one is whether a recurring job can run in infrastructure you own instead of a vendor's, on a clock instead of a prompt - and that's the category this site's own daily pipeline has been quietly proving out, one guide at a time, since before this sentence existed.
