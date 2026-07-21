@@ -59,16 +59,15 @@ const META: Record<Exclude<Screen, "s5">, { name: string; time: string }> = {
   s4b: { name: "What happens next", time: "just read" },
 };
 
-// The exact paste the finale offers for playbook personalization - the same
-// wording the Home card used before this lived in the wizard.
-const PLAYBOOK_COMMAND =
-  "Call the seo-manager MCP tool get_instructions with workflow setup and follow it exactly.";
-
 // The pipeline install, as a paste INTO Claude Code (not a terminal
 // script): the agent fetches the centrally-versioned install instructions
-// and takes care of everything - workflows, secrets, first research. The
-// old curl|bash setup path kept stranding owners at interactive prompts
-// half-buried in a terminal; the agent chat is where this belongs.
+// and takes care of everything - workflows, secrets, setup + playbook
+// personalization (install chains into the setup workflow), first
+// research. Deliberately the ONLY workflow paste the owner ever sees: two
+// commands differing by one word ("install" vs "setup") kept getting
+// mixed up, so the second one is gone. The old curl|bash setup path also
+// kept stranding owners at interactive prompts half-buried in a terminal;
+// the agent chat is where this belongs.
 const INSTALL_COMMAND =
   "Call the seo-manager MCP tool get_instructions with workflow install and follow it exactly.";
 
@@ -191,7 +190,6 @@ export type WizardResume = {
   created: { slug: string; name: string; domain: string; mcpToken: string } | null;
   choice: "paid" | "free" | null;
   serpConnected: boolean;
-  playbookSkipped: boolean;
 };
 
 export function OnboardingWizard({
@@ -215,7 +213,6 @@ export function OnboardingWizard({
   } | null>(resume?.created ?? null);
   const [choice, setChoice] = useState<"paid" | "free" | null>(resume?.choice ?? null);
   const [serpConnected, setSerpConnected] = useState(resume?.serpConnected ?? false);
-  const [playbookSkipped, setPlaybookSkipped] = useState(resume?.playbookSkipped ?? false);
   // Persist every screen change so reloads resume in place (fire-and-forget:
   // resume is a nicety, navigation must never wait on it).
   function setScreen(next: Screen) {
@@ -331,10 +328,6 @@ export function OnboardingWizard({
       await skipPowerup("merge");
       setScreen("s4b");
     });
-  }
-  function skipPlaybook() {
-    setPlaybookSkipped(true);
-    void skipPowerup("playbook");
   }
 
   return (
@@ -1173,10 +1166,10 @@ export function OnboardingWizard({
 
           <div className="mt-4 rounded-lg bg-neutral-900 px-3.5 py-3 text-sm text-neutral-400">
             Your agent takes it from there: it writes the automation workflows into your repo,
-            sets the secrets, and starts the first keyword research - approving its steps as
-            you go in the chat. Needs Claude Code and the GitHub CLI (
-            <code className="font-mono text-neutral-300">gh</code>) installed; safe to re-run
-            any time.
+            sets the secrets, personalizes your backlink playbook, and starts the first keyword
+            research - approving its steps as you go in the chat. Needs Claude Code and the
+            GitHub CLI (<code className="font-mono text-neutral-300">gh</code>) installed; safe
+            to re-run any time.
           </div>
 
           <details className="group mt-4 rounded-xl bg-neutral-900 px-4 py-3">
@@ -1270,14 +1263,7 @@ export function OnboardingWizard({
               ))}
             </ul>
           </details>
-          {created ? (
-            <FirstRunStatus
-              slug={created.slug}
-              playbookCommand={PLAYBOOK_COMMAND}
-              playbookSkipped={playbookSkipped}
-              onSkipPlaybook={skipPlaybook}
-            />
-          ) : null}
+          {created ? <FirstRunStatus slug={created.slug} /> : null}
         </section>
       ) : null}
     </div>

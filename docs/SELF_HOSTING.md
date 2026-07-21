@@ -253,10 +253,10 @@ The last screen gives you two things to copy:
 
 From that second paste, your agent takes over: it writes the automation
 workflow files into your repo, sets the repo secrets, opens one pull
-request with all of it, and kicks off your first keyword research. You
-approve its steps in the chat as it goes. It needs Claude Code and the
-GitHub CLI (`gh`) installed, and it's safe to re-run if anything is
-interrupted.
+request with all of it, personalizes the backlink playbook for your
+product, and kicks off your first keyword research. You approve its steps
+in the chat as it goes. It needs Claude Code and the GitHub CLI (`gh`)
+installed, and it's safe to re-run if anything is interrupted.
 
 The wizard tracks all of it live. When the pipeline PR is open, it shows
 **"Your move: merge the pipeline PR"** with a direct link - merging that PR
@@ -265,10 +265,6 @@ is your one required click. The agent then verifies the full checklist
 back over MCP; the backend double-checks it independently. The dashboard
 only unlocks once everything genuinely works. If the wizard says
 it's still waiting, the agent isn't done yet - check its chat.
-
-There's also an optional third paste that personalizes the backlink
-playbook for your product. Skip it if you want; you can run it any time
-later.
 
 ## Data tiers
 

@@ -74,7 +74,10 @@ export async function GET(req: Request): Promise<Response> {
     db().from("pages").select("id", { count: "exact", head: true }).eq("project_id", project.id),
     db().from("gsc_stats").select("id", { count: "exact", head: true }).eq("project_id", project.id),
     getCronHealth(project.slug),
-    db().from("site_profile").select("id", { count: "exact", head: true }),
+    db()
+      .from("site_profile")
+      .select("id", { count: "exact", head: true })
+      .eq("project_id", project.id),
   ]);
 
   const canary = health.find((h) => h.job === `seo-canary--${project.slug}`);

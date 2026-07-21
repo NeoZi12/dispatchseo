@@ -52,7 +52,6 @@ async function buildResume(): Promise<WizardResume | null> {
     },
     choice: project.keyword_source === "dataforseo" ? "paid" : "free",
     serpConnected: project.keyword_source === "serpapi",
-    playbookSkipped: project.powerups_skipped.includes("playbook"),
   };
 }
 

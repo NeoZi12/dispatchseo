@@ -2,13 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 
-// The onboarding wizard's live finale. Renders under the setup command and
-// polls /api/onboarding/status while the owner runs it in their terminal:
-// repo connection flips green when the canary/pipeline report in, then the
-// first-data counters fill as research queues ideas and the first rank
-// check / GSC snapshot land (the status endpoint triggers those runs
-// itself the moment they become possible). The wizard is "done" when the
-// dashboard genuinely has something on it - not when the copy runs out.
+// The onboarding wizard's live finale. Renders under the install command
+// and polls /api/onboarding/status while the agent runs it: repo connection
+// flips green when the canary/pipeline report in, the playbook row when the
+// agent writes the site profile (setup chains off the same paste - there is
+// deliberately ONE command for the owner), and the merge-PR link appears
+// the moment that click is the owner's blocking move. The wizard is "done"
+// when the verified install stamp lands - background first-data work shows
+// on Home's strip instead.
 
 type Status = {
   repo_connected: boolean;
@@ -57,31 +58,16 @@ function Row({
   );
 }
 
-export function FirstRunStatus({
-  slug,
-  playbookCommand,
-  playbookSkipped,
-  onSkipPlaybook,
-}: {
-  slug: string;
-  // The backlink-playbook paste, folded into the finale so setup truly ends
-  // here: the row watches site_profile and flips green when the agent
-  // writes it. Skipping is a real decision (hides the Home card too).
-  playbookCommand?: string;
-  playbookSkipped?: boolean;
-  onSkipPlaybook?: () => void;
-}) {
+export function FirstRunStatus({ slug }: { slug: string }) {
   const [status, setStatus] = useState<Status | null>(null);
-  const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // "Done" = every step the OWNER owns is done. Background work (first
-  // research, rank checks, GSC data) deliberately doesn't gate this - it
-  // shows on Home's "working in the background" strip instead.
-  const playbookSettled = Boolean(status?.profile_written) || Boolean(playbookSkipped);
-  const done = Boolean(
-    status && status.pipeline_installed && (playbookCommand ? playbookSettled : true),
-  );
+  // "Done" = every step the OWNER owns is done. The install stamp only
+  // lands after the backend verified the whole checklist - setup/profile
+  // included - so it is the single gate. Background work (first research,
+  // rank checks, GSC data) deliberately doesn't gate this - it shows on
+  // Home's "working in the background" strip instead.
+  const done = Boolean(status?.pipeline_installed);
 
   useEffect(() => {
     let stopped = false;
@@ -152,54 +138,21 @@ export function FirstRunStatus({
             )
           }
         />
-        {playbookCommand && !playbookSkipped ? (
-          <Row
-            state={s?.profile_written ? "done" : s?.pipeline_installed ? "active" : "pending"}
-            label={
-              s?.profile_written
-                ? "Backlink playbook personalized"
-                : "Personalize the backlink playbook (second paste, below)"
-            }
-          />
-        ) : null}
+        <Row
+          state={
+            s?.profile_written
+              ? "done"
+              : s?.repo_connected || s?.open_pr
+                ? "active"
+                : "pending"
+          }
+          label={
+            s?.profile_written
+              ? "Backlink playbook personalized"
+              : "Personalizing the backlink playbook (same paste - your agent handles it)"
+          }
+        />
       </ul>
-      {playbookCommand && !playbookSkipped && !s?.profile_written ? (
-        <div className="border-t border-neutral-800 py-3">
-          <p className="mb-2 text-sm text-neutral-300">
-            Second paste, same Claude Code chat - it researches your product
-            and prefills every backlink submission for you:
-          </p>
-          <div className="flex items-center gap-2.5 rounded-lg border border-neutral-800 bg-neutral-950 py-2.5 pl-3.5 pr-3">
-            <code className="flex-1 overflow-x-auto whitespace-nowrap font-mono text-sm text-neutral-300 [scrollbar-width:none]">
-              {playbookCommand}
-            </code>
-            <button
-              type="button"
-              onClick={() => {
-                navigator.clipboard.writeText(playbookCommand).then(
-                  () => {
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 1600);
-                  },
-                  () => {},
-                );
-              }}
-              className={`shrink-0 cursor-pointer rounded-md bg-neutral-800 px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-neutral-700 ${copied ? "text-emerald-400" : "text-neutral-300"}`}
-            >
-              {copied ? "Copied" : "Copy"}
-            </button>
-          </div>
-          {onSkipPlaybook ? (
-            <button
-              type="button"
-              onClick={onSkipPlaybook}
-              className="mt-2 cursor-pointer text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300"
-            >
-              Skip the playbook - I&apos;ll handle backlinks myself
-            </button>
-          ) : null}
-        </div>
-      ) : null}
       <div className="border-t border-neutral-800 py-3">
         {done ? (
           <a

@@ -1851,6 +1851,25 @@ const mcpHandler = createMcpHandler(
         // what it can instead of taking the agent's word: workflows merged,
         // labels, Actions PR permission (approve half only when auto-merge
         // is on). Verifiable problem = no stamp, with the fix spelled out.
+        //
+        // Setup is part of the install (the agent chains into it), so the
+        // unlock also requires its proof-of-work: the saved site profile.
+        // Tolerant like every pre-migration path - a query error never blocks.
+        try {
+          const { count, error: profErr } = await db()
+            .from("site_profile")
+            .select("id", { count: "exact", head: true })
+            .eq("project_id", p.id);
+          if (!profErr && (count ?? 0) === 0) {
+            return fail(
+              "Install NOT verified - the setup workflow hasn't run for this project " +
+                "(no site profile saved). Run get_instructions with workflow=setup and " +
+                "follow it, then call mark_pipeline_installed again.",
+            );
+          }
+        } catch {
+          /* pre-migration database - never block the unlock on a missing table */
+        }
         let verified = false;
         if (p.github_repo) {
           const verdict = await verifyPipelinePrereqs(
