@@ -133,64 +133,8 @@ export default async function LandingPage({
             Waitlist members lock in founding pricing at launch. <a href="#oss">Self-hosting is free today.</a>
           </p>
 
-          {/* flat product mock, dark like the real dashboard */}
-          <div className="mock-zone">
-            <div className="mock">
-              <div className="mock-bar">
-                <span className="m-title">Shipped this week</span>
-                <span className="m-pill">yoursite.com</span>
-                <span className="m-agent"><span className="pulse" /> agent active · next build tonight</span>
-              </div>
-              <div className="q-row">
-                <div className="q-main">
-                  <div className="q-head"><span className="tb tool">Tool</span><div className="q-title">Vercel Cost Calculator</div></div>
-                  <div className="q-meta"><span className="kw">reduce vercel costs</span><span className="kw vol">880/mo</span><span className="kw vol">PR #151 merged</span></div>
-                </div>
-                <div className="q-right">
-                  <div className="q-time"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>yesterday</div>
-                  <div className="q-stats"><span><b>14</b> clicks</span><span><b>410</b> impressions</span></div>
-                </div>
-              </div>
-              <div className="q-row">
-                <div className="q-main">
-                  <div className="q-head"><span className="tb guide">Guide</span><div className="q-title">Stripe webhooks in Next.js: the parts the docs skip</div></div>
-                  <div className="q-meta"><span className="kw">stripe webhook nextjs</span><span className="kw vol">1.3K/mo</span><span className="kw vol">PR #149 merged</span></div>
-                </div>
-                <div className="q-right">
-                  <div className="q-time"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>2 days ago</div>
-                  <div className="q-stats"><span><b>47</b> clicks</span><span><b>1.6K</b> impressions</span></div>
-                </div>
-              </div>
-              <div className="q-row">
-                <div className="q-main">
-                  <div className="q-head"><span className="tb guide">Guide</span><div className="q-title">Pricing page teardown: what 50 SaaS pricing pages get wrong</div></div>
-                  <div className="q-meta"><span className="kw">saas pricing page examples</span><span className="kw vol">1.9K/mo</span><span className="kw vol">PR #146 merged</span></div>
-                </div>
-                <div className="q-right">
-                  <div className="q-time"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>3 days ago</div>
-                  <div className="q-stats"><span><b>129</b> clicks</span><span><b>4.2K</b> impressions</span></div>
-                </div>
-              </div>
-            </div>
-            <div className="float-card">
-              <div className="fc-h">Rank moves this week</div>
-              <div className="fc-row"><span className="fc-kw">saas pricing page examples</span><span><span className="fc-pos">#6</span><span className="fc-up">▲3</span></span></div>
-              <div className="fc-row"><span className="fc-kw">stripe webhook nextjs</span><span><span className="fc-pos">#11</span><span className="fc-up">▲4</span></span></div>
-              <div className="fc-row"><span className="fc-kw">reduce vercel costs</span><span><span className="fc-pos">#19</span><span className="fc-up">▲12</span></span></div>
-            </div>
-          </div>
         </div>
       </header>
-
-      {/* ==================== STAT STRIP ==================== */}
-      <div className="stats">
-        <div className="wrap stats-in">
-          <div className="stat"><div className="n">$0</div><div className="d">to run. Free tiers all the way down: Vercel, Supabase, Search Console.</div></div>
-          <div className="stat"><div className="n">~15 min</div><div className="d">setup. Your agent reads the instructions and configures itself.</div></div>
-          <div className="stat"><div className="n">Daily</div><div className="d">rank checks on every keyword you track, per site.</div></div>
-          <div className="stat"><div className="n">1/week</div><div className="d">a new interactive tool: calculators and checkers that earn links.</div></div>
-        </div>
-      </div>
 
       {/* ==================== HOW IT WORKS ==================== */}
       <section id="how">
@@ -228,24 +172,24 @@ export default async function LandingPage({
       <section className="band-alt">
         <div className="wrap">
           <div className="sec-h">
-            <h2>Your agent built your product.<br />Now it runs your SEO.</h2>
-            <p>Every other AI SEO tool learns about you from a homepage crawl. Your agent has the repo: the features, the docs, the decisions, probably its own commits. DispatchSEO is the only product where the agent that knows your project best manages its SEO for you.</p>
+            <h2>Who is DispatchSEO for?</h2>
+            <p>Every other AI SEO tool learns about you from a homepage crawl. Your agent has the repo: the features, the docs, the decisions, probably its own commits.</p>
           </div>
           <div className="who">
             <div className="who-card">
-              <span className="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" /><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" /><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" /><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" /></svg></span>
+              <svg className="who-doodle pink" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" /><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" /><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" /><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" /></svg>
               <h3>Founders with a product to ship</h3>
               <p>Your site lives in a git repo and your time is better spent on the product. Hand the content grind to your agent and keep the final say on everything.</p>
             </div>
             <div className="who-card">
-              <span className="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M18 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3H6a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3h12a3 3 0 0 0 3-3 3 3 0 0 0-3-3z" /></svg></span>
+              <svg className="who-doodle vio" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v5.5M12 15.5V21M3 12h5.5M15.5 12H21M5.64 5.64l3.89 3.89M14.47 14.47l3.89 3.89M18.36 5.64l-3.89 3.89M9.53 14.47l-3.89 3.89" /></svg>
               <h3>Claude Code power users</h3>
               <p>You already pay for the best writing model there is. DispatchSEO gives it memory, schedules, and a queue, so SEO stops being a weekend project.</p>
             </div>
             <div className="who-card">
-              <span className="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3 5 6v5c0 4.2 2.8 6.9 7 8.3 4.2-1.4 7-4.1 7-8.3V6l-7-3Z" /><path d="m9 11.5 2 2 4-4" /></svg></span>
-              <h3>People burned by AI content tools</h3>
-              <p>Every article passes through your hands as a pull request before it exists on your site. Your repo, your git history, your rollback.</p>
+              <svg className="who-doodle blue" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M8.6 9.4v.6M15.4 9.4v.6" /><path d="M8.8 15.2h6.4" /></svg>
+              <h3>People who hate doing SEO</h3>
+              <p>You know it works. You still put it off every week. Now the research, the writing, and the rank checks happen on a schedule, whether you feel like it or not.</p>
             </div>
           </div>
         </div>
