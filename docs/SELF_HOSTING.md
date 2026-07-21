@@ -23,7 +23,8 @@ on Mac/Windows, `docker` + compose plugin on Linux).
 git clone https://github.com/NeoZi12/dispatchseo
 cd dispatchseo
 cp .env.docker.example .env
-# edit .env: set CRON_SECRET (openssl rand -hex 24) and POSTGRES_PASSWORD
+echo "CRON_SECRET=$(openssl rand -hex 24)" >> .env
+echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)" >> .env
 docker compose up -d
 ```
 

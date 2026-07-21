@@ -1,6 +1,8 @@
 # DispatchSEO self-hosted stack: one command, four small containers, ~1GB RAM.
 #
-#   cp .env.docker.example .env   # then fill in the two required values
+#   cp .env.docker.example .env
+#   echo "CRON_SECRET=$(openssl rand -hex 24)" >> .env
+#   echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)" >> .env
 #   docker compose up -d
 #   open http://localhost:3000    # the setup wizard takes it from there
 #
