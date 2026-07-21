@@ -18,6 +18,7 @@ import {
   IndexRequestedDoneAll,
   MergeButton,
 } from "@/components/client";
+import { GhTokenConnect } from "@/components/gh-token-connect";
 import { IdeaCard } from "@/components/idea-card";
 import { TrafficByPage } from "@/components/seo-cards";
 import { TrendScanButton, TrendScanPoller, TrendScanSweep } from "@/components/trend-scan";
@@ -618,32 +619,20 @@ export default async function Home() {
           {needsMergeToken ? (
             <SetupStep
               title="Enable one-tap merge"
-              why="The dashboard can only see and merge pull requests on your private repo with a GitHub token. This is what makes approve = ship."
+              why="With a GitHub token, approve = ship: PRs get a Merge button here, and on Docker installs the builder uses the same token to open and merge them. Verified against your repo the moment you paste it, stored encrypted."
               steps={[
                 <>
-                  Open{" "}
-                  <ExtLink href="https://github.com/settings/personal-access-tokens">
-                    GitHub fine-grained tokens
+                  <ExtLink href="https://github.com/settings/tokens/new?scopes=repo&description=DispatchSEO%20merge">
+                    Create the token on GitHub
                   </ExtLink>{" "}
-                  and click Generate new token (fine-grained).
+                  - the link pre-fills everything (classic token, repo scope). Pick an
+                  expiration, press Generate token.
                 </>,
-                "Name it seo-dashboard-merge, set expiration to 1 year.",
-                <>
-                  Repository access: choose Only select repositories, and pick{" "}
-                  {project.github_repo ?? "your content repo"}.
-                </>,
-                "Permissions: set Pull requests to Read and write, and Contents to Read and write. Leave everything else at No access.",
-                "Generate the token and copy it.",
-                <>
-                  Open{" "}
-                  <ExtLink href="https://vercel.com/dashboard">Vercel</ExtLink>, go to the
-                  seo-manager-backend project, then Settings, then Environment Variables. Add
-                  GH_MERGE_TOKEN with the token as its value, environment Production, and save.
-                </>,
-                "Go to the Deployments tab, open the menu on the latest deployment, and click Redeploy so the token loads.",
+                "Copy the token it shows (starts with ghp_) and paste it below.",
               ]}
-              closing="When this is done, every open SEO pull request appears under Next actions with its review link and a Merge button, and this card disappears."
-            />
+            >
+              <GhTokenConnect repoName={project.github_repo ?? "your repo"} />
+            </SetupStep>
           ) : null}
           {needsFunding ? (
             <SetupStep
