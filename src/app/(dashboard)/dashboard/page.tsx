@@ -441,7 +441,7 @@ export default async function Home() {
     !profileRes.error && profileRes.data == null && !skippedPowerup("playbook") && !pipelineTodo;
   // GSC connection: the project has a property configured but no traffic data
   // has ever landed - the service account is not on the property yet.
-  const saEmail = serviceAccountEmail();
+  const saEmail = await serviceAccountEmail();
   const needsGsc =
     Boolean(project.gsc_site_url) && overview.gscDaily.length === 0 && saEmail != null;
   // Only probe Google when the card would show at all: a successful read

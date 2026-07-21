@@ -7,12 +7,14 @@ import { FirstRunStatus } from "@/components/first-run-status";
 import {
   chooseGscOnly,
   connectDataforseo,
+  connectGscServiceAccount,
   connectSerpapi,
   setPowerupsSkipped,
   setProjectMode,
   wizardCheckGscAccess,
   wizardCreateProject,
   type ConnectDataforseoState,
+  type ConnectGscState,
   type ConnectSerpapiState,
   type WizardCreateState,
 } from "@/app/actions";
@@ -91,7 +93,7 @@ const POWERUPS = [
 ] as const;
 
 const inputClass =
-  "w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-violet-400/60";
+  "w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2.5 text-base text-neutral-100 placeholder:text-neutral-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-violet-400/60";
 
 function CopyBox({ text, emphasis }: { text: string; emphasis?: boolean }) {
   const [copied, setCopied] = useState(false);
@@ -107,7 +109,7 @@ function CopyBox({ text, emphasis }: { text: string; emphasis?: boolean }) {
         className={
           emphasis
             ? "flex-1 overflow-x-auto whitespace-nowrap font-mono text-[15px] text-neutral-100 [scrollbar-width:none]"
-            : "flex-1 overflow-x-auto whitespace-nowrap font-mono text-[13px] text-neutral-300 [scrollbar-width:none]"
+            : "flex-1 overflow-x-auto whitespace-nowrap font-mono text-sm text-neutral-300 [scrollbar-width:none]"
         }
       >
         {text}
@@ -160,7 +162,7 @@ function GscSteps({ domain, muted }: { domain: string; muted?: boolean }) {
   const bold = muted ? "font-medium text-neutral-400" : "font-medium text-neutral-200";
   const num = muted ? "bg-neutral-800/60 text-neutral-600" : "bg-neutral-800 text-neutral-300";
   return (
-    <ol className={`space-y-2 text-sm ${item}`}>
+    <ol className={`space-y-2.5 text-[15px] ${item}`}>
       {[
         <>
           Open{" "}
@@ -228,6 +230,14 @@ export function OnboardingWizard({
   // Step 2's on-the-spot Search Console probe.
   const [gscCheck, setGscCheck] = useState<GscAccessProbe | null>(null);
   const [gscChecking, startGscCheck] = useTransition();
+  // Step 2's paste-the-key-file connect: once it succeeds, the screen flips
+  // to the "add this email in Search Console" half without a reload.
+  const [gscConnState, gscConnAction, gscConnPending] = useActionState<ConnectGscState, FormData>(
+    connectGscServiceAccount,
+    null,
+  );
+  const effectiveSaEmail =
+    saEmail ?? (gscConnState && "ok" in gscConnState ? gscConnState.email : null);
   function checkGsc() {
     startGscCheck(async () => {
       setGscCheck(await wizardCheckGscAccess());
@@ -310,7 +320,7 @@ export function OnboardingWizard({
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl">
+    <div className="mx-auto w-full max-w-3xl">
       {/* header */}
       <div className="flex items-center justify-between pb-4 pt-1">
         <p className="text-sm font-semibold tracking-tight">Set up a new site</p>
@@ -362,14 +372,14 @@ export function OnboardingWizard({
               <path d="M2 12h20" />
             </svg>
           </StepIcon>
-          <h2 className="text-lg font-semibold tracking-tight">Add your site</h2>
-          <p className="mb-3.5 text-sm text-neutral-400">
+          <h2 className="text-2xl font-semibold tracking-tight">Add your site</h2>
+          <p className="mb-4 text-base text-neutral-400">
             Everything on this page is about <b className="font-medium text-neutral-200">your website</b> -
             the site you want Google traffic for. DispatchSEO itself is already
             running; now point it at your site. Takes 30 seconds.
           </p>
           {isLocalInstance ? (
-            <div className="mb-3.5 rounded-xl border border-amber-500/25 bg-amber-500/[0.07] p-3.5 text-[13px] leading-relaxed text-amber-100/90">
+            <div className="mb-3.5 rounded-xl border border-amber-500/25 bg-amber-500/[0.07] p-3.5 text-sm leading-relaxed text-amber-100/90">
               <b className="font-semibold text-amber-200">Running on {origin.replace(/^https?:\/\//, "")}.</b>{" "}
               Setup, keyword research and rank tracking all work from here. One
               thing doesn&apos;t: the automated content pipeline runs in your
@@ -382,21 +392,21 @@ export function OnboardingWizard({
           <form action={createAction} className="space-y-3 rounded-xl bg-neutral-900 p-4">
             {createState && "error" in createState ? <ErrorLine msg={createState.error} /> : null}
             <label className="block space-y-1.5">
-              <span className="text-sm font-medium text-neutral-200">Site name</span>
+              <span className="text-base font-medium text-neutral-200">Site name</span>
               <input name="name" required placeholder="UsageCut" autoComplete="off" className={inputClass} />
             </label>
             <label className="block space-y-1.5">
-              <span className="text-sm font-medium text-neutral-200">Your site&apos;s domain</span>
+              <span className="text-base font-medium text-neutral-200">Your site&apos;s domain</span>
               <input name="domain" required placeholder="usagecut.com" autoComplete="off" className={inputClass} />
-              <span className="block text-xs leading-relaxed text-neutral-500">
+              <span className="block text-sm leading-relaxed text-neutral-500">
                 The website whose rankings DispatchSEO will grow and track - not
                 where DispatchSEO is hosted.
               </span>
             </label>
             <label className="block space-y-1.5">
-              <span className="text-sm font-medium text-neutral-200">Your site&apos;s GitHub repo</span>
+              <span className="text-base font-medium text-neutral-200">Your site&apos;s GitHub repo</span>
               <input name="repo" required placeholder="owner/repo" autoComplete="off" className={inputClass} />
-              <span className="block text-xs leading-relaxed text-neutral-500">
+              <span className="block text-sm leading-relaxed text-neutral-500">
                 The repo your website deploys from - Claude ships every article
                 and tool to it as a pull request you review. It&apos;s the
                 owner/repo part of the URL on{" "}
@@ -418,7 +428,7 @@ export function OnboardingWizard({
               </label>
             ) : null}
             <div className="space-y-1.5">
-              <span className="block text-sm font-medium text-neutral-200">
+              <span className="block text-base font-medium text-neutral-200">
                 Does the site have a blog or content section?
               </span>
               <div className="grid grid-cols-3 gap-1.5">
@@ -454,7 +464,7 @@ export function OnboardingWizard({
                   className={inputClass}
                 />
               ) : null}
-              <p className="text-[12.5px] text-neutral-500">
+              <p className="text-sm text-neutral-500">
                 {contentMode === "create"
                   ? "Claude adds one to your repo during setup, as a PR you review."
                   : contentMode === "existing"
@@ -487,17 +497,17 @@ export function OnboardingWizard({
               <path d="M7 14l4-4 4 3 5-6" />
             </svg>
           </StepIcon>
-          <h2 className="text-lg font-semibold tracking-tight">Connect Google Search Console</h2>
-          <p className="mb-3.5 text-sm text-neutral-400">
+          <h2 className="text-2xl font-semibold tracking-tight">Connect Google Search Console</h2>
+          <p className="mb-4 text-base text-neutral-400">
             This is where your traffic and ranking data comes from. It&apos;s free and takes 2 minutes.
           </p>
           <div className="rounded-xl bg-neutral-900 p-4">
-            {saEmail ? (
+            {effectiveSaEmail ? (
               <>
-                <p className="mb-2 text-sm font-medium text-neutral-200">
+                <p className="mb-2 text-base font-medium text-neutral-200">
                   Add this email as a user in Search Console
                 </p>
-                <CopyBox text={saEmail} />
+                <CopyBox text={effectiveSaEmail} />
                 <div className="mt-3.5">
                   <GscSteps domain={created?.domain ?? "your site"} />
                 </div>
@@ -521,17 +531,17 @@ export function OnboardingWizard({
                           : "Verify connection"}
                   </button>
                   {gscCheck?.state === "ok" ? (
-                    <span className="text-[13px] text-emerald-300">
+                    <span className="text-sm text-emerald-300">
                       Search Console is connected - data starts flowing today.
                     </span>
                   ) : gscCheck ? (
-                    <span className="text-[13px] text-amber-200/90">
+                    <span className="text-sm text-amber-200/90">
                       Not yet: {gscCheck.why}. Google can take a few minutes
                       after you add the email - you can continue, Home re-checks
                       automatically.
                     </span>
                   ) : (
-                    <span className="text-[13px] text-neutral-500">
+                    <span className="text-sm text-neutral-500">
                       Added the email? Check right away - it&apos;s usually instant.
                     </span>
                   )}
@@ -539,61 +549,95 @@ export function OnboardingWizard({
               </>
             ) : (
               <>
-                <div className="rounded-lg border border-violet-500/20 bg-violet-500/[0.06] p-3.5">
-                  <div className="flex items-center gap-2">
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      className="h-4 w-4 shrink-0 text-violet-400"
-                      aria-hidden
-                    >
-                      <circle cx="12" cy="12" r="9" />
-                      <path d="M12 8h.01" strokeLinecap="round" />
-                      <path d="M11 11.5h1v5.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                    <p className="text-sm font-medium text-neutral-200">
-                      No service account on this deployment yet
-                    </p>
-                  </div>
-                  <p className="mt-2.5 text-[13px] leading-relaxed text-neutral-400">
-                    DispatchSEO reads your Search Console numbers through a &quot;service
-                    account&quot; - a robot Google account it signs in as. This deployment doesn&apos;t
-                    have one yet, which is why there&apos;s no email to show here.
-                  </p>
-                  <p className="mt-2 text-[13px] leading-relaxed text-neutral-400">
-                    To set one up, follow the service-account steps in the{" "}
-                    <a
-                      href="https://github.com/NeoZi12/dispatchseo/blob/main/docs/SELF_HOSTING.md#3-google-search-console-free-rankings--traffic-data"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-violet-400 underline underline-offset-2 hover:text-violet-300"
-                    >
-                      self-hosting guide
-                    </a>
-                    : create the account, download its JSON key, and add it to your
-                    deployment&apos;s environment as{" "}
-                    <code className="font-mono text-neutral-300">GSC_SERVICE_ACCOUNT_JSON</code>{" "}
-                    (the <code className="font-mono text-neutral-300">.env</code> file for docker,
-                    an environment variable on Vercel), then restart.
-                  </p>
-                  <p className="mt-2 text-[13px] leading-relaxed text-neutral-400">
-                    Then come back here - or to the Home setup cards - and the email to add will
-                    show up.
-                  </p>
-                  <p className="mt-2.5 text-[13px] font-medium text-neutral-300">
-                    Nothing else depends on this. Continue the wizard now and set it up whenever.
-                  </p>
-                </div>
-                <details className="mt-3.5">
-                  <summary className="cursor-pointer select-none text-[13px] font-medium text-neutral-500 transition-colors hover:text-neutral-300">
-                    What you&apos;ll do once the email exists
-                  </summary>
-                  <div className="mt-2.5">
-                    <GscSteps domain={created?.domain ?? "your site"} muted />
-                  </div>
-                </details>
+                <p className="mb-2 text-base font-medium text-neutral-200">
+                  Create the Google connection - one time, about 3 minutes
+                </p>
+                <p className="mb-3.5 text-[15px] leading-relaxed text-neutral-400">
+                  DispatchSEO reads your numbers through a{" "}
+                  <b className="font-medium text-neutral-300">service account</b> - a robot
+                  Google account it signs in as. Create one, download its key
+                  file, paste it below. It works for every site you ever add.
+                </p>
+                <ol className="space-y-2.5 text-[15px] text-neutral-400">
+                  {[
+                    <>
+                      <a
+                        href="https://console.cloud.google.com/projectcreate"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-violet-400 underline underline-offset-2 hover:text-violet-300"
+                      >
+                        Create a Google Cloud project
+                      </a>{" "}
+                      - any name works. Already have one? Skip to step 2.
+                    </>,
+                    <>
+                      <a
+                        href="https://console.cloud.google.com/apis/library/searchconsole.googleapis.com"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-violet-400 underline underline-offset-2 hover:text-violet-300"
+                      >
+                        Enable the Search Console API
+                      </a>{" "}
+                      - press <b className="font-medium text-neutral-200">Enable</b> (pick your
+                      project at the top if it asks).
+                    </>,
+                    <>
+                      <a
+                        href="https://console.cloud.google.com/iam-admin/serviceaccounts/create"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-violet-400 underline underline-offset-2 hover:text-violet-300"
+                      >
+                        Create the service account
+                      </a>{" "}
+                      - name it <b className="font-medium text-neutral-200">dispatchseo</b>,
+                      press <b className="font-medium text-neutral-200">Done</b>. Skip the two
+                      optional permission screens - it needs no roles.
+                    </>,
+                    <>
+                      Click the account you just made, open the{" "}
+                      <b className="font-medium text-neutral-200">Keys</b> tab →{" "}
+                      <b className="font-medium text-neutral-200">Add key</b> →{" "}
+                      <b className="font-medium text-neutral-200">Create new key</b> →{" "}
+                      <b className="font-medium text-neutral-200">JSON</b>. A .json file
+                      downloads.
+                    </>,
+                    <>Open the downloaded file in any text editor, copy everything, paste it here:</>,
+                  ].map((s, i) => (
+                    <li key={i} className="flex gap-2.5">
+                      <span className="mt-px flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md bg-neutral-800 text-xs font-semibold text-neutral-300">
+                        {i + 1}
+                      </span>
+                      <span>{s}</span>
+                    </li>
+                  ))}
+                </ol>
+                <form action={gscConnAction} className="mt-4 space-y-2.5">
+                  {gscConnState && "error" in gscConnState ? (
+                    <ErrorLine msg={gscConnState.error} />
+                  ) : null}
+                  <textarea
+                    name="json"
+                    rows={5}
+                    required
+                    placeholder='Paste the whole key file - it starts with {"type": "service_account", ...'
+                    className={`${inputClass} font-mono text-sm`}
+                  />
+                  <button
+                    type="submit"
+                    disabled={gscConnPending}
+                    className="cursor-pointer rounded-lg bg-violet-500 px-5 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {gscConnPending ? "Connecting..." : "Connect service account"}
+                  </button>
+                </form>
+                <p className="mt-3 text-sm leading-relaxed text-neutral-500">
+                  The key is stored encrypted in your database. You can also skip
+                  this - everything else works, and the Home setup card brings
+                  you back here whenever.
+                </p>
               </>
             )}
           </div>
@@ -619,8 +663,8 @@ export function OnboardingWizard({
               <circle cx="7.5" cy="7.5" r="1.3" fill="currentColor" stroke="none" />
             </svg>
           </StepIcon>
-          <h2 className="text-lg font-semibold tracking-tight">Where should Claude get keyword data?</h2>
-          <p className="mb-3.5 text-sm text-neutral-400">Pick one. You can switch anytime in Settings.</p>
+          <h2 className="text-2xl font-semibold tracking-tight">Where should Claude get keyword data?</h2>
+          <p className="mb-4 text-base text-neutral-400">Pick one. You can switch anytime in Settings.</p>
           <div className="grid gap-3.5 sm:grid-cols-2">
             <button
               type="button"
@@ -639,11 +683,11 @@ export function OnboardingWizard({
                 </span>
               </div>
               <h3 className="text-[15px] font-semibold">DataForSEO</h3>
-              <p className="mt-1 text-[13px] text-neutral-400">
+              <p className="mt-1 text-sm text-neutral-400">
                 The accurate option. Real Google search volumes, keyword difficulty, and competitor
                 data. The same data most SEO tools resell.
               </p>
-              <p className="mt-2 text-[12.5px] text-neutral-400">
+              <p className="mt-2 text-sm text-neutral-400">
                 <b className="font-medium text-neutral-300">Pay as you go.</b> $1 free credit to
                 start, then a typical site costs $2 to 5 a month. No subscription.
               </p>
@@ -662,12 +706,12 @@ export function OnboardingWizard({
                 </span>
               </div>
               <h3 className="text-[15px] font-semibold">Free mode</h3>
-              <p className="mt-1 text-[13px] text-neutral-400">
+              <p className="mt-1 text-sm text-neutral-400">
                 Runs on free data. Claude finds keyword opportunities in your Search Console data
                 (searches where you already show up but don&apos;t rank well yet) and expands them with
                 Google&apos;s own autocomplete suggestions. What people actually type into the search box.
               </p>
-              <p className="mt-2 text-[12.5px] text-neutral-400">
+              <p className="mt-2 text-sm text-neutral-400">
                 What you give up vs DataForSEO: exact search volumes and difficulty scores.
               </p>
             </button>
@@ -694,14 +738,14 @@ export function OnboardingWizard({
               <circle cx="7.5" cy="7.5" r="1.3" fill="currentColor" stroke="none" />
             </svg>
           </StepIcon>
-          <h2 className="text-lg font-semibold tracking-tight">Connect DataForSEO</h2>
-          <p className="mb-3.5 text-sm text-neutral-400">
+          <h2 className="text-2xl font-semibold tracking-tight">Connect DataForSEO</h2>
+          <p className="mb-4 text-base text-neutral-400">
             Two fields from your DataForSEO account. New accounts start with $1 free credit.
           </p>
           <form action={dfsAction} className="space-y-3 rounded-xl bg-neutral-900 p-4">
             {dfsState && "error" in dfsState ? <ErrorLine msg={dfsState.error} /> : null}
             <label className="block space-y-1.5">
-              <span className="text-sm font-medium text-neutral-200">API login</span>
+              <span className="text-base font-medium text-neutral-200">API login</span>
               <input
                 name="login"
                 type="email"
@@ -712,7 +756,7 @@ export function OnboardingWizard({
               />
             </label>
             <label className="block space-y-1.5">
-              <span className="text-sm font-medium text-neutral-200">API password</span>
+              <span className="text-base font-medium text-neutral-200">API password</span>
               <input
                 name="password"
                 type="password"
@@ -726,7 +770,7 @@ export function OnboardingWizard({
               href="https://app.dataforseo.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-block text-[13px] text-violet-400 hover:text-violet-300 hover:underline"
+              className="inline-block text-sm text-violet-400 hover:text-violet-300 hover:underline"
             >
               Create an account →
             </a>
@@ -759,30 +803,30 @@ export function OnboardingWizard({
               <path d="m21 21-4.35-4.35" strokeLinecap="round" />
             </svg>
           </StepIcon>
-          <h2 className="text-lg font-semibold tracking-tight">Optional but worth it: free SerpApi key</h2>
-          <p className="mb-3.5 text-sm text-neutral-400">
+          <h2 className="text-2xl font-semibold tracking-tight">Optional but worth it: free SerpApi key</h2>
+          <p className="mb-4 text-base text-neutral-400">
             Free mode is set. This one upgrade is worth 2 minutes, and you can skip it.
           </p>
           <form action={serpAction} className="space-y-3 rounded-xl bg-neutral-900 p-4">
             {serpState && "error" in serpState ? <ErrorLine msg={serpState.error} /> : null}
-            <p className="text-[13px] text-neutral-400">
+            <p className="text-sm text-neutral-400">
               Without it, Claude picks keywords from your own data. With it, Claude can open the
               real Google results for a keyword before writing anything and see who&apos;s on page 1. If
               it&apos;s Reddit threads and thin blog posts, the keyword is winnable. If it&apos;s all big
               brands, Claude skips it.
             </p>
-            <p className="text-[13px] text-neutral-400">
+            <p className="text-sm text-neutral-400">
               250 free searches a month, no credit card, about 2 minutes.
             </p>
             <label className="block space-y-1.5">
-              <span className="text-sm font-medium text-neutral-200">SerpApi key</span>
+              <span className="text-base font-medium text-neutral-200">SerpApi key</span>
               <input name="key" placeholder="Paste your key" autoComplete="off" className={inputClass} />
             </label>
             <a
               href="https://serpapi.com/users/sign_up"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-block text-[13px] text-violet-400 hover:text-violet-300 hover:underline"
+              className="inline-block text-sm text-violet-400 hover:text-violet-300 hover:underline"
             >
               Get a free key →
             </a>
@@ -825,8 +869,8 @@ export function OnboardingWizard({
               <line x1="12" y1="19" x2="20" y2="19" strokeLinecap="round" />
             </svg>
           </StepIcon>
-          <h2 className="text-lg font-semibold tracking-tight">Your Claude Code does the work</h2>
-          <p className="mb-3.5 text-sm text-neutral-400">
+          <h2 className="text-2xl font-semibold tracking-tight">Your Claude Code does the work</h2>
+          <p className="mb-4 text-base text-neutral-400">
             Claude Code is the brain. DispatchSEO is its memory and dashboard.
           </p>
           <div className="rounded-xl bg-neutral-900 p-4">
@@ -835,7 +879,7 @@ export function OnboardingWizard({
               connects your Claude Code to this project and sets everything up, checking each
               value as it goes.
             </p>
-            <p className="mt-3 text-[13px] text-neutral-400">
+            <p className="mt-3 text-sm text-neutral-400">
               It works with the Claude Code you already have, on your existing subscription -
               nothing extra to pay, and nothing is billed by DispatchSEO. Your agent researches
               keywords, writes the guides, and opens the pull requests; this dashboard is where
@@ -871,8 +915,8 @@ export function OnboardingWizard({
               <path d="m9 12 2 2 4-4" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </StepIcon>
-          <h2 className="text-lg font-semibold tracking-tight">Should anything go live without you?</h2>
-          <p className="mb-3.5 text-sm text-neutral-400">
+          <h2 className="text-2xl font-semibold tracking-tight">Should anything go live without you?</h2>
+          <p className="mb-4 text-base text-neutral-400">
             Both modes research and build the same way. The only difference is whether a human
             says yes before something is published.
           </p>
@@ -893,11 +937,11 @@ export function OnboardingWizard({
                 </span>
               </div>
               <h3 className="text-[15px] font-semibold">Semi-automatic</h3>
-              <p className="mt-1 text-[13px] text-neutral-400">
+              <p className="mt-1 text-sm text-neutral-400">
                 Claude researches and builds on its own, but nothing goes live without you. You
                 approve the ideas and click Merge on finished pages, right from the dashboard.
               </p>
-              <p className="mt-2 text-[12.5px] text-neutral-400">
+              <p className="mt-2 text-sm text-neutral-400">
                 A few minutes of your attention a week.
               </p>
             </button>
@@ -917,16 +961,16 @@ export function OnboardingWizard({
                 </span>
               </div>
               <h3 className="text-[15px] font-semibold">Automatic</h3>
-              <p className="mt-1 text-[13px] text-neutral-400">
+              <p className="mt-1 text-sm text-neutral-400">
                 Everything runs itself. Ideas are approved for you, and every page that passes its
                 checks publishes to your live site without anyone touching it.
               </p>
-              <p className="mt-2 text-[12.5px] text-neutral-400">
+              <p className="mt-2 text-sm text-neutral-400">
                 You can watch everything, and undo anything, from the dashboard.
               </p>
             </button>
           </div>
-          <p className="mt-2.5 text-center text-[13px] text-neutral-400">
+          <p className="mt-2.5 text-center text-sm text-neutral-400">
             Switch anytime with the Semi / Auto toggle in the top bar.
           </p>
           <div className="mt-5 flex items-center justify-between">
@@ -957,8 +1001,8 @@ export function OnboardingWizard({
               <path d="M13 2 3 14h8l-1 8 11-14h-9l1-6Z" strokeLinejoin="round" />
             </svg>
           </StepIcon>
-          <h2 className="text-lg font-semibold tracking-tight">Power-ups</h2>
-          <p className="mb-3.5 text-sm text-neutral-400">
+          <h2 className="text-2xl font-semibold tracking-tight">Power-ups</h2>
+          <p className="mb-4 text-base text-neutral-400">
             These are on by default. Uncheck anything you want to skip for now.
           </p>
           <div className="rounded-xl bg-neutral-900 px-4 py-1">
@@ -970,14 +1014,14 @@ export function OnboardingWizard({
                   className="flex items-center gap-3 border-b border-neutral-800 py-3 last:border-b-0"
                 >
                   <div className={`flex-1 ${on ? "" : "opacity-45"}`}>
-                    <p className="text-sm font-medium text-neutral-200">{p.title}</p>
-                    <p className="text-[13px] text-neutral-400">{p.desc}</p>
+                    <p className="text-base font-medium text-neutral-200">{p.title}</p>
+                    <p className="text-sm text-neutral-400">{p.desc}</p>
                   </div>
                   <button
                     type="button"
                     aria-pressed={on}
                     onClick={() => setPowerOn((s) => ({ ...s, [p.key]: !s[p.key] }))}
-                    className={`shrink-0 cursor-pointer rounded-lg border px-3.5 py-1.5 text-[13px] font-medium transition-colors ${
+                    className={`shrink-0 cursor-pointer rounded-lg border px-3.5 py-1.5 text-sm font-medium transition-colors ${
                       on
                         ? "border-violet-500 text-violet-400"
                         : "border-dashed border-neutral-700 text-neutral-500"
@@ -989,7 +1033,7 @@ export function OnboardingWizard({
               );
             })}
           </div>
-          <p className="mt-2.5 text-[13px] text-neutral-400">
+          <p className="mt-2.5 text-sm text-neutral-400">
             Each one you keep shows as a setup card on Home with its exact steps.
           </p>
           <div className="mt-5 flex items-center justify-between">
@@ -1021,8 +1065,8 @@ export function OnboardingWizard({
               <polyline points="16 7 22 7 22 13" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </StepIcon>
-          <h2 className="text-lg font-semibold tracking-tight">What happens next</h2>
-          <p className="mb-3.5 text-sm text-neutral-400">
+          <h2 className="text-2xl font-semibold tracking-tight">What happens next</h2>
+          <p className="mb-4 text-base text-neutral-400">
             SEO is slow at the start - that&apos;s how it works for everyone. Here&apos;s the honest
             timeline, so a quiet first month reads as on schedule, not broken.
           </p>
@@ -1033,13 +1077,13 @@ export function OnboardingWizard({
                   {t.months}
                 </span>
                 <div>
-                  <p className="text-sm font-medium text-neutral-200">{t.label}</p>
-                  <p className="text-[13px] text-neutral-400">{t.copy}</p>
+                  <p className="text-base font-medium text-neutral-200">{t.label}</p>
+                  <p className="text-sm text-neutral-400">{t.copy}</p>
                 </div>
               </div>
             ))}
           </div>
-          <p className="mt-2.5 text-[13px] text-neutral-400">
+          <p className="mt-2.5 text-sm text-neutral-400">
             Home tracks this same journey at the top of the page - stage by stage, with what
             moved each week.
           </p>
@@ -1071,8 +1115,8 @@ export function OnboardingWizard({
               <polyline points="22 4 12 14.01 9 11.01" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </StepIcon>
-          <h2 className="text-lg font-semibold tracking-tight">You&apos;re live.</h2>
-          <p className="mb-3.5 text-sm text-neutral-400">
+          <h2 className="text-2xl font-semibold tracking-tight">You&apos;re live.</h2>
+          <p className="mb-4 text-base text-neutral-400">
             One command connects Claude Code to this project and installs the pipeline.
           </p>
 
@@ -1084,7 +1128,7 @@ export function OnboardingWizard({
             <CopyBox emphasis text={created ? setupCommand(created.slug, origin, created.mcpToken) : ""} />
           </div>
 
-          <div className="mt-4 rounded-lg bg-neutral-900 px-3.5 py-3 text-[13px] text-neutral-400">
+          <div className="mt-4 rounded-lg bg-neutral-900 px-3.5 py-3 text-sm text-neutral-400">
             <p className="mb-1.5 font-medium text-neutral-300">What it will ask of you:</p>
             <ul className="space-y-1">
               <li>· Confirm the folder is your site&apos;s repo (it detects and asks).</li>
@@ -1105,7 +1149,7 @@ export function OnboardingWizard({
           </div>
 
           <details className="group mt-4 rounded-xl bg-neutral-900 px-4 py-3">
-            <summary className="flex cursor-pointer select-none items-center justify-between text-[13px] font-medium text-neutral-400 transition-colors hover:text-neutral-200">
+            <summary className="flex cursor-pointer select-none items-center justify-between text-sm font-medium text-neutral-400 transition-colors hover:text-neutral-200">
               What got connected
               <svg
                 viewBox="0 0 24 24"
@@ -1178,7 +1222,7 @@ export function OnboardingWizard({
               ].map((item, i) => (
                 <li
                   key={i}
-                  className="flex items-start gap-2.5 border-b border-neutral-800 py-2 text-[13px] text-neutral-500 last:border-b-0"
+                  className="flex items-start gap-2.5 border-b border-neutral-800 py-2 text-sm text-neutral-500 last:border-b-0"
                 >
                   <svg
                     viewBox="0 0 24 24"

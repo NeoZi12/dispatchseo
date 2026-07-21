@@ -53,3 +53,6 @@ supabase/.temp/
 # commands) is part of the repo
 .claude/*
 !.claude/commands/
+
+# local docker-trial checkouts of this repo (cloning inside the repo is common in testing)
+/dispatchseo/

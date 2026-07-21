@@ -1,17 +1,47 @@
 import { google } from "googleapis";
+import { instanceSettings } from "./dashboard-auth";
+import { decryptSecret } from "./crypto";
 
 // Google Search Console (Search Analytics) client. Reads clicks/impressions
-// per project: ONE service account (env) serves every project - its email just
+// per project: ONE service account serves every project - its email just
 // has to be added as a user on each project's GSC property. The property to
 // query is a parameter (projects.gsc_site_url), never an env constant.
+//
+// Credential resolution: the GSC_SERVICE_ACCOUNT_JSON env var wins when set
+// (classic installs, Vercel deployments); otherwise the encrypted copy the
+// onboarding wizard stores in instance_settings (0029) - that's how a
+// self-hoster connects Search Console without touching .env. Cached per
+// process; the connect action busts it.
 //
 // GSC data lags 2-3 days, so "yesterday" is often empty. We find the most recent
 // date that actually has data and snapshot THAT, storing it under its own date -
 // never blindly writing an empty "yesterday" row.
 
-function searchConsole() {
-  const raw = process.env.GSC_SERVICE_ACCOUNT_JSON;
-  if (!raw) throw new Error("Missing GSC_SERVICE_ACCOUNT_JSON");
+let credCache: { raw: string | null } | null = null;
+
+export function bustGscCredCache() {
+  credCache = null;
+}
+
+async function credentialJson(): Promise<string | null> {
+  if (credCache) return credCache.raw;
+  let raw: string | null = process.env.GSC_SERVICE_ACCOUNT_JSON ?? null;
+  if (!raw) {
+    try {
+      const settings = await instanceSettings();
+      const stored = settings?.gsc_service_account_json;
+      raw = stored ? await decryptSecret(stored) : null;
+    } catch {
+      raw = null;
+    }
+  }
+  credCache = { raw };
+  return raw;
+}
+
+async function searchConsole() {
+  const raw = await credentialJson();
+  if (!raw) throw new Error("Missing GSC service account (connect it in the wizard or set GSC_SERVICE_ACCOUNT_JSON)");
   const credentials = JSON.parse(raw);
   const auth = new google.auth.GoogleAuth({
     credentials,
@@ -23,10 +53,10 @@ function searchConsole() {
 }
 
 // The service account's email - onboarding shows this so the user can add it
-// to their GSC property. Null when the credential env var isn't set.
-export function serviceAccountEmail(): string | null {
+// to their GSC property. Null when no credential is connected anywhere.
+export async function serviceAccountEmail(): Promise<string | null> {
   try {
-    const raw = process.env.GSC_SERVICE_ACCOUNT_JSON;
+    const raw = await credentialJson();
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { client_email?: string };
     return parsed.client_email ?? null;
@@ -53,9 +83,9 @@ export type GscAccessProbe =
   | { state: "error"; why: string };
 
 export async function gscAccessProbe(site: string): Promise<GscAccessProbe> {
-  let sc: ReturnType<typeof searchConsole>;
+  let sc: Awaited<ReturnType<typeof searchConsole>>;
   try {
-    sc = searchConsole();
+    sc = await searchConsole();
   } catch {
     return { state: "pending", why: "no GSC service account configured on this deployment" };
   }
@@ -107,7 +137,7 @@ export type Fresh24h = {
 // are provisional - Google revises them as hours finalize. Throws on API
 // errors; callers decide the fallback.
 export async function getFresh24h(site: string): Promise<Fresh24h> {
-  const sc = searchConsole();
+  const sc = await searchConsole();
   const now = Date.now();
 
   // Dates are PT days and both bounds are inclusive; 3 days back covers the
@@ -144,7 +174,7 @@ export async function getFresh24h(site: string): Promise<Fresh24h> {
 // 100 rows/day keeps the per-page fold lossless well past the current catalog
 // size; a page outside a day's top 100 still won't appear for that day.
 async function snapshotDay(
-  sc: ReturnType<typeof searchConsole>,
+  sc: Awaited<ReturnType<typeof searchConsole>>,
   site: string,
   date: string,
   dataState?: "ALL",
@@ -186,7 +216,7 @@ async function snapshotDay(
 
 // Dates (yyyy-mm-dd) in the last `windowDays` that have rows, ascending.
 async function datesWithData(
-  sc: ReturnType<typeof searchConsole>,
+  sc: Awaited<ReturnType<typeof searchConsole>>,
   site: string,
   windowDays: number,
   dataState?: "ALL",
@@ -213,7 +243,7 @@ async function datesWithData(
 // null if the window has no data at all. Used by the daily cron - the slow,
 // authoritative path.
 export async function getLatestSnapshot(site: string): Promise<GscSnapshot | null> {
-  const sc = searchConsole();
+  const sc = await searchConsole();
   const latest = (await datesWithData(sc, site, 10)).pop();
   if (!latest) return null;
   return snapshotDay(sc, site, latest);
@@ -230,7 +260,7 @@ export async function gscQueryPositions(
   keywords: string[],
   windowDays = 7,
 ): Promise<Map<string, { position: number; clicks: number; impressions: number }>> {
-  const sc = searchConsole();
+  const sc = await searchConsole();
   const today = new Date();
   const start = new Date(today.getTime() - windowDays * 86400000);
   const res = await sc.searchanalytics.query({
@@ -273,7 +303,7 @@ export async function inspectIndexStatus(
   site: string,
   pageUrl: string,
 ): Promise<IndexInspection> {
-  const sc = searchConsole();
+  const sc = await searchConsole();
   const res = await sc.urlInspection.index.inspect({
     requestBody: { siteUrl: site, inspectionUrl: pageUrl },
   });
@@ -288,7 +318,7 @@ export async function inspectIndexStatus(
 // final values once Google finalizes it (fresh numbers can be revised in
 // either direction until then).
 export async function getFreshSnapshots(site: string, days = 3): Promise<GscSnapshot[]> {
-  const sc = searchConsole();
+  const sc = await searchConsole();
   const dates = (await datesWithData(sc, site, 7, "ALL")).slice(-days);
   return Promise.all(dates.map((d) => snapshotDay(sc, site, d, "ALL")));
 }

@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { isValidCookie } from "@/lib/dashboard-auth";
+import { bustInstanceCache, isValidCookie } from "@/lib/dashboard-auth";
 import { dispatchToolBuild, mergePr } from "@/lib/github";
 import { getActiveProject, PROJECT_COOKIE } from "@/lib/active-project";
 import {
@@ -25,7 +25,7 @@ import { validateSerpapiKey } from "@/lib/serp";
 import { placeAtFront, writeQueueOrder } from "@/lib/queue";
 import { requestTrendExpand, requestTrendScan } from "@/lib/trends";
 import { fetchDomainRegistrationDate } from "@/lib/domain-age";
-import { gscAccessProbe, type GscAccessProbe } from "@/lib/gsc";
+import { bustGscCredCache, gscAccessProbe, type GscAccessProbe } from "@/lib/gsc";
 
 // Every action re-validates the auth cookie server-side - the proxy only does
 // presence routing, this is the real check.
@@ -432,6 +432,58 @@ export async function chooseDataforseoSource() {
 
 // Pure free mode: Search Console positions + autocomplete research, no SERP
 // provider. Also the wizard's "Not interested, let's continue" path.
+// Wizard step 2's "Connect service account" form: the owner pastes the JSON
+// key file downloaded from Google Cloud, we validate its shape, encrypt it
+// with the instance key, and store it - Search Console connects entirely
+// from the browser, no .env edit, no restart. Env GSC_SERVICE_ACCOUNT_JSON
+// still wins when set (gsc.ts resolution order).
+export type ConnectGscState = { ok: true; email: string } | { error: string } | null;
+
+export async function connectGscServiceAccount(
+  _prev: ConnectGscState,
+  formData: FormData,
+): Promise<ConnectGscState> {
+  await assertAuthed();
+  const raw = String(formData.get("json") ?? "").trim();
+  if (!raw) return { error: "Paste the contents of the downloaded JSON key file." };
+  let parsed: { client_email?: string; private_key?: string };
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { error: "That doesn't parse as JSON - paste the whole file, exactly as downloaded." };
+  }
+  if (!parsed.client_email || !parsed.private_key) {
+    return {
+      error:
+        "That JSON has no client_email/private_key - make sure it's the service account KEY file (Keys → Add key → Create new key → JSON).",
+    };
+  }
+  const enc = await encryptSecret(raw);
+  const { data, error } = await db()
+    .from("instance_settings")
+    .update({ gsc_service_account_json: enc })
+    .eq("id", true)
+    .select("id");
+  if (error) {
+    return {
+      error: /gsc_service_account_json|column/i.test(error.message)
+        ? "The database is missing migration 0029 - re-run setup.sql once, then try again."
+        : error.message,
+    };
+  }
+  if (!data || data.length === 0) {
+    // Classic env-based install: no instance_settings row to store into.
+    return {
+      error:
+        "This install is configured through environment variables - set GSC_SERVICE_ACCOUNT_JSON in your deployment env instead.",
+    };
+  }
+  bustInstanceCache();
+  bustGscCredCache();
+  revalidatePath("/", "layout");
+  return { ok: true, email: parsed.client_email };
+}
+
 // Wizard step 2's "Verify connection" button: probe Search Console access
 // for the active project's (guessed) property right now, so the owner knows
 // on the spot whether adding the service-account email worked instead of

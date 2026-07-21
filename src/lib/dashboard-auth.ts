@@ -19,6 +19,9 @@ type InstanceRow = {
   // Nullable, added by migration 0027; older rows simply lack them.
   app_url?: string | null;
   enc_key?: string | null;
+  // 0029: encrypted (enc:v1:) service-account JSON the wizard stores so
+  // self-hosters never touch .env; env GSC_SERVICE_ACCOUNT_JSON wins over it.
+  gsc_service_account_json?: string | null;
 } | null;
 
 // Every protected page checks the cookie, so the instance row is cached for

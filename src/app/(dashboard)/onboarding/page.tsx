@@ -19,5 +19,5 @@ export default async function OnboardingPage() {
   const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
   const origin = `${proto}://${host}`;
 
-  return <OnboardingWizard saEmail={serviceAccountEmail()} origin={origin} />;
+  return <OnboardingWizard saEmail={await serviceAccountEmail()} origin={origin} />;
 }
