@@ -494,7 +494,27 @@ export async function wizardCheckGscAccess(): Promise<GscAccessProbe> {
   if (!project.gsc_site_url) {
     return { state: "error", why: "no Search Console property is set on this project yet" };
   }
-  return gscAccessProbe(project.gsc_site_url);
+  const first = await gscAccessProbe(project.gsc_site_url);
+  if (first.state !== "pending" || !project.domain) return first;
+  // The stored property is onboarding's GUESS (sc-domain:<domain>). If the
+  // owner's site is actually verified as a URL-prefix property, that guess
+  // can never pass - so on "no access", probe the other property shapes and
+  // self-correct the project to whichever one the service account can read.
+  const alternates = [
+    `sc-domain:${project.domain}`,
+    `https://${project.domain}/`,
+    `https://www.${project.domain}/`,
+    `http://${project.domain}/`,
+  ].filter((s) => s !== project.gsc_site_url);
+  for (const site of alternates) {
+    const probe = await gscAccessProbe(site);
+    if (probe.state === "ok") {
+      await db().from("projects").update({ gsc_site_url: site }).eq("id", project.id);
+      revalidatePath("/", "layout");
+      return { state: "ok" };
+    }
+  }
+  return first;
 }
 
 export async function chooseGscOnly() {
