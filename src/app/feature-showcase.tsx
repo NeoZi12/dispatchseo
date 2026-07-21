@@ -51,7 +51,7 @@ const SLIDES: Slide[] = [
     id: "rankings",
     title: "Watch ranks move",
     caption: "Daily SERP checks on every keyword.",
-    image: "/screenshots/rankings.png",
+    image: "/screenshots/rankings-v2.png",
     alt: "Rank tracking table showing keyword positions over time",
   },
   {
