@@ -63,6 +63,19 @@ and slash commands.
 The pack is tuned for the reference stack (Next.js + pnpm + MDX content).
 Inspect this repo and adjust these known spots before committing:
 
+- **Backend URL reality check - VERIFY before you offer or wire anything.**
+  The pack bakes in the backend URL this project was created on. If it is a
+  localhost/private address, GitHub Actions cannot reach it. Before asking
+  the owner which URL to use, TEST each candidate yourself: hit
+  \`<url>/api/mcp\` with this connection's bearer token (a tokenless request
+  must 401; the token must be accepted). Only offer choices you have proven
+  work, and say plainly which ones you ruled out and why ("production
+  rejected this project's token - it was created on the local instance").
+  Never present an option that you could have cheaply proven would fail.
+  If no reachable backend accepts the token, keep the URLs as shipped, note
+  loudly in the PR that CI runs stay paused until the instance is public,
+  and skip the smoke/canary dispatches.
+
 - **Package manager / Node setup** in seo-daily.yml, seo-tools.yml, and
   seo-tool-validate.yml: the pnpm/action-setup + cache steps and every
   \`pnpm install/build/start\` become this repo's real commands (npm, yarn,

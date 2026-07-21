@@ -5,6 +5,21 @@ import { isValidCookie, instanceSettings } from "@/lib/dashboard-auth";
 import { getProjectBySlug } from "@/lib/projects";
 import { getCronHealth, reportCronRun } from "@/lib/cron-alerts";
 import { backendBaseUrl } from "@/lib/pipeline-pack";
+import { openSeoPrs } from "@/lib/github";
+
+// The open install PR, so the wizard can say "your move: merge this" with a
+// link instead of waiting silently. Cached 60s per repo: the wizard polls
+// every 6s and GitHub's unauthenticated rate limit is 60/hr.
+let prCache: { repo: string; at: number; pr: { url: string; title: string } | null } | null = null;
+
+async function openInstallPr(repo: string | null): Promise<{ url: string; title: string } | null> {
+  if (!repo) return null;
+  if (prCache && prCache.repo === repo && Date.now() - prCache.at < 60_000) return prCache.pr;
+  const prs = await openSeoPrs(repo);
+  const pr = prs[0] ? { url: prs[0].html_url, title: prs[0].title } : null;
+  prCache = { repo, at: Date.now(), pr };
+  return pr;
+}
 
 // The onboarding wizard's live finale polls this while the owner runs the
 // terminal setup command: it reports how far the repo connection and the
@@ -88,11 +103,18 @@ export async function GET(req: Request): Promise<Response> {
     after(() => triggerCron("/api/cron/hourly-gsc"));
   }
 
+  // Only look for a PR while the pipeline is still uninstalled - that's the
+  // window where "merge it" is the owner's blocking move.
+  const openPr = project.pipeline_installed_at
+    ? null
+    : await openInstallPr(project.github_repo ?? null);
+
   return Response.json({
     repo_connected: Boolean(project.pipeline_installed_at) || Boolean(canary),
     canary_ok: canary?.ok ?? null, // null = hasn't run yet
     canary_error: canary && !canary.ok ? (canary.errors[0] ?? null) : null,
     pipeline_installed: Boolean(project.pipeline_installed_at),
+    open_pr: openPr,
     // The backlink playbook's "agent wrote the site profile" signal - lets
     // the wizard finale watch that paste complete live, like everything else.
     profile_written: (profile.count ?? 0) > 0,

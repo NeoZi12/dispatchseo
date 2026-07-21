@@ -15,6 +15,7 @@ type Status = {
   canary_ok: boolean | null;
   canary_error: string | null;
   pipeline_installed: boolean;
+  open_pr: { url: string; title: string } | null;
   profile_written: boolean;
   ideas_queued: number;
   keywords_tracked: number;
@@ -29,7 +30,7 @@ function Row({
   detail,
 }: {
   state: "done" | "active" | "pending" | "error";
-  label: string;
+  label: React.ReactNode;
   detail?: string | null;
 }) {
   return (
@@ -132,11 +133,26 @@ export function FirstRunStatus({
           detail={s?.canary_error}
         />
         <Row
-          state={s?.pipeline_installed ? "done" : s?.repo_connected ? "active" : "pending"}
+          state={s?.pipeline_installed ? "done" : s?.repo_connected || s?.open_pr ? "active" : "pending"}
           label={
-            s?.pipeline_installed
-              ? "Automation pipeline installed"
-              : "Installing the automation pipeline (your agent opens a PR)"
+            s?.pipeline_installed ? (
+              "Automation pipeline installed"
+            ) : s?.open_pr ? (
+              <>
+                <b className="font-semibold text-neutral-100">Your move:</b>{" "}
+                <a
+                  href={s.open_pr.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-violet-300 underline underline-offset-2 hover:text-violet-200"
+                >
+                  merge the pipeline PR
+                </a>{" "}
+                - the install finishes the moment it merges
+              </>
+            ) : (
+              "Installing the automation pipeline (your agent opens a PR for you to merge)"
+            )
           }
         />
         {playbookCommand && !playbookSkipped ? (
