@@ -40,6 +40,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The agent commits below. Pin an identity that maps to a real GitHub
+      # account - Vercel refuses to deploy commits from unknown author emails,
+      # and an unconfigured runner leaves the agent to improvise one.
+      - name: Pin git identity to github-actions[bot]
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
       - name: Skip if a tool PR is already open or tool builds are toggled off
         id: guard
         env:

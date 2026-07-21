@@ -145,9 +145,29 @@ run_job() { # run_job <base64 job json>
 }
 
 log "starting - backend $APP"
+# Fallback identity only - overwritten per loop once a GitHub token is known.
+# Vercel refuses to deploy commits whose author email maps to no GitHub
+# account, so real jobs must commit as the token's user (see set_git_identity).
 git config --global user.name "dispatchseo-builder" 2>/dev/null
 git config --global user.email "builder@dispatchseo.local" 2>/dev/null
 git config --global init.defaultBranch main 2>/dev/null
+
+GIT_ID_TOKEN=""
+set_git_identity() { # commit as the GH_TOKEN's real user, cached per token
+  [ -n "$GH_TOKEN" ] || return 0
+  [ "$GH_TOKEN" = "$GIT_ID_TOKEN" ] && return 0
+  me=$(curl -s --max-time 30 -H "Authorization: Bearer ${GH_TOKEN}" https://api.github.com/user)
+  login=$(echo "$me" | jq -r '.login // empty')
+  uid=$(echo "$me" | jq -r '.id // empty')
+  if [ -n "$login" ] && [ -n "$uid" ]; then
+    git config --global user.name "$login" 2>/dev/null
+    git config --global user.email "${uid}+${login}@users.noreply.github.com" 2>/dev/null
+    GIT_ID_TOKEN="$GH_TOKEN"
+    log "committing as $login <${uid}+${login}@users.noreply.github.com>"
+  else
+    log "could not resolve the GitHub user behind the token - commits keep the fallback identity, which Vercel may refuse to deploy"
+  fi
+}
 
 while :; do
   if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
@@ -169,6 +189,7 @@ while :; do
   # GitHub identity: the wizard's one-tap-merge token, unless overridden.
   GH_TOKEN="${BUILDER_GH_TOKEN:-$(echo "$feed" | jq -r '.gh_token // empty')}"
   export GH_TOKEN
+  set_git_identity
 
   njobs=$(echo "$feed" | jq '.jobs | length')
   nsweeps=$(echo "$feed" | jq '.merge_sweeps | length')
