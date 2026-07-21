@@ -6,7 +6,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { bustInstanceCache, isValidCookie } from "@/lib/dashboard-auth";
-import { dispatchToolBuild, mergePr } from "@/lib/github";
+import { bustGhTokenCache, dispatchToolBuild, mergePr } from "@/lib/github";
 import { getActiveProject, PROJECT_COOKIE } from "@/lib/active-project";
 import {
   AUTO_PRESET,
@@ -531,6 +531,96 @@ export async function chooseGscOnly() {
 // The wizard's power-ups step: remember which optional setup cards the user
 // unchecked so Home stops offering them (re-enable by clearing in Settings).
 const POWERUPS = ["merge", "pipeline", "playbook"] as const;
+
+// Wizard one-tap-merge step: verify the pasted GitHub token against the
+// project's OWN repo (which simultaneously proves the token works, has repo
+// scope, and the repo name is real - including private repos the public API
+// can't see), then store it encrypted like the GSC key. Env GH_MERGE_TOKEN
+// still wins at read time (github.ts).
+export type ConnectGithubState = { ok: true } | { error: string } | null;
+
+export async function connectGithubToken(
+  _prev: ConnectGithubState,
+  formData: FormData,
+): Promise<ConnectGithubState> {
+  await assertAuthed();
+  const token = String(formData.get("token") ?? "").trim();
+  if (!token) return { error: "Paste the token GitHub generated." };
+  const project = await getActiveProject();
+  if (!project.github_repo) return { error: "Connect a repo in step 1 first." };
+  let res: Response;
+  try {
+    res = await fetch(`https://api.github.com/repos/${project.github_repo}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "User-Agent": "dispatchseo-onboarding",
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch {
+    return { error: "Could not reach GitHub - try again." };
+  }
+  if (res.status === 401) return { error: "GitHub rejected that token - copy it again, in full." };
+  if (res.status === 404) {
+    return {
+      error: `This token can't see ${project.github_repo}. If it's a fine-grained token, make sure that repo is selected; classic tokens need the "repo" scope. (Also double-check the repo name in step 1.)`,
+    };
+  }
+  if (!res.ok) return { error: `GitHub answered HTTP ${res.status} - try again.` };
+  const repoInfo = (await res.json()) as { permissions?: { push?: boolean } };
+  if (repoInfo.permissions && !repoInfo.permissions.push) {
+    return { error: "The token can read the repo but not write to it - it needs push access to merge PRs." };
+  }
+  const enc = await encryptSecret(token);
+  const { data, error } = await db()
+    .from("instance_settings")
+    .update({ gh_merge_token: enc })
+    .eq("id", true)
+    .select("id");
+  if (error) {
+    return {
+      error: /gh_merge_token|column/i.test(error.message)
+        ? "The database is missing migration 0030 - re-run setup.sql once, then try again."
+        : error.message,
+    };
+  }
+  if (!data || data.length === 0) {
+    return {
+      error: "This install is configured through environment variables - set GH_MERGE_TOKEN in your deployment env instead.",
+    };
+  }
+  bustInstanceCache();
+  bustGhTokenCache();
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+// Wizard resume: remember which screen the wizard stands on, so a closed
+// tab or stuck terminal never loses progress. Tolerant of the 0030 column
+// not existing yet - resume is a nicety, never a blocker.
+export async function setWizardScreen(screenId: string) {
+  await assertAuthed();
+  if (!/^[a-z0-9_]{1,20}$/.test(screenId)) return;
+  const project = await getActiveProject();
+  await db().from("projects").update({ onboarding_screen: screenId }).eq("id", project.id);
+}
+
+// Skip a single wizard step (merge token / backlink playbook) - appends to
+// powerups_skipped so the matching Home card stays hidden: a conscious skip
+// in the wizard is a decision, not a leftover.
+export async function skipPowerup(key: string) {
+  await assertAuthed();
+  if (!(POWERUPS as readonly string[]).includes(key)) return;
+  const project = await getActiveProject();
+  const next = Array.from(new Set([...project.powerups_skipped, key]));
+  const { error } = await db()
+    .from("projects")
+    .update({ powerups_skipped: next })
+    .eq("id", project.id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/", "layout");
+}
 
 export async function setPowerupsSkipped(skipped: string[]) {
   await assertAuthed();

@@ -411,7 +411,8 @@ export default async function Home() {
   // once done, and every condition is computed for the ACTIVE project. Cards
   // the wizard's power-ups step unchecked stay hidden (powerups_skipped).
   const skippedPowerup = (key: string) => project.powerups_skipped.includes(key);
-  const needsMergeToken = !canMerge() && !skippedPowerup("merge");
+  const mergeReady = await canMerge();
+  const needsMergeToken = !mergeReady && !skippedPowerup("merge");
   // Free-tier DIY: the project chose DataForSEO as its keyword source but has
   // no account connected yet. Free-mode projects (serpapi/gsc) never see this
   // card - their data source is already set.
@@ -917,7 +918,7 @@ export default async function Home() {
                     <span className="text-xs text-neutral-400">
                       merges on its own once checks pass - no action needed
                     </span>
-                  ) : canMerge() ? (
+                  ) : mergeReady ? (
                     <MergeButton number={pr.number} />
                   ) : null}
                 </div>

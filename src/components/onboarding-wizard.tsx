@@ -7,13 +7,16 @@ import { FirstRunStatus } from "@/components/first-run-status";
 import {
   chooseGscOnly,
   connectDataforseo,
+  connectGithubToken,
   connectGscServiceAccount,
   connectSerpapi,
-  setPowerupsSkipped,
   setProjectMode,
+  setWizardScreen,
+  skipPowerup,
   wizardCheckGscAccess,
   wizardCreateProject,
   type ConnectDataforseoState,
+  type ConnectGithubState,
   type ConnectGscState,
   type ConnectSerpapiState,
   type WizardCreateState,
@@ -34,9 +37,22 @@ type Screen =
   | "s2b_free"
   | "s3"
   | "s3m"
-  | "s4"
+  | "s_gh"
   | "s4b"
   | "s5";
+
+export const WIZARD_SCREENS: readonly Screen[] = [
+  "s0",
+  "s1",
+  "s2a",
+  "s2b_paid",
+  "s2b_free",
+  "s3",
+  "s3m",
+  "s_gh",
+  "s4b",
+  "s5",
+];
 
 const RAIL: Record<Screen, number> = {
   s0: 0,
@@ -46,7 +62,7 @@ const RAIL: Record<Screen, number> = {
   s2b_free: 2,
   s3: 3,
   s3m: 4,
-  s4: 5,
+  s_gh: 5,
   s4b: 6,
   s5: 7,
 };
@@ -61,9 +77,14 @@ const META: Record<Exclude<Screen, "s5">, { name: string; time: string }> = {
   s2b_free: { name: "Keyword data", time: "about 3 minutes" },
   s3: { name: "Claude Code", time: "just read" },
   s3m: { name: "Publish mode", time: "one choice" },
-  s4: { name: "Power-ups", time: "optional" },
+  s_gh: { name: "One-tap merge", time: "about 2 minutes" },
   s4b: { name: "What happens next", time: "just read" },
 };
+
+// The exact paste the finale offers for playbook personalization - the same
+// wording the Home card used before this lived in the wizard.
+const PLAYBOOK_COMMAND =
+  "Call the seo-manager MCP tool get_instructions with workflow setup and follow it exactly.";
 
 // The honest SEO timeline, month by month - the same stage copy the Home
 // journey card and get_overview use (journey-meta.ts is the one source of
@@ -74,23 +95,7 @@ const TIMELINE = JOURNEY_STAGES.map((k) => ({
   copy: STAGE_META[k].expectation,
 }));
 
-const POWERUPS = [
-  {
-    key: "merge",
-    title: "One-tap merge",
-    desc: "Approve content from the dashboard and it ships. Needs a GitHub token.",
-  },
-  {
-    key: "pipeline",
-    title: "Content pipeline",
-    desc: "Daily article builder running in your repo's GitHub Actions, on your own Claude subscription.",
-  },
-  {
-    key: "playbook",
-    title: "Backlink playbook",
-    desc: "One paste in Claude Code researches your product and prefills every backlink submission.",
-  },
-] as const;
+
 
 const inputClass =
   "w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2.5 text-base text-neutral-100 placeholder:text-neutral-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-violet-400/60";
@@ -195,38 +200,53 @@ function GscSteps({ domain, muted }: { domain: string; muted?: boolean }) {
   );
 }
 
+export type WizardResume = {
+  screen: Screen;
+  created: { slug: string; name: string; domain: string; mcpToken: string } | null;
+  choice: "paid" | "free" | null;
+  serpConnected: boolean;
+  playbookSkipped: boolean;
+};
+
 export function OnboardingWizard({
   saEmail,
   origin,
+  resume,
 }: {
   saEmail: string | null;
   origin: string;
+  // Server-derived resume state: reopening /onboarding continues exactly
+  // where the wizard stood (screen + everything the screens need), so a
+  // closed tab or stuck terminal never loses progress.
+  resume?: WizardResume | null;
 }) {
-  const [screen, setScreen] = useState<Screen>("s0");
+  const [screen, setScreenRaw] = useState<Screen>(resume?.screen ?? "s0");
   const [created, setCreated] = useState<{
     slug: string;
     name: string;
     domain: string;
     mcpToken: string;
-  } | null>(null);
-  const [choice, setChoice] = useState<"paid" | "free" | null>(null);
-  const [serpConnected, setSerpConnected] = useState(false);
+  } | null>(resume?.created ?? null);
+  const [choice, setChoice] = useState<"paid" | "free" | null>(resume?.choice ?? null);
+  const [serpConnected, setSerpConnected] = useState(resume?.serpConnected ?? false);
+  const [playbookSkipped, setPlaybookSkipped] = useState(resume?.playbookSkipped ?? false);
+  // Persist every screen change so reloads resume in place (fire-and-forget:
+  // resume is a nicety, navigation must never wait on it).
+  function setScreen(next: Screen) {
+    setScreenRaw(next);
+    void setWizardScreen(next);
+  }
   // "Does the site have a blog?" - a hint the setup workflow reconciles
   // against the actual repo. Default "detect" keeps the 30-second promise:
   // ignoring the question is a valid answer.
   const [contentMode, setContentMode] = useState<"existing" | "create" | "detect">("detect");
   const [contentHint, setContentHint] = useState("");
-  const [powerOn, setPowerOn] = useState<Record<string, boolean>>({
-    merge: true,
-    pipeline: true,
-    playbook: true,
-  });
   // Publish mode: semi is the row default from creation; the mode screen only
   // has to persist an escalation to auto (or a return to semi after Back).
   const [modeChoice, setModeChoice] = useState<"semi" | "auto">("semi");
   const [pendingSkip, startSkip] = useTransition();
   const [pendingMode, startMode] = useTransition();
-  const [pendingFinish, startFinish] = useTransition();
+  const [pendingGhSkip, startGhSkip] = useTransition();
   // Step 2's on-the-spot Search Console probe.
   const [gscCheck, setGscCheck] = useState<GscAccessProbe | null>(null);
   const [gscChecking, startGscCheck] = useTransition();
@@ -307,16 +327,28 @@ export function OnboardingWizard({
   function confirmMode() {
     startMode(async () => {
       await setProjectMode(modeChoice);
-      setScreen("s4");
+      setScreen("s_gh");
     });
   }
 
-  function finishPowerups() {
-    const skipped = POWERUPS.filter((p) => !powerOn[p.key]).map((p) => p.key);
-    startFinish(async () => {
-      await setPowerupsSkipped(skipped);
+  // One-tap merge: verified paste, or a real skip (hides the Home card too).
+  const [ghState, ghAction, ghPending] = useActionState<ConnectGithubState, FormData>(
+    connectGithubToken,
+    null,
+  );
+  useEffect(() => {
+    if (ghState && "ok" in ghState) setScreen("s4b");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ghState]);
+  function skipMergeToken() {
+    startGhSkip(async () => {
+      await skipPowerup("merge");
       setScreen("s4b");
     });
+  }
+  function skipPlaybook() {
+    setPlaybookSkipped(true);
+    void skipPowerup("playbook");
   }
 
   return (
@@ -987,65 +1019,87 @@ export function OnboardingWizard({
         </section>
       ) : null}
 
-      {/* ============ STEP 6 · Power-ups ============ */}
-      {screen === "s4" ? (
+      {/* ============ STEP 6 · One-tap merge (GitHub token) ============ */}
+      {screen === "s_gh" ? (
         <section>
           <StepIcon>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4 w-4" aria-hidden>
               <path d="M13 2 3 14h8l-1 8 11-14h-9l1-6Z" strokeLinejoin="round" />
             </svg>
           </StepIcon>
-          <h2 className="text-2xl font-semibold tracking-tight">Power-ups</h2>
+          <h2 className="text-2xl font-semibold tracking-tight">One-tap merge</h2>
           <p className="mb-4 text-base text-neutral-400">
-            These are on by default. Uncheck anything you want to skip for now.
+            Claude opens finished pages as pull requests. With a GitHub token,
+            the Approve button here also merges them - approve = live on your
+            site. Without it, you merge each PR on GitHub yourself.
           </p>
-          <div className="rounded-xl bg-neutral-900 px-4 py-1">
-            {POWERUPS.map((p) => {
-              const on = powerOn[p.key];
-              return (
-                <div
-                  key={p.key}
-                  className="flex items-center gap-3 border-b border-neutral-800 py-3 last:border-b-0"
+          <div className="rounded-xl bg-neutral-900 p-4">
+            <ol className="space-y-2.5 text-[15px] text-neutral-400">
+              {[
+                <>
+                  <a
+                    href="https://github.com/settings/tokens/new?scopes=repo&description=DispatchSEO%20merge"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-violet-400 underline underline-offset-2 hover:text-violet-300"
+                  >
+                    Create the token on GitHub
+                  </a>{" "}
+                  - the link pre-fills everything (classic token,{" "}
+                  <b className="font-medium text-neutral-200">repo</b> scope). Pick an
+                  expiration, press{" "}
+                  <b className="font-medium text-neutral-200">Generate token</b>.
+                </>,
+                <>Copy the token it shows (starts with <b className="font-medium text-neutral-200">ghp_</b>) and paste it here:</>,
+              ].map((s, i) => (
+                <li key={i} className="flex gap-2.5">
+                  <span className="mt-px flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md bg-neutral-800 text-xs font-semibold text-neutral-300">
+                    {i + 1}
+                  </span>
+                  <span>{s}</span>
+                </li>
+              ))}
+            </ol>
+            <form action={ghAction} className="mt-3.5 space-y-2.5">
+              {ghState && "error" in ghState ? <ErrorLine msg={ghState.error} /> : null}
+              <input
+                name="token"
+                type="password"
+                placeholder="ghp_..."
+                autoComplete="off"
+                className={inputClass}
+              />
+              <p className="text-sm leading-relaxed text-neutral-500">
+                Verified against {created?.name ?? "your"}&apos;s repo before it saves -
+                and stored encrypted in your database.
+              </p>
+              <div className="flex items-center justify-between pt-1">
+                <button
+                  type="button"
+                  onClick={() => setScreen("s3m")}
+                  className="cursor-pointer text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300"
                 >
-                  <div className={`flex-1 ${on ? "" : "opacity-45"}`}>
-                    <p className="text-base font-medium text-neutral-200">{p.title}</p>
-                    <p className="text-sm text-neutral-400">{p.desc}</p>
-                  </div>
+                  ← Back
+                </button>
+                <div className="flex items-center gap-2.5">
                   <button
                     type="button"
-                    aria-pressed={on}
-                    onClick={() => setPowerOn((s) => ({ ...s, [p.key]: !s[p.key] }))}
-                    className={`shrink-0 cursor-pointer rounded-lg border px-3.5 py-1.5 text-sm font-medium transition-colors ${
-                      on
-                        ? "border-violet-500 text-violet-400"
-                        : "border-dashed border-neutral-700 text-neutral-500"
-                    }`}
+                    onClick={skipMergeToken}
+                    disabled={pendingGhSkip}
+                    className="cursor-pointer px-2 text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    {on ? "Added" : "Skipped"}
+                    {pendingGhSkip ? "Saving..." : "Skip - I'll merge on GitHub"}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={ghPending}
+                    className="cursor-pointer rounded-lg bg-violet-500 px-5 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {ghPending ? "Checking with GitHub..." : "Verify and continue"}
                   </button>
                 </div>
-              );
-            })}
-          </div>
-          <p className="mt-2.5 text-sm text-neutral-400">
-            Each one you keep shows as a setup card on Home with its exact steps.
-          </p>
-          <div className="mt-5 flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => setScreen("s3m")}
-              className="cursor-pointer text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300"
-            >
-              ← Back
-            </button>
-            <button
-              type="button"
-              onClick={finishPowerups}
-              disabled={pendingFinish}
-              className="cursor-pointer rounded-lg bg-violet-500 px-5 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {pendingFinish ? "Saving..." : "Continue"}
-            </button>
+              </div>
+            </form>
           </div>
         </section>
       ) : null}
@@ -1084,7 +1138,7 @@ export function OnboardingWizard({
           <div className="mt-5 flex items-center justify-between">
             <button
               type="button"
-              onClick={() => setScreen("s4")}
+              onClick={() => setScreen("s_gh")}
               className="cursor-pointer text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300"
             >
               ← Back
@@ -1233,7 +1287,14 @@ export function OnboardingWizard({
               ))}
             </ul>
           </details>
-          {created ? <FirstRunStatus slug={created.slug} /> : null}
+          {created ? (
+            <FirstRunStatus
+              slug={created.slug}
+              playbookCommand={PLAYBOOK_COMMAND}
+              playbookSkipped={playbookSkipped}
+              onSkipPlaybook={skipPlaybook}
+            />
+          ) : null}
         </section>
       ) : null}
     </div>

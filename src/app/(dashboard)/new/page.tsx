@@ -8,5 +8,7 @@ import { redirect } from "next/navigation";
 export const dynamic = "force-dynamic";
 
 export default function NewProjectPage() {
-  redirect("/onboarding");
+  // ?new=1 tells the wizard this is an ADD, so it must start fresh at step 1
+  // instead of resuming the active project's saved screen.
+  redirect("/onboarding?new=1");
 }

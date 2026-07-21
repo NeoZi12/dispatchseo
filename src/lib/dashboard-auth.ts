@@ -22,6 +22,9 @@ type InstanceRow = {
   // 0029: encrypted (enc:v1:) service-account JSON the wizard stores so
   // self-hosters never touch .env; env GSC_SERVICE_ACCOUNT_JSON wins over it.
   gsc_service_account_json?: string | null;
+  // 0030: encrypted GitHub token behind one-tap merge, same wizard-owned
+  // pattern; env GH_MERGE_TOKEN wins over it.
+  gh_merge_token?: string | null;
 } | null;
 
 // Every protected page checks the cookie, so the instance row is cached for

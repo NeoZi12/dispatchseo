@@ -1555,7 +1555,7 @@ const mcpHandler = createMcpHandler(
           // workflow's content-home hint (the repo wins on conflict).
           content_mode: p.content_mode,
           content_path_hint: p.content_path_hint,
-          merge_enabled: canMerge(),
+          merge_enabled: await canMerge(),
           location_code: p.location_code,
           language_code: p.language_code,
           // The trend-scan workflow's skip check: a scheduled run exits early

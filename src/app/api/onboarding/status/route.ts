@@ -52,13 +52,14 @@ export async function GET(req: Request): Promise<Response> {
   const project = await getProjectBySlug(slug);
   if (!project) return Response.json({ error: "unknown project" }, { status: 404 });
 
-  const [keywords, rankChecks, suggestions, pages, gscRows, health] = await Promise.all([
+  const [keywords, rankChecks, suggestions, pages, gscRows, health, profile] = await Promise.all([
     db().from("keywords").select("id", { count: "exact", head: true }).eq("project_id", project.id),
     db().from("rank_checks").select("id", { count: "exact", head: true }).eq("project_id", project.id),
     db().from("suggestions").select("id", { count: "exact", head: true }).eq("project_id", project.id),
     db().from("pages").select("id", { count: "exact", head: true }).eq("project_id", project.id),
     db().from("gsc_stats").select("id", { count: "exact", head: true }).eq("project_id", project.id),
     getCronHealth(project.slug),
+    db().from("site_profile").select("id", { count: "exact", head: true }),
   ]);
 
   const canary = health.find((h) => h.job === `seo-canary--${project.slug}`);
@@ -92,6 +93,9 @@ export async function GET(req: Request): Promise<Response> {
     canary_ok: canary?.ok ?? null, // null = hasn't run yet
     canary_error: canary && !canary.ok ? (canary.errors[0] ?? null) : null,
     pipeline_installed: Boolean(project.pipeline_installed_at),
+    // The backlink playbook's "agent wrote the site profile" signal - lets
+    // the wizard finale watch that paste complete live, like everything else.
+    profile_written: (profile.count ?? 0) > 0,
     ideas_queued: suggestions.count ?? 0,
     keywords_tracked: keywordCount,
     rank_checks: rankCount,

@@ -15,6 +15,7 @@ type Status = {
   canary_ok: boolean | null;
   canary_error: string | null;
   pipeline_installed: boolean;
+  profile_written: boolean;
   ideas_queued: number;
   keywords_tracked: number;
   rank_checks: number;
@@ -55,13 +56,32 @@ function Row({
   );
 }
 
-export function FirstRunStatus({ slug }: { slug: string }) {
+export function FirstRunStatus({
+  slug,
+  playbookCommand,
+  playbookSkipped,
+  onSkipPlaybook,
+}: {
+  slug: string;
+  // The backlink-playbook paste, folded into the finale so setup truly ends
+  // here: the row watches site_profile and flips green when the agent
+  // writes it. Skipping is a real decision (hides the Home card too).
+  playbookCommand?: string;
+  playbookSkipped?: boolean;
+  onSkipPlaybook?: () => void;
+}) {
   const [status, setStatus] = useState<Status | null>(null);
   const [startedAt] = useState(() => Date.now());
+  const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const playbookSettled = Boolean(status?.profile_written) || Boolean(playbookSkipped);
   const done = Boolean(
-    status && status.pipeline_installed && status.canary_ok && status.ideas_queued > 0,
+    status &&
+      status.pipeline_installed &&
+      status.canary_ok &&
+      status.ideas_queued > 0 &&
+      (playbookCommand ? playbookSettled : true),
   );
 
   useEffect(() => {
@@ -119,6 +139,16 @@ export function FirstRunStatus({ slug }: { slug: string }) {
               : "Installing the automation pipeline (your agent opens a PR)"
           }
         />
+        {playbookCommand && !playbookSkipped ? (
+          <Row
+            state={s?.profile_written ? "done" : s?.pipeline_installed ? "active" : "pending"}
+            label={
+              s?.profile_written
+                ? "Backlink playbook personalized"
+                : "Personalize the backlink playbook (second paste, below)"
+            }
+          />
+        ) : null}
         <Row
           state={s && s.ideas_queued > 0 ? "done" : s?.pipeline_installed ? "active" : "pending"}
           label={
@@ -146,6 +176,43 @@ export function FirstRunStatus({ slug }: { slug: string }) {
           }
         />
       </ul>
+      {playbookCommand && !playbookSkipped && !s?.profile_written ? (
+        <div className="border-t border-neutral-800 py-3">
+          <p className="mb-2 text-sm text-neutral-300">
+            Second paste, same terminal - it researches your product and
+            prefills every backlink submission for you:
+          </p>
+          <div className="flex items-center gap-2.5 rounded-lg border border-neutral-800 bg-neutral-950 py-2.5 pl-3.5 pr-3">
+            <code className="flex-1 overflow-x-auto whitespace-nowrap font-mono text-sm text-neutral-300 [scrollbar-width:none]">
+              {playbookCommand}
+            </code>
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(playbookCommand).then(
+                  () => {
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1600);
+                  },
+                  () => {},
+                );
+              }}
+              className={`shrink-0 cursor-pointer rounded-md bg-neutral-800 px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-neutral-700 ${copied ? "text-emerald-400" : "text-neutral-300"}`}
+            >
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+          {onSkipPlaybook ? (
+            <button
+              type="button"
+              onClick={onSkipPlaybook}
+              className="mt-2 cursor-pointer text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300"
+            >
+              Skip the playbook - I&apos;ll handle backlinks myself
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <div className="border-t border-neutral-800 py-3">
         {done ? (
           <a

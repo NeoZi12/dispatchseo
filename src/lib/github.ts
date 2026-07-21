@@ -2,11 +2,41 @@
 // Reads open seo-labeled PRs on the active project's repo; merges one on
 // approval. The repo is a per-project value (projects.github_repo) - null
 // means the project has no content pipeline yet, so reads return empty and
-// writes no-op. GH_MERGE_TOKEN is optional: without it, reads are
+// writes no-op. The merge token is optional: without it, reads are
 // unauthenticated (60/hr rate limit, fine for one user) and the Merge button
 // degrades to a link.
+//
+// Token resolution mirrors gsc.ts: the GH_MERGE_TOKEN env var wins when set
+// (classic installs); otherwise the encrypted copy the onboarding wizard
+// stores in instance_settings (0030). Cached per process; the connect
+// action busts it.
+
+import { instanceSettings } from "./dashboard-auth";
+import { decryptSecret } from "./crypto";
 
 const API = "https://api.github.com";
+
+let tokenCache: { value: string | null } | null = null;
+
+export function bustGhTokenCache() {
+  tokenCache = null;
+}
+
+export async function mergeToken(): Promise<string | null> {
+  if (tokenCache) return tokenCache.value;
+  let token: string | null = process.env.GH_MERGE_TOKEN ?? null;
+  if (!token) {
+    try {
+      const settings = await instanceSettings();
+      const stored = settings?.gh_merge_token;
+      token = stored ? await decryptSecret(stored) : null;
+    } catch {
+      token = null;
+    }
+  }
+  tokenCache = { value: token };
+  return token;
+}
 
 // No env fallback here on purpose: projects.github_repo is the only source,
 // so a project without a connected repo can never read or merge another
@@ -16,19 +46,18 @@ function repoOrDefault(repo: string | null | undefined): string | null {
   return repo ?? null;
 }
 
-function headers(): Record<string, string> {
+async function headers(): Promise<Record<string, string>> {
   const h: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "User-Agent": "seo-manager-dashboard",
   };
-  if (process.env.GH_MERGE_TOKEN) {
-    h.Authorization = `Bearer ${process.env.GH_MERGE_TOKEN}`;
-  }
+  const token = await mergeToken();
+  if (token) h.Authorization = `Bearer ${token}`;
   return h;
 }
 
-export function canMerge(): boolean {
-  return Boolean(process.env.GH_MERGE_TOKEN);
+export async function canMerge(): Promise<boolean> {
+  return Boolean(await mergeToken());
 }
 
 export type SeoPr = {
@@ -47,7 +76,7 @@ export async function openSeoPrs(repo: string | null | undefined): Promise<SeoPr
     // long after auto-merge ran, leaving a ghost "Ready to ship" card. One user
     // hitting GitHub live is well within even the unauthenticated rate limit.
     const res = await fetch(`${API}/repos/${target}/pulls?state=open&per_page=20`, {
-      headers: headers(),
+      headers: await headers(),
       cache: "no-store",
     });
     if (!res.ok) return [];
@@ -94,11 +123,11 @@ export async function dispatchToolBuild(
 ): Promise<ToolBuildDispatch> {
   const target = repoOrDefault(repo);
   if (!target) return { dispatched: false, reason: "no-repo" };
-  if (!process.env.GH_MERGE_TOKEN) return { dispatched: false, reason: "no-token" };
+  if (!(await mergeToken())) return { dispatched: false, reason: "no-token" };
   try {
     const res = await fetch(`${API}/repos/${target}/dispatches`, {
       method: "POST",
-      headers: { ...headers(), "Content-Type": "application/json" },
+      headers: { ...(await headers()), "Content-Type": "application/json" },
       body: JSON.stringify({
         event_type: "seo-tool-approved",
         client_payload: { suggestion_id: suggestionId },
@@ -122,13 +151,13 @@ async function fireDispatch(
 ): Promise<{ ok: boolean; message: string }> {
   const target = repoOrDefault(repo);
   if (!target) return { ok: false, message: "No pipeline repo connected for this project." };
-  if (!process.env.GH_MERGE_TOKEN) {
-    return { ok: false, message: "Needs GH_MERGE_TOKEN - see the one-tap merge setup card." };
+  if (!(await mergeToken())) {
+    return { ok: false, message: "No GitHub token connected - see the one-tap merge step in setup." };
   }
   try {
     const res = await fetch(`${API}/repos/${target}/dispatches`, {
       method: "POST",
-      headers: { ...headers(), "Content-Type": "application/json" },
+      headers: { ...(await headers()), "Content-Type": "application/json" },
       body: JSON.stringify({ event_type: eventType, client_payload: payload }),
     });
     if (!res.ok) return { ok: false, message: `GitHub answered HTTP ${res.status} - try again.` };
@@ -171,13 +200,13 @@ export async function mergePr(
   repo: string | null | undefined,
   number: number,
 ): Promise<{ ok: boolean; message: string }> {
-  if (!canMerge()) return { ok: false, message: "GH_MERGE_TOKEN not configured" };
+  if (!(await canMerge())) return { ok: false, message: "No GitHub merge token connected" };
   const target = repoOrDefault(repo);
   if (!target) return { ok: false, message: "No repo connected for this project" };
   try {
     const res = await fetch(`${API}/repos/${target}/pulls/${number}/merge`, {
       method: "PUT",
-      headers: { ...headers(), "Content-Type": "application/json" },
+      headers: { ...(await headers()), "Content-Type": "application/json" },
       body: JSON.stringify({ merge_method: "squash" }),
       // Bound a hung GitHub response so it can't occupy the MCP's 60s budget
       // until the platform kills it. Every sibling call already fails
