@@ -96,7 +96,15 @@ export default async function OnboardingPage({
             Stuck? Open the quick guide ↗
           </a>
         </div>
-        <OnboardingWizard saEmail={await serviceAccountEmail()} origin={origin} resume={resume} />
+        <OnboardingWizard
+          saEmail={await serviceAccountEmail()}
+          origin={origin}
+          resume={resume}
+          // Docker marker: the compose stack talks to Postgres through
+          // PostgREST. Docker installs get builder guidance (in-stack
+          // builds) instead of the cloud path's GitHub-schedules story.
+          isDocker={Boolean(process.env.POSTGREST_URL)}
+        />
       </div>
     </main>
   );

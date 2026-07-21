@@ -196,6 +196,7 @@ export function OnboardingWizard({
   saEmail,
   origin,
   resume,
+  isDocker,
 }: {
   saEmail: string | null;
   origin: string;
@@ -203,6 +204,9 @@ export function OnboardingWizard({
   // where the wizard stood (screen + everything the screens need), so a
   // closed tab or stuck terminal never loses progress.
   resume?: WizardResume | null;
+  // Docker installs run builds in-stack (the builder container), so the
+  // GH token powers building too and the finale adds the builder step.
+  isDocker?: boolean;
 }) {
   const [screen, setScreenRaw] = useState<Screen>(resume?.screen ?? "s0");
   const [created, setCreated] = useState<{
@@ -1010,9 +1014,22 @@ export function OnboardingWizard({
           </StepIcon>
           <h2 className="text-2xl font-semibold tracking-tight">One-tap merge</h2>
           <p className="mb-4 text-base text-neutral-400">
-            Claude opens finished pages as pull requests. With a GitHub token,
-            the Approve button here also merges them - approve = live on your
-            site. Without it, you merge each PR on GitHub yourself.
+            {isDocker ? (
+              <>
+                Claude opens finished pages as pull requests, and this token is
+                how your install works with GitHub: the bundled builder uses it
+                to clone your repo, open the PRs, and - in auto mode - merge
+                them. It also makes the Approve button here merge instantly.
+                Skipping it means no automatic building on this install.
+              </>
+            ) : (
+              <>
+                Claude opens finished pages as pull requests. With a GitHub
+                token, the Approve button here also merges them - approve =
+                live on your site. Without it, you merge each PR on GitHub
+                yourself.
+              </>
+            )}
           </p>
           <div className="rounded-xl bg-neutral-900 p-4">
             <ol className="space-y-2.5 text-[15px] text-neutral-400">
@@ -1173,6 +1190,37 @@ export function OnboardingWizard({
             GitHub CLI (<code className="font-mono text-neutral-300">gh</code>) installed; safe
             to re-run any time.
           </div>
+
+          {isDocker ? (
+            <div className="mt-4 space-y-2">
+              <p className="text-[15px] text-neutral-300">
+                <b className="font-semibold text-neutral-100">3.</b> Turn on automatic builds -
+                one time, in the folder you installed DispatchSEO from:
+              </p>
+              <div className="rounded-lg bg-neutral-900 px-3.5 py-3 text-sm leading-relaxed text-neutral-400">
+                <ol className="list-decimal space-y-1 pl-4">
+                  <li>
+                    Run <code className="font-mono text-neutral-200">claude setup-token</code> in
+                    a terminal and copy the <code className="font-mono text-neutral-200">sk-ant-oat...</code>{" "}
+                    token.
+                  </li>
+                  <li>
+                    Add it to <code className="font-mono text-neutral-200">.env</code> as{" "}
+                    <code className="font-mono text-neutral-200">CLAUDE_CODE_OAUTH_TOKEN=</code>{" "}
+                    (one line, no breaks).
+                  </li>
+                  <li>
+                    Run <code className="font-mono text-neutral-200">docker compose up -d builder</code>.
+                  </li>
+                </ol>
+                <p className="mt-2 text-neutral-500">
+                  That&apos;s the builder: your Claude Code running inside Docker, building on
+                  schedule with no public URL needed. Until it&apos;s on, nothing builds
+                  automatically - everything else still works.
+                </p>
+              </div>
+            </div>
+          ) : null}
 
           <details className="group mt-4 rounded-xl bg-neutral-900 px-4 py-3">
             <summary className="flex cursor-pointer select-none items-center justify-between text-sm font-medium text-neutral-400 transition-colors hover:text-neutral-200">

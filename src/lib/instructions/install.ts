@@ -235,14 +235,26 @@ on its FIRST real build:
      https://github.com/{{REPO}}/settings/actions with the exact toggle
      name ("Allow GitHub Actions to create and approve pull requests"),
      then RE-CHECK via the API.
-   - **Every seo workflow is ACTIVE:** \`gh workflow list --all --repo {{REPO}}\`
-     shows every seo-*.yml as active. A repo that had the pipeline before
-     (uninstalled, reset, or long-idle - GitHub also auto-disables
-     schedules after 60 quiet days) silently inherits DISABLED workflows
-     even after the files are re-merged: nothing errors, nothing ever
-     runs. Fix any: \`gh workflow enable <file> --repo {{REPO}}\`, then
-     re-list. The backend re-checks this and refuses the unlock stamp
-     while any seo workflow is disabled.
+   - **Workflow states match the backend type.** Check with
+     \`gh workflow list --all --repo {{REPO}}\`:
+     - **Hosted backend (public URL):** every seo-*.yml must be ACTIVE. A
+       repo that had the pipeline before (uninstalled, reset, or long-idle -
+       GitHub also auto-disables schedules after 60 quiet days) silently
+       inherits DISABLED workflows even after the files are re-merged:
+       nothing errors, nothing ever runs. Fix any:
+       \`gh workflow enable <file> --repo {{REPO}}\`, then re-list. The
+       backend re-checks this and refuses the unlock stamp while any seo
+       workflow is disabled.
+     - **Local backend (localhost / 127.x):** the in-stack builder owns
+       the schedules, and GitHub-hosted runs would only fail phoning home
+       to an unreachable URL. DISABLE the phone-home workflows
+       (\`gh workflow disable\` for seo-daily, seo-weekly-research,
+       seo-geo-scan, seo-auto-merge, seo-token-check, seo-tools,
+       seo-trend-scan, seo-trend-expand) and keep seo-tool-validate and
+       seo-canary ENABLED (PR/dispatch-triggered - they work anywhere).
+       Tell the owner their builds run through the builder container and
+       point them at the wizard finale's "Turn on automatic builds" step
+       if they haven't done it.
    - **Labels exist:** \`gh label list --repo {{REPO}}\` includes both
      \`seo\` and \`seo-tool\`.
    - **Secrets set:** \`gh secret list --repo {{REPO}}\` shows every secret

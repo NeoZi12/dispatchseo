@@ -275,8 +275,11 @@ export async function verifyPipelinePrereqs(
     // the pipeline before (deleted + reinstalled) can silently inherit
     // "disabled" workflows - runs then never fire and nothing errors. A
     // disabled seo workflow means the install does NOT work, whatever the
-    // files on the branch say.
-    if (wfStates.ok) {
+    // files on the branch say. EXCEPT on docker instances (POSTGREST_URL):
+    // there the in-stack builder owns the schedules and the install
+    // deliberately disables the phone-home workflows, so state is not a
+    // health signal.
+    if (wfStates.ok && !process.env.POSTGREST_URL) {
       const { workflows = [] } = (await wfStates.json()) as {
         workflows?: Array<{ path: string; state: string }>;
       };
