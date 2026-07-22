@@ -102,3 +102,10 @@ chatbot in dashboard, charts libraries, dark mode, settings pages, mobile app.
   Would collapse the VPS guide's step 5 into one env var. Not a launch
   blocker: DNS + open ports remain manual either way, and it conflicts
   with proxies users already run, so it must stay opt-in.
+
+- **Prebuilt app image on GHCR (watch the 1 GB VPS test).** start.sh builds the
+  Next.js image on the user's machine; Postiz ships prebuilt images instead.
+  If `next build` proves slow or OOMs on a 1 GB VPS, add a GitHub Action that
+  publishes ghcr.io/neozi12/dispatchseo on release and make docker-compose pull
+  it (keep `build: .` as the fallback for forks). Promotes "1 GB is enough"
+  from claim to guarantee and makes first boot near-instant.
