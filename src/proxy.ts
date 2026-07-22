@@ -30,6 +30,10 @@ export function proxy(req: NextRequest) {
     pathname === "/setup" ||
     pathname === "/blog" ||
     pathname.startsWith("/blog/") ||
+    // Public docs (src/app/docs) - install instructions have to be readable
+    // before anyone has an install to log into.
+    pathname === "/docs" ||
+    pathname.startsWith("/docs/") ||
     // Landing-page slideshow assets - the marketing page must load them
     // logged-out (they are product screenshots, nothing sensitive).
     pathname.startsWith("/screenshots/") ||

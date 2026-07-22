@@ -8,7 +8,7 @@ Debian box is enough. About five minutes end to end.
 
 <Steps>
 
-<Step n={1} title="Connect to the server">
+<Step title="Connect to the server">
 
 From your own terminal:
 
@@ -18,7 +18,7 @@ ssh root@your-server-ip
 
 </Step>
 
-<Step n={2} title="Install and start">
+<Step title="Install and start">
 
 One line - it installs Docker if the server doesn't have it, fetches
 DispatchSEO, and boots the stack:
@@ -37,7 +37,7 @@ the dashboard a proper HTTPS address instead.
 
 </Step>
 
-<Step n={3} title="Give it its address: your domain, automatic HTTPS">
+<Step title="Give it its address: your domain, automatic HTTPS">
 
 You already own a domain - your website's - so this is one DNS record and
 one line in `.env`:
@@ -78,7 +78,7 @@ it after DNS lands.)
 
 </Step>
 
-<Step n={4} title="The builder token comes from your own computer">
+<Step title="The builder token comes from your own computer">
 
 `claude setup-token` opens a browser login, which a headless server can't
 do. Run it on your own machine, copy the `sk-ant-oat...` token into the

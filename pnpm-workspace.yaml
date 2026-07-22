@@ -13,3 +13,7 @@ onlyBuiltDependencies:
 # Force the patched line everywhere; postcss 8.5.x is a drop-in patch series.
 overrides:
   postcss: ">=8.5.10"
+  # Dependabot: fast-uri host-confusion fix; sharp libvips CVEs (next
+  # otherwise pulls 0.34.x).
+  fast-uri: ">=3.1.4"
+  sharp: ">=0.35.0"
