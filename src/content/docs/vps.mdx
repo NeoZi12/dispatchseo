@@ -151,6 +151,11 @@ DNS lands you won't need it again.
 
 <Step title="The builder token comes from your own computer">
 
+Do this after finishing the setup wizard in your browser - the wizard's
+One-tap merge step creates the GitHub access the builder reuses. (Doing
+it earlier breaks nothing: the builder just idles and says what it's
+waiting for.)
+
 The builder is your own Claude Code running inside the stack, building
 guides on your Claude subscription. It needs one token, and the token has
 to be created on your own computer - `claude setup-token` opens a browser
