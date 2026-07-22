@@ -3,6 +3,8 @@ import { checkCron } from "@/lib/cron-auth";
 import { reportCronRun } from "@/lib/cron-alerts";
 import { getProjectByToken, listProjectsChecked } from "@/lib/projects";
 import { missingMigrations } from "@/lib/schema-check";
+import { isCloudMode } from "@/lib/cloud";
+import { polarConfigured } from "@/lib/billing";
 
 // Post-deploy smoke test. The deploy-check GitHub Action hits this after
 // every push to main: first polling with ?expect=<sha> until Vercel serves
@@ -182,6 +184,22 @@ export async function GET(req: Request): Promise<Response> {
       hadError = true;
       checks.gsc_credentials = { error: "GSC_SERVICE_ACCOUNT_JSON is not valid JSON" };
     }
+  }
+
+  // Billing config: in CLOUD_MODE every plan gate (remainingSites,
+  // remainingKeywords, planGate) fails OPEN when POLAR_ACCESS_TOKEN is unset -
+  // so a cloud deploy that forgot the token silently grants every account
+  // unlimited sites and keywords, burning DataForSEO spend with no cap. That
+  // fail-open is deliberate for self-host, but in cloud it's a misconfiguration
+  // that must scream, not shrug. Self-host (CLOUD_MODE off) is always fine.
+  if (isCloudMode() && !polarConfigured()) {
+    hadError = true;
+    checks.billing_config = {
+      error:
+        "CLOUD_MODE is on but POLAR_ACCESS_TOKEN is unset - all plan limits are failing open (unlimited sites/keywords for every account). Set POLAR_ACCESS_TOKEN in Vercel project settings and redeploy",
+    };
+  } else {
+    checks.billing_config = isCloudMode() ? "ok" : "skipped (self-host)";
   }
 
   const result = { sha: liveSha || null, checks };

@@ -55,7 +55,7 @@ async function cloudLogin(formData: FormData) {
 const inputCls =
   "w-full rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-3 text-white placeholder-neutral-500 focus:outline-none focus:border-neutral-400";
 
-function CloudLoginPage({ error }: { error?: string }) {
+function CloudLoginPage({ error, reset }: { error?: string; reset?: string }) {
   return (
     <AuthShell>
       <h1 className="text-xl font-semibold text-white">
@@ -64,11 +64,24 @@ function CloudLoginPage({ error }: { error?: string }) {
           DispatchSEO
         </Link>
       </h1>
+      {reset ? (
+        <p className="rounded-lg border border-green-500/30 bg-green-500/10 px-3 py-2 text-sm text-green-400">
+          Password updated - sign in with your new password.
+        </p>
+      ) : null}
       <GoogleSignInButton label="Continue with Google" />
       <AuthDivider />
       <form action={cloudLogin} className="space-y-4">
         <input type="email" name="email" placeholder="Email" className={inputCls} />
         <input type="password" name="password" placeholder="Password" className={inputCls} />
+        <div className="-mt-1 flex justify-end">
+          <Link
+            href="/forgot-password"
+            className="text-xs text-neutral-500 hover:text-neutral-300"
+          >
+            Forgot password?
+          </Link>
+        </div>
         {error ? <p className="text-sm text-red-400">Sign-in failed - check the email and password.</p> : null}
         <button
           type="submit"
@@ -90,10 +103,10 @@ function CloudLoginPage({ error }: { error?: string }) {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; reset?: string }>;
 }) {
-  const { error } = await searchParams;
-  if (isCloudMode()) return <CloudLoginPage error={error} />;
+  const { error, reset } = await searchParams;
+  if (isCloudMode()) return <CloudLoginPage error={error} reset={reset} />;
   // A fresh deploy has nothing to log into yet - hand off to the wizard.
   if ((await getSetupState()) !== "ready") redirect("/setup");
   return (
