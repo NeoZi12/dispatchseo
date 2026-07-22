@@ -15,6 +15,11 @@ const PUBLIC_FILES = new Set([
   "/sitemap.xml",
   "/robots.txt",
   "/setup.sh",
+  // The self-host one-liner: curl -fsSL https://dispatchseo.com/install.sh | sh
+  // - a login redirect here pipes HTML into sh on every install.
+  "/install.sh",
+  // Agent-facing site summary; crawlers and MCP clients read it logged-out.
+  "/llms.txt",
   "/icon.png",
   "/apple-icon.png",
   "/opengraph-image.png",

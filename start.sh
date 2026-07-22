@@ -44,7 +44,9 @@ DOMAIN=$(grep '^DOMAIN=..*' .env | tail -1 | cut -d= -f2)
 PROFILE=""
 if [ -n "$DOMAIN" ]; then
   PROFILE="--profile domain"
-  grep -v '^APP_URL=' .env > .env.new && mv .env.new .env
+  # (|| true: grep -v exits 1 when nothing survives the filter, and set -e
+  # would abort the whole boot over an .env that only held APP_URL.)
+  { grep -v '^APP_URL=' .env || true; } > .env.new && mv .env.new .env
   echo "APP_URL=https://$DOMAIN" >> .env
 fi
 
