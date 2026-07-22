@@ -1,0 +1,51 @@
+---
+title: Day to day
+description: What using DispatchSEO actually looks like once setup is done - a few minutes a week, and where they go.
+---
+
+Once the wizard finishes, DispatchSEO settles into a rhythm. Your part
+takes a few minutes a week; here is where those minutes go.
+
+## Ideas arrive in the queue
+
+Once a week the agent researches keywords and files suggestions - each one
+a card with the keyword, why it looks winnable, and the angle. You approve,
+reject, or reorder them on the **Queue** page (or from Claude Code chat;
+everything the dashboard does, the agent can do over MCP).
+
+## Approved ideas become pull requests
+
+The builder picks up the oldest approved idea (one guide a day at most -
+publishing pace ramps up slowly on purpose) and opens a PR against your
+site's repo. In semi-automatic mode you press **Merge** on the dashboard;
+in automatic mode green PRs merge themselves and you just see "published"
+in the activity feed.
+
+## Numbers accumulate on their own
+
+Rankings, clicks, and impressions land on the dashboard daily. The **Home**
+page tells you which SEO stage you're in and what, if anything, needs you.
+
+## Problems announce themselves
+
+A failed job shows a red banner on Home, and emails you if you set
+`RESEND_API_KEY` + `ALERT_EMAIL`. No news means it's working - see
+[Troubleshooting](/docs/troubleshooting) when there is news.
+
+## A normal week
+
+Open the dashboard once or twice, approve a couple of ideas, merge a couple
+of PRs, glance at the charts. That's the product.
+
+## Data tiers
+
+The tiers stack - start free, add keys when you want more signal:
+
+| Tier | Costs | You get |
+| --- | --- | --- |
+| **GSC-only** (default) | $0 | Rankings from Search Console, keyword ideas from Google Autocomplete + your own impression data |
+| **+ SerpApi key** | $0 (250 searches/mo free) | Live SERP checks: real positions weekly, page-1 recon before writing |
+| **+ DataForSEO** | pay per call, prepaid | Search volumes, keyword difficulty, domain rating - the "is this keyword worth winning" numbers |
+
+Honest framing: free mode finds keywords you can win; paid mode also knows
+which ones are worth winning.

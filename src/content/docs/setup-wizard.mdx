@@ -1,0 +1,108 @@
+---
+title: The setup wizard, step by step
+description: What each wizard screen asks for, why, and what to do when a step gets stuck.
+---
+
+The wizard starts the first time you open your dashboard. It takes about
+10 minutes, checks each step on the spot, and saves your progress as you
+go: close the tab whenever, and it reopens exactly where you stopped.
+
+## Step 1 - Add your site
+
+Name, domain, and GitHub repo of **your website** - the site you want
+Google traffic for, not the machine DispatchSEO runs on. The repo is the
+`owner/repo` part of its GitHub URL. Then one question: does your site have
+a blog? "Not sure" is a valid answer - Claude checks the repo and decides
+during setup.
+
+## Step 2 - Connect Google Search Console
+
+This is where your ranking and traffic numbers come from. DispatchSEO
+reads them through a **service account** - a robot Google account that it
+signs in as. You create one once and it works for every site you ever add.
+
+The wizard walks you through it with direct links: create a Google Cloud
+project, enable the Search Console API, create the service account,
+download its key file, and paste the file's contents into the wizard. The
+key is stored encrypted in your own database.
+
+Then you add the service account's email as a user in Search Console
+(the wizard shows the exact clicks) and press **Verify connection** - it
+asks Google right then and tells you if it worked. Google occasionally
+takes a few minutes to catch up; you can continue and it re-checks on its
+own.
+
+## Step 3 - Pick a keyword data source
+
+Two choices, switchable later in Settings:
+
+- **DataForSEO (paid, recommended):** real Google search volumes and
+  difficulty scores - the same data most SEO tools resell. Pay as you go;
+  a typical site costs $2-5/month, and new accounts get $1 free.
+- **Free mode ($0 forever):** Claude finds opportunities in your own
+  Search Console data and Google's autocomplete suggestions. If you go
+  free, the wizard offers one optional upgrade: a free SerpApi key
+  (250 searches/month, no credit card) that lets Claude look at the real
+  Google results page before writing, to judge whether a keyword is
+  winnable.
+
+Whatever you pick, the wizard verifies the credentials against the real
+service before saving them.
+
+## Step 4 - Claude Code
+
+Nothing to do here - it just explains the division of labor: Claude Code is
+the brain, DispatchSEO is its memory and dashboard. The connection itself
+happens at the finish line.
+
+## Step 5 - Publish mode
+
+Should anything go live without you?
+
+- **Semi-automatic (recommended to start):** Claude researches and builds
+  on its own, but you approve ideas and click Merge on finished pages. A
+  few minutes of your attention a week.
+- **Automatic:** everything runs itself; pages that pass their checks
+  publish without anyone touching them. You can watch and undo from the
+  dashboard.
+
+There's a Semi/Auto toggle in the dashboard's top bar, so this is never a
+final answer.
+
+## Step 6 - One-tap merge (optional)
+
+Claude ships pages as GitHub pull requests. If you give the dashboard a
+GitHub token, its Approve button also merges - approve = live on your site.
+The wizard links you to a pre-filled GitHub page, you press Generate,
+paste the token, and it's verified against your repo before saving
+(encrypted, like everything else). Skipping is fine: you'll just merge each
+PR on GitHub yourself.
+
+## Step 7 - The honest timeline
+
+A month-by-month picture of what SEO actually looks like, so a quiet first
+month reads as "on schedule" instead of "broken". Just read it.
+
+## The finish line: two pastes
+
+The last screen gives you two things to copy:
+
+1. **A terminal command** that connects your Claude Code to this project.
+   Run it inside your site's repo folder.
+2. **A chat message** to paste into Claude Code itself (open the repo,
+   type `claude`, paste). This one does the actual install.
+
+From that second paste, your agent takes over: it writes the automation
+workflow files into your repo, sets the repo secrets, opens one pull
+request with all of it, personalizes the backlink playbook for your
+product, and kicks off your first keyword research. You approve its steps
+in the chat as it goes. It needs Claude Code and the GitHub CLI (`gh`)
+installed, and it's safe to re-run if anything is interrupted.
+
+The wizard tracks all of it live. When the pipeline PR is open, it shows
+**"Your move: merge the pipeline PR"** with a direct link - merging that PR
+is your one required click. The agent then verifies the full checklist
+(workflows on the main branch, permissions, labels, secrets) and reports
+back over MCP; the backend double-checks it independently. The dashboard
+only unlocks once everything genuinely works. If the wizard says
+it's still waiting, the agent isn't done yet - check its chat.

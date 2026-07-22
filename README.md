@@ -15,9 +15,9 @@
 <p align="center">
   <a href="https://dispatchseo.com">Website</a>
   &nbsp;&middot;&nbsp;
-  <a href="https://dispatchseo.com/docs">Docs</a>
+  <a href="https://dispatchseo.com/docs">Quickstart</a>
   &nbsp;&middot;&nbsp;
-  <a href="docs/SELF_HOSTING.md">Self-hosting guide</a>
+  <a href="https://dispatchseo.com/docs/docker-compose">Self-hosting guide</a>
   &nbsp;&middot;&nbsp;
   <a href="https://github.com/NeoZi12/dispatchseo/discussions">Discussions</a>
   &nbsp;&middot;&nbsp;
@@ -45,13 +45,14 @@ git clone https://github.com/NeoZi12/dispatchseo &&
 and the setup wizard takes it from there. Your laptop is fine for trying
 it out; for the real always-on autopilot, use any machine that stays
 awake - a $5 VPS, a Raspberry Pi, a desktop that never sleeps
-(<a href="docs/SELF_HOSTING.md">the guide</a> explains the difference
-honestly). On Windows, paste this in WSL or Git Bash.</p>
+(<a href="https://dispatchseo.com/docs/docker-compose">the guide</a>
+explains the difference honestly). On Windows, paste this in WSL or Git
+Bash.</p>
 
 <p align="center">Step-by-step walkthroughs:
-<a href="docs/SELF_HOSTING.md#install-on-your-own-computer">on your computer</a>
+<a href="https://dispatchseo.com/docs/docker-compose">on your computer</a>
 &nbsp;·&nbsp;
-<a href="docs/SELF_HOSTING.md#install-on-a-vps">on a VPS</a></p>
+<a href="https://dispatchseo.com/docs/vps">on a VPS</a></p>
 
 <p align="center"><i>Self-hosted has zero feature limitations. Everything the
 paid cloud will do, this repo does today, in your own accounts, at $0.</i></p>
@@ -137,7 +138,7 @@ worth winning.
 ## Quick start
 
 The one command above is the whole install
-([docs/SELF_HOSTING.md](docs/SELF_HOSTING.md) is the full guide). Database,
+([the docs](https://dispatchseo.com/docs) are the full guide). Database,
 migrations, schedules, and a headless Claude Code builder are all bundled;
 open the dashboard and the setup wizard takes over. Nothing on the internet
 needs to reach your machine, so there is no domain or port forwarding to

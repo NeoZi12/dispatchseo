@@ -21,7 +21,7 @@ Key facts:
 ## Docs
 
 - [README](https://github.com/NeoZi12/dispatchseo#readme): what it is, the one-command install, quickstart
-- [Self-hosting guide](https://github.com/NeoZi12/dispatchseo/blob/main/docs/SELF_HOSTING.md): full setup walkthrough
+- [Self-hosting guide](https://dispatchseo.com/docs/docker-compose): full setup walkthrough (VPS: https://dispatchseo.com/docs/vps)
 - [Agent setup skill](https://github.com/NeoZi12/dispatchseo/blob/main/SKILL.md): how an agent connects a site
 - [Architecture notes](https://github.com/NeoZi12/dispatchseo/blob/main/CLAUDE.md): conventions, tenant model, MCP parity rule
 

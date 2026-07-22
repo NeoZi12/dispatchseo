@@ -84,11 +84,10 @@ export default async function OnboardingPage({
             <DispatchMark className="h-7 w-auto" />
             DispatchSEO
           </p>
-          {/* Escape hatch to the plain-English walkthrough - the wizard's
-              only external help surface, so keep the anchor in sync with
-              docs/SELF_HOSTING.md's wizard section heading. */}
+          {/* Escape hatch to the plain-English walkthrough. Served by this
+              same instance, so it works on localhost installs too. */}
           <a
-            href="https://github.com/NeoZi12/dispatchseo/blob/main/docs/SELF_HOSTING.md#the-setup-wizard-step-by-step"
+            href="/docs/setup-wizard"
             target="_blank"
             rel="noopener noreferrer"
             className="text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300"

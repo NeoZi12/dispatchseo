@@ -26,6 +26,16 @@ function ContainerIcon() {
   );
 }
 
+function ServerIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
+      <rect x="3" y="13" width="18" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M7 7.5h.01M7 16.5h.01" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function TerminalIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -39,15 +49,21 @@ const INSTALL_PATHS = [
   {
     href: "/docs/docker-compose",
     icon: ContainerIcon,
-    title: "Docker Compose",
+    title: "Your own computer",
     description: "One command, no cloud accounts.",
     recommended: true,
   },
   {
+    href: "/docs/vps",
+    icon: ServerIcon,
+    title: "A VPS or server",
+    description: "Same command over SSH, plus HTTPS.",
+  },
+  {
     href: "/docs/local-development",
     icon: TerminalIcon,
-    title: "Local development",
-    description: "Run from source with pnpm.",
+    title: "From source",
+    description: "For contributors, with pnpm.",
   },
 ];
 

@@ -1,19 +1,18 @@
 ---
-title: Docker Compose
-description: Run the whole DispatchSEO backend on your own machine with one command - no cloud accounts.
+title: Install on your computer
+description: One command starts the whole product on any machine with Docker. Open the URL it prints and the setup wizard takes over.
 ---
 
-The way to self-host. One command starts everything - dashboard, MCP server,
-database, schedules, and a headless Claude Code builder - as six small
-containers using about 1 GB of RAM.
+## 1. Install Docker
 
-## Prerequisites
+- **Mac / Windows:** install [Docker Desktop](https://docs.docker.com/get-docker/)
+  and open it once, so the whale icon shows in your menu bar / tray.
+- **Linux:** install `docker` and the compose plugin from
+  [docs.docker.com/engine/install](https://docs.docker.com/engine/install/).
 
-- [Docker](https://docs.docker.com/get-docker/) - Docker Desktop on Mac and
-  Windows, or `docker` with the compose plugin on Linux.
-- Nothing else. No cloud accounts of any kind.
+## 2. Run the command
 
-## Install
+In a terminal (on Windows: WSL or Git Bash, not plain PowerShell):
 
 ```bash
 git clone https://github.com/NeoZi12/dispatchseo &&
@@ -21,15 +20,24 @@ git clone https://github.com/NeoZi12/dispatchseo &&
   sh start.sh
 ```
 
-On Windows, run it in WSL or Git Bash. `start.sh` creates `.env`, generates
-the one required secret, picks a free port, and starts the stack. The first
-boot builds the app image (a few minutes) and applies the database schema
-automatically. When it settles, open the URL it printed - usually
-[http://localhost:3000](http://localhost:3000) - and the setup wizard walks
-you through the rest.
+The first boot builds the images, which takes a few minutes. Re-runs take
+seconds.
 
-Want your own database password? Set `POSTGRES_PASSWORD` in `.env` before
-the very first start - it gets baked into the database volume.
+## 3. Open your dashboard
+
+Go to the URL the command printed - usually
+[http://localhost:3000](http://localhost:3000). If the page doesn't answer
+right away, give it ~20 seconds and refresh.
+
+Choose a dashboard password and the setup wizard walks you through the
+rest: your site, Search Console, keyword data, and connecting Claude Code.
+
+That's the install. Everything below is reference.
+
+## Installing on a VPS instead?
+
+Same command over SSH - see [Install on a VPS](/docs/vps) for the
+step-by-step, including a real domain with automatic HTTPS.
 
 ## Laptop or always-on machine?
 
@@ -43,10 +51,7 @@ machine slept through is a gap in the chart.
 To run it seriously, use any machine that stays awake: a ~$5/month VPS with
 1 GB of RAM, a Raspberry Pi, or a desktop that never sleeps. Nothing on the
 internet needs to reach the machine, so a home computer behind a normal
-router works without any port forwarding. On a VPS the install is the same
-command over SSH - the
-[self-hosting guide](https://github.com/NeoZi12/dispatchseo/blob/main/docs/SELF_HOSTING.md#install-on-a-vps)
-has the step-by-step, including HTTPS with Caddy.
+router works without any port forwarding.
 
 ## What's running
 
@@ -67,9 +72,6 @@ docker compose logs app
 docker compose logs builder
 ```
 
-The `app` container reports `healthy` once it can reach the database through
-the whole chain.
-
 ## The builder: automatic content, no public URL
 
 The `builder` container is your own Claude Code running headlessly inside
@@ -81,8 +83,8 @@ localhost install is fully automatic with no tunnel or domain.
 
 Turning it on is one token:
 
-1. On your own computer, run `claude setup-token` and copy the
-   `sk-ant-oat...` token. Builds run on your existing Claude subscription.
+1. Run `claude setup-token` and copy the `sk-ant-oat...` token. Builds run
+   on your existing Claude subscription.
 2. Add it to `.env`: `CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat...`
 3. `docker compose up -d builder`
 
@@ -90,34 +92,19 @@ GitHub access reuses the token from the wizard's One-tap merge step. Until
 the Claude token is set, the container idles and
 `docker compose logs builder` says what it's waiting for.
 
-## When do you need a public URL?
-
-Only if you skip the builder and want the GitHub-hosted workflow schedules
-(the files the install puts in your site's repo) to do the building instead -
-those run on GitHub's servers and must call back to your instance. In that
-case put the instance behind a reverse proxy with HTTPS or a tunnel like
-Cloudflare Tunnel, and set it in `.env`:
-
-```bash
-APP_URL=https://dispatch.your-domain.com
-```
-
-Restart with `sh start.sh` after changing `.env`. PR checks (like tool
-validation) run on GitHub either way and work regardless.
-
 ## Configuration
 
 Only `CRON_SECRET` is required, and `start.sh` generates it. Everything
 else - dashboard password, MCP token, Search Console, DataForSEO - is
-handled in the dashboard's setup wizard, not in env vars. The optional
-overrides (and what they do) are annotated in
+handled in the setup wizard, not in env vars. The optional overrides are
+annotated in
 [`.env.docker.example`](https://github.com/NeoZi12/dispatchseo/blob/main/.env.docker.example).
 
-Useful ones:
+Two you might want:
 
 ```bash
 DISPATCH_PORT=3000   # host port the dashboard is published on
-APP_URL=             # public URL of this instance (see above)
+POSTGRES_PASSWORD=   # your own database password - set BEFORE the first start
 ```
 
 ## Upgrading
@@ -127,8 +114,7 @@ git pull && sh start.sh
 ```
 
 The script rebuilds what changed; schema changes apply automatically on
-boot - the migration file is idempotent, so re-running it is always safe.
-Your data lives in the `dispatch-pgdata` volume and survives rebuilds.
+boot. Your data lives in the `dispatch-pgdata` volume and survives rebuilds.
 
 Back up before big upgrades:
 

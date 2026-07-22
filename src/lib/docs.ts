@@ -27,20 +27,25 @@ export const DOCS_NAV: { section: string; items: { slug: string; title: string }
   {
     section: "Installation",
     items: [
-      { slug: "docker-compose", title: "Docker Compose" },
-      { slug: "local-development", title: "Local development" },
+      { slug: "docker-compose", title: "Your own computer" },
+      { slug: "vps", title: "A VPS or server" },
+      { slug: "local-development", title: "From source (contributors)" },
     ],
   },
   {
     section: "Setup",
     items: [
+      { slug: "setup-wizard", title: "The setup wizard" },
       { slug: "search-console", title: "Google Search Console" },
       { slug: "connect-your-site", title: "Connect your site" },
     ],
   },
   {
-    section: "Help",
-    items: [{ slug: "troubleshooting", title: "Troubleshooting" }],
+    section: "Using it",
+    items: [
+      { slug: "day-to-day", title: "Day to day" },
+      { slug: "troubleshooting", title: "Troubleshooting" },
+    ],
   },
 ];
 

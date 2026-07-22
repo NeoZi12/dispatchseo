@@ -1,0 +1,120 @@
+---
+title: Install on a VPS
+description: The same one-command install over SSH, plus a real domain with automatic HTTPS. Every command is copy-paste.
+---
+
+The install is identical to a local one - the extra work is reaching the
+dashboard from your browser, and giving it a permanent address. About ten
+minutes end to end. Any provider works (Hetzner, DigitalOcean, Vultr, ...);
+a 1 GB Ubuntu or Debian box is enough.
+
+## 1. Connect to the server
+
+From your own terminal:
+
+```bash
+ssh root@your-server-ip
+```
+
+## 2. Install Docker
+
+The official one-liner:
+
+```bash
+curl -fsSL https://get.docker.com | sh
+```
+
+## 3. Clone and start
+
+```bash
+git clone https://github.com/NeoZi12/dispatchseo &&
+  cd dispatchseo &&
+  sh start.sh
+```
+
+First boot builds the images - a few minutes. When it finishes, the stack
+is listening on port 3000 of the server.
+
+## 4. See the wizard right now
+
+Two quick ways in, before any domain setup:
+
+- **SSH tunnel (encrypted, zero setup).** On your own computer run
+  `ssh -L 3000:localhost:3000 root@your-server-ip`, then open
+  [http://localhost:3000](http://localhost:3000). The server's firewall
+  stays fully closed.
+- **Open the port (quick look only).** Allow port 3000 in the firewall
+  (`ufw allow 3000`, or your provider's panel) and browse
+  `http://your-server-ip:3000`. This is plain HTTP - your dashboard
+  password crosses the internet unencrypted - so treat it as a first
+  look, not a way to run.
+
+Day to day you won't use either: the next section gives the dashboard a
+permanent HTTPS address, and from then on it's just a bookmark.
+
+## 5. A real domain with automatic HTTPS
+
+Once, ever. Every command is copy-paste.
+
+**a. Point a subdomain at the server.** In your domain's DNS settings,
+add an **A record**: name `dispatch` (or anything you like), value = your
+server's IP. Give it a few minutes to propagate.
+
+**b. Open the web ports** - Caddy needs them to prove domain ownership
+and fetch the certificate:
+
+```bash
+ufw allow 80 && ufw allow 443
+```
+
+(Or open ports 80 + 443 in your provider's firewall panel.)
+
+**c. Install Caddy.** The official repo works on any Debian or Ubuntu -
+a plain `apt install caddy` doesn't everywhere:
+
+```bash
+apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
+apt update && apt install -y caddy
+```
+
+**d. Tell Caddy about your subdomain** - swap in your real domain, then
+paste:
+
+```bash
+cat > /etc/caddy/Caddyfile << 'EOF'
+dispatch.your-domain.com {
+    reverse_proxy localhost:3000
+}
+EOF
+systemctl reload caddy
+```
+
+Caddy fetches and renews the HTTPS certificate by itself - there is no
+certbot step. (Already running Nginx, Traefik, or another proxy? Any of
+them works - just proxy your subdomain to `localhost:3000`.)
+
+**e. Tell DispatchSEO its address.** In the `.env` next to `start.sh`:
+
+```bash
+APP_URL=https://dispatch.your-domain.com
+```
+
+Then run `sh start.sh` again and open `https://dispatch.your-domain.com` -
+that's your dashboard's home from now on. If the certificate isn't there
+yet, give DNS a few more minutes and reload once.
+
+## 6. The builder token comes from your own computer
+
+`claude setup-token` opens a browser login, which a headless server can't
+do. Run it on your own machine, copy the `sk-ant-oat...` token into the
+VPS's `.env` as `CLAUDE_CODE_OAUTH_TOKEN=...`, then on the server:
+
+```bash
+docker compose up -d builder
+```
+
+That's the whole difference from a local install. The setup wizard and
+everything after it are identical - except this machine never sleeps, so
+the schedules fire at their scheduled times.
