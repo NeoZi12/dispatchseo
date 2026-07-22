@@ -74,6 +74,11 @@ Search Console stats re-read the last few days on each pass. The one real
 loss is rank history - positions are sampled live once a day, so a day the
 machine slept through is a gap in the chart.
 
+And a delay is never dressed up as an error: the health checks know the
+difference between "this job broke" and "the machine was off" - a red
+banner or alert email only ever means something failed while the stack
+was actually running.
+
 To run it seriously, use any machine that stays awake: a ~$5/month VPS with
 1 GB of RAM, a Raspberry Pi, or a desktop that never sleeps. Nothing on the
 internet needs to reach the machine, so a home computer behind a normal

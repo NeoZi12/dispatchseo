@@ -32,6 +32,12 @@ A failed job shows a red banner on Home, and emails you if you set
 `RESEND_API_KEY` + `ALERT_EMAIL`. No news means it's working - see
 [Troubleshooting](/docs/troubleshooting) when there is news.
 
+Running on a laptop that sleeps? Missed schedules are delays, not
+failures - content builds catch up on their own when the machine wakes,
+and the health checks only flag a job that misses its window while the
+stack is actually running. You'll never be warned about a job that was
+simply powered off.
+
 ## A normal week
 
 Open the dashboard once or twice, approve a couple of ideas, merge a couple

@@ -59,10 +59,16 @@ jobs:
           if [ "$open" = "0" ]; then
             code=$(curl -s -o /tmp/mode.json -w "%{http_code}" --max-time 30 \
               -H "Authorization: Bearer $SEO_MCP_API_KEY" \
-              {{BACKEND_URL}}/api/project-mode)
+              {{BACKEND_URL}}/api/project-mode) || code=unreachable
             if [ "$code" = "200" ] && [ "$(jq -r '.automations.auto_build_guides' /tmp/mode.json)" = "false" ]; then
               echo "Guide builds are toggled off on the dashboard - skipping."
               open=paused
+            elif [ "$code" = "unreachable" ] || [ "$code" = "000" ] || [ "$code" = "502" ] || [ "$code" = "503" ] || [ "$code" = "504" ]; then
+              # Self-hosted backends reboot (kernel updates, docker restarts).
+              # Unreachable is a delay, not a failure - the later scheduled
+              # attempt and the in-stack builder both cover this window.
+              echo "Backend unreachable right now (rebooting?) - deferring to the next scheduled attempt."
+              open=defer
             elif [ "$code" != "200" ] && [ "$code" != "404" ]; then
               echo "::error::project-mode endpoint returned HTTP $code"; exit 1
             fi
@@ -75,7 +81,7 @@ jobs:
           if [ "$open" = "0" ]; then
             code=$(curl -s -o /tmp/mode.json -w "%{http_code}" --max-time 30 \
               -H "Authorization: Bearer $SEO_MCP_API_KEY" \
-              {{BACKEND_URL}}/api/project-mode)
+              {{BACKEND_URL}}/api/project-mode) || code=unreachable
             if [ "$code" = "200" ] && [ "$(jq -r '.built_today.guide // false' /tmp/mode.json 2>/dev/null)" = "true" ]; then
               echo "Today's guide is already built - skipping this attempt."
               open=skip

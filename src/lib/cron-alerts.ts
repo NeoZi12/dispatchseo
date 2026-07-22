@@ -58,6 +58,24 @@ function baseJobName(job: string): string {
   return i === -1 ? job : job.slice(0, i);
 }
 
+// Boot-aware staleness clock for self-hosted installs. A laptop that was
+// asleep at 04:00 wakes up with jobs that are LATE, not broken - and even
+// GitHub-side runs that fired while the backend slept had their reports
+// lost, not never sent. On docker the app is one long-lived process, so
+// "time since this process started" is exactly "time since the machine
+// came back": staleness only accrues while the stack is actually up, and
+// a job is flagged only when a full window passes with the app running
+// and still no run - a real scheduler fault, worth being loud about.
+// Cloud stays on wall clock: Vercel never sleeps, and its lambdas restart
+// far too often for a process clock to mean anything there.
+const PROCESS_STARTED_AT = Date.now();
+const IS_DOCKER_STACK = Boolean(process.env.POSTGREST_URL);
+function staleAgeHours(lastRunAtMs: number): number {
+  const wallHours = (Date.now() - lastRunAtMs) / 3600000;
+  if (!IS_DOCKER_STACK) return wallHours;
+  return Math.min(wallHours, (Date.now() - PROCESS_STARTED_AT) / 3600000);
+}
+
 // The project slug a reported job belongs to, or null for instance-wide
 // jobs (backend crons, deploy-check, the dogfood repo reporting with
 // CRON_SECRET before it switched to its project key).
@@ -283,7 +301,7 @@ export async function getCronHealth(projectSlug?: string): Promise<CronHealth[]>
     })
     .map((row) => {
       const job = row.job as string;
-      const ageHours = (Date.now() - new Date(row.created_at as string).getTime()) / 3600000;
+      const ageHours = staleAgeHours(new Date(row.created_at as string).getTime());
       return {
         job,
         ok: Boolean(row.ok),
@@ -316,6 +334,15 @@ async function pipelineHeartbeatAlerts(
   alreadyReported: Set<string>,
 ): Promise<CronHealth[]> {
   try {
+    // Localhost installs: GitHub's runners can never reach this backend,
+    // so repo workflows physically cannot report - their silence is
+    // geometry, not rotted secrets, and the in-stack builder does the
+    // building anyway. Telling those owners to "re-run the setup command"
+    // forever would be a false alarm on every localhost install.
+    if (IS_DOCKER_STACK) {
+      const appUrl = process.env.APP_URL ?? "";
+      if (appUrl.includes("localhost") || appUrl.includes("127.0.0.1")) return [];
+    }
     const { data: projects, error } = await db()
       .from("projects")
       .select("id, slug, github_repo, pipeline_installed_at");
@@ -365,7 +392,7 @@ async function pipelineHeartbeatAlerts(
           ],
         });
       } else {
-        const ageHours = (Date.now() - new Date(hb.created_at as string).getTime()) / 3600000;
+        const ageHours = staleAgeHours(new Date(hb.created_at as string).getTime());
         if (ageHours > (STALE_HOURS["seo-token-check"] ?? Infinity)) {
           out.push({
             job,
