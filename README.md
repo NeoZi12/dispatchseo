@@ -48,6 +48,11 @@ awake - a $5 VPS, a Raspberry Pi, a desktop that never sleeps
 (<a href="docs/SELF_HOSTING.md">the guide</a> explains the difference
 honestly). On Windows, paste this in WSL or Git Bash.</p>
 
+<p align="center">Step-by-step walkthroughs:
+<a href="docs/SELF_HOSTING.md#install-on-your-own-computer">on your computer</a>
+&nbsp;·&nbsp;
+<a href="docs/SELF_HOSTING.md#install-on-a-vps">on a VPS</a></p>
+
 <p align="center"><i>Self-hosted has zero feature limitations. Everything the
 paid cloud will do, this repo does today, in your own accounts, at $0.</i></p>
 
