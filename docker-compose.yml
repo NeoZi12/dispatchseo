@@ -86,7 +86,7 @@ services:
     environment:
       POSTGREST_URL: http://postgrest:3000
       CRON_SECRET: "${CRON_SECRET:?set CRON_SECRET in .env (generate one with openssl rand -hex 24)}"
-      APP_URL: ${APP_URL:-http://localhost:3000}
+      APP_URL: ${APP_URL:-http://localhost:4005}
       # Optional overrides - the setup wizard handles all of these in the
       # dashboard; env vars only force a value (see .env.docker.example).
       DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-}
@@ -101,7 +101,7 @@ services:
       ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:-}
       SEED_KEYWORDS: ${SEED_KEYWORDS:-}
     ports:
-      - "${DISPATCH_PORT:-3000}:3000"
+      - "${DISPATCH_PORT:-4005}:3000"
     depends_on:
       migrate:
         condition: service_completed_successfully

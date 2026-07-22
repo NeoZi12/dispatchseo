@@ -22,7 +22,7 @@ except the one-shot `migrate` container should be `running`, and `app`
 turns `healthy` once it can reach the database. `docker compose logs app`
 (or `logs cron`, `logs postgrest`) has the detail.
 
-**Port 3000 is taken.** Set `DISPATCH_PORT=3100` (any free port) in `.env`
+**Port 4005 is taken.** Set `DISPATCH_PORT=4006` (any free port) in `.env`
 and `docker compose up -d` again.
 
 **Cron jobs aren't running.** `docker compose logs cron` shows every hit -

@@ -1,6 +1,7 @@
 import type { MDXComponents } from "mdx/types";
 import Link from "next/link";
 import { isValidElement, type ReactNode } from "react";
+import { CopyablePre } from "./CopyablePre";
 import { McpAnatomyGrid } from "./mcp-anatomy-grid";
 import { TransportScorecard } from "./transport-scorecard";
 import { McpRequestFlow } from "./mcp-request-flow";
@@ -73,12 +74,7 @@ export const mdxComponents: MDXComponents = {
       {...props}
     />
   ),
-  pre: (props) => (
-    <pre
-      className="my-5 overflow-x-auto rounded-xl bg-neutral-900 p-4 font-mono text-sm leading-relaxed [&>code]:bg-transparent [&>code]:p-0"
-      {...props}
-    />
-  ),
+  pre: (props) => <CopyablePre {...props} />,
   table: (props) => (
     <div className="my-5 overflow-x-auto">
       <table className="w-full border-collapse text-sm" {...props} />

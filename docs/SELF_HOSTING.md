@@ -14,7 +14,7 @@ git clone https://github.com/NeoZi12/dispatchseo &&
   sh start.sh
 ```
 
-Open the URL it prints (usually **http://localhost:3000**), choose a
+Open the URL it prints (usually **http://localhost:4005**), choose a
 dashboard password, and the setup wizard takes it from there.
 
 ## The guide, page by page

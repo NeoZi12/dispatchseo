@@ -33,19 +33,19 @@ git clone https://github.com/NeoZi12/dispatchseo &&
 ```
 
 First boot builds the images - a few minutes. When it finishes, the stack
-is listening on port 3000 of the server.
+is listening on port 4005 of the server.
 
 ## 4. See the wizard right now
 
 Two quick ways in, before any domain setup:
 
 - **SSH tunnel (encrypted, zero setup).** On your own computer run
-  `ssh -L 3000:localhost:3000 root@your-server-ip`, then open
-  [http://localhost:3000](http://localhost:3000). The server's firewall
+  `ssh -L 4005:localhost:4005 root@your-server-ip`, then open
+  [http://localhost:4005](http://localhost:4005). The server's firewall
   stays fully closed.
-- **Open the port (quick look only).** Allow port 3000 in the firewall
-  (`ufw allow 3000`, or your provider's panel) and browse
-  `http://your-server-ip:3000`. This is plain HTTP - your dashboard
+- **Open the port (quick look only).** Allow port 4005 in the firewall
+  (`ufw allow 4005`, or your provider's panel) and browse
+  `http://your-server-ip:4005`. This is plain HTTP - your dashboard
   password crosses the internet unencrypted - so treat it as a first
   look, not a way to run.
 
@@ -85,7 +85,7 @@ paste:
 ```bash
 cat > /etc/caddy/Caddyfile << 'EOF'
 dispatch.your-domain.com {
-    reverse_proxy localhost:3000
+    reverse_proxy localhost:4005
 }
 EOF
 systemctl reload caddy
@@ -93,7 +93,7 @@ systemctl reload caddy
 
 Caddy fetches and renews the HTTPS certificate by itself - there is no
 certbot step. (Already running Nginx, Traefik, or another proxy? Any of
-them works - just proxy your subdomain to `localhost:3000`.)
+them works - just proxy your subdomain to `localhost:4005`.)
 
 **e. Tell DispatchSEO its address.** In the `.env` next to `start.sh`:
 

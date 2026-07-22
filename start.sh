@@ -5,7 +5,7 @@
 #   git clone https://github.com/NeoZi12/dispatchseo && cd dispatchseo && sh start.sh
 #
 # What it does: creates .env from the example on first run, generates the
-# one required secret, picks a free host port (3000, or the next port up
+# one required secret, picks a free host port (4005, or the next port up
 # if something like a dev server already holds it), then docker compose
 # up. Full guide: docs/SELF_HOSTING.md
 set -e
@@ -18,14 +18,14 @@ if ! grep -q '^CRON_SECRET=..*' .env; then
 fi
 
 # Host port for the dashboard. An explicit DISPATCH_PORT in .env always
-# wins; otherwise probe from 3000 upward and take the first free port.
+# wins; otherwise probe from 4005 upward and take the first free port.
 # "Connection refused" (curl exit 7) is the free signal - anything that
-# answers or hangs means the port is taken. Without curl, stay on 3000.
+# answers or hangs means the port is taken. Without curl, stay on 4005.
 PORT=$(grep '^DISPATCH_PORT=..*' .env | tail -1 | cut -d= -f2)
 if [ -z "$PORT" ]; then
-  PORT=3000
+  PORT=4005
   if command -v curl >/dev/null 2>&1; then
-    while [ "$PORT" -lt 3100 ]; do
+    while [ "$PORT" -lt 4100 ]; do
       rc=0
       curl -s -o /dev/null --max-time 1 "http://127.0.0.1:$PORT" || rc=$?
       if [ "$rc" -eq 7 ]; then break; fi

@@ -226,13 +226,13 @@ export default async function LandingPage({
           <div className="term">
             <div className="t-dots"><i /><i /><i /></div>
             <div><span className="dim">$</span> <span className="cmd">git clone https://github.com/NeoZi12/dispatchseo && cd dispatchseo && sh start.sh</span></div>
-            <div className="out">● DispatchSEO is running. Next step: open http://localhost:3000</div>
+            <div className="out">● DispatchSEO is running. Next step: open http://localhost:4005</div>
             <div><span className="dim">$</span> <span className="cmd">claude</span></div>
             <div><span className="dim">&gt;</span> <span className="cmd">set up my site for SEO</span></div>
             <div className="out">● Read your repo: Next.js blog, 24 posts, docs site</div>
             <div className="out">● Wrote the site profile and started tracking 40 keywords</div>
             <div className="out">● Queued 6 article ideas for your review</div>
-            <div><span className="dim">Your move: approve them at localhost:3000</span></div>
+            <div><span className="dim">Your move: approve them at localhost:4005</span></div>
           </div>
         </div>
       </section>
