@@ -26,17 +26,23 @@ function client(redirectUri: string) {
   );
 }
 
-// CSRF state: HMAC-signed project slug + timestamp, keyed by authSecret() -
-// the DASHBOARD_PASSWORD env (classic installs) or the stored password hash
-// (wizard-claimed installs), exactly like the session cookie. Keying only to
-// the env var used to throw on every claimed install - the common cloud/demo
-// case - and 500 the connect flow. Rotating the password invalidates in-flight
-// OAuth states, which is fine: they live minutes.
+// CSRF state: HMAC-signed project slug + timestamp. Keyed by
+// OAUTH_STATE_SECRET when set - the cloud deployment sets it so it can drop
+// DASHBOARD_PASSWORD entirely (Supabase Auth handles login there, so the
+// password's only remaining job was this signature). Falls back to
+// authSecret() - the DASHBOARD_PASSWORD env or the wizard-stored password
+// hash - so self-host installs need no new env var. Rotating whichever
+// secret is in use invalidates in-flight OAuth states, which is fine: they
+// live minutes.
 const STATE_TTL_MS = 10 * 60 * 1000;
 
+async function stateSecret(): Promise<string | null> {
+  return process.env.OAUTH_STATE_SECRET || (await authSecret());
+}
+
 async function sign(payload: string): Promise<string> {
-  const secret = await authSecret();
-  if (!secret) throw new Error("No dashboard password: instance unclaimed and DASHBOARD_PASSWORD unset");
+  const secret = await stateSecret();
+  if (!secret) throw new Error("No OAuth state secret: set OAUTH_STATE_SECRET (or DASHBOARD_PASSWORD / claim the instance)");
   return createHmac("sha256", secret).update(payload).digest("hex");
 }
 
