@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { joinWaitlist } from "@/lib/waitlist";
 import { getActivityReport } from "@/lib/activity";
 import { getCronHealth, markCronFixed } from "@/lib/cron-alerts";
+import { instanceSettings } from "@/lib/dashboard-auth";
 import { getAnalyticsOverview } from "@/lib/analytics-data";
 import { getJourney } from "@/lib/journey";
 import { getWeeklyProgress } from "@/lib/progress";
@@ -1301,7 +1302,20 @@ const mcpHandler = createMcpHandler(
           // Scoped to the calling project: instance-wide jobs plus this
           // project's own --slug-suffixed reports. A project token must
           // never read a sibling project's job names or failure text.
-          return ok(await getCronHealth(currentProject().slug));
+          const health = await getCronHealth(currentProject().slug);
+          // Docker installs: when the in-stack builder last polled for
+          // work (null = never - token not set or container not started).
+          // Parity with the wizard finale row and Home's setup card.
+          if (process.env.POSTGREST_URL) {
+            const inst = (await instanceSettings()) as unknown as {
+              builder_last_seen_at?: string | null;
+            } | null;
+            return ok({
+              builder_last_seen_at: inst?.builder_last_seen_at ?? null,
+              jobs: health,
+            });
+          }
+          return ok(health);
         } catch (e) {
           return fail(e instanceof Error ? e.message : String(e));
         }

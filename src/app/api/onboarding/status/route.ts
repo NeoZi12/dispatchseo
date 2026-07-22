@@ -135,5 +135,12 @@ export async function GET(req: Request): Promise<Response> {
     rank_checks: rankCount,
     gsc_rows: gscCount,
     pages_known: pages.count ?? 0,
+    // Docker installs only: when the in-stack builder last polled for work.
+    // The wizard finale's "automatic builds" row keys off this; null means
+    // it has never checked in (token not set, or container not started).
+    is_docker: Boolean(process.env.POSTGREST_URL),
+    builder_last_seen_at:
+      ((await instanceSettings()) as unknown as { builder_last_seen_at?: string | null } | null)
+        ?.builder_last_seen_at ?? null,
   });
 }

@@ -23,6 +23,8 @@ type Status = {
   rank_checks: number;
   gsc_rows: number;
   pages_known: number;
+  is_docker: boolean;
+  builder_last_seen_at: string | null;
 };
 
 function Row({
@@ -152,6 +154,20 @@ export function FirstRunStatus({ slug }: { slug: string }) {
               : "Personalizing the backlink playbook (same paste - your agent handles it)"
           }
         />
+        {/* Docker installs only: the builder is what makes builds automatic,
+            and an unlocked dashboard with a dead builder is the silent
+            failure this row exists to prevent. Green = it has polled the
+            backend at least once. */}
+        {s?.is_docker ? (
+          <Row
+            state={s.builder_last_seen_at ? "done" : "pending"}
+            label={
+              s.builder_last_seen_at
+                ? "Builder connected - automatic builds are on"
+                : "Builder hasn't checked in - paste the token step below (it polls every 10 minutes, so green can take a few)"
+            }
+          />
+        ) : null}
       </ul>
       <div className="border-t border-neutral-800 py-3">
         {done ? (

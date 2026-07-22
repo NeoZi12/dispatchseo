@@ -38,6 +38,7 @@ import { DEFAULT_PROJECT_ID, effectiveAutomations, fetchProjectToken } from "@/l
 import { credsForProject } from "@/lib/dataforseo";
 import { DataforseoConnectForm } from "@/components/dataforseo-connect";
 import { gscAccessOk, serviceAccountEmail } from "@/lib/gsc";
+import { instanceSettings } from "@/lib/dashboard-auth";
 import {
   indexingBrowserCommand,
   indexingManualSteps,
@@ -456,6 +457,18 @@ export default async function Home() {
   // say "waiting on the first sync" instead of re-explaining the step.
   const gscWaiting =
     needsGsc && project.gsc_site_url ? await gscAccessOk(project.gsc_site_url) : false;
+  // Docker installs: the in-stack builder is what makes builds automatic,
+  // and until its first check-in nothing builds - the classic "unlocked the
+  // dashboard, forgot the token, wondered why nothing shipped" hole. The
+  // heartbeat lands on every claiming poll (api/builder/jobs); pre-0032
+  // databases read undefined here and show the card, which the paste fixes.
+  const needsBuilder =
+    Boolean(process.env.POSTGREST_URL) &&
+    !(
+      (await instanceSettings()) as unknown as {
+        builder_last_seen_at?: string | null;
+      } | null
+    )?.builder_last_seen_at;
   // The project's own MCP key, only fetched when a card needs to show it.
   const mcpToken = needsPipeline ? await fetchProjectToken(project.id) : null;
   // Mirrors the wizard's connect command. The server name is unique per
@@ -484,7 +497,8 @@ export default async function Home() {
     needsProfile ||
     needsFirstPage ||
     needsPipeline ||
-    needsGsc;
+    needsGsc ||
+    needsBuilder;
 
   return (
     <div className="space-y-8">
@@ -612,6 +626,19 @@ export default async function Home() {
                 "Done - traffic starts landing with the next nightly sync. Google's data runs 2-3 days behind, so give it a day or two.",
               ]}
               closing="This card disappears on its own once the first day of search data arrives."
+            />
+          ) : null}
+          {needsBuilder ? (
+            <SetupStep
+              title="Turn on automatic builds"
+              why="This install runs its own builder - your Claude Code inside Docker, building approved ideas on schedule, no public URL needed. It hasn't checked in yet, so nothing builds automatically until this is done. Two pastes."
+              steps={[
+                "On your own computer, run claude setup-token in a terminal and copy the sk-ant-oat... token it prints (it opens a browser login).",
+                "In the folder DispatchSEO was installed from (on a VPS: over SSH), paste the command below with your token swapped in.",
+                "Within ~10 minutes the builder checks in and this card disappears by itself.",
+              ]}
+              command={'echo "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat-PASTE-YOUR-TOKEN-HERE" >> .env && docker compose up -d builder'}
+              closing="Until then everything else still works - research, approvals, rankings - only automatic building waits."
             />
           ) : null}
           {needsMergeToken ? (

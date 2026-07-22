@@ -57,6 +57,17 @@ export async function GET(req: Request): Promise<Response> {
   // due job. Listing must never cost a cadence window.
   const claim = new URL(req.url).searchParams.get("claim") === "1";
 
+  // Heartbeat: the wizard finale and Home's "turn on automatic builds"
+  // card key "builder connected" off this stamp, so it only moves on real
+  // builder polls (claim=1), never on diagnostic GETs. Tolerant: pre-0032
+  // databases just no-op the update.
+  if (claim) {
+    await db()
+      .from("instance_settings")
+      .update({ builder_last_seen_at: new Date().toISOString() })
+      .not("id", "is", null);
+  }
+
   type Job = {
     key: string;
     workflow: string;
