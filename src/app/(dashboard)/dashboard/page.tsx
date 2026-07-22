@@ -285,12 +285,19 @@ export default async function Home() {
       .eq("id", project.id)
       .maybeSingle(),
     getPacing(project),
-    getCronHealth(),
+    // Cloud tenants must only see THEIR project's job health, never the
+    // deployment-wide jobs (daily-ranks, deploy-check, secrets-canary) that
+    // belong to us as the operator. Passing the slug scopes it; self-host
+    // (single owner) keeps the full deployment view.
+    getCronHealth(isCloudMode() ? project.slug : undefined),
   ]);
 
   // Cron alert banner (gap A4): the latest run per job, surfaced when it
-  // failed or hasn't run within its expected window.
-  const cronIssues = cronHealth.filter((h) => !h.ok || h.stale);
+  // failed or hasn't run within its expected window. In cloud mode, drop the
+  // operator-owned global jobs entirely - a tenant can't act on those.
+  const cronIssues = cronHealth
+    .filter((h) => !isCloudMode() || h.job.includes(`--${project.slug}`))
+    .filter((h) => !h.ok || h.stale);
 
   // One-line version of the same trouble for the AgentStatus pill - the
   // green heartbeat flips red the moment any background job is unhealthy.

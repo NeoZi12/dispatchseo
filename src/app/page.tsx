@@ -391,12 +391,17 @@ export default async function LandingPage({
               <a href="#waitlist">Cloud waitlist</a>
               <a href="/blog">Blog</a>
               <a href="/privacy">Privacy policy</a>
+              <a href="/terms">Terms of service</a>
               <a href="/google-data">Google data usage</a>
               <a href="/login">Log in</a>
             </div>
           </div>
           <div className="foot-bottom">
             <span>© DispatchSEO 2026</span>
+            <span className="foot-made">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.5 2" /></svg>
+              Made with <a href="https://clockedcode.com">ClockedCode</a>
+            </span>
             <span className="foot-oss">Proudly <a href={GITHUB_URL}>open source</a> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 20s-7-4.35-9.3-8.6A5 5 0 0 1 12 6a5 5 0 0 1 9.3 5.4C19 15.65 12 20 12 20Z" /></svg></span>
           </div>
         </div>

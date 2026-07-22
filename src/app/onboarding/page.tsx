@@ -2,7 +2,9 @@ import { requireDashboard } from "@/lib/auth-gate";
 import { headers } from "next/headers";
 import { serviceAccountEmail } from "@/lib/gsc";
 import { db } from "@/lib/db";
-import { getActiveProjectOrNull } from "@/lib/active-project";
+import { redirect } from "next/navigation";
+import { getActiveProjectOrNull, scopedProjects } from "@/lib/active-project";
+import { isCloudMode } from "@/lib/cloud";
 import { fetchProjectToken } from "@/lib/projects";
 import { OnboardingWizard, type WizardResume } from "@/components/onboarding-wizard";
 import { WIZARD_SCREENS } from "@/lib/wizard-screens";
@@ -62,7 +64,20 @@ export default async function OnboardingPage({
 }: {
   searchParams: Promise<{ new?: string }>;
 }) {
-  await requireDashboard();
+  const auth = await requireDashboard();
+
+  // Cloud: plan before site. A fresh account with no subscription pays
+  // first (/billing), then comes back here; project creation enforces the
+  // same rule server-side, this is just the honest front door.
+  if (isCloudMode() && auth.user) {
+    const [{ getSubscription, isActive }, mine] = await Promise.all([
+      import("@/lib/billing"),
+      scopedProjects(),
+    ]);
+    if (mine.length === 0 && !isActive(await getSubscription(auth.user.id))) {
+      redirect("/billing");
+    }
+  }
 
   // The MCP connect command needs this deployment's public origin. Behind
   // Vercel the forwarded headers are trustworthy; localhost falls out naturally.

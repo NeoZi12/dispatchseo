@@ -1,6 +1,7 @@
 import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { remainingKeywords } from "@/lib/billing";
 import { joinWaitlist } from "@/lib/waitlist";
 import { getActivityReport } from "@/lib/activity";
 import { getCronHealth, markCronFixed } from "@/lib/cron-alerts";
@@ -566,6 +567,27 @@ const mcpHandler = createMcpHandler(
       },
       async ({ keywords }) => {
         const p = currentProject();
+        // Cloud plan cap (no-op on self-host). Only NET-NEW keywords count -
+        // updating an already-tracked keyword's metrics is always allowed, so
+        // a maxed-out plan can still be maintained, just not grown.
+        const remaining = await remainingKeywords(p.id);
+        if (remaining !== null) {
+          const incoming = [...new Set(keywords.map((k) => k.keyword))];
+          const { data: existing } = await db()
+            .from("keywords")
+            .select("keyword")
+            .eq("project_id", p.id)
+            .in("keyword", incoming);
+          const known = new Set((existing ?? []).map((r) => r.keyword as string));
+          const newCount = incoming.filter((k) => !known.has(k)).length;
+          if (newCount > remaining) {
+            return fail(
+              `Keyword limit reached: this plan allows ${remaining} more tracked keyword(s), ` +
+                `but ${newCount} new one(s) were provided. Upgrade the plan or stop tracking ` +
+                `some keywords. Updating already-tracked keywords is always allowed.`,
+            );
+          }
+        }
         const rows = keywords.map((k) => ({
           project_id: p.id,
           keyword: k.keyword,

@@ -45,9 +45,17 @@ export default async function BillingPage({
       />
 
       {success ? (
-        <p className="rounded-lg border border-emerald-900 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-300">
-          Payment received - your plan is active. Welcome aboard.
-        </p>
+        <div className="flex items-center justify-between gap-4 rounded-lg border border-emerald-900 bg-emerald-950/40 px-4 py-3">
+          <p className="text-sm text-emerald-300">
+            Payment received - your plan is active. Welcome aboard.
+          </p>
+          <a
+            href="/onboarding?new=1"
+            className="shrink-0 rounded-lg bg-white px-4 py-2 text-sm font-medium text-neutral-950"
+          >
+            Set up your site →
+          </a>
+        </div>
       ) : null}
       {error === "no-customer" ? (
         <p className="rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm text-neutral-400">
@@ -102,6 +110,10 @@ export default async function BillingPage({
         Invoices, payment method, plan changes, cancellation:{" "}
         <a className="text-neutral-300 underline" href="/api/polar/portal">
           open the billing portal
+        </a>
+        . By subscribing you agree to the{" "}
+        <a className="text-neutral-300 underline" href="/terms">
+          terms of service
         </a>
         .
       </p>

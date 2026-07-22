@@ -47,10 +47,16 @@ export async function getActiveProjectOrNull(): Promise<Project | null> {
 }
 
 // The non-null contract almost every screen relies on. A cloud account with
-// zero projects is sent to the add-a-site wizard instead - the only screen
-// that tolerates having no project (it reads via getActiveProjectOrNull).
+// zero projects is sent to the right next step: pick a plan first (no active
+// subscription -> /billing), then the add-a-site wizard. Both destinations
+// tolerate having no project.
 export async function getActiveProject(): Promise<Project> {
   const p = await getActiveProjectOrNull();
-  if (!p) redirect("/onboarding?new=1");
+  if (!p) {
+    const { getSubscription, isActive } = await import("./billing");
+    const user = await currentUser();
+    const sub = user ? await getSubscription(user.id) : null;
+    redirect(isActive(sub) ? "/onboarding?new=1" : "/billing");
+  }
   return p;
 }

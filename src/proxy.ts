@@ -51,6 +51,8 @@ export function proxy(req: NextRequest) {
     // Privacy policy must be public: Google's OAuth consent screen links to
     // it and the verification reviewers open it logged-out.
     pathname === "/privacy" ||
+    // Terms of service: linked from checkout + billing, read logged-out.
+    pathname === "/terms" ||
     // Google-data usage page: written for the OAuth branding reviewers, who
     // open it logged-out (linked from the homepage footer + FAQ).
     pathname === "/google-data" ||
