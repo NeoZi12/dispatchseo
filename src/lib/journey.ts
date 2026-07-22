@@ -3,7 +3,7 @@ import { siteAgeDays } from "./pacing";
 import type { Project } from "./projects";
 import type { AnalyticsOverview } from "./analytics-data";
 
-// The progress story (docs/DASHBOARD_PROGRESS.md): where a site is on the SEO
+// The progress story (docs-private/DASHBOARD_PROGRESS.md): where a site is on the SEO
 // timeline, told honestly. SEO shows nothing for the first two months - the
 // journey stage supplies the context that makes "no traffic yet" read as an
 // expected checkpoint instead of a failure. Two rules govern everything here:

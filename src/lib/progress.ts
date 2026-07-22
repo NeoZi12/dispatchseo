@@ -2,7 +2,7 @@ import { db } from "./db";
 import type { Project } from "./projects";
 import type { AnalyticsOverview } from "./analytics-data";
 
-// The weekly strip (docs/DASHBOARD_PROGRESS.md): leading indicators with real
+// The weekly strip (docs-private/DASHBOARD_PROGRESS.md): leading indicators with real
 // week-over-week deltas, composed into plain-English pieces HERE so the Home
 // card and get_overview always say the same thing. The honesty rule: a metric
 // appears only when it genuinely moved - an empty `lines` means a quiet week,

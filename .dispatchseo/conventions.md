@@ -12,11 +12,12 @@ MCP: agents research keywords, queue content ideas, build guides/tools as
 PRs; the backend tracks ranks (DataForSEO) + Google Search Console daily and
 serves a password-gated dashboard for approvals. One deployment manages many
 sites (multi-tenant by MCP bearer token). A paid cloud version is planned;
-see the launch plan.
+the launch plan lives in the maintainer's untracked `docs-private/`.
 
 Product-surface files to read fresh each research run:
 - `CLAUDE.md` - architecture + product ethos (repo root)
-- `docs/SPEC.md` - the original spec; `docs/LAUNCH_PLAN.md` - launch plan + positioning
+- `docs/SPEC.md` - the original spec (launch plan + positioning:
+  `docs-private/LAUNCH_PLAN.md`, maintainer machine only)
 - `src/lib/instructions/*.ts` - the agent playbooks (what the product actually does)
 - `src/app/(dashboard)/page.tsx` and siblings - the dashboard surface
 

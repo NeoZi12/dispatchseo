@@ -1,4 +1,4 @@
-// The progress story card (docs/DASHBOARD_PROGRESS.md) - the emotional
+// The progress story card (docs-private/DASHBOARD_PROGRESS.md) - the emotional
 // centerpiece of Home. The visual language is "waypoints on a road": a track
 // with stage nodes, the current one lit, the road fading onward past the last
 // stage. Deliberately NOT a progress bar - the honesty rule bans percentage

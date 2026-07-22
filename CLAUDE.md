@@ -10,8 +10,8 @@ Claude Code agent drives to research keywords and queue content ideas, runs
 **crons** that track SERP ranks + Google Search Console stats, and hosts a
 password-gated **dashboard** to approve ideas and merge the resulting PRs. The
 agent does the thinking; this backend is state + scheduling + the door to that
-state. See `docs/SPEC.md` for the original spec and `docs/PHASE4_HANDOFF.md`
-for phase history.
+state. See `docs/SPEC.md` for the original spec (phase history and launch
+planning live in the maintainer's untracked `docs-private/`).
 
 ## Commands
 

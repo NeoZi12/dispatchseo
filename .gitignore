@@ -56,3 +56,6 @@ supabase/.temp/
 
 # local docker-trial checkouts of this repo (cloning inside the repo is common in testing)
 /dispatchseo/
+
+# maintainer-only planning notes, never published
+/docs-private/
