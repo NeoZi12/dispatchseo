@@ -136,12 +136,12 @@ export default async function LandingPage() {
       </section>
 
       {/* ==================== PRICING ==================== */}
-      <section className="band-alt" id="pricing">
+      <section id="pricing">
         <div className="wrap">
           <div className="sec-h">
             <h2>Pick your plan</h2>
+            <p>Start with a 7-day free trial. Unlimited articles on every plan - the writing runs on your own Claude, so we never meter content.</p>
           </div>
-          <p className="price-note">Start with a <b>7-day free trial</b>. Every plan publishes <b>unlimited articles</b> - the writing runs on your own Claude subscription, so we never meter your content.</p>
           <div className="cloud-adds">
             <span className="ca-label">Every plan includes</span>
             <span className="ca-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18" /><path d="M7 21v-5" /><path d="M12 21V9" /><path d="M17 21v-8" /></svg>bundled SERP + volume data, one bill</span>
@@ -241,7 +241,7 @@ export default async function LandingPage() {
       </section>
 
       {/* ==================== FAQ ==================== */}
-      <section className="faq" id="faq">
+      <section className="faq band-alt" id="faq">
         <div className="wrap">
           <div className="sec-h">
             <h2>Fair questions</h2>
@@ -280,7 +280,7 @@ export default async function LandingPage() {
       </section>
 
       {/* ==================== FINAL CTA ==================== */}
-      <section className="final band-alt" id="start-final">
+      <section className="final" id="start-final">
         <svg className="doodle doodle-f1" viewBox="0 0 48 56" aria-hidden="true"><path d="M10 7 L30 7 L38 15 L38 49 L10 49 Z M30 7 L30 15 L38 15 M17 27 L31 27 M17 35 L27 35" /></svg>
         <svg className="doodle doodle-f2" viewBox="0 0 64 64" aria-hidden="true"><path d="M8 52 L24 38 L34 46 L56 20 M56 20 L45 22 M56 20 L55 32" /></svg>
         <div className="wrap">

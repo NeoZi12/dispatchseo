@@ -208,8 +208,6 @@ html:has(.ld) { scroll-behavior: smooth; }
 .ld .term .out { color: #86efac; }
 
 /* ---------- pricing ---------- */
-.ld .price-note { text-align: center; margin: -32px auto 34px; max-width: 560px; font-size: 15px; color: var(--dim); }
-.ld .price-note b { color: var(--txt); }
 .ld .plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; align-items: stretch; }
 .ld .plan { border: 1px solid var(--line); border-radius: 16px; padding: 30px 26px; background: var(--card); display: flex; flex-direction: column; position: relative; }
 .ld .plan.hero-plan { border: 2px solid var(--vio); }
