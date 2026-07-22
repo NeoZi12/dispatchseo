@@ -38,7 +38,7 @@ import { DEFAULT_PROJECT_ID, effectiveAutomations, fetchProjectToken } from "@/l
 import { credsForProject } from "@/lib/dataforseo";
 import { DataforseoConnectForm } from "@/components/dataforseo-connect";
 import { gscAccessOk, serviceAccountEmail } from "@/lib/gsc";
-import { instanceSettings } from "@/lib/dashboard-auth";
+import { buildsActive } from "@/lib/builder-status";
 import { isCloudMode } from "@/lib/cloud";
 import {
   indexingBrowserCommand,
@@ -465,30 +465,13 @@ export default async function Home() {
   // say "waiting on the first sync" instead of re-explaining the step.
   const gscWaiting =
     needsGsc && project.gsc_site_url ? await gscAccessOk(project.gsc_site_url) : false;
-  // Docker installs: the in-stack builder is what makes builds automatic,
-  // and until its first check-in nothing builds - the classic "unlocked the
-  // dashboard, forgot the token, wondered why nothing shipped" hole. The
-  // heartbeat lands on every claiming poll (api/builder/jobs).
-  let needsBuilder =
-    Boolean(process.env.POSTGREST_URL) &&
-    !(
-      (await instanceSettings()) as unknown as {
-        builder_last_seen_at?: string | null;
-      } | null
-    )?.builder_last_seen_at;
-  if (needsBuilder) {
-    // Never accuse a builder that is demonstrably working. The heartbeat
-    // column can lag the code (schema drift between upgrades), but finished
-    // builder jobs in cron_runs are hard evidence - a recent one suppresses
-    // the card. Recent only, so a builder that truly died still resurfaces.
-    const { data: builderRuns } = await client
-      .from("cron_runs")
-      .select("id")
-      .like("job", "builder-%")
-      .gte("created_at", new Date(Date.now() - 14 * 86400000).toISOString())
-      .limit(1);
-    if ((builderRuns ?? []).length > 0) needsBuilder = false;
-  }
+  // Docker installs: automatic builds need SOME build path alive - the
+  // in-stack builder or the repo's GitHub Actions pipeline. buildsActive()
+  // accepts evidence from either, so this card only shows when nothing has
+  // built or checked in - never while pages demonstrably ship another way
+  // (the classic "unlocked the dashboard, forgot the token" hole is real,
+  // but accusing a working install is worse).
+  const needsBuilder = Boolean(process.env.POSTGREST_URL) && !(await buildsActive());
   // Auto mode publishes without a human, so nobody opens this dashboard on a
   // normal day - the failure email is the only passive signal. Self-host only:
   // cloud sends alerts from our own Resend with zero config. The card reads

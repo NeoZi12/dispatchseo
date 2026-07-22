@@ -24,7 +24,7 @@ type Status = {
   gsc_rows: number;
   pages_known: number;
   is_docker: boolean;
-  builder_last_seen_at: string | null;
+  builds_active: boolean;
 };
 
 function Row({
@@ -154,17 +154,17 @@ export function FirstRunStatus({ slug }: { slug: string }) {
               : "Personalizing the backlink playbook (same paste - your agent handles it)"
           }
         />
-        {/* Docker installs only: the builder is what makes builds automatic,
-            and an unlocked dashboard with a dead builder is the silent
-            failure this row exists to prevent. Green = it has polled the
-            backend at least once. */}
+        {/* Docker installs only: an unlocked dashboard with no build path is
+            the silent failure this row exists to prevent. Green = the
+            in-stack builder polled the backend at least once, OR the repo's
+            GitHub Actions pipeline has recent builds - either counts. */}
         {s?.is_docker ? (
           <Row
-            state={s.builder_last_seen_at ? "done" : "pending"}
+            state={s.builds_active ? "done" : "pending"}
             label={
-              s.builder_last_seen_at
-                ? "Builder connected - automatic builds are on"
-                : "Builder hasn't checked in - paste the token step below (it polls every 10 minutes, so green can take a few)"
+              s.builds_active
+                ? "Automatic builds are on"
+                : "No build path yet - paste the token step below (the builder polls every 10 minutes, so green can take a few)"
             }
           />
         ) : null}

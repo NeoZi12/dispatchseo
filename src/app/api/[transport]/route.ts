@@ -6,6 +6,7 @@ import { joinWaitlist } from "@/lib/waitlist";
 import { getActivityReport } from "@/lib/activity";
 import { getCronHealth, markCronFixed } from "@/lib/cron-alerts";
 import { instanceSettings } from "@/lib/dashboard-auth";
+import { buildsActive } from "@/lib/builder-status";
 import { getAnalyticsOverview } from "@/lib/analytics-data";
 import { getJourney } from "@/lib/journey";
 import { getWeeklyProgress } from "@/lib/progress";
@@ -1334,6 +1335,10 @@ const mcpHandler = createMcpHandler(
             } | null;
             return ok({
               builder_last_seen_at: inst?.builder_last_seen_at ?? null,
+              // Parity with Home's builder card and the wizard finale row:
+              // true when EITHER build path shows recent life (in-stack
+              // builder heartbeat or GitHub Actions builds reporting home).
+              builds_active: await buildsActive(),
               // Parity with Home's "get emailed when something breaks" card:
               // false = failures only surface on the dashboard banner.
               alert_email_configured: Boolean(

@@ -4,6 +4,7 @@ import { instanceSettings } from "@/lib/dashboard-auth";
 import { dashboardAuth } from "@/lib/auth-gate";
 import { getProjectBySlug } from "@/lib/projects";
 import { getCronHealth, reportCronRun } from "@/lib/cron-alerts";
+import { buildsActive } from "@/lib/builder-status";
 import { backendBaseUrl } from "@/lib/pipeline-pack";
 import { openSeoPrs } from "@/lib/github";
 
@@ -135,12 +136,12 @@ export async function GET(req: Request): Promise<Response> {
     rank_checks: rankCount,
     gsc_rows: gscCount,
     pages_known: pages.count ?? 0,
-    // Docker installs only: when the in-stack builder last polled for work.
-    // The wizard finale's "automatic builds" row keys off this; null means
-    // it has never checked in (token not set, or container not started).
+    // Docker installs only: is any build path alive - the in-stack builder's
+    // heartbeat OR recent builds through the repo's GitHub Actions pipeline.
+    // The wizard finale's "automatic builds" row keys off this; false means
+    // nothing has built or checked in yet (token not set, container not
+    // started, and no workflow builds either).
     is_docker: Boolean(process.env.POSTGREST_URL),
-    builder_last_seen_at:
-      ((await instanceSettings()) as unknown as { builder_last_seen_at?: string | null } | null)
-        ?.builder_last_seen_at ?? null,
+    builds_active: await buildsActive(),
   });
 }
