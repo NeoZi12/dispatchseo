@@ -41,37 +41,40 @@ export function DomainCta() {
   }
 
   return (
-    <form className="domain-group" onSubmit={submit}>
-      <span className="domain-ic">
-        {showFavicon ? (
-          // Google's favicon service resolves any domain without us proxying
-          // anything; on a miss it still returns a placeholder image.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`}
-            alt=""
-            onError={() => setIconOk(false)}
-          />
-        ) : (
-          <GlobeIcon />
-        )}
-      </span>
-      <input
-        type="text"
-        inputMode="url"
-        autoComplete="off"
-        spellCheck={false}
-        placeholder="yourwebsite.com"
-        aria-label="Your website's domain"
-        value={value}
-        onChange={(e) => {
-          setValue(e.target.value);
-          setIconOk(true);
-        }}
-      />
+    <form className="domain-cta" onSubmit={submit}>
+      <div className="domain-group">
+        <span className="domain-ic">
+          {showFavicon ? (
+            // Google's favicon service resolves any domain without us proxying
+            // anything; on a miss it still returns a placeholder image.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`}
+              alt=""
+              onError={() => setIconOk(false)}
+            />
+          ) : (
+            <GlobeIcon />
+          )}
+        </span>
+        <input
+          type="text"
+          inputMode="url"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="yourwebsite.com"
+          aria-label="Your website's domain"
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setIconOk(true);
+          }}
+        />
+      </div>
       <button type="submit" className="btn btn-solid">
         Automate my SEO
       </button>
+      <p className="domain-note">7-day free trial.</p>
     </form>
   );
 }

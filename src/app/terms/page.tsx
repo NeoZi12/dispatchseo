@@ -55,9 +55,12 @@ export default function TermsPage() {
           current billing period, and you keep access until then.
         </p>
         <p>
-          <strong className="text-neutral-100">Money-back guarantee.</strong> If DispatchSEO
-          hasn&apos;t measurably helped your site within 90 days, contact us at {CONTACT} and
-          we&apos;ll refund your subscription payments for that period.
+          <strong className="text-neutral-100">Free trial and refunds.</strong> The Starter
+          plan includes a 7-day free trial: your card is collected at checkout and first
+          charged when the trial ends, and cancelling before then costs nothing. Beyond the
+          trial, fees are non-refundable, including for partially used periods - cancelling
+          stops future renewals. If something went wrong on our side, contact us at {CONTACT}{" "}
+          and we&apos;ll sort it out case by case.
         </p>
       </section>
 

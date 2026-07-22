@@ -13,6 +13,7 @@ import {
 } from "@/lib/login-lockout";
 import { DispatchMark } from "@/components/logo";
 import { AuthDivider, GoogleSignInButton } from "@/components/google-signin";
+import { AuthShell } from "@/components/auth-shell";
 
 async function login(formData: FormData) {
   "use server";
@@ -56,33 +57,31 @@ const inputCls =
 
 function CloudLoginPage({ error }: { error?: string }) {
   return (
-    <main className="min-h-screen flex items-center justify-center bg-neutral-950 p-6">
-      <div className="w-full max-w-xs space-y-4">
-        <h1 className="flex items-center gap-2.5 text-xl font-semibold text-white">
-          <DispatchMark className="h-7 w-auto" />
-          DispatchSEO
-        </h1>
-        <GoogleSignInButton label="Continue with Google" />
-        <AuthDivider />
-        <form action={cloudLogin} className="space-y-4">
-          <input type="email" name="email" placeholder="Email" className={inputCls} />
-          <input type="password" name="password" placeholder="Password" className={inputCls} />
-          {error ? <p className="text-sm text-red-400">Sign-in failed - check the email and password.</p> : null}
-          <button
-            type="submit"
-            className="w-full rounded-lg bg-white px-4 py-3 font-medium text-neutral-950"
-          >
-            Sign in
-          </button>
-        </form>
-        <p className="text-sm text-neutral-500">
-          New here?{" "}
-          <Link href="/signup" className="text-neutral-300 underline">
-            Create an account
-          </Link>
-        </p>
-      </div>
-    </main>
+    <AuthShell>
+      <h1 className="flex items-center gap-2.5 text-xl font-semibold text-white">
+        <DispatchMark className="h-7 w-auto" />
+        DispatchSEO
+      </h1>
+      <GoogleSignInButton label="Continue with Google" />
+      <AuthDivider />
+      <form action={cloudLogin} className="space-y-4">
+        <input type="email" name="email" placeholder="Email" className={inputCls} />
+        <input type="password" name="password" placeholder="Password" className={inputCls} />
+        {error ? <p className="text-sm text-red-400">Sign-in failed - check the email and password.</p> : null}
+        <button
+          type="submit"
+          className="w-full rounded-lg bg-white px-4 py-3 font-medium text-neutral-950"
+        >
+          Sign in
+        </button>
+      </form>
+      <p className="text-sm text-neutral-500">
+        New here?{" "}
+        <Link href="/signup" className="text-neutral-300 underline">
+          Create an account
+        </Link>
+      </p>
+    </AuthShell>
   );
 }
 

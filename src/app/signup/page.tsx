@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 import { DispatchMark } from "@/components/logo";
 import { AuthDivider, GoogleSignInButton } from "@/components/google-signin";
+import { AuthShell } from "@/components/auth-shell";
 import { isCloudMode } from "@/lib/cloud";
 import { supabaseAuth } from "@/lib/cloud-auth";
 import { cleanDomain, isValidDomain } from "@/lib/domain";
@@ -69,27 +70,24 @@ export default async function SignupPage({
 
   if (sent) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-neutral-950 p-6">
-        <div className="w-full max-w-sm space-y-4">
-          <h1 className="flex items-center gap-2.5 text-xl font-semibold text-white">
-            <DispatchMark className="h-7 w-auto" />
-            DispatchSEO
-          </h1>
-          <p className="text-neutral-300">
-            Check your inbox - we sent a confirmation link. Click it, then{" "}
-            <Link href="/login" className="text-white underline">
-              sign in
-            </Link>
-            .
-          </p>
-        </div>
-      </main>
+      <AuthShell>
+        <h1 className="flex items-center gap-2.5 text-xl font-semibold text-white">
+          <DispatchMark className="h-7 w-auto" />
+          DispatchSEO
+        </h1>
+        <p className="text-neutral-300">
+          Check your inbox - we sent a confirmation link. Click it, then{" "}
+          <Link href="/login" className="text-white underline">
+            sign in
+          </Link>
+          .
+        </p>
+      </AuthShell>
     );
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-neutral-950 p-6">
-      <div className="w-full max-w-sm space-y-4">
+    <AuthShell>
         <h1 className="flex items-center gap-2.5 text-xl font-semibold text-white">
           <DispatchMark className="h-7 w-auto" />
           DispatchSEO
@@ -97,7 +95,7 @@ export default async function SignupPage({
         <p className="text-neutral-300">
           {domain ? (
             <>
-              Create a free account to start automating{" "}
+              Create a free account and have Claude Code run{" "}
               <span className="inline-flex items-center gap-1.5 align-bottom">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -107,10 +105,10 @@ export default async function SignupPage({
                 />
                 <b className="font-semibold text-white">{domain}</b>
               </span>
-              &apos;s SEO.
+              &apos;s SEO for you.
             </>
           ) : (
-            <>Create a free account to put your site&apos;s SEO on autopilot.</>
+            <>Create a free account and have Claude Code run your site&apos;s SEO for you.</>
           )}
         </p>
         <GoogleSignInButton label="Sign up with Google" domain={domain} />
@@ -150,7 +148,6 @@ export default async function SignupPage({
             Sign in
           </Link>
         </p>
-      </div>
-    </main>
+    </AuthShell>
   );
 }

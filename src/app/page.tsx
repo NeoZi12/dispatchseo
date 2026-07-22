@@ -28,12 +28,6 @@ export const metadata: Metadata = {
     "Claude Code researches keywords, writes guides, builds interactive tools, and tracks your ranks automatically. Every piece is a pull request you approve. Open source, free to self-host.",
 };
 
-function GithubIcon() {
-  return (
-    <svg width="17" height="17" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z" /></svg>
-  );
-}
-
 export default async function LandingPage() {
   if (process.env.LANDING_ENABLED !== "true") redirect("/dashboard");
 
@@ -47,18 +41,13 @@ export default async function LandingPage() {
             DispatchSEO
           </a>
           <div className="nav-links">
-            <a href="#oss">Open source</a>
             <a href="#pricing">Pricing</a>
             <a href="#faq">FAQ</a>
             <a href="/blog">Blog</a>
-            <a href="/login">Log in</a>
           </div>
           <div className="nav-cta">
-            <a className="gh-link" href={GITHUB_URL}>
-              <GithubIcon />
-              GitHub
-            </a>
-            <a className="btn btn-solid btn-sm" href="/signup">Get started</a>
+            <a className="btn btn-ghost btn-sm" href="/login">Log in</a>
+            <a className="btn btn-solid btn-sm" href="/signup">Start for free</a>
           </div>
         </div>
       </nav>
@@ -77,15 +66,6 @@ export default async function LandingPage() {
           <div className="cta-row" id="get-started">
             <DomainCta />
           </div>
-          <p className="hero-note">
-            <svg className="gift-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" /><path d="m9 12 2 2 4-4" /></svg>
-            7-day free trial. From $49/month, with a 90-day money-back guarantee.
-          </p>
-          <a className="btn btn-ghost btn-sm hero-selfhost" href={GITHUB_URL}>
-            <GithubIcon />
-            Self-host now for free
-          </a>
-
         </div>
       </header>
 
@@ -155,48 +135,13 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      {/* ==================== OPEN SOURCE ==================== */}
-      <section className="oss" id="oss">
-        <div className="wrap oss-in">
-          <div className="oss-copy">
-            <h2>Free forever, if you host it yourself</h2>
-            <p>DispatchSEO is open source under AGPL-3.0, with zero feature gating. The self-hosted version is the whole product: one command on any machine with Docker, and the entire stack - dashboard, database, schedules, a headless Claude Code builder - runs on hardware you control. A $5 VPS or the Raspberry Pi in your drawer is plenty.</p>
-            <p>Setup is agent-driven. Run the command, open the wizard, and tell your agent to set itself up. It follows the instructions so you don&apos;t have to.</p>
-            <div className="oss-badges">
-              <span className="oss-badge">AGPL-3.0</span>
-              <span className="oss-badge">Zero feature limits</span>
-              <span className="oss-badge">Your machine, your keys</span>
-              <span className="oss-badge">One-command install</span>
-            </div>
-            <div className="oss-btns">
-              <a className="btn btn-solid" href={GITHUB_URL}>
-                <GithubIcon />
-                Star on GitHub
-              </a>
-              <a className="btn btn-ghost" href={DOCS_URL}>Read the docs</a>
-            </div>
-          </div>
-          <div className="term">
-            <div className="t-dots"><i /><i /><i /></div>
-            <div><span className="dim">$</span> <span className="cmd">git clone https://github.com/NeoZi12/dispatchseo && cd dispatchseo && sh start.sh</span></div>
-            <div className="out">● DispatchSEO is running. Next step: open http://localhost:4005</div>
-            <div><span className="dim">$</span> <span className="cmd">claude</span></div>
-            <div><span className="dim">&gt;</span> <span className="cmd">set up my site for SEO</span></div>
-            <div className="out">● Read your repo: Next.js blog, 24 posts, docs site</div>
-            <div className="out">● Wrote the site profile and started tracking 40 keywords</div>
-            <div className="out">● Queued 6 article ideas for your review</div>
-            <div><span className="dim">Your move: approve them at localhost:4005</span></div>
-          </div>
-        </div>
-      </section>
-
       {/* ==================== PRICING ==================== */}
       <section className="band-alt" id="pricing">
         <div className="wrap">
           <div className="sec-h">
             <h2>Pick your plan</h2>
           </div>
-          <p className="price-note">Start with a <b>7-day free trial</b>. Every plan publishes <b>unlimited articles</b> - the writing runs on your own Claude subscription, so we never meter your content. 90-day money-back guarantee.</p>
+          <p className="price-note">Start with a <b>7-day free trial</b>. Every plan publishes <b>unlimited articles</b> - the writing runs on your own Claude subscription, so we never meter your content.</p>
           <div className="cloud-adds">
             <span className="ca-label">Every plan includes</span>
             <span className="ca-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18" /><path d="M7 21v-5" /><path d="M12 21V9" /><path d="M17 21v-8" /></svg>bundled SERP + volume data, one bill</span>
@@ -211,11 +156,26 @@ export default async function LandingPage() {
               <ul>
                 <li>1 site</li>
                 <li>100 tracked keywords</li>
-                <li>Bundled SERP + volume data</li>
+                <li>Unlimited articles</li>
+                <li>Unlimited AI-built tools</li>
+                <li>SERP + search volume data</li>
+                <li>Daily rank tracking</li>
+                <li>AI Overview tracking</li>
                 <li>One-click Search Console</li>
-                <li>Managed schedules + alerts</li>
+                <li>Hourly Search Console sync</li>
+                <li>Index status monitoring</li>
+                <li>Domain rating tracking</li>
+                <li>Backlink prospecting</li>
+                <li>Trending topic scans</li>
+                <li>Content quality checks</li>
+                <li>Approve or full-auto mode</li>
+                <li>Everything ships as PRs</li>
+                <li>Drive it from Claude Code</li>
+                <li>Managed schedules</li>
+                <li>Failure alerts by email</li>
+                <li>Email support</li>
               </ul>
-              <a className="btn btn-solid" href="/signup">Try free for 7 days</a>
+              <a className="btn btn-solid" href="/signup">Start for free</a>
             </div>
             <div className="plan hero-plan">
               <span className="p-badge">Most popular</span>
@@ -225,10 +185,27 @@ export default async function LandingPage() {
               <ul>
                 <li>3 sites</li>
                 <li>300 tracked keywords</li>
-                <li>Everything in Starter</li>
+                <li>Unlimited articles</li>
+                <li>Unlimited AI-built tools</li>
+                <li>SERP + search volume data</li>
+                <li>Daily rank tracking</li>
+                <li>AI Overview tracking</li>
+                <li>One-click Search Console</li>
+                <li>Hourly Search Console sync</li>
+                <li>Index status monitoring</li>
+                <li>Domain rating tracking</li>
+                <li>Backlink prospecting</li>
+                <li>Trending topic scans</li>
                 <li>Weekly opportunity digest</li>
+                <li>Content quality checks</li>
+                <li>Approve or full-auto mode</li>
+                <li>Everything ships as PRs</li>
+                <li>Drive it from Claude Code</li>
+                <li>Managed schedules</li>
+                <li>Failure alerts by email</li>
+                <li>Email support</li>
               </ul>
-              <a className="btn btn-solid" href="/signup">Start with Growth</a>
+              <a className="btn btn-solid" href="/signup">Start for free</a>
             </div>
             <div className="plan">
               <h3>Scale</h3>
@@ -237,10 +214,27 @@ export default async function LandingPage() {
               <ul>
                 <li>10 sites</li>
                 <li>1,000 tracked keywords</li>
-                <li>Everything in Growth</li>
+                <li>Unlimited articles</li>
+                <li>Unlimited AI-built tools</li>
+                <li>SERP + search volume data</li>
+                <li>Daily rank tracking</li>
+                <li>AI Overview tracking</li>
+                <li>One-click Search Console</li>
+                <li>Hourly Search Console sync</li>
+                <li>Index status monitoring</li>
+                <li>Domain rating tracking</li>
+                <li>Backlink prospecting</li>
+                <li>Trending topic scans</li>
+                <li>Weekly opportunity digest</li>
+                <li>Content quality checks</li>
+                <li>Approve or full-auto mode</li>
+                <li>Everything ships as PRs</li>
+                <li>Drive it from Claude Code</li>
+                <li>Managed schedules</li>
+                <li>Failure alerts by email</li>
                 <li>Priority support</li>
               </ul>
-              <a className="btn btn-solid" href="/signup">Start with Scale</a>
+              <a className="btn btn-solid" href="/signup">Start for free</a>
             </div>
           </div>
         </div>
@@ -254,16 +248,16 @@ export default async function LandingPage() {
           </div>
           <div className="faq-list">
             <details open>
-              <summary>Is this another AI content spammer?</summary>
-              <div className="a">No. Every draft is reviewed for quality and sameness before it ships, publishing pace ramps up slowly on purpose, and the agent writes from your product&apos;s actual facts, with your repo as its source material. You choose the gate: approve every piece yourself, or run on auto with pull requests as the audit trail.</div>
+              <summary>Can I use DispatchSEO for free?</summary>
+              <div className="a">Yes, if you self-host it. DispatchSEO is <a href={GITHUB_URL}>open source</a> (AGPL-3.0) and the self-hosted version has every feature: it runs on your machine, under your accounts, so there&apos;s nothing for us to bill. The paid cloud sells convenience: we run the machine, bundle the SERP and volume data into one bill, and replace the Google service account ritual with one click.</div>
             </details>
             <details>
               <summary>What do I need to run the free version?</summary>
-              <div className="a">A website that lives in a GitHub repo, a Claude subscription with Claude Code, free Google Search Console access, and a machine with Docker. Your laptop works for a test drive; for the always-on autopilot you&apos;ll want something that stays awake, like a $5 VPS or a Raspberry Pi. Rank tracking works with a free SerpApi key; search volume data needs a DataForSEO account, which is the main gap the cloud version fills.</div>
+              <div className="a">A website that lives in a GitHub repo, a Claude subscription with Claude Code, free Google Search Console access, and a machine with Docker. Your laptop works for a test drive; for the always-on autopilot you&apos;ll want something that stays awake, like a $5 VPS or a Raspberry Pi. Rank tracking works with a free SerpApi key; search volume data needs a DataForSEO account, which is the main gap the cloud version fills. The <a href={DOCS_URL}>docs</a> walk you through it.</div>
             </details>
             <details>
-              <summary>Is it really free? What&apos;s the catch?</summary>
-              <div className="a">The code is AGPL-3.0 and the self-hosted version has every feature. It runs on your machine, under your accounts, so there&apos;s nothing for us to bill. The paid cloud sells convenience: we run the machine, bundle the SERP and volume data into one bill, and replace the Google service account ritual with one click.</div>
+              <summary>Is this another AI content spammer?</summary>
+              <div className="a">No. Every draft is reviewed for quality and sameness before it ships, publishing pace ramps up slowly on purpose, and the agent writes from your product&apos;s actual facts, with your repo as its source material. You choose the gate: approve every piece yourself, or run on auto with pull requests as the audit trail.</div>
             </details>
             <details>
               <summary>Do I need to know SEO?</summary>
@@ -279,7 +273,7 @@ export default async function LandingPage() {
             </details>
             <details>
               <summary>How do I get started on cloud?</summary>
-              <div className="a">Sign up and start with the 7-day free trial on Starter - you enter a card at checkout, nothing is charged until the trial ends, and you can cancel in one click before then. The setup wizard walks you through connecting your site, about ten minutes end to end. Need more sites? Upgrade to Growth or Scale anytime, or start there directly. And if DispatchSEO hasn&apos;t measurably helped your site within 90 days, we refund you.</div>
+              <div className="a">Sign up and start with the 7-day free trial on Starter - you enter a card at checkout, nothing is charged until the trial ends, and you can cancel in one click before then. The setup wizard walks you through connecting your site, about ten minutes end to end. Need more sites? Upgrade to Growth or Scale anytime, or start there directly.</div>
             </details>
           </div>
         </div>
@@ -291,11 +285,10 @@ export default async function LandingPage() {
         <svg className="doodle doodle-f2" viewBox="0 0 64 64" aria-hidden="true"><path d="M8 52 L24 38 L34 46 L56 20 M56 20 L45 22 M56 20 L55 32" /></svg>
         <div className="wrap">
           <h2>Give your agent the keys.<br />Keep the lock.<span className="caret" /></h2>
-          <p>Start with a 7-day free trial, setup takes about ten minutes, and there&apos;s a 90-day money-back guarantee.</p>
+          <p>Start with a 7-day free trial. Setup takes about ten minutes.</p>
           <div className="cta-row">
             <a className="btn btn-solid" href="/signup">Start your free trial</a>
           </div>
-          <p className="hero-note">Or don&apos;t pay at all: <a href="#oss">self-host it free</a>.</p>
         </div>
       </section>
 
