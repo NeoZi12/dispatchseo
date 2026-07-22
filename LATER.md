@@ -102,3 +102,10 @@ chatbot in dashboard, charts libraries, dark mode, settings pages, mobile app.
   Would collapse the VPS guide's step 5 into one env var. Not a launch
   blocker: DNS + open ports remain manual either way, and it conflicts
   with proxies users already run, so it must stay opt-in.
+
+- **Cloud OAuth redirect: pin the origin (flagged by automated security review
+  2026-07-22).** `src/app/auth/google-action.ts` derives the Supabase OAuth
+  `redirectTo` from `x-forwarded-host`. Not exploitable today (Vercel controls
+  the forwarded headers and Supabase enforces its redirect allowlist), but the
+  cloud-hardening pass should pin it to a deploy-time origin env instead of
+  request headers - belongs to the CLOUD_MODE workstream.
