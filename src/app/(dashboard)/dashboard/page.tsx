@@ -1,8 +1,7 @@
-import { cookies, headers } from "next/headers";
-import { redirect } from "next/navigation";
+import { requireDashboard } from "@/lib/auth-gate";
+import { headers } from "next/headers";
 import Link from "next/link";
 import { db } from "@/lib/db";
-import { isValidCookie } from "@/lib/dashboard-auth";
 import { requireOnboarded } from "@/lib/onboarding-gate";
 import { canMerge, openSeoPrs } from "@/lib/github";
 import { dataforseoBalance } from "@/lib/dataforseo-balance";
@@ -217,8 +216,7 @@ function PlaybookColumn({
 }
 
 export default async function Home() {
-  const jar = await cookies();
-  if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
+  await requireDashboard();
   await requireOnboarded();
 
   const project = await getActiveProject();

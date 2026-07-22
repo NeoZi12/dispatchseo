@@ -3,11 +3,10 @@ import { MobileNav, PageTitle, Sidebar } from "@/components/nav";
 import { DispatchMark } from "@/components/logo";
 import { ProjectSwitcher } from "@/components/project-switcher";
 import { ModeSwitch } from "@/components/mode-switch";
-import { getActiveProject } from "@/lib/active-project";
-import { listProjects } from "@/lib/projects";
+import { getActiveProjectOrNull, scopedProjects } from "@/lib/active-project";
 
 // Shared shell for every dashboard screen. Auth is checked per page (the
-// isValidCookie pattern) - this layout is presentation only. force-dynamic
+// requireDashboard gate in auth-gate.ts) - this layout is presentation only. force-dynamic
 // covers the whole group: everything behind the password gate is
 // per-request, and it keeps `next build` from prerendering pages that read
 // the DB (CI's build-verify runs with no env at all).
@@ -19,7 +18,11 @@ export const dynamic = "force-dynamic";
 // sidebar, shows the brand in the topbar, and swaps in a horizontal nav.
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const [projects, active] = await Promise.all([listProjects(), getActiveProject()]);
+  // scopedProjects: only the signed-in user's projects in CLOUD_MODE. active
+  // is null for a cloud account with no projects yet - the page itself
+  // redirects to the wizard (getActiveProject), the layout just renders a
+  // chrome without switcher/mode for that one request.
+  const [projects, active] = await Promise.all([scopedProjects(), getActiveProjectOrNull()]);
 
   return (
     <div className="flex min-h-screen bg-neutral-950 text-neutral-100">
@@ -32,14 +35,16 @@ export default async function DashboardLayout({ children }: { children: React.Re
                 <DispatchMark className="h-7 w-auto" />
                 <span className="font-semibold tracking-tight">DispatchSEO</span>
               </Link>
-              <ProjectSwitcher
-                projects={projects.map((p) => ({ slug: p.slug, name: p.name, domain: p.domain }))}
-                activeSlug={active.slug}
-              />
+              {active && (
+                <ProjectSwitcher
+                  projects={projects.map((p) => ({ slug: p.slug, name: p.name, domain: p.domain }))}
+                  activeSlug={active.slug}
+                />
+              )}
             </div>
             <PageTitle />
             <div className="flex items-center justify-end">
-              <ModeSwitch mode={active.mode} />
+              {active && <ModeSwitch mode={active.mode} />}
             </div>
           </div>
           <div className="px-4 sm:px-6">

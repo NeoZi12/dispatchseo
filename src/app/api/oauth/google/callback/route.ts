@@ -1,6 +1,6 @@
-import { cookies, headers } from "next/headers";
+import { requireDashboard } from "@/lib/auth-gate";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { isValidCookie } from "@/lib/dashboard-auth";
 import { connectProject, verifyState } from "@/lib/gsc-oauth";
 
 // Google redirects here after consent. Verifies the signed state (CSRF),
@@ -8,8 +8,7 @@ import { connectProject, verifyState } from "@/lib/gsc-oauth";
 // flow started from, then lands back on the connect page.
 
 export async function GET(req: Request): Promise<Response> {
-  const jar = await cookies();
-  if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
+  await requireDashboard();
 
   const url = new URL(req.url);
   const denied = url.searchParams.get("error");

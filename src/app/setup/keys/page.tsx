@@ -1,7 +1,6 @@
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { requireDashboard } from "@/lib/auth-gate";
 import Link from "next/link";
-import { instanceCronSecret, isValidCookie } from "@/lib/dashboard-auth";
+import { instanceCronSecret } from "@/lib/dashboard-auth";
 import { DEFAULT_PROJECT_ID, fetchProjectToken } from "@/lib/projects";
 import { DispatchMark } from "@/components/logo";
 
@@ -24,8 +23,7 @@ function KeyBlock({ label, value, hint }: { label: string; value: string; hint: 
 }
 
 export default async function SetupKeysPage() {
-  const jar = await cookies();
-  if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
+  await requireDashboard();
 
   const [mcpToken, cronSecret] = await Promise.all([
     fetchProjectToken(DEFAULT_PROJECT_ID),

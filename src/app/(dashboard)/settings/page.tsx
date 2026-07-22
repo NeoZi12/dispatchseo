@@ -1,7 +1,6 @@
-import { cookies, headers } from "next/headers";
-import { redirect } from "next/navigation";
+import { requireDashboard } from "@/lib/auth-gate";
+import { headers } from "next/headers";
 import { mcpAddCommand } from "@/lib/mcp-connect";
-import { isValidCookie } from "@/lib/dashboard-auth";
 import { getActiveProject } from "@/lib/active-project";
 import { credsForProject } from "@/lib/dataforseo";
 import { DEFAULT_PROJECT_ID, fetchProjectToken } from "@/lib/projects";
@@ -23,8 +22,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 export default async function SettingsPage() {
-  const jar = await cookies();
-  if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
+  await requireDashboard();
 
   const project = await getActiveProject();
   const isDefault = project.id === DEFAULT_PROJECT_ID;

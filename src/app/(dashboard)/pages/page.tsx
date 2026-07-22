@@ -1,7 +1,5 @@
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { requireDashboard } from "@/lib/auth-gate";
 import { db } from "@/lib/db";
-import { isValidCookie } from "@/lib/dashboard-auth";
 import { requireOnboarded } from "@/lib/onboarding-gate";
 import { getActiveProject } from "@/lib/active-project";
 import {
@@ -40,8 +38,7 @@ function shortDate(iso: string) {
 }
 
 export default async function PagesPage() {
-  const jar = await cookies();
-  if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
+  await requireDashboard();
   await requireOnboarded();
 
   const project = await getActiveProject();

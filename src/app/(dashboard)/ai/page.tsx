@@ -1,11 +1,9 @@
+import { requireDashboard } from "@/lib/auth-gate";
 // The full AI visibility (GEO) detail view - Home's compact card, uncapped.
 // Same data source as the Home teaser and the get_ai_visibility MCP tool
 // (parity rule): getAiVisibility(project.id, project.domain) is the single
 // source of truth all three render from.
 
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
-import { isValidCookie } from "@/lib/dashboard-auth";
 import { requireOnboarded } from "@/lib/onboarding-gate";
 import { getActiveProject } from "@/lib/active-project";
 import { ENGINE_LABELS, getAiVisibility, type AiVisibility } from "@/lib/ai-visibility";
@@ -65,8 +63,7 @@ function AnswerLog({ answers }: { answers: AiVisibility["recent_answers"] }) {
 }
 
 export default async function AiVisibilityPage() {
-  const jar = await cookies();
-  if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
+  await requireDashboard();
   await requireOnboarded();
 
   const project = await getActiveProject();

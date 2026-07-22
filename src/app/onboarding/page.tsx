@@ -1,9 +1,8 @@
-import { cookies, headers } from "next/headers";
-import { redirect } from "next/navigation";
-import { isValidCookie } from "@/lib/dashboard-auth";
+import { requireDashboard } from "@/lib/auth-gate";
+import { headers } from "next/headers";
 import { serviceAccountEmail } from "@/lib/gsc";
 import { db } from "@/lib/db";
-import { getActiveProject } from "@/lib/active-project";
+import { getActiveProjectOrNull } from "@/lib/active-project";
 import { fetchProjectToken } from "@/lib/projects";
 import { OnboardingWizard, type WizardResume } from "@/components/onboarding-wizard";
 import { WIZARD_SCREENS } from "@/lib/wizard-screens";
@@ -21,7 +20,10 @@ export const dynamic = "force-dynamic";
 // the keyword-source choice - so a closed tab or stuck terminal continues
 // exactly where it stood instead of restarting at step 1.
 async function buildResume(): Promise<WizardResume | null> {
-  const project = await getActiveProject();
+  // OrNull: a fresh cloud account owns no project yet - that's a clean
+  // start-at-step-1, not an error (and getActiveProject would redirect
+  // right back here, looping).
+  const project = await getActiveProjectOrNull();
   if (!project?.github_repo) return null;
   const mcpToken = await fetchProjectToken(project.id);
   if (!mcpToken) return null;
@@ -60,8 +62,7 @@ export default async function OnboardingPage({
 }: {
   searchParams: Promise<{ new?: string }>;
 }) {
-  const jar = await cookies();
-  if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
+  await requireDashboard();
 
   // The MCP connect command needs this deployment's public origin. Behind
   // Vercel the forwarded headers are trustworthy; localhost falls out naturally.

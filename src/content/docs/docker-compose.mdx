@@ -97,7 +97,7 @@ Turning it on is one token:
 
 1. Run `claude setup-token` and copy the `sk-ant-oat...` token. Builds run
    on your existing Claude subscription.
-2. Add it to `.env`: `CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat...`
+2. Add it to `.env` (swap in your token): `echo "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat-PASTE-YOURS" >> .env`
 3. `docker compose up -d builder`
 
 GitHub access reuses the token from the wizard's One-tap merge step. Until

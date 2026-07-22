@@ -1,7 +1,5 @@
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { requireDashboard } from "@/lib/auth-gate";
 import { revalidatePath } from "next/cache";
-import { isValidCookie } from "@/lib/dashboard-auth";
 import { requireOnboarded } from "@/lib/onboarding-gate";
 import { getActiveProject } from "@/lib/active-project";
 import {
@@ -21,8 +19,7 @@ import { PageHeader, SectionTitle } from "@/components/ui";
 
 async function disconnect() {
   "use server";
-  const jar = await cookies();
-  if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
+  await requireDashboard();
   await requireOnboarded();
   const project = await getActiveProject();
   await disconnectProject(project.slug);
@@ -31,8 +28,7 @@ async function disconnect() {
 
 async function useProperty(formData: FormData) {
   "use server";
-  const jar = await cookies();
-  if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
+  await requireDashboard();
   const siteUrl = String(formData.get("siteUrl") ?? "");
   if (!siteUrl) return;
   const project = await getActiveProject();
@@ -45,8 +41,7 @@ export default async function GooglePage({
 }: {
   searchParams: Promise<{ error?: string; connected?: string }>;
 }) {
-  const jar = await cookies();
-  if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
+  await requireDashboard();
   const { error, connected } = await searchParams;
   const project = await getActiveProject();
   const token = project.gsc_oauth_refresh_token;

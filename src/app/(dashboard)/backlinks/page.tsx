@@ -1,7 +1,5 @@
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { requireDashboard } from "@/lib/auth-gate";
 import { db } from "@/lib/db";
-import { isValidCookie } from "@/lib/dashboard-auth";
 import { requireOnboarded } from "@/lib/onboarding-gate";
 import { getActiveProject } from "@/lib/active-project";
 import { browserCommand, resolveField, type PlaybookItem } from "@/lib/playbook";
@@ -132,8 +130,7 @@ function ItemCard({
 }
 
 export default async function BacklinksPage() {
-  const jar = await cookies();
-  if (!(await isValidCookie(jar.get("dash_auth")?.value))) redirect("/login");
+  await requireDashboard();
   await requireOnboarded();
 
   // Playbook progress, the outreach prospects, and the profile the copy

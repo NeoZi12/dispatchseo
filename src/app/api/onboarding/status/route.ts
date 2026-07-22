@@ -1,7 +1,7 @@
-import { cookies } from "next/headers";
 import { after } from "next/server";
 import { db } from "@/lib/db";
-import { isValidCookie, instanceSettings } from "@/lib/dashboard-auth";
+import { instanceSettings } from "@/lib/dashboard-auth";
+import { dashboardAuth } from "@/lib/auth-gate";
 import { getProjectBySlug } from "@/lib/projects";
 import { getCronHealth, reportCronRun } from "@/lib/cron-alerts";
 import { backendBaseUrl } from "@/lib/pipeline-pack";
@@ -58,8 +58,7 @@ async function triggerCron(path: string): Promise<void> {
 }
 
 export async function GET(req: Request): Promise<Response> {
-  const jar = await cookies();
-  if (!(await isValidCookie(jar.get("dash_auth")?.value))) {
+  if (!(await dashboardAuth())) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
   const slug = new URL(req.url).searchParams.get("slug");

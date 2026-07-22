@@ -86,33 +86,83 @@ Open `https://dispatch.your-domain.com`, choose a dashboard password, and
 the setup wizard starts. From now on the dashboard is a bookmark, from
 any device.
 
-Two notes for unusual setups:
+Three situations you might hit - skip any that aren't you:
 
-- **Provider firewall:** if your VPS has a cloud firewall (Hetzner Cloud
-  Firewall, DO Cloud Firewall, AWS security groups), allow ports **80 and
-  443** in its panel. Plain `ufw` boxes need nothing - Docker publishes
-  the ports directly.
-- **Already running Nginx/Traefik/Caddy on this host?** Leave `DOMAIN`
-  unset (ports 80/443 stay yours), point your existing proxy at
-  `localhost:4005`, and set `APP_URL=https://your-subdomain` in `.env`
-  yourself.
+**"I opened the https address and nothing loads."** Some VPS providers
+ship a firewall in their control panel that blocks all ports by default.
+Open the panel and allow TCP ports **80** and **443** (inbound, from
+anywhere):
 
-(Waiting on DNS and impatient? `ssh -L 4005:localhost:4005
-root@your-server-ip` on your own computer tunnels the dashboard to
-[http://localhost:4005](http://localhost:4005), encrypted. You won't need
-it after DNS lands.)
+- Hetzner: Cloud Console → your server → **Firewalls**
+- DigitalOcean: **Networking → Firewalls**
+- AWS / Lightsail: the instance's **security group** / Networking tab
+
+Servers without a panel firewall need nothing - Docker opens its own
+ports, even past `ufw`. To check from your own computer:
+
+```bash
+curl -I https://dispatch.your-domain.com
+```
+
+Any `HTTP/...` reply means you're through; a hang means the firewall is
+still in the way.
+
+**"This server already runs Nginx, Traefik, or another Caddy."** If you
+don't know what those are, you don't have one - skip this. For those who
+do: ports 80/443 are yours, so don't set `DOMAIN`. Point your existing
+proxy at `localhost:4005` and tell DispatchSEO its public address:
+
+```bash
+cd dispatchseo &&
+  echo "APP_URL=https://dispatch.your-domain.com" >> .env &&
+  sh start.sh
+```
+
+**"DNS hasn't landed yet and I want to see it now."** On your own
+computer - not the server - run:
+
+```bash
+ssh -L 4005:localhost:4005 root@your-server-ip
+```
+
+Keep that window open and browse
+[http://localhost:4005](http://localhost:4005) - it's an encrypted tunnel
+straight to the dashboard. Close the window and the tunnel is gone; once
+DNS lands you won't need it again.
 
 </Step>
 
 <Step title="The builder token comes from your own computer">
 
-`claude setup-token` opens a browser login, which a headless server can't
-do. Run it on your own machine, copy the `sk-ant-oat...` token into the
-VPS's `.env` as `CLAUDE_CODE_OAUTH_TOKEN=...`, then on the server:
+The builder is your own Claude Code running inside the stack, building
+guides on your Claude subscription. It needs one token, and the token has
+to be created on your own computer - `claude setup-token` opens a browser
+login, which a server without a screen can't do.
+
+**a.** On your own computer, run:
 
 ```bash
-docker compose up -d builder
+claude setup-token
 ```
+
+and copy the long `sk-ant-oat...` token it prints.
+
+**b.** On the server, paste this with your token swapped in:
+
+```bash
+cd dispatchseo &&
+  echo "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat-PASTE-YOUR-TOKEN-HERE" >> .env &&
+  docker compose up -d builder
+```
+
+**c.** Confirm it's alive:
+
+```bash
+docker compose logs builder --tail 5
+```
+
+It either starts polling for work, or tells you exactly what it's still
+waiting for.
 
 That's the whole difference from a local install. The setup wizard and
 everything after it are identical - except this machine never sleeps, so

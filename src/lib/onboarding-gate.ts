@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { db } from "./db";
-import { listProjects } from "./projects";
+import { listProjects, listProjectsForOwner } from "./projects";
+import { isCloudMode } from "./cloud";
+import { currentUser } from "./cloud-auth";
 
 // "The wizard is a must": the dashboard stays locked until the OWNER'S side
 // of setup is genuinely done - which means the pipeline install completed
@@ -14,6 +16,15 @@ import { listProjects } from "./projects";
 // alone, and any DB error fails OPEN via listProjects (whose env-fallback
 // row carries a repo) - a transient outage must never lock the owner out.
 export async function hasConfiguredProject(): Promise<boolean> {
+  // CLOUD_MODE: the question is whether THIS user finished setup, not
+  // whether any tenant on the deployment did - a neighbor's configured
+  // project must not unlock a fresh account's dashboard.
+  if (isCloudMode()) {
+    const user = await currentUser();
+    if (!user) return false;
+    const mine = await listProjectsForOwner(user.id);
+    return mine.some((p) => p.pipeline_installed_at != null || Boolean(p.github_repo));
+  }
   try {
     const { data, error } = await db()
       .from("projects")

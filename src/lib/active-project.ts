@@ -1,23 +1,56 @@
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import {
   DEFAULT_PROJECT_ID,
   getProjectBySlug,
   listProjects,
+  listProjectsForOwner,
   type Project,
 } from "./projects";
+import { isCloudMode } from "./cloud";
+import { currentUser } from "./cloud-auth";
 
 export const PROJECT_COOKIE = "dash_project";
 
-// Which project the dashboard is looking at. The switcher writes the cookie;
-// every screen reads it here. Falls back to the default project so a stale or
-// deleted slug can never blank the dashboard.
-export async function getActiveProject(): Promise<Project> {
+// The projects this request is allowed to see: the signed-in user's own in
+// CLOUD_MODE (may genuinely be empty for a fresh account), everything on
+// self-host. The dashboard layout's switcher and every "which project" lookup
+// go through this, so a cloud user can never reach another tenant by editing
+// the dash_project cookie.
+export async function scopedProjects(): Promise<Project[]> {
+  if (isCloudMode()) {
+    const user = await currentUser();
+    if (!user) return [];
+    return listProjectsForOwner(user.id);
+  }
+  return listProjects();
+}
+
+// Which project the dashboard is looking at, or null when a cloud account
+// has none yet. The switcher writes the cookie; every screen reads it here.
+// Falls back to the default/first project so a stale or deleted slug can
+// never blank the dashboard.
+export async function getActiveProjectOrNull(): Promise<Project | null> {
   const jar = await cookies();
   const slug = jar.get(PROJECT_COOKIE)?.value;
+  if (isCloudMode()) {
+    const mine = await scopedProjects();
+    if (mine.length === 0) return null;
+    return mine.find((p) => p.slug === slug) ?? mine[0];
+  }
   if (slug) {
     const p = await getProjectBySlug(slug);
     if (p) return p;
   }
   const all = await listProjects();
   return all.find((p) => p.id === DEFAULT_PROJECT_ID) ?? all[0];
+}
+
+// The non-null contract almost every screen relies on. A cloud account with
+// zero projects is sent to the add-a-site wizard instead - the only screen
+// that tolerates having no project (it reads via getActiveProjectOrNull).
+export async function getActiveProject(): Promise<Project> {
+  const p = await getActiveProjectOrNull();
+  if (!p) redirect("/onboarding?new=1");
+  return p;
 }

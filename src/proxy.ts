@@ -30,6 +30,9 @@ export function proxy(req: NextRequest) {
   if (
     pathname.startsWith("/api/") ||
     pathname.startsWith("/login") ||
+    // Cloud account creation - only meaningful in CLOUD_MODE (the page
+    // itself bounces self-host visitors to /login).
+    pathname === "/signup" ||
     // First-boot wizard: must be reachable before any password exists. Only
     // the exact path - /setup/keys stays behind the cookie-presence gate.
     pathname === "/setup" ||
@@ -61,7 +64,14 @@ export function proxy(req: NextRequest) {
     return NextResponse.next();
   }
   const cookie = req.cookies.get("dash_auth")?.value;
-  if (!cookie) {
+  // CLOUD_MODE sessions are Supabase Auth cookies (sb-<ref>-auth-token,
+  // possibly chunked with .0/.1 suffixes), not dash_auth. Presence-based
+  // routing only, same as the password cookie - pages re-validate the
+  // session server-side via the auth gate.
+  const hasCloudSession =
+    process.env.CLOUD_MODE === "true" &&
+    req.cookies.getAll().some((c) => /^sb-.+-auth-token/.test(c.name));
+  if (!cookie && !hasCloudSession) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);

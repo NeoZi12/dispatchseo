@@ -5,7 +5,9 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { bustInstanceCache, isValidCookie } from "@/lib/dashboard-auth";
+import { bustInstanceCache } from "@/lib/dashboard-auth";
+import { dashboardAuth } from "@/lib/auth-gate";
+import { isCloudMode } from "@/lib/cloud";
 import { bustGhTokenCache, dispatchToolBuild, mergePr } from "@/lib/github";
 import { getActiveProject, PROJECT_COOKIE } from "@/lib/active-project";
 import {
@@ -27,11 +29,11 @@ import { requestTrendExpand, requestTrendScan } from "@/lib/trends";
 import { fetchDomainRegistrationDate } from "@/lib/domain-age";
 import { bustGscCredCache, gscAccessProbe, type GscAccessProbe } from "@/lib/gsc";
 
-// Every action re-validates the auth cookie server-side - the proxy only does
-// presence routing, this is the real check.
+// Every action re-validates auth server-side - the proxy only does presence
+// routing, this is the real check. dashboardAuth covers both modes: the
+// dash_auth cookie on self-host, the Supabase session in CLOUD_MODE.
 async function assertAuthed() {
-  const jar = await cookies();
-  if (!(await isValidCookie(jar.get("dash_auth")?.value))) {
+  if (!(await dashboardAuth())) {
     throw new Error("Unauthorized");
   }
 }
@@ -783,6 +785,13 @@ async function createProjectCore(
   };
   if (contentPathHint && contentMode === "existing") row.content_path_hint = contentPathHint;
   if (siteLaunchedAt) row.site_launched_at = siteLaunchedAt;
+  // Cloud accounts own their projects (0031); the whole dashboard scopes by
+  // this column in CLOUD_MODE, so a row without it would be orphaned.
+  if (isCloudMode()) {
+    const auth = await dashboardAuth();
+    if (!auth?.user) return { error: "Sign in again to create a project." };
+    row.owner_user_id = auth.user.id;
+  }
   // A fresh instance's fixed-id default project (setup.sql seeds it NEUTRAL,
   // no domain/repo) is claimed in place by the first real site: same row,
   // same id - the project_id column defaults keep pointing at a real project
@@ -812,6 +821,12 @@ async function createProjectCore(
     }
     if (error.message.includes("site_launched_at")) {
       delete retry.site_launched_at;
+      dropped = true;
+    }
+    // 0031 pending on a self-host DB - harmless to drop there (ownership is a
+    // cloud concept); CLOUD_MODE deployments must have 0031 applied.
+    if (error.message.includes("owner_user_id") && !isCloudMode()) {
+      delete retry.owner_user_id;
       dropped = true;
     }
     if (dropped) ({ error } = await write(retry));

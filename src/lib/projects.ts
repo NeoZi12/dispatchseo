@@ -222,6 +222,22 @@ export async function listProjects(): Promise<Project[]> {
   return (await listProjectsChecked()).projects;
 }
 
+// CLOUD_MODE only: the projects one signed-in user owns (0031). No synthetic
+// fallback - a fresh account genuinely has zero projects, and the dashboard
+// funnels that to the onboarding wizard. Requires migration 0031; a missing
+// column comes back as an empty list, never a cross-tenant leak.
+export async function listProjectsForOwner(userId: string): Promise<Project[]> {
+  const { data, error } = await selectProjects((cols) =>
+    db()
+      .from("projects")
+      .select(cols)
+      .eq("owner_user_id", userId)
+      .order("created_at", { ascending: true }),
+  );
+  if (error || !data) return [];
+  return data as unknown as Project[];
+}
+
 export async function getProjectBySlug(slug: string): Promise<Project | null> {
   const { data, error } = await selectProjects((cols) =>
     db().from("projects").select(cols).eq("slug", slug).maybeSingle(),

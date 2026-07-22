@@ -1,7 +1,10 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { COOKIE_NAME, cookieValue, isCorrectPassword } from "@/lib/dashboard-auth";
 import { getSetupState } from "@/lib/setup";
+import { isCloudMode } from "@/lib/cloud";
+import { supabaseAuth } from "@/lib/cloud-auth";
 import {
   clearLoginFailures,
   clientIp,
@@ -33,14 +36,60 @@ async function login(formData: FormData) {
   redirect("/dashboard");
 }
 
+// CLOUD_MODE sign-in: a real account, not the shared password. Supabase
+// enforces its own per-IP rate limits on auth endpoints, so the self-host
+// login-lockout table isn't consulted here.
+async function cloudLogin(formData: FormData) {
+  "use server";
+  const email = String(formData.get("email") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+  if (!email || !password) redirect("/login?error=1");
+  const supabase = await supabaseAuth();
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) redirect("/login?error=1");
+  redirect("/dashboard");
+}
+
+const inputCls =
+  "w-full rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-3 text-white placeholder-neutral-500 focus:outline-none focus:border-neutral-400";
+
+function CloudLoginPage({ error }: { error?: string }) {
+  return (
+    <main className="min-h-screen flex items-center justify-center bg-neutral-950 p-6">
+      <form action={cloudLogin} className="w-full max-w-xs space-y-4">
+        <h1 className="flex items-center gap-2.5 text-xl font-semibold text-white">
+          <DispatchMark className="h-7 w-auto" />
+          DispatchSEO
+        </h1>
+        <input type="email" name="email" placeholder="Email" autoFocus className={inputCls} />
+        <input type="password" name="password" placeholder="Password" className={inputCls} />
+        {error ? <p className="text-sm text-red-400">Wrong email or password.</p> : null}
+        <button
+          type="submit"
+          className="w-full rounded-lg bg-white px-4 py-3 font-medium text-neutral-950"
+        >
+          Sign in
+        </button>
+        <p className="text-sm text-neutral-500">
+          New here?{" "}
+          <Link href="/signup" className="text-neutral-300 underline">
+            Create an account
+          </Link>
+        </p>
+      </form>
+    </main>
+  );
+}
+
 export default async function LoginPage({
   searchParams,
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
+  const { error } = await searchParams;
+  if (isCloudMode()) return <CloudLoginPage error={error} />;
   // A fresh deploy has nothing to log into yet - hand off to the wizard.
   if ((await getSetupState()) !== "ready") redirect("/setup");
-  const { error } = await searchParams;
   return (
     <main className="min-h-screen flex items-center justify-center bg-neutral-950 p-6">
       <form action={login} className="w-full max-w-xs space-y-4">
