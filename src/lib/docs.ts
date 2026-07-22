@@ -28,7 +28,6 @@ export const DOCS_NAV: { section: string; items: { slug: string; title: string }
     section: "Installation",
     items: [
       { slug: "docker-compose", title: "Docker Compose" },
-      { slug: "cloud-deploy", title: "Cloud deploy (Vercel + Supabase)" },
       { slug: "local-development", title: "Local development" },
     ],
   },

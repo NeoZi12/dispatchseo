@@ -79,3 +79,18 @@ chatbot in dashboard, charts libraries, dark mode, settings pages, mobile app.
   the owner on docker; (4) a GitHub App instead of the PAT, for zero-token setup;
   (5) install instructions could skip shipping schedule workflows entirely when the
   backend is a docker instance with the builder on.
+
+- **Retired Vercel/Supabase self-deploy leftovers (retired 2026-07-22).** The
+  free-cloud self-deploy path is gone from every public surface; docker is the
+  one self-host story. Still-working but unadvertised code that can be removed
+  once no legacy installs depend on it: the Supabase/Vercel walkthrough screens
+  in `src/app/setup/page.tsx` (docker installs never render them), and the
+  `stores=` deploy-URL handling notes in docs history. If demand for one-click
+  hosts shows up, the Postiz answer is third-party templates (Railway/Coolify/
+  Elestio), not a revived Vercel path.
+
+- **Flip landing self-host prominence at cloud launch.** Today the landing
+  leads with self-host (hero button, OSS section, $0 pricing column) because
+  the OSS repo is the growth engine pre-launch. When the paid cloud opens,
+  switch to the Postiz layout: cloud CTAs primary everywhere, self-host demoted
+  to footer/docs links and a pricing-page FAQ entry.

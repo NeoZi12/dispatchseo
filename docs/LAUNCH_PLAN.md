@@ -50,9 +50,13 @@ checklist; memory holds the reasoning.
       dashboard password, and it exists in old git history (was in PHASE4_HANDOFF.md).
       Flipping public without the squash exposes the LIVE password. Never skip.
 
-Stack stays opinionated: Vercel + Supabase is the blessed path (Postiz precedent).
-Non-Vercel hosts already work (GitHub Actions cron path). Non-Supabase unsupported;
-the later Docker Compose answer is self-hosted Supabase, never a plain-Postgres rewrite.
+~~Stack stays opinionated: Vercel + Supabase is the blessed path (Postiz precedent).~~
+REVERSED 2026-07-22: Docker Compose (bundled Postgres + PostgREST) is now the ONLY
+advertised self-host path, matching what Postiz actually does (their self-host is
+docker-only; no free-cloud deploy story). The Vercel + Supabase self-deploy still
+works but is retired from all public surfaces - README buttons removed, landing
+rewritten, docs/SELF_HOSTING.md docker-only, in-app /docs cloud-deploy page deleted.
+Vercel + Supabase remains the stack OF the cloud product (dispatchseo.com) itself.
 
 ## Step 2 — Landing page + waitlist (parallel with 1)
 

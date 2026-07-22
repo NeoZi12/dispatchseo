@@ -36,7 +36,10 @@ if [ -z "$PORT" ]; then
   echo "APP_URL=http://localhost:$PORT" >> .env
 fi
 
-docker compose up -d
+# --build makes re-runs pick up code changes, so upgrading is just
+# "git pull && sh start.sh". Unchanged code hits the layer cache and
+# adds only a few seconds.
+docker compose up -d --build
 
 echo '
   DispatchSEO is running.

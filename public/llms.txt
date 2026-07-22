@@ -4,8 +4,8 @@
 > already knows your product does keyword research, writes guides and free
 > tools, and ships them as pull requests; DispatchSEO is the backend it works
 > against - the suggestions queue, rank tracking, Search Console stats,
-> scheduling, and a human approval dashboard. Self-hosted on free tiers
-> (Vercel + Supabase), AGPL-3.0.
+> scheduling, and a human approval dashboard. Self-hosted with one Docker
+> command on your own machine, AGPL-3.0.
 
 Key facts:
 - The MCP server lives at /api/mcp (streamable HTTP, bearer token per project).
@@ -20,7 +20,7 @@ Key facts:
 
 ## Docs
 
-- [README](https://github.com/NeoZi12/dispatchseo#readme): what it is, deploy button, quickstart
+- [README](https://github.com/NeoZi12/dispatchseo#readme): what it is, the one-command install, quickstart
 - [Self-hosting guide](https://github.com/NeoZi12/dispatchseo/blob/main/docs/SELF_HOSTING.md): full setup walkthrough
 - [Agent setup skill](https://github.com/NeoZi12/dispatchseo/blob/main/SKILL.md): how an agent connects a site
 - [Architecture notes](https://github.com/NeoZi12/dispatchseo/blob/main/CLAUDE.md): conventions, tenant model, MCP parity rule

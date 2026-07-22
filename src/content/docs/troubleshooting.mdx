@@ -33,20 +33,9 @@ install.
 **Start over from scratch.** `docker compose down -v` deletes the database
 volume - **all data** - then `docker compose up -d` boots fresh.
 
-## Cloud (Vercel + Supabase)
-
-**The wizard says migrations are incomplete.** Paste
-[`setup.sql`](https://github.com/NeoZi12/dispatchseo/blob/main/supabase/migrations/setup.sql)
-into the Supabase SQL Editor and run it again - it's one idempotent file,
-re-running is safe. The wizard checks the actual tables, not just
-connectivity.
-
-**Env var changes don't take effect.** Vercel bakes env at build time -
-redeploy after saving variables.
-
-**GitHub Actions jobs never run.** Forks start with Actions disabled -
-enable them on your fork, and check the repository secret `CRON_SECRET`
-and variable `BACKEND_URL` are set.
+**The builder isn't building.** `docker compose logs builder` says exactly
+what it's waiting for - usually the `CLAUDE_CODE_OAUTH_TOKEN` in `.env`, or
+a project whose setup wizard isn't finished yet.
 
 ## Search Console
 

@@ -207,13 +207,13 @@ export default async function LandingPage({
         <div className="wrap oss-in">
           <div className="oss-copy">
             <h2>Free forever, if you host it yourself</h2>
-            <p>DispatchSEO is open source under AGPL-3.0, with zero feature gating. The self-hosted version is the whole product, and it runs end to end on free tiers: Vercel, Supabase, Search Console, plus the Claude subscription you already have.</p>
-            <p>Setup is agent-driven. Deploy, add the MCP server, and tell your agent to set itself up. It follows the instructions so you don&apos;t have to.</p>
+            <p>DispatchSEO is open source under AGPL-3.0, with zero feature gating. The self-hosted version is the whole product: one command on any machine with Docker, and the entire stack - dashboard, database, schedules, a headless Claude Code builder - runs on hardware you control. A $5 VPS or the Raspberry Pi in your drawer is plenty.</p>
+            <p>Setup is agent-driven. Run the command, open the wizard, and tell your agent to set itself up. It follows the instructions so you don&apos;t have to.</p>
             <div className="oss-badges">
               <span className="oss-badge">AGPL-3.0</span>
               <span className="oss-badge">Zero feature limits</span>
-              <span className="oss-badge">Your accounts, your keys</span>
-              <span className="oss-badge">Deploy to Vercel</span>
+              <span className="oss-badge">Your machine, your keys</span>
+              <span className="oss-badge">One-command install</span>
             </div>
             <div className="oss-btns">
               <a className="btn btn-solid" href={GITHUB_URL}>
@@ -225,13 +225,14 @@ export default async function LandingPage({
           </div>
           <div className="term">
             <div className="t-dots"><i /><i /><i /></div>
-            <div><span className="dim">$</span> <span className="cmd">claude mcp add dispatchseo https://yourdeploy.vercel.app/api/mcp</span></div>
+            <div><span className="dim">$</span> <span className="cmd">git clone https://github.com/NeoZi12/dispatchseo && cd dispatchseo && sh start.sh</span></div>
+            <div className="out">● DispatchSEO is running. Next step: open http://localhost:3000</div>
             <div><span className="dim">$</span> <span className="cmd">claude</span></div>
             <div><span className="dim">&gt;</span> <span className="cmd">set up my site for SEO</span></div>
             <div className="out">● Read your repo: Next.js blog, 24 posts, docs site</div>
             <div className="out">● Wrote the site profile and started tracking 40 keywords</div>
             <div className="out">● Queued 6 article ideas for your review</div>
-            <div><span className="dim">Your move: approve them at yourdeploy.vercel.app</span></div>
+            <div><span className="dim">Your move: approve them at localhost:3000</span></div>
           </div>
         </div>
       </section>
@@ -261,7 +262,7 @@ export default async function LandingPage({
                 <li>Bring your own data keys</li>
                 <li>Community support</li>
               </ul>
-              <a className="btn btn-ghost" href="#oss">Deploy from GitHub</a>
+              <a className="btn btn-ghost" href="#oss">Install from GitHub</a>
             </div>
             <div className="plan">
               <span className="p-badge soft">Coming soon</span>
@@ -320,11 +321,11 @@ export default async function LandingPage({
             </details>
             <details>
               <summary>What do I need to run the free version?</summary>
-              <div className="a">A website that lives in a GitHub repo, a Claude subscription with Claude Code, and free accounts on Vercel, Supabase, and Google Search Console. Rank tracking works with a free SerpApi key; search volume data needs a DataForSEO account, which is the main gap the cloud version fills.</div>
+              <div className="a">A website that lives in a GitHub repo, a Claude subscription with Claude Code, free Google Search Console access, and a machine with Docker. Your laptop works for a test drive; for the always-on autopilot you&apos;ll want something that stays awake, like a $5 VPS or a Raspberry Pi. Rank tracking works with a free SerpApi key; search volume data needs a DataForSEO account, which is the main gap the cloud version fills.</div>
             </details>
             <details>
               <summary>Is it really free? What&apos;s the catch?</summary>
-              <div className="a">The code is AGPL-3.0 and the self-hosted version has every feature. It runs in your own accounts, so there&apos;s nothing for us to bill. The paid cloud sells convenience: we host it, bundle the SERP and volume data into one bill, and replace the Google service account ritual with one click.</div>
+              <div className="a">The code is AGPL-3.0 and the self-hosted version has every feature. It runs on your machine, under your accounts, so there&apos;s nothing for us to bill. The paid cloud sells convenience: we run the machine, bundle the SERP and volume data into one bill, and replace the Google service account ritual with one click.</div>
             </details>
             <details>
               <summary>Do I need to know SEO?</summary>
@@ -378,7 +379,7 @@ export default async function LandingPage({
               <h4>Open source</h4>
               <a href={GITHUB_URL}>GitHub</a>
               <a href={DOCS_URL}>Docs</a>
-              <a href={DOCS_URL}>Self-host guide</a>
+              <a href="/docs/docker-compose">Self-host guide</a>
               <a href={GITHUB_URL}>AGPL-3.0 license</a>
             </div>
             <div className="foot-col">

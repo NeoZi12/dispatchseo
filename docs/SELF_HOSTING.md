@@ -4,21 +4,27 @@ This guide takes you from nothing to a working DispatchSEO install, in plain
 English. If you've never touched Docker or heard the words "service account"
 before, you're in the right place - every step is spelled out.
 
-There are two ways to run it. Both cost $0 to host:
+The short version:
 
-- **[Docker](#option-a-docker-one-command)** - one command on your own
-  computer or any $5/month server. No cloud accounts. The fastest way in.
-- **[Free cloud](#option-b-free-cloud-vercel--supabase)** - Vercel +
-  Supabase + GitHub Actions, all on their free tiers. Nothing runs on your
-  machine; you bring your own free accounts.
+```bash
+git clone https://github.com/NeoZi12/dispatchseo &&
+  cd dispatchseo &&
+  sh start.sh
+```
 
-Both roads end at the same place: a **setup wizard** in your browser that
-walks you through connecting your site, checks every step on the spot, and
-unlocks the dashboard once everything is verified. The whole wizard is
-covered below in [The setup wizard, step by step](#the-setup-wizard-step-by-step).
+That command starts the whole product on your machine - dashboard, database,
+MCP server, schedules, and a headless Claude Code that does the building.
+When it finishes, it prints a local URL. Open it and a **setup wizard** walks
+you through connecting your site, checks every step on the spot, and unlocks
+the dashboard once everything works. The wizard is covered below in
+[The setup wizard, step by step](#the-setup-wizard-step-by-step).
 
-## What you need (either way)
+## What you need
 
+- **A computer that can run [Docker](https://docs.docker.com/get-docker/).**
+  Your laptop or desktop works for trying it out; something that stays on
+  works better for running it seriously. The next section explains that
+  trade-off honestly. The stack needs about 1 GB of RAM.
 - **Your website's code in a GitHub repo.** DispatchSEO publishes every
   article and tool as a pull request - a suggested change you can look at
   before it goes live. That means git-based sites only; WordPress and other
@@ -30,28 +36,73 @@ covered below in [The setup wizard, step by step](#the-setup-wizard-step-by-step
   showing how your site performs in search. If your site isn't on it yet,
   add it first at [search.google.com/search-console](https://search.google.com/search-console).
 
-## Option A: Docker (one command)
+## Laptop or always-on machine? An honest answer
 
-Runs the whole backend - dashboard, MCP server, database, scheduled jobs -
-as a few small containers in about 1 GB of RAM. A $5/month VPS, a Raspberry
-Pi, or your laptop all work.
+DispatchSEO is background automation: it researches, writes, and checks
+rankings on a schedule. **Schedules only run while the machine is on.**
+That single fact decides where you should run it.
 
-The one prerequisite is [Docker](https://docs.docker.com/get-docker/)
-(Docker Desktop on Mac/Windows, `docker` + the compose plugin on Linux).
+**On a laptop**, everything works while the lid is open. When the laptop
+sleeps, the stack pauses with it - and here is exactly what that costs you:
 
-```bash
-git clone https://github.com/NeoZi12/dispatchseo &&
-  cd dispatchseo &&
-  sh start.sh
-```
+- **Content building catches up by itself.** The builder doesn't run at a
+  fixed hour; it asks "is anything due?" every 10 minutes. If the daily
+  guide was due at 4am while your laptop slept, it gets built a few minutes
+  after you open the lid. You lose nothing except the timing.
+- **Search Console stats also self-heal.** Each snapshot re-reads the last
+  few days from Google, so a missed pass is covered by the next one.
+- **Rank checks leave gaps.** Positions are sampled from the live results
+  page once a day (4:00 UTC). A day the machine slept through is a day with
+  no data point in your ranking charts. The trend survives; the daily
+  resolution doesn't.
 
-On Windows, paste that in WSL or Git Bash. The first boot builds the app
-image, which takes a few minutes; the database schema applies itself.
+So a laptop is a fine way to evaluate DispatchSEO for a week or two. You'll
+just see the pipeline work in bursts (whenever the machine is awake) instead
+of quietly overnight.
 
-When it finishes, it prints your dashboard URL - usually
-**http://localhost:3000**. Open it, choose a dashboard password, and the
-setup wizard starts. From here, jump to
-[The setup wizard, step by step](#the-setup-wizard-step-by-step).
+**For running it seriously**, give it any machine that stays on:
+
+| Option | Cost | Notes |
+| --- | --- | --- |
+| Small VPS (Hetzner, DigitalOcean, ...) | ~$4-6/month | The usual choice. 1 GB RAM is enough, 2 GB is comfortable. |
+| Raspberry Pi or any old PC at home | ~$0 | Works great. Turn off sleep mode; that's the whole trick. |
+| Your desktop, if it runs 24/7 anyway | $0 | Set Docker to start on login and forget about it. |
+
+Nothing on the internet ever needs to reach your machine (see
+[the builder](#automatic-builds-fully-local-the-builder)), so a computer at
+home behind a normal router works as-is, without port forwarding or a
+domain.
+
+And if none of these appeal to you, that is exactly what the
+[cloud version](https://dispatchseo.com) will be for: we run the machine.
+
+## Install on your own computer
+
+1. **Install Docker.**
+   - **Mac / Windows:** install [Docker Desktop](https://docs.docker.com/get-docker/)
+     and open it once, so the whale icon shows in your menu bar / tray.
+   - **Linux:** install `docker` and the compose plugin from
+     [docs.docker.com/engine/install](https://docs.docker.com/engine/install/).
+2. **Run the command.** In a terminal (on Windows: WSL or Git Bash, not
+   plain PowerShell):
+
+   ```bash
+   git clone https://github.com/NeoZi12/dispatchseo &&
+     cd dispatchseo &&
+     sh start.sh
+   ```
+
+   The first boot downloads and builds the images, which takes a few
+   minutes. Re-runs take seconds.
+3. **Open the URL it prints** - usually **http://localhost:3000**. If the
+   page doesn't answer right away, give it ~20 seconds and refresh.
+4. **Choose a dashboard password** and the setup wizard starts. Jump to
+   [The setup wizard, step by step](#the-setup-wizard-step-by-step).
+
+Installing on a VPS is the same two steps over SSH. The dashboard then
+answers on the server's address (`http://your-server-ip:3000`). Want it on
+a real domain with HTTPS? Put any reverse proxy in front and set `APP_URL`
+in `.env` to match - optional, purely cosmetic; the pipeline doesn't need it.
 
 ### What the command actually did
 
@@ -62,7 +113,7 @@ re-running it is always safe:
 2. Generates the one required secret (`CRON_SECRET`).
 3. Picks the port: 3000, or the next free one if something already uses it.
    Want a specific port? Set `DISPATCH_PORT` in `.env`.
-4. Starts everything with `docker compose up -d`.
+4. Starts everything with `docker compose up -d --build`.
 
 The stack has a pinned name (`dispatchseo`), so cloning the repo a second
 time somewhere else updates your existing install instead of creating a
@@ -75,8 +126,9 @@ duplicate.
 | `postgrest` | REST layer between app and database (internal only) |
 | `migrate` | Applies the database schema on each boot (safe to repeat) |
 | `cron` | Rank tracking, Search Console snapshots, weekly research |
+| `builder` | Headless Claude Code that builds what's due (next section) |
 
-### Automatic builds, fully local: the builder
+## Automatic builds, fully local: the builder
 
 The stack includes a `builder` container - your own Claude Code, running
 headlessly inside Docker. Every 10 minutes it asks the backend what's due
@@ -111,7 +163,31 @@ localhost can't offer. In that case put the instance behind a public URL
 `APP_URL` in `.env` to match. PR checks (like tool validation) run on
 GitHub either way and work fine regardless.
 
-### Good to know
+## Day to day: what using it actually looks like
+
+Once the wizard finishes, DispatchSEO settles into a rhythm. Your part
+takes a few minutes a week; here is where those minutes go.
+
+- **Ideas arrive in the queue.** Once a week the agent researches keywords
+  and files suggestions - each one a card with the keyword, why it looks
+  winnable, and the angle. You approve, reject, or reorder them on the
+  **Queue** page (or from Claude Code chat; everything the dashboard does,
+  the agent can do over MCP).
+- **Approved ideas become pull requests.** The builder picks up the oldest
+  approved idea (one guide a day at most - publishing pace ramps up slowly
+  on purpose) and opens a PR against your site's repo. In semi-automatic
+  mode you press **Merge** on the dashboard; in automatic mode green PRs
+  merge themselves and you just see "published" in the activity feed.
+- **Numbers accumulate on their own.** Rankings, clicks, and impressions
+  land on the dashboard daily. The **Home** page tells you which SEO stage
+  you're in and what, if anything, needs you.
+- **Problems announce themselves.** A failed job shows a red banner on
+  Home, and emails you if you set up alerts. No news means it's working.
+
+A normal week: open the dashboard once or twice, approve a couple of ideas,
+merge a couple of PRs, glance at the charts. That's the product.
+
+## Good to know
 
 - **Your own database password:** set `POSTGRES_PASSWORD` in `.env`
   **before the very first start**. It gets baked into the database volume,
@@ -119,73 +195,28 @@ GitHub either way and work fine regardless.
   which deletes all data). The default is fine for most people: the
   database is only reachable inside Docker's private network, never from
   the internet.
-- **Upgrading:** `git pull && docker compose build app && docker compose up -d`.
-  Schema changes apply themselves.
+- **Upgrading:** `git pull && sh start.sh`. That's the whole procedure -
+  the script rebuilds what changed and the database schema applies itself.
+  (You always run the compose file that matches the code you pulled, so
+  upgrades can't drift out of sync with the containers.)
+- **Stopping and starting:** `docker compose stop` pauses everything,
+  `sh start.sh` brings it back. Data survives stops, restarts, and reboots.
 - **Backups:** `docker compose exec postgres pg_dump -U dispatch dispatchseo > backup.sql`
+- **Moving to another machine:** back up as above, run the quickstart on
+  the new machine, restore with
+  `docker compose exec -T postgres psql -U dispatch dispatchseo < backup.sql`.
 - **Troubleshooting:** `docker compose ps` shows what's running (everything
   except the one-shot `migrate` should be up; `app` turns `healthy` once it
   reaches the database). `docker compose logs app` shows the app's logs.
   Fresh start: `docker compose down -v` - deletes **all data**.
-
-## Option B: free cloud (Vercel + Supabase)
-
-You'll need free accounts on **GitHub**, **Vercel**, and **Supabase**.
-
-### 1. Deploy the backend
-
-Click a deploy button in the [README](../README.md) - neither asks you for
-anything up front:
-
-- **Deploy · new database** clones the repo to your GitHub and creates a
-  free Supabase database for you through the Vercel Marketplace. Easiest.
-- **Deploy · your own database** deploys the app without creating a
-  database. Use it if your Supabase account is already at its 2-project
-  free limit, or you want to reuse an existing project.
-- **Manual path:** fork this repo, then import the fork into Vercel
-  (Add New → Project). Same result as the second button.
-
-### 2. First open: claim your instance
-
-Open your new site. A short setup flow walks you through whatever is left,
-with exact instructions and links on each screen:
-
-1. **Connect your database** (skipped if the marketplace created one):
-   copy your Supabase project's URL and secret key into two Vercel
-   environment variables, redeploy.
-2. **Run the database setup**: paste one SQL file into Supabase's SQL
-   Editor and press Run. It checks the result before letting you continue.
-3. **Choose your dashboard password.** DispatchSEO generates its own agent
-   key and cron key and shows you both.
-
-### 3. Turn on the schedules
-
-Two schedulers share the work (Vercel's free tier only allows one daily
-cron, so the rest run on GitHub Actions):
-
-- **Vercel cron** - already configured, runs the daily rank check. Nothing
-  to do.
-- **GitHub Actions** - on your fork of this repo: enable Actions (forks
-  start with them off), then add
-  - repository **secret** `CRON_SECRET` = your cron key (shown at
-    `https://your-app.vercel.app/setup/keys`),
-  - repository **variable** `BACKEND_URL` = your deployment URL.
-
-  Only `hourly-gsc.yml` matters for a fresh install. The `seo-*.yml`
-  workflows in this repo are dispatchseo.com's own content pipeline - your
-  site gets its own copies during the install, so leave these disabled.
-
-### 4. The wizard takes it from here
-
-Log in with your password and the setup wizard starts - Search Console,
-keyword data, publish mode, connecting Claude Code, all of it. Keep
-reading.
+- **Uninstalling:** `docker compose down -v` removes the containers and
+  data; delete the cloned folder and it's gone.
 
 ## The setup wizard, step by step
 
-This is the same wizard on Docker and cloud - it knows which install you
-have and only shows what applies. It takes about 10 minutes, checks each
-step on the spot, and saves your progress as you go: close the tab
-whenever, and it reopens exactly where you stopped.
+The wizard takes about 10 minutes, checks each step on the spot, and saves
+your progress as you go: close the tab whenever, and it reopens exactly
+where you stopped.
 
 **Stuck? Every screen also has a link back to this guide.**
 
@@ -305,9 +336,9 @@ which ones are worth winning.
 ## Advanced: environment variables
 
 The wizard stores everything it collects (encrypted) in your own database,
-so a normal install needs no hand-set variables beyond what the deploy
-creates. Power users can still set any of these - an environment variable
-always wins over the wizard's stored value:
+so a normal install needs no hand-set variables beyond what `start.sh`
+creates. Power users can still set any of these in `.env` - an environment
+variable always wins over the wizard's stored value:
 
 | Variable | What it is |
 | --- | --- |
@@ -318,8 +349,7 @@ always wins over the wizard's stored value:
 | `DASHBOARD_PASSWORD`, `CRON_SECRET`, `MCP_API_KEY` | Classic-install overrides; setting them bypasses the stored values |
 
 The full annotated list lives in
-[`.env.local.example`](../.env.local.example) (cloud) and
-[`.env.docker.example`](../.env.docker.example) (Docker).
+[`.env.docker.example`](../.env.docker.example).
 
 ## When something breaks
 
@@ -328,5 +358,5 @@ dashboard's Home page, and - if you set `RESEND_API_KEY` + `ALERT_EMAIL` -
 you get an email, at most one per job per day. Setting those two is
 strongly recommended in auto mode: nobody opens the dashboard on a normal
 day, so the email is what actually surfaces a broken job. Full detail lands
-in Vercel's function logs (cloud) or `docker compose logs` (Docker), plus
-the GitHub Actions run logs.
+in `docker compose logs`, plus the GitHub Actions run logs if your repo
+uses the GitHub-hosted schedules.

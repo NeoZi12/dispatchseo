@@ -26,19 +26,6 @@ function ContainerIcon() {
   );
 }
 
-function CloudIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M7 18a4.5 4.5 0 0 1-.5-8.97A5.5 5.5 0 0 1 17.2 9.1 4 4 0 0 1 17 18H7z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 function TerminalIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -55,12 +42,6 @@ const INSTALL_PATHS = [
     title: "Docker Compose",
     description: "One command, no cloud accounts.",
     recommended: true,
-  },
-  {
-    href: "/docs/cloud-deploy",
-    icon: CloudIcon,
-    title: "Cloud deploy",
-    description: "Free Vercel + Supabase tiers, no server.",
   },
   {
     href: "/docs/local-development",

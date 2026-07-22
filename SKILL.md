@@ -12,8 +12,8 @@ pipeline; it is centrally versioned on purpose.
 
 ## What you need from the user
 
-1. Their DispatchSEO dashboard URL (self-hosted, e.g. `https://their-app.vercel.app`,
-   or `https://dispatchseo.com` for the hosted instance).
+1. Their DispatchSEO dashboard URL (self-hosted, e.g. `http://localhost:3000`
+   or their own domain, or `https://dispatchseo.com` for the hosted instance).
 2. The project's setup command. It's shown on the dashboard's Home page after
    they add their site as a project - one line, containing the MCP token.
 

@@ -33,20 +33,7 @@ content pipeline that ships pull requests, rank tracking, and a dashboard
 where you stay in control.
 </p>
 
-<p align="center">
-  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo&project-name=dispatchseo&repository-name=dispatchseo&stores=%5B%7B%22type%22%3A%22integration%22%2C%22integrationSlug%22%3A%22supabase%22%2C%22productSlug%22%3A%22supabase%22%2C%22protocol%22%3A%22storage%22%7D%5D"><img src="docs/buttons/deploy-new-db.svg" alt="Deploy - new database"></a>
-  &nbsp;
-  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FNeoZi12%2Fdispatchseo&project-name=dispatchseo&repository-name=dispatchseo"><img src="docs/buttons/deploy-own-db.svg" alt="Deploy - your own database"></a>
-</p>
-
-<p align="center">
-Neither asks you for anything. Deploy, open your new site, and it walks you
-through the rest - the first button also creates a free Supabase database
-for you; the second is for connecting a database you already have
-(<a href="docs/SELF_HOSTING.md">guide</a>).
-</p>
-
-<p align="center">Prefer your own machine? No cloud accounts, one command:</p>
+<p align="center">Self-hosting is one command on any machine with Docker:</p>
 
 ```bash
 git clone https://github.com/NeoZi12/dispatchseo &&
@@ -55,9 +42,11 @@ git clone https://github.com/NeoZi12/dispatchseo &&
 ```
 
 <p align="center">When it finishes it prints your dashboard URL - open it
-and the setup wizard takes it from there. Already running something on
-port 3000? It picks the next free port automatically. On Windows, paste
-this in WSL or Git Bash.</p>
+and the setup wizard takes it from there. Your laptop is fine for trying
+it out; for the real always-on autopilot, use any machine that stays
+awake - a $5 VPS, a Raspberry Pi, a desktop that never sleeps
+(<a href="docs/SELF_HOSTING.md">the guide</a> explains the difference
+honestly). On Windows, paste this in WSL or Git Bash.</p>
 
 <p align="center"><i>Self-hosted has zero feature limitations. Everything the
 paid cloud will do, this repo does today, in your own accounts, at $0.</i></p>
@@ -135,29 +124,28 @@ worth winning.
   requests, so git-based sites only; WordPress won't work.
 - A Claude subscription with Claude Code. Your agent is the engine and it
   runs on your existing plan.
-- Somewhere to run it: either free Vercel + Supabase accounts, or any
-  machine with Docker (~1 GB RAM - a $5 VPS or your laptop).
+- A machine with Docker (~1 GB RAM). A laptop works for a test drive; the
+  automation runs on a schedule, so day-to-day you want something that
+  stays on - a $5 VPS, a Raspberry Pi, or a home server.
 - Google Search Console access to your site.
 
 ## Quick start
 
-Two ways in, same product either way
-([docs/SELF_HOSTING.md](docs/SELF_HOSTING.md) covers both):
+The one command above is the whole install
+([docs/SELF_HOSTING.md](docs/SELF_HOSTING.md) is the full guide). Database,
+migrations, schedules, and a headless Claude Code builder are all bundled;
+open the dashboard and the setup wizard takes over. Nothing on the internet
+needs to reach your machine, so there is no domain or port forwarding to
+set up.
 
-- **Docker** - the one command above. Database, migrations, and cron
-  schedules are all bundled; open the dashboard and the setup wizard takes
-  over.
-- **Free cloud tiers** - click a deploy button above (Vercel + Supabase),
-  run the one-file database setup, and enable the GitHub Actions schedule.
-
-Either way, the last step is pasting one command into Claude Code inside
-your site's repo. Your agent does the rest of the install itself, including
-writing its own workflow files and setting its own secrets.
+The last step is pasting one command into Claude Code inside your site's
+repo. Your agent does the rest of the install itself, including writing its
+own workflow files and setting its own secrets.
 
 There's also an [llms.txt](public/llms.txt) and a [SKILL.md](SKILL.md) if
 you'd rather point an agent at this repo and let it figure the setup out.
 
-## Run it locally
+## Developing (from source)
 
 ```bash
 git clone https://github.com/NeoZi12/dispatchseo
@@ -167,26 +155,29 @@ cp .env.local.example .env.local
 pnpm dev
 ```
 
-Fill in `.env.local` (Supabase + the three secrets) before starting, then
-open the dashboard on **localhost:3000**.
+This is the contributor path, not the way to self-host (that's the Docker
+command above). Fill in `.env.local` (Supabase + the three secrets) before
+starting, then open the dashboard on **localhost:3000**.
 
 `pnpm build` is the typecheck - run it before opening a PR. There is no
 separate lint or test setup.
 
 ## Cloud version
 
-A hosted version is coming for people who'd rather not manage a Vercel
-deployment: bundled SERP data, one-click Search Console connection, managed
-crons. Join the waitlist at [dispatchseo.com](https://dispatchseo.com).
-Self-hosting will stay feature-complete either way; the cloud sells
-convenience, not capability.
+A hosted version is coming for people who'd rather not run a machine:
+we host it, bundle the SERP + volume data into one bill, and replace the
+Google service-account ritual with one click. Join the waitlist at
+[dispatchseo.com](https://dispatchseo.com). Self-hosting will stay
+feature-complete either way; the cloud sells convenience, not capability.
 
 ## Architecture, briefly
 
-Next.js App Router on Vercel, Supabase for state, GitHub Actions for
-schedules and builds, `mcp-handler` for the MCP server at `/api/mcp`. One
-deployment is multi-tenant: the MCP bearer token selects the project, crons
-loop over all projects, the dashboard switches with a cookie.
+Next.js App Router, Postgres for state (a bundled container when
+self-hosted, Supabase in the cloud version), `mcp-handler` for the MCP
+server at `/api/mcp`. Schedules and builds run in-stack (cron + builder
+containers) or on GitHub Actions. One deployment is multi-tenant: the MCP
+bearer token selects the project, crons loop over all projects, the
+dashboard switches with a cookie.
 [CLAUDE.md](CLAUDE.md) has the full conventions; it's written for agents,
 which turns out to make it decent documentation for people.
 
