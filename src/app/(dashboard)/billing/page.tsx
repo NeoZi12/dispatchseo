@@ -40,7 +40,7 @@ export default async function BillingPage({
         hint={
           active
             ? `You're on ${TIER_COPY[sub!.tier].name} - ${sub!.sites_limit} site${sub!.sites_limit === 1 ? "" : "s"}, ${sub!.keywords_limit} tracked keywords.`
-            : "Pick a plan to unlock your sites."
+            : "Pick a plan to unlock your sites - Starter comes with a 7-day free trial."
         }
       />
 
@@ -83,6 +83,9 @@ export default async function BillingPage({
                 <span className="text-sm font-normal text-neutral-500">/mo</span>
               </p>
               <p className="mt-1 text-sm text-neutral-400">{TIER_COPY[tier].sub}</p>
+              {tier === "starter" && !active ? (
+                <p className="mt-1 text-xs font-medium text-emerald-300">7-day free trial</p>
+              ) : null}
               <ul className="mt-3 space-y-1 text-sm text-neutral-400">
                 <li>
                   {limits.sites} site{limits.sites === 1 ? "" : "s"}

@@ -197,6 +197,7 @@ export function OnboardingWizard({
   origin,
   resume,
   isDocker,
+  prefillDomain,
 }: {
   saEmail: string | null;
   origin: string;
@@ -207,6 +208,9 @@ export function OnboardingWizard({
   // Docker installs run builds in-stack (the builder container), so the
   // GH token powers building too and the finale adds the builder step.
   isDocker?: boolean;
+  // The domain typed into the landing hero, carried through signup so
+  // step 1 starts filled in (cloud only; self-host has no landing).
+  prefillDomain?: string | null;
 }) {
   const [screen, setScreenRaw] = useState<Screen>(resume?.screen ?? "s0");
   const [created, setCreated] = useState<{
@@ -414,7 +418,7 @@ export function OnboardingWizard({
             </label>
             <label className="block space-y-1.5">
               <span className="text-base font-medium text-neutral-200">Your site&apos;s domain</span>
-              <input name="domain" required placeholder="usagecut.com" autoComplete="off" className={inputClass} />
+              <input name="domain" required placeholder="usagecut.com" autoComplete="off" defaultValue={prefillDomain ?? undefined} className={inputClass} />
               <span className="block text-sm leading-relaxed text-neutral-500">
                 The website whose rankings DispatchSEO will grow and track - not
                 where DispatchSEO is hosted.

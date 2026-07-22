@@ -25,9 +25,13 @@ function GoogleG() {
 }
 
 // One form, one button - used by both /login and /signup in CLOUD_MODE.
-export function GoogleSignInButton({ label }: { label: string }) {
+// domain: the landing hero's typed domain, riding along as a hidden field so
+// the action can stash it in the pending_domain cookie before the OAuth
+// round-trip (the cookie survives the redirect to Google and back).
+export function GoogleSignInButton({ label, domain }: { label: string; domain?: string | null }) {
   return (
     <form action={googleSignIn}>
+      {domain ? <input type="hidden" name="domain" value={domain} /> : null}
       <button
         type="submit"
         className="flex w-full items-center justify-center gap-2.5 rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-3 font-medium text-white transition-colors hover:border-neutral-500"

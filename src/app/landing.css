@@ -85,6 +85,13 @@ html:has(.ld) { scroll-behavior: smooth; }
 .ld .cta-row { display: flex; gap: 12px; justify-content: center; align-items: stretch; flex-wrap: wrap; }
 .ld .email-group { display: flex; background: var(--card); border: 1.5px solid var(--line3); border-radius: 12px; padding: 5px; width: min(430px, 100%); transition: border-color 0.15s; }
 .ld .email-group:focus-within { border-color: var(--vio); }
+.ld .domain-group { display: flex; align-items: center; gap: 2px; background: var(--card); border: 1.5px solid var(--line3); border-radius: 12px; padding: 5px 5px 5px 14px; width: min(490px, 100%); transition: border-color 0.15s; }
+.ld .domain-group:focus-within { border-color: var(--vio); }
+.ld .domain-ic { display: grid; place-items: center; width: 22px; height: 22px; color: var(--dim); flex-shrink: 0; }
+.ld .domain-ic svg { width: 19px; height: 19px; }
+.ld .domain-ic img { width: 20px; height: 20px; border-radius: 4px; }
+.ld .domain-group input { border: 0; outline: 0; flex: 1; min-width: 0; padding: 8px 10px; font-family: var(--body); font-size: 15.5px; background: transparent; color: var(--txt); }
+.ld .domain-group .btn { white-space: nowrap; }
 .ld .email-group input[type="email"] { border: 0; outline: 0; flex: 1; padding: 8px 14px; font-family: var(--body); font-size: 15.5px; background: transparent; color: var(--txt); min-width: 0; }
 .ld .email-group input[type="email"]::placeholder { color: var(--dim); }
 .ld .email-group .btn { border-radius: 8px; white-space: nowrap; }
@@ -201,7 +208,7 @@ html:has(.ld) { scroll-behavior: smooth; }
 /* ---------- pricing ---------- */
 .ld .price-note { text-align: center; margin: -32px auto 34px; max-width: 560px; font-size: 15px; color: var(--dim); }
 .ld .price-note b { color: var(--txt); }
-.ld .plans { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; align-items: stretch; }
+.ld .plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; align-items: stretch; max-width: 940px; margin: 0 auto; }
 .ld .plan { border: 1px solid var(--line); border-radius: 16px; padding: 30px 26px; background: var(--card); display: flex; flex-direction: column; position: relative; }
 .ld .plan.hero-plan { border: 2px solid var(--vio); }
 .ld .plan .p-badge { position: absolute; top: -12px; left: 24px; font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; background: var(--vio); color: #fff; border-radius: 999px; padding: 4px 12px; }
@@ -272,4 +279,6 @@ html:has(.ld) { scroll-behavior: smooth; }
   .ld .foot-grid { grid-template-columns: 1fr 1fr; }
   .ld .email-group { flex-direction: column; gap: 8px; border-radius: 14px; }
   .ld .email-group input[type="email"] { padding: 10px 14px; }
+  .ld .domain-group { flex-wrap: wrap; padding: 8px; border-radius: 14px; }
+  .ld .domain-group .btn { width: 100%; margin-top: 6px; }
 }

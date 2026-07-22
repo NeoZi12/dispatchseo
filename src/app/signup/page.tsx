@@ -1,9 +1,11 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { DispatchMark } from "@/components/logo";
 import { AuthDivider, GoogleSignInButton } from "@/components/google-signin";
 import { isCloudMode } from "@/lib/cloud";
 import { supabaseAuth } from "@/lib/cloud-auth";
+import { cleanDomain, isValidDomain } from "@/lib/domain";
 
 export const dynamic = "force-dynamic";
 
@@ -12,16 +14,41 @@ export const dynamic = "force-dynamic";
 // If the Supabase project has email confirmation on, signUp returns no
 // session and the user lands on the check-your-inbox note; with it off they
 // go straight into the add-a-site wizard.
+//
+// ?domain= comes from the landing hero's type-your-domain CTA. It
+// personalizes the headline here, and both auth paths stash it in the
+// pending_domain cookie so the onboarding wizard can prefill step 1 -
+// the visitor should never have to type their domain twice.
+
+const DOMAIN_COOKIE = "pending_domain";
+
+async function stashDomain(formData: FormData): Promise<string | null> {
+  const domain = cleanDomain(String(formData.get("domain") ?? ""));
+  if (!isValidDomain(domain)) return null;
+  (await cookies()).set(DOMAIN_COOKIE, domain, {
+    path: "/",
+    maxAge: 60 * 60 * 24 * 7,
+    httpOnly: true,
+    sameSite: "lax",
+  });
+  return domain;
+}
 
 async function signup(formData: FormData) {
   "use server";
+  const domain = await stashDomain(formData);
+  const back = domain ? `&domain=${encodeURIComponent(domain)}` : "";
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
-  if (!email || password.length < 8) redirect("/signup?error=weak");
+  if (!email || password.length < 8) redirect(`/signup?error=weak${back}`);
   const supabase = await supabaseAuth();
   const { data, error } = await supabase.auth.signUp({ email, password });
   if (error) {
-    redirect(error.message.toLowerCase().includes("already") ? "/signup?error=exists" : "/signup?error=1");
+    redirect(
+      error.message.toLowerCase().includes("already")
+        ? `/signup?error=exists${back}`
+        : `/signup?error=1${back}`,
+    );
   }
   if (!data.session) redirect("/signup?sent=1");
   redirect("/onboarding?new=1");
@@ -33,10 +60,12 @@ const inputCls =
 export default async function SignupPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; sent?: string }>;
+  searchParams: Promise<{ error?: string; sent?: string; domain?: string }>;
 }) {
   if (!isCloudMode()) redirect("/login");
-  const { error, sent } = await searchParams;
+  const { error, sent, domain: rawDomain } = await searchParams;
+  const cleaned = cleanDomain(rawDomain ?? "");
+  const domain = isValidDomain(cleaned) ? cleaned : null;
 
   if (sent) {
     return (
@@ -60,40 +89,60 @@ export default async function SignupPage({
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-neutral-950 p-6">
-      <div className="w-full max-w-xs space-y-4">
+      <div className="w-full max-w-sm space-y-4">
         <h1 className="flex items-center gap-2.5 text-xl font-semibold text-white">
           <DispatchMark className="h-7 w-auto" />
           DispatchSEO
         </h1>
-        <GoogleSignInButton label="Sign up with Google" />
+        <p className="text-neutral-300">
+          {domain ? (
+            <>
+              Create a free account to start automating{" "}
+              <span className="inline-flex items-center gap-1.5 align-bottom">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`}
+                  alt=""
+                  className="h-5 w-5 rounded"
+                />
+                <b className="font-semibold text-white">{domain}</b>
+              </span>
+              &apos;s SEO.
+            </>
+          ) : (
+            <>Create a free account to put your site&apos;s SEO on autopilot.</>
+          )}
+        </p>
+        <GoogleSignInButton label="Sign up with Google" domain={domain} />
         <AuthDivider />
         <form action={signup} className="space-y-4">
-        <input type="email" name="email" placeholder="Email" className={inputCls} />
-        <input
-          type="password"
-          name="password"
-          placeholder="Password (8+ characters)"
-          className={inputCls}
-        />
-        {error === "weak" ? (
-          <p className="text-sm text-red-400">Use a valid email and at least 8 characters.</p>
-        ) : error === "exists" ? (
-          <p className="text-sm text-red-400">
-            That email already has an account -{" "}
-            <Link href="/login" className="underline">
-              sign in
-            </Link>
-            .
-          </p>
-        ) : error ? (
-          <p className="text-sm text-red-400">Could not create the account. Try again.</p>
-        ) : null}
-        <button
-          type="submit"
-          className="w-full rounded-lg bg-white px-4 py-3 font-medium text-neutral-950"
-        >
-          Create account
-        </button>
+          {domain ? <input type="hidden" name="domain" value={domain} /> : null}
+          <input type="email" name="email" placeholder="Email" className={inputCls} />
+          <input
+            type="password"
+            name="password"
+            placeholder="Password (8+ characters)"
+            className={inputCls}
+          />
+          {error === "weak" ? (
+            <p className="text-sm text-red-400">Use a valid email and at least 8 characters.</p>
+          ) : error === "exists" ? (
+            <p className="text-sm text-red-400">
+              That email already has an account -{" "}
+              <Link href="/login" className="underline">
+                sign in
+              </Link>
+              .
+            </p>
+          ) : error ? (
+            <p className="text-sm text-red-400">Could not create the account. Try again.</p>
+          ) : null}
+          <button
+            type="submit"
+            className="w-full rounded-lg bg-white px-4 py-3 font-medium text-neutral-950"
+          >
+            Create account
+          </button>
         </form>
         <p className="text-sm text-neutral-500">
           Already have one?{" "}

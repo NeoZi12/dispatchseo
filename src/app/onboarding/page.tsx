@@ -1,5 +1,6 @@
 import { requireDashboard } from "@/lib/auth-gate";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
+import { isValidDomain } from "@/lib/domain";
 import { serviceAccountEmail } from "@/lib/gsc";
 import { db } from "@/lib/db";
 import { redirect } from "next/navigation";
@@ -89,6 +90,11 @@ export default async function OnboardingPage({
   const { new: isNew } = await searchParams;
   const resume = isNew === "1" ? null : await buildResume();
 
+  // The domain typed into the landing hero (stashed by /signup) prefills
+  // step 1, so nobody types their domain twice.
+  const pending = (await cookies()).get("pending_domain")?.value ?? "";
+  const prefillDomain = isValidDomain(pending) ? pending : null;
+
   // Standalone shell on purpose - no sidebar, no dashboard chrome. The
   // owner sees the wizard and only the wizard until setup verifies and
   // unlocks the dashboard (this route lives OUTSIDE the (dashboard) group).
@@ -115,6 +121,7 @@ export default async function OnboardingPage({
           saEmail={await serviceAccountEmail()}
           origin={origin}
           resume={resume}
+          prefillDomain={prefillDomain}
           // Docker marker: the compose stack talks to Postgres through
           // PostgREST. Docker installs get builder guidance (in-stack
           // builds) instead of the cloud path's GitHub-schedules story.

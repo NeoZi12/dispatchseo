@@ -3,6 +3,7 @@ import { DM_Sans, Plus_Jakarta_Sans } from "next/font/google";
 import { redirect } from "next/navigation";
 import { DispatchMark } from "@/components/logo";
 import { FeatureShowcase } from "./feature-showcase";
+import { DomainCta } from "./domain-cta";
 import { PixelDispatcher } from "@/components/pixel-dispatcher";
 import "./landing.css";
 
@@ -74,12 +75,11 @@ export default async function LandingPage() {
           <p className="sub">The agent that built your product now runs your SEO: keyword research, guides, interactive tools, rank tracking - all automatic.</p>
 
           <div className="cta-row" id="get-started">
-            <a className="btn btn-solid" href="/signup">Start now</a>
-            <a className="btn btn-ghost" href="#pricing">See pricing</a>
+            <DomainCta />
           </div>
           <p className="hero-note">
             <svg className="gift-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" /><path d="m9 12 2 2 4-4" /></svg>
-            From $49/month. 90-day money-back guarantee if it doesn&apos;t move your numbers.
+            7-day free trial. From $49/month, with a 90-day money-back guarantee.
           </p>
           <a className="btn btn-ghost btn-sm hero-selfhost" href={GITHUB_URL}>
             <GithubIcon />
@@ -194,31 +194,17 @@ export default async function LandingPage() {
       <section className="band-alt" id="pricing">
         <div className="wrap">
           <div className="sec-h">
-            <h2>Self-host free.<br />Or go cloud in minutes.</h2>
+            <h2>Pick your plan</h2>
           </div>
-          <p className="price-note">Every plan publishes <b>unlimited articles</b> - the writing runs on your own Claude subscription, so we never meter your content. 90-day money-back guarantee.</p>
+          <p className="price-note">Start with a <b>7-day free trial</b>. Every plan publishes <b>unlimited articles</b> - the writing runs on your own Claude subscription, so we never meter your content. 90-day money-back guarantee.</p>
           <div className="cloud-adds">
-            <span className="ca-label">Cloud adds</span>
+            <span className="ca-label">Every plan includes</span>
             <span className="ca-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18" /><path d="M7 21v-5" /><path d="M12 21V9" /><path d="M17 21v-8" /></svg>bundled SERP + volume data, one bill</span>
             <span className="ca-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22v-5" /><path d="M9 8V2" /><path d="M15 8V2" /><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z" /></svg>one-click Search Console connect</span>
             <span className="ca-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.5 2" /></svg>managed schedules + failure alerts</span>
           </div>
           <div className="plans">
             <div className="plan">
-              <span className="p-badge soft">Available now</span>
-              <h3>Self-host</h3>
-              <div className="p-price">$0<small> forever</small></div>
-              <div className="p-sub">The whole product, in your accounts</div>
-              <ul>
-                <li>Every feature, no gating</li>
-                <li>Unlimited sites and keywords</li>
-                <li>Bring your own data keys</li>
-                <li>Community support</li>
-              </ul>
-              <a className="btn btn-ghost" href="#oss">Install from GitHub</a>
-            </div>
-            <div className="plan">
-              <span className="p-badge soft">Live</span>
               <h3>Starter</h3>
               <div className="p-price">$49<small>/mo</small></div>
               <div className="p-sub">One site on autopilot</div>
@@ -229,7 +215,7 @@ export default async function LandingPage() {
                 <li>One-click Search Console</li>
                 <li>Managed schedules + alerts</li>
               </ul>
-              <a className="btn btn-solid" href="/signup">Start with Starter</a>
+              <a className="btn btn-solid" href="/signup">Try free for 7 days</a>
             </div>
             <div className="plan hero-plan">
               <span className="p-badge">Most popular</span>
@@ -245,7 +231,6 @@ export default async function LandingPage() {
               <a className="btn btn-solid" href="/signup">Start with Growth</a>
             </div>
             <div className="plan">
-              <span className="p-badge soft">Live</span>
               <h3>Scale</h3>
               <div className="p-price">$149<small>/mo</small></div>
               <div className="p-sub">Portfolios and agencies</div>
@@ -294,7 +279,7 @@ export default async function LandingPage() {
             </details>
             <details>
               <summary>How do I get started on cloud?</summary>
-              <div className="a">Sign up, pick a plan, and the setup wizard walks you through connecting your site - about ten minutes end to end. If DispatchSEO hasn&apos;t measurably helped your site within 90 days, we refund you. Prefer to try before paying? The self-hosted version is complete and free.</div>
+              <div className="a">Sign up and start with the 7-day free trial on Starter - you enter a card at checkout, nothing is charged until the trial ends, and you can cancel in one click before then. The setup wizard walks you through connecting your site, about ten minutes end to end. Need more sites? Upgrade to Growth or Scale anytime, or start there directly. And if DispatchSEO hasn&apos;t measurably helped your site within 90 days, we refund you.</div>
             </details>
           </div>
         </div>
@@ -306,9 +291,9 @@ export default async function LandingPage() {
         <svg className="doodle doodle-f2" viewBox="0 0 64 64" aria-hidden="true"><path d="M8 52 L24 38 L34 46 L56 20 M56 20 L45 22 M56 20 L55 32" /></svg>
         <div className="wrap">
           <h2>Give your agent the keys.<br />Keep the lock.<span className="caret" /></h2>
-          <p>Plans start at $49/month, setup takes about ten minutes, and there&apos;s a 90-day money-back guarantee.</p>
+          <p>Start with a 7-day free trial, setup takes about ten minutes, and there&apos;s a 90-day money-back guarantee.</p>
           <div className="cta-row">
-            <a className="btn btn-solid" href="/signup">Start now</a>
+            <a className="btn btn-solid" href="/signup">Start your free trial</a>
           </div>
           <p className="hero-note">Or don&apos;t pay at all: <a href="#oss">self-host it free</a>.</p>
         </div>
