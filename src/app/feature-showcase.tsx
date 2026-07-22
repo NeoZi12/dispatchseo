@@ -24,14 +24,14 @@ const SLIDES: Slide[] = [
     title: "Daily guides, on autopilot",
     caption: "Written, shipped, and indexed - one a day.",
     image: "/screenshots/guides.png",
-    alt: "Guides page listing published guides with indexing status, clicks, and impressions",
+    alt: "A published guide article, 'Claude Code in GitHub Actions', with an on-this-page table of contents, written and shipped by the pipeline",
   },
   {
     id: "tools",
     title: "Interactive tools that earn links",
     caption: "Calculators and generators, built and shipped for you.",
-    image: "/screenshots/tools.png",
-    alt: "Tools page listing interactive tools published to the site with indexing status",
+    image: "/screenshots/tools.jpeg",
+    alt: "A published interactive tool, the CLAUDE.md Generator, a seven-question quiz that outputs a tuned CLAUDE.md file",
   },
   {
     id: "automations",
