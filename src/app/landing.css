@@ -250,8 +250,8 @@ html:has(.ld) { scroll-behavior: smooth; }
 .ld .foot-bottom a { font-weight: 600; color: var(--txt); text-decoration: none; }
 .ld .foot-oss { display: inline-flex; align-items: center; gap: 5px; }
 .ld .foot-oss svg { width: 15px; height: 15px; color: var(--vio2); }
-.ld .foot-made { display: inline-flex; align-items: center; gap: 6px; }
-.ld .foot-made svg { width: 15px; height: 15px; color: var(--vio2); }
+.ld .foot-made { display: inline-flex; align-items: center; gap: 7px; }
+.ld .foot-made .cc-mark { height: 15px; width: auto; flex-shrink: 0; }
 .ld .foot-made a { transition: color 0.12s; }
 .ld .foot-made a:hover { color: var(--vio2); }
 
