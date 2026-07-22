@@ -39,6 +39,7 @@ import { credsForProject } from "@/lib/dataforseo";
 import { DataforseoConnectForm } from "@/components/dataforseo-connect";
 import { gscAccessOk, serviceAccountEmail } from "@/lib/gsc";
 import { instanceSettings } from "@/lib/dashboard-auth";
+import { isCloudMode } from "@/lib/cloud";
 import {
   indexingBrowserCommand,
   indexingManualSteps,
@@ -469,6 +470,14 @@ export default async function Home() {
         builder_last_seen_at?: string | null;
       } | null
     )?.builder_last_seen_at;
+  // Auto mode publishes without a human, so nobody opens this dashboard on a
+  // normal day - the failure email is the only passive signal. Self-host only:
+  // cloud sends alerts from our own Resend with zero config. The card reads
+  // the env directly and disappears on the restart that loads the two vars.
+  const needsAlertEmail =
+    !isCloudMode() &&
+    autoMergeOn &&
+    !(process.env.RESEND_API_KEY && process.env.ALERT_EMAIL);
   // The project's own MCP key, only fetched when a card needs to show it.
   const mcpToken = needsPipeline ? await fetchProjectToken(project.id) : null;
   // Mirrors the wizard's connect command. The server name is unique per
@@ -498,7 +507,8 @@ export default async function Home() {
     needsFirstPage ||
     needsPipeline ||
     needsGsc ||
-    needsBuilder;
+    needsBuilder ||
+    needsAlertEmail;
 
   return (
     <div className="space-y-8">
@@ -639,6 +649,26 @@ export default async function Home() {
               ]}
               command={'echo "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat-PASTE-YOUR-TOKEN-HERE" >> .env && docker compose up -d builder'}
               closing="Until then everything else still works - research, approvals, rankings - only automatic building waits."
+            />
+          ) : null}
+          {needsAlertEmail ? (
+            <SetupStep
+              title="Get emailed when something breaks"
+              why="You're in automatic mode - pages publish themselves, so nobody opens this dashboard on a normal day. Failures show a red banner here, but the email is what actually reaches you. Two minutes: free Resend account, one key, two lines in .env."
+              steps={[
+                <>
+                  Create a free account at{" "}
+                  <ExtLink href="https://resend.com/signup">resend.com</ExtLink> - no credit
+                  card, no domain setup needed.
+                </>,
+                <>
+                  Open <ExtLink href="https://resend.com/api-keys">resend.com/api-keys</ExtLink>,
+                  click Create API Key, and copy the key it shows (starts with re_).
+                </>,
+                "In the folder DispatchSEO was installed from (on a VPS: over SSH), paste the command below with both values swapped in. The email must be the one you signed up to Resend with - alerts go out through Resend's built-in sender, which only delivers to its own account's address.",
+              ]}
+              command={'echo "RESEND_API_KEY=re_PASTE-YOUR-KEY-HERE" >> .env && echo "ALERT_EMAIL=you@example.com" >> .env && sh start.sh'}
+              closing="At most one email per job per day, and a machine that was asleep or off never counts as broken. No email means everything is working."
             />
           ) : null}
           {needsMergeToken ? (

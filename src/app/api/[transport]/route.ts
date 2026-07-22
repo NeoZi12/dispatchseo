@@ -1312,6 +1312,11 @@ const mcpHandler = createMcpHandler(
             } | null;
             return ok({
               builder_last_seen_at: inst?.builder_last_seen_at ?? null,
+              // Parity with Home's "get emailed when something breaks" card:
+              // false = failures only surface on the dashboard banner.
+              alert_email_configured: Boolean(
+                process.env.RESEND_API_KEY && process.env.ALERT_EMAIL,
+              ),
               jobs: health,
             });
           }
