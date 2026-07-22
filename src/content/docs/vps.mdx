@@ -8,7 +8,9 @@ dashboard from your browser, and giving it a permanent address. About ten
 minutes end to end. Any provider works (Hetzner, DigitalOcean, Vultr, ...);
 a 1 GB Ubuntu or Debian box is enough.
 
-## 1. Connect to the server
+<Steps>
+
+<Step n={1} title="Connect to the server">
 
 From your own terminal:
 
@@ -16,7 +18,9 @@ From your own terminal:
 ssh root@your-server-ip
 ```
 
-## 2. Install Docker
+</Step>
+
+<Step n={2} title="Install Docker">
 
 The official one-liner:
 
@@ -24,7 +28,9 @@ The official one-liner:
 curl -fsSL https://get.docker.com | sh
 ```
 
-## 3. Clone and start
+</Step>
+
+<Step n={3} title="Clone and start">
 
 ```bash
 git clone https://github.com/NeoZi12/dispatchseo &&
@@ -37,7 +43,9 @@ is listening on port 4005 of the server - but only locally. Don't open
 that port to the internet; the next step gives the dashboard a proper
 HTTPS address instead.
 
-## 4. Give it its address: a domain with automatic HTTPS
+</Step>
+
+<Step n={4} title="Give it its address: a domain with automatic HTTPS">
 
 Once, ever, and every command is copy-paste. You already own a domain -
 your website's - so this is one DNS record on it. When it's done, your
@@ -98,7 +106,9 @@ root@your-server-ip` on your own computer tunnels the dashboard to
 [http://localhost:4005](http://localhost:4005), encrypted, with the
 server's firewall staying closed. You won't need it after DNS lands.)
 
-## 5. The builder token comes from your own computer
+</Step>
+
+<Step n={5} title="The builder token comes from your own computer">
 
 `claude setup-token` opens a browser login, which a headless server can't
 do. Run it on your own machine, copy the `sk-ant-oat...` token into the
@@ -111,3 +121,7 @@ docker compose up -d builder
 That's the whole difference from a local install. The setup wizard and
 everything after it are identical - except this machine never sleeps, so
 the schedules fire at their scheduled times.
+
+</Step>
+
+</Steps>

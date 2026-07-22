@@ -77,7 +77,10 @@ export function getDoc(slug: string): { meta: DocMeta; content: string } | null 
 
 // H2 extraction for the "On this page" rail - same contract as
 // getPostHeadings in blog.ts: ids must match what the MDX registry's h2
-// renderer produces.
+// renderer produces. A numbered install step (src/components/blog/steps.tsx)
+// renders its own h2 from a `title` prop instead of a literal "## " line, so
+// a <Step ... title="..."> tag counts as a heading too - same id, read
+// straight out of the raw MDX rather than the compiled JSX.
 export function getDocHeadings(slug: string): DocHeading[] {
   const doc = getDoc(slug);
   if (!doc) return [];
@@ -89,11 +92,19 @@ export function getDocHeadings(slug: string): DocHeading[] {
       continue;
     }
     if (inFence) continue;
-    const match = /^##\s+(.*?)\s*#*\s*$/.exec(line);
-    if (!match) continue;
-    const text = match[1].replace(/`/g, "").trim();
-    if (!text) continue;
-    headings.push({ id: slugify(text), text });
+
+    const h2Match = /^##\s+(.*?)\s*#*\s*$/.exec(line);
+    if (h2Match) {
+      const text = h2Match[1].replace(/`/g, "").trim();
+      if (text) headings.push({ id: slugify(text), text });
+      continue;
+    }
+
+    const stepMatch = /<Step\b[^>]*\btitle=["']([^"']+)["']/.exec(line);
+    if (stepMatch) {
+      const text = stepMatch[1].trim();
+      if (text) headings.push({ id: slugify(text), text });
+    }
   }
   return headings;
 }

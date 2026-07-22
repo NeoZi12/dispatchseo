@@ -3,14 +3,18 @@ title: Install on your computer
 description: One command starts the whole product on any machine with Docker. Open the URL it prints and the setup wizard takes over.
 ---
 
-## 1. Install Docker
+<Steps>
+
+<Step n={1} title="Install Docker">
 
 - **Mac / Windows:** install [Docker Desktop](https://docs.docker.com/get-docker/)
   and open it once, so the whale icon shows in your menu bar / tray.
 - **Linux:** install `docker` and the compose plugin from
   [docs.docker.com/engine/install](https://docs.docker.com/engine/install/).
 
-## 2. Run the command
+</Step>
+
+<Step n={2} title="Run the command">
 
 In a terminal (on Windows: WSL or Git Bash, not plain PowerShell):
 
@@ -23,7 +27,9 @@ git clone https://github.com/NeoZi12/dispatchseo &&
 The first boot builds the images, which takes a few minutes. Re-runs take
 seconds.
 
-## 3. Open your dashboard
+</Step>
+
+<Step n={3} title="Open your dashboard">
 
 Go to the URL the command printed - usually
 [http://localhost:4005](http://localhost:4005). If the page doesn't answer
@@ -33,6 +39,10 @@ Choose a dashboard password and the setup wizard walks you through the
 rest: your site, Search Console, keyword data, and connecting Claude Code.
 
 That's the install. Everything below is reference.
+
+</Step>
+
+</Steps>
 
 ## Installing on a VPS instead?
 

@@ -20,6 +20,7 @@ import { OpenCoreChecklist } from "./open-core-checklist";
 import { AgentModelCompareTable } from "./agent-model-compare-table";
 import { SeoAgentCapabilityGrid } from "./seo-agent-capability-grid";
 import { SeoAgentRealityFactRow } from "./seo-agent-reality-fact-row";
+import { Steps, Step } from "./steps";
 import { slugify } from "@/lib/slugify";
 
 // The components every blog MDX file renders with: typographic defaults that
@@ -107,4 +108,6 @@ export const mdxComponents: MDXComponents = {
   AgentModelCompareTable,
   SeoAgentCapabilityGrid,
   SeoAgentRealityFactRow,
+  Steps,
+  Step,
 };
