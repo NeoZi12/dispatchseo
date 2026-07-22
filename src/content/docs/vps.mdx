@@ -33,28 +33,16 @@ git clone https://github.com/NeoZi12/dispatchseo &&
 ```
 
 First boot builds the images - a few minutes. When it finishes, the stack
-is listening on port 4005 of the server.
+is listening on port 4005 of the server - but only locally. Don't open
+that port to the internet; the next step gives the dashboard a proper
+HTTPS address instead.
 
-## 4. See the wizard right now
+## 4. Give it its address: a domain with automatic HTTPS
 
-Two quick ways in, before any domain setup:
-
-- **SSH tunnel (encrypted, zero setup).** On your own computer run
-  `ssh -L 4005:localhost:4005 root@your-server-ip`, then open
-  [http://localhost:4005](http://localhost:4005). The server's firewall
-  stays fully closed.
-- **Open the port (quick look only).** Allow port 4005 in the firewall
-  (`ufw allow 4005`, or your provider's panel) and browse
-  `http://your-server-ip:4005`. This is plain HTTP - your dashboard
-  password crosses the internet unencrypted - so treat it as a first
-  look, not a way to run.
-
-Day to day you won't use either: the next section gives the dashboard a
-permanent HTTPS address, and from then on it's just a bookmark.
-
-## 5. A real domain with automatic HTTPS
-
-Once, ever. Every command is copy-paste.
+Once, ever, and every command is copy-paste. You already own a domain -
+your website's - so this is one DNS record on it. When it's done, your
+dashboard lives at `https://dispatch.your-domain.com`, a bookmark from
+any device.
 
 **a. Point a subdomain at the server.** In your domain's DNS settings,
 add an **A record**: name `dispatch` (or anything you like), value = your
@@ -102,10 +90,15 @@ APP_URL=https://dispatch.your-domain.com
 ```
 
 Then run `sh start.sh` again and open `https://dispatch.your-domain.com` -
-that's your dashboard's home from now on. If the certificate isn't there
-yet, give DNS a few more minutes and reload once.
+choose your dashboard password and the setup wizard starts. If the
+certificate isn't there yet, give DNS a few more minutes and reload once.
 
-## 6. The builder token comes from your own computer
+(Waiting on DNS and impatient? `ssh -L 4005:localhost:4005
+root@your-server-ip` on your own computer tunnels the dashboard to
+[http://localhost:4005](http://localhost:4005), encrypted, with the
+server's firewall staying closed. You won't need it after DNS lands.)
+
+## 5. The builder token comes from your own computer
 
 `claude setup-token` opens a browser login, which a headless server can't
 do. Run it on your own machine, copy the `sk-ant-oat...` token into the
