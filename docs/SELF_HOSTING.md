@@ -155,6 +155,10 @@ Vultr, ...); a 1 GB Ubuntu or Debian box is enough.
    domain - set it up once and the dashboard is just a bookmark, from
    any device, no terminal involved.
 
+   (Already running Nginx, Traefik, or another proxy? Any of them works -
+   just proxy your subdomain to `localhost:3000`. Caddy is documented here
+   because it's the shortest path for a first-timer.)
+
 5. **The builder token comes from your own computer**, not the VPS:
    `claude setup-token` opens a browser login, which a headless server
    can't do. Run it locally, copy the `sk-ant-oat...` token into the
