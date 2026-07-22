@@ -1,12 +1,10 @@
 ---
 title: Install on a VPS
-description: The same one-command install over SSH, plus a real domain with automatic HTTPS. Every command is copy-paste.
+description: One line installs everything - Docker included - and one .env line puts the dashboard on your own domain with automatic HTTPS.
 ---
 
-The install is identical to a local one - the extra work is reaching the
-dashboard from your browser, and giving it a permanent address. About ten
-minutes end to end. Any provider works (Hetzner, DigitalOcean, Vultr, ...);
-a 1 GB Ubuntu or Debian box is enough.
+Any provider works (Hetzner, DigitalOcean, Vultr, ...); a 1 GB Ubuntu or
+Debian box is enough. About five minutes end to end.
 
 <Steps>
 
@@ -20,96 +18,67 @@ ssh root@your-server-ip
 
 </Step>
 
-<Step n={2} title="Install Docker">
+<Step n={2} title="Install and start">
 
-The official one-liner:
+One line - it installs Docker if the server doesn't have it, fetches
+DispatchSEO, and boots the stack:
 
 ```bash
-curl -fsSL https://get.docker.com | sh
+curl -fsSL https://dispatchseo.com/install.sh | sh
 ```
+
+Re-running the same line later is also the upgrade command. (Prefer to do
+it by hand? `git clone https://github.com/NeoZi12/dispatchseo && cd
+dispatchseo && sh start.sh` is all the script does.)
+
+When it finishes, the stack is listening on port 4005 of the server - but
+only locally. Don't open that port to the internet; the next step gives
+the dashboard a proper HTTPS address instead.
 
 </Step>
 
-<Step n={3} title="Clone and start">
+<Step n={3} title="Give it its address: your domain, automatic HTTPS">
 
-```bash
-git clone https://github.com/NeoZi12/dispatchseo &&
-  cd dispatchseo &&
-  sh start.sh
-```
-
-First boot downloads the prebuilt images (or builds from source when it
-cannot) - a few minutes. When it finishes, the stack
-is listening on port 4005 of the server - but only locally. Don't open
-that port to the internet; the next step gives the dashboard a proper
-HTTPS address instead.
-
-</Step>
-
-<Step n={4} title="Give it its address: a domain with automatic HTTPS">
-
-Once, ever, and every command is copy-paste. You already own a domain -
-your website's - so this is one DNS record on it. When it's done, your
-dashboard lives at `https://dispatch.your-domain.com`, a bookmark from
-any device.
+You already own a domain - your website's - so this is one DNS record and
+one line in `.env`:
 
 **a. Point a subdomain at the server.** In your domain's DNS settings,
 add an **A record**: name `dispatch` (or anything you like), value = your
-server's IP. Give it a few minutes to propagate.
+server's IP.
 
-**b. Open the web ports** - Caddy needs them to prove domain ownership
-and fetch the certificate:
-
-```bash
-ufw allow 80 && ufw allow 443
-```
-
-(Or open ports 80 + 443 in your provider's firewall panel.)
-
-**c. Install Caddy.** The official repo works on any Debian or Ubuntu -
-a plain `apt install caddy` doesn't everywhere:
+**b. Tell DispatchSEO the domain** - swap in yours:
 
 ```bash
-apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
-apt update && apt install -y caddy
+cd dispatchseo &&
+  echo "DOMAIN=dispatch.your-domain.com" >> .env &&
+  sh start.sh
 ```
 
-**d. Tell Caddy about your subdomain** - swap in your real domain, then
-paste:
+That's it. The stack now includes its own HTTPS proxy: it fetches the
+certificate, renews it forever, and `start.sh` prints your new address.
+Open `https://dispatch.your-domain.com`, choose a dashboard password, and
+the setup wizard starts. From now on the dashboard is a bookmark, from
+any device.
 
-```bash
-cat > /etc/caddy/Caddyfile << 'EOF'
-dispatch.your-domain.com {
-    reverse_proxy localhost:4005
-}
-EOF
-systemctl reload caddy
-```
+Two notes for unusual setups:
 
-Caddy fetches and renews the HTTPS certificate by itself - there is no
-certbot step. (Already running Nginx, Traefik, or another proxy? Any of
-them works - just proxy your subdomain to `localhost:4005`.)
-
-**e. Tell DispatchSEO its address.** In the `.env` next to `start.sh`:
-
-```bash
-APP_URL=https://dispatch.your-domain.com
-```
-
-Then run `sh start.sh` again and open `https://dispatch.your-domain.com` -
-choose your dashboard password and the setup wizard starts. If the
-certificate isn't there yet, give DNS a few more minutes and reload once.
+- **Provider firewall:** if your VPS has a cloud firewall (Hetzner Cloud
+  Firewall, DO Cloud Firewall, AWS security groups), allow ports **80 and
+  443** in its panel. Plain `ufw` boxes need nothing - Docker publishes
+  the ports directly.
+- **Already running Nginx/Traefik/Caddy on this host?** Leave `DOMAIN`
+  unset (ports 80/443 stay yours), point your existing proxy at
+  `localhost:4005`, and set `APP_URL=https://your-subdomain` in `.env`
+  yourself.
 
 (Waiting on DNS and impatient? `ssh -L 4005:localhost:4005
 root@your-server-ip` on your own computer tunnels the dashboard to
-[http://localhost:4005](http://localhost:4005), encrypted, with the
-server's firewall staying closed. You won't need it after DNS lands.)
+[http://localhost:4005](http://localhost:4005), encrypted. You won't need
+it after DNS lands.)
 
 </Step>
 
-<Step n={5} title="The builder token comes from your own computer">
+<Step n={4} title="The builder token comes from your own computer">
 
 `claude setup-token` opens a browser login, which a headless server can't
 do. Run it on your own machine, copy the `sk-ant-oat...` token into the

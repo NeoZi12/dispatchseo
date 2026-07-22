@@ -25,9 +25,9 @@ dashboard password, and the setup wizard takes it from there.
   laptop wakes, but daily rank checks leave gaps, so serious use wants a
   machine that stays on (a ~$5 VPS, a Raspberry Pi, or a desktop that never
   sleeps).
-- **[Install on a VPS](https://dispatchseo.com/docs/vps)** - the same
-  command over SSH, then a copy-paste Caddy recipe that puts the
-  dashboard on your own subdomain with automatic HTTPS.
+- **[Install on a VPS](https://dispatchseo.com/docs/vps)** - one line
+  installs everything (Docker included), then one DNS record + one .env
+  line puts the dashboard on your subdomain with automatic HTTPS.
 - **[The setup wizard, step by step](https://dispatchseo.com/docs/setup-wizard)** -
   what each screen asks for and why: your site, the Search Console service
   account, keyword data (free mode vs DataForSEO), publish mode, one-tap

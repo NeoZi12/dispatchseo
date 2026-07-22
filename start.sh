@@ -36,6 +36,18 @@ if [ -z "$PORT" ]; then
   echo "APP_URL=http://localhost:$PORT" >> .env
 fi
 
+# A DOMAIN in .env turns on the bundled HTTPS proxy (the caddy service):
+# certificates fetch and renew themselves, APP_URL follows the domain, and
+# nothing needs installing on the host. Needs the domain's DNS A record
+# pointing at this machine, with ports 80/443 reachable.
+DOMAIN=$(grep '^DOMAIN=..*' .env | tail -1 | cut -d= -f2)
+PROFILE=""
+if [ -n "$DOMAIN" ]; then
+  PROFILE="--profile domain"
+  grep -v '^APP_URL=' .env > .env.new && mv .env.new .env
+  echo "APP_URL=https://$DOMAIN" >> .env
+fi
+
 # Prefer the prebuilt images (published to GHCR by CI) - first boot becomes
 # a download instead of a Next.js compile, which matters on small VPSes.
 # Anything that can't pull lands on the local build automatically: modified
@@ -43,16 +55,21 @@ fi
 # a private repo phase. --build on the fallback keeps upgrades honest:
 # "git pull && sh start.sh" always runs the code you just pulled.
 if ! grep -q '^BUILD_FROM_SOURCE=1' .env 2>/dev/null \
-  && docker compose pull --quiet app builder >/dev/null 2>&1; then
-  docker compose up -d --no-build
+  && docker compose $PROFILE pull --quiet app builder >/dev/null 2>&1; then
+  docker compose $PROFILE up -d --no-build
 else
-  docker compose up -d --build
+  docker compose $PROFILE up -d --build
 fi
 
 echo '
   DispatchSEO is running.
 '
-echo "  Next step -> open  http://localhost:$PORT  in your browser."
+if [ -n "$DOMAIN" ]; then
+  echo "  Next step -> open  https://$DOMAIN  in your browser."
+  echo '  (a fresh certificate can take a minute after DNS lands - just refresh)'
+else
+  echo "  Next step -> open  http://localhost:$PORT  in your browser."
+fi
 echo '  The setup wizard takes it from there.
 
   (first boot can take ~20 seconds before the page answers - just refresh)

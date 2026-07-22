@@ -16,15 +16,13 @@ export function Steps({ children }: { children: ReactNode }) {
   return <div className="not-prose my-8">{children}</div>;
 }
 
-export function Step({
-  n,
-  title,
-  children,
-}: {
+export function Step(props: {
   n: number;
   title: string;
   children: ReactNode;
 }) {
+  console.log("STEP PROPS DEBUG:", JSON.stringify(Object.keys(props)), props.n, typeof props.n);
+  const { n, title, children } = props;
   const id = slugify(title) || undefined;
   return (
     <div className="group relative pb-10 pl-12 last:pb-0">

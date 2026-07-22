@@ -146,9 +146,29 @@ services:
         condition: service_started
     networks: [dispatch]
 
+  # Bundled HTTPS proxy - only starts when start.sh sees DOMAIN in .env
+  # (the "domain" profile). Caddy fetches and renews the certificate by
+  # itself; certs persist in the dispatch-caddy volume. Hosts that already
+  # run their own reverse proxy just leave DOMAIN unset.
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    profiles: [domain]
+    command: caddy reverse-proxy --from "${DOMAIN:-}" --to app:3000
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - dispatch-caddy:/data
+    depends_on:
+      app:
+        condition: service_started
+    networks: [dispatch]
+
 volumes:
   dispatch-pgdata:
   dispatch-builder:
+  dispatch-caddy:
 
 networks:
   dispatch:
