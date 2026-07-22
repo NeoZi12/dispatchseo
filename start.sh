@@ -10,6 +10,21 @@
 # up. Full guide: docs/SELF_HOSTING.md
 set -e
 
+# start.sh is also the upgrade command, and the stack is not only images:
+# docker-compose.yml, setup.sql (the migrate container mounts it from this
+# folder), and this script itself all live in the repo. Refresh the repo
+# first, then hand off to the fresh copy of this script (exec, so a changed
+# start.sh never runs half-old half-new). Forks with local commits, tarball
+# installs, and offline machines fail the ff-only pull quietly and boot
+# what they have; GIT_TERMINAL_PROMPT=0 keeps a credential prompt from
+# hanging an unattended run.
+if [ -z "$DISPATCHSEO_PULLED" ] && [ -d .git ] && command -v git >/dev/null 2>&1; then
+  GIT_TERMINAL_PROMPT=0 git pull --ff-only --quiet 2>/dev/null || true
+  DISPATCHSEO_PULLED=1
+  export DISPATCHSEO_PULLED
+  exec sh "$0"
+fi
+
 [ -f .env ] || cp .env.docker.example .env
 
 # The one required secret. Generated once; re-runs keep the existing value.
