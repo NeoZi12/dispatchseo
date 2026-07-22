@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { planGate } from "@/lib/billing";
 import { credsForProject, serpAiOverview } from "@/lib/dataforseo";
 import { serpProviderForProject, providerRank } from "@/lib/serp";
 import { refreshDomainRating } from "@/lib/domain-rating";
@@ -165,6 +166,13 @@ async function runRanks(
 
 async function runProject(project: Project): Promise<Record<string, unknown>> {
   const result: Record<string, unknown> = {};
+
+  // Plan gate (cloud only): a project beyond its owner's site allowance -
+  // e.g. after a Scale -> Starter downgrade - pauses instead of burning paid
+  // SERP checks. Informational skip, never an error; data stays, upgrading
+  // resumes it on the next run.
+  const gate = await planGate(project.id);
+  if (!gate.allowed) return { skipped: `plan: ${gate.reason}` };
 
   // Setup gate, computed once and shared by the two GSC consumers below
   // (GSC-mode ranks + the snapshot half): a project whose owner hasn't

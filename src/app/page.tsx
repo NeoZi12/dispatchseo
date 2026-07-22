@@ -1,10 +1,7 @@
 import type { Metadata } from "next";
 import { DM_Sans, Plus_Jakarta_Sans } from "next/font/google";
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
 import { DispatchMark } from "@/components/logo";
-import { joinWaitlist, waitlistAttemptAllowed } from "@/lib/waitlist";
-import { clientIp } from "@/lib/login-lockout";
 import { FeatureShowcase } from "./feature-showcase";
 import { PixelDispatcher } from "@/components/pixel-dispatcher";
 import "./landing.css";
@@ -30,59 +27,14 @@ export const metadata: Metadata = {
     "Claude Code researches keywords, writes guides, builds interactive tools, and tracks your ranks automatically. Every piece is a pull request you approve. Open source, free to self-host.",
 };
 
-async function join(formData: FormData) {
-  "use server";
-  const anchor = String(formData.get("source") ?? "") === "final" ? "waitlist-final" : "waitlist";
-  // Honeypot: bots fill every field. Pretend success so they move on.
-  if (String(formData.get("website") ?? "") !== "") redirect(`/?joined=1#${anchor}`);
-  // Rate limit (5/IP/hour) gets the same pretend-success treatment: a sixth
-  // signup from one IP inside an hour is a script, and duplicates are
-  // "success" anyway, so there is nothing to tell a real person.
-  if (!(await waitlistAttemptAllowed(clientIp(await headers())))) {
-    redirect(`/?joined=1#${anchor}`);
-  }
-  const email = String(formData.get("email") ?? "");
-  const result = await joinWaitlist(email, "landing");
-  redirect(result.ok ? `/?joined=1#${anchor}` : `/?error=email#${anchor}`);
-}
-
-function WaitlistForm({ joined, error, source }: { joined: boolean; error: boolean; source: string }) {
-  if (joined) {
-    return (
-      <p className="joined">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
-        You&apos;re on the list. Watch your inbox.
-      </p>
-    );
-  }
-  return (
-    <>
-      <form action={join} className="email-group">
-        <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" className="hp" />
-        <input type="hidden" name="source" value={source} />
-        <input type="email" name="email" required placeholder="you@company.com" aria-label="Email address" />
-        <button className="btn btn-solid" type="submit">Join the waitlist</button>
-      </form>
-      {error ? <p className="form-error">That email didn&apos;t look right. Try again?</p> : null}
-    </>
-  );
-}
-
 function GithubIcon() {
   return (
     <svg width="17" height="17" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z" /></svg>
   );
 }
 
-export default async function LandingPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ joined?: string; error?: string }>;
-}) {
+export default async function LandingPage() {
   if (process.env.LANDING_ENABLED !== "true") redirect("/dashboard");
-  const { joined, error } = await searchParams;
-  const isJoined = joined === "1";
-  const isError = error === "email";
 
   return (
     <div className={`ld ${jakarta.variable} ${dmSans.variable}`}>
@@ -105,7 +57,7 @@ export default async function LandingPage({
               <GithubIcon />
               GitHub
             </a>
-            <a className="btn btn-solid btn-sm" href="#waitlist">Join the waitlist</a>
+            <a className="btn btn-solid btn-sm" href="/signup">Get started</a>
           </div>
         </div>
       </nav>
@@ -121,12 +73,13 @@ export default async function LandingPage({
           <h1>Automate your SEO<br />with <span className="hl">Claude Code</span></h1>
           <p className="sub">The agent that built your product now runs your SEO: keyword research, guides, interactive tools, rank tracking - all automatic.</p>
 
-          <div className="cta-row" id="waitlist">
-            <WaitlistForm joined={isJoined} error={isError} source="hero" />
+          <div className="cta-row" id="get-started">
+            <a className="btn btn-solid" href="/signup">Start now</a>
+            <a className="btn btn-ghost" href="#pricing">See pricing</a>
           </div>
           <p className="hero-note">
-            <svg className="gift-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="4" rx="1" /><path d="M12 8v13" /><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7" /><path d="M7.5 8a2.5 2.5 0 0 1 0-5C9.5 3 11 5 12 8c1-3 2.5-5 4.5-5a2.5 2.5 0 0 1 0 5" /></svg>
-            Waitlist members lock in founding pricing at launch.
+            <svg className="gift-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" /><path d="m9 12 2 2 4-4" /></svg>
+            From $49/month. 90-day money-back guarantee if it doesn&apos;t move your numbers.
           </p>
           <a className="btn btn-ghost btn-sm hero-selfhost" href={GITHUB_URL}>
             <GithubIcon />
@@ -241,9 +194,9 @@ export default async function LandingPage({
       <section className="band-alt" id="pricing">
         <div className="wrap">
           <div className="sec-h">
-            <h2>Self-host free.<br />Cloud, when it lands.</h2>
+            <h2>Self-host free.<br />Or go cloud in minutes.</h2>
           </div>
-          <p className="price-note">Cloud pricing below is <b>planned, not final</b>. Joining the waitlist locks in founding-member pricing at launch.</p>
+          <p className="price-note">Every plan publishes <b>unlimited articles</b> - the writing runs on your own Claude subscription, so we never meter your content. 90-day money-back guarantee.</p>
           <div className="cloud-adds">
             <span className="ca-label">Cloud adds</span>
             <span className="ca-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18" /><path d="M7 21v-5" /><path d="M12 21V9" /><path d="M17 21v-8" /></svg>bundled SERP + volume data, one bill</span>
@@ -265,7 +218,7 @@ export default async function LandingPage({
               <a className="btn btn-ghost" href="#oss">Install from GitHub</a>
             </div>
             <div className="plan">
-              <span className="p-badge soft">Coming soon</span>
+              <span className="p-badge soft">Live</span>
               <h3>Starter</h3>
               <div className="p-price">$49<small>/mo</small></div>
               <div className="p-sub">One site on autopilot</div>
@@ -276,10 +229,10 @@ export default async function LandingPage({
                 <li>One-click Search Console</li>
                 <li>Managed schedules + alerts</li>
               </ul>
-              <a className="btn btn-solid" href="#waitlist">Join the waitlist</a>
+              <a className="btn btn-solid" href="/signup">Start with Starter</a>
             </div>
             <div className="plan hero-plan">
-              <span className="p-badge">Coming soon</span>
+              <span className="p-badge">Most popular</span>
               <h3>Growth</h3>
               <div className="p-price">$99<small>/mo</small></div>
               <div className="p-sub">For a small portfolio</div>
@@ -289,10 +242,10 @@ export default async function LandingPage({
                 <li>Everything in Starter</li>
                 <li>Weekly opportunity digest</li>
               </ul>
-              <a className="btn btn-solid" href="#waitlist">Join the waitlist</a>
+              <a className="btn btn-solid" href="/signup">Start with Growth</a>
             </div>
             <div className="plan">
-              <span className="p-badge soft">Coming soon</span>
+              <span className="p-badge soft">Live</span>
               <h3>Scale</h3>
               <div className="p-price">$149<small>/mo</small></div>
               <div className="p-sub">Portfolios and agencies</div>
@@ -302,7 +255,7 @@ export default async function LandingPage({
                 <li>Everything in Growth</li>
                 <li>Priority support</li>
               </ul>
-              <a className="btn btn-solid" href="#waitlist">Join the waitlist</a>
+              <a className="btn btn-solid" href="/signup">Start with Scale</a>
             </div>
           </div>
         </div>
@@ -340,24 +293,24 @@ export default async function LandingPage({
               <div className="a">It reads your Google Search Console data with read-only access: the queries your site shows up for, plus clicks, impressions, and average position. That&apos;s what powers the keyword recommendations and the rank tracking. Nothing in your Google account gets modified, nothing is sold or shared, and you can disconnect anytime. Full details on the <a href="/google-data">Google data usage</a> page.</div>
             </details>
             <details>
-              <summary>When does the cloud version launch?</summary>
-              <div className="a">When the waitlist proves the demand. Waitlist members get the first invites and founding-member pricing. Meanwhile the self-hosted version is complete and free, so you don&apos;t have to wait to start.</div>
+              <summary>How do I get started on cloud?</summary>
+              <div className="a">Sign up, pick a plan, and the setup wizard walks you through connecting your site - about ten minutes end to end. If DispatchSEO hasn&apos;t measurably helped your site within 90 days, we refund you. Prefer to try before paying? The self-hosted version is complete and free.</div>
             </details>
           </div>
         </div>
       </section>
 
       {/* ==================== FINAL CTA ==================== */}
-      <section className="final band-alt" id="waitlist-final">
+      <section className="final band-alt" id="start-final">
         <svg className="doodle doodle-f1" viewBox="0 0 48 56" aria-hidden="true"><path d="M10 7 L30 7 L38 15 L38 49 L10 49 Z M30 7 L30 15 L38 15 M17 27 L31 27 M17 35 L27 35" /></svg>
         <svg className="doodle doodle-f2" viewBox="0 0 64 64" aria-hidden="true"><path d="M8 52 L24 38 L34 46 L56 20 M56 20 L45 22 M56 20 L55 32" /></svg>
         <div className="wrap">
           <h2>Give your agent the keys.<br />Keep the lock.<span className="caret" /></h2>
-          <p>Be first in line when the cloud version opens. Founding-member pricing for everyone on the list.</p>
+          <p>Plans start at $49/month, setup takes about ten minutes, and there&apos;s a 90-day money-back guarantee.</p>
           <div className="cta-row">
-            <WaitlistForm joined={isJoined} error={isError} source="final" />
+            <a className="btn btn-solid" href="/signup">Start now</a>
           </div>
-          <p className="hero-note">Or don&apos;t wait: <a href="#oss">self-host it free today</a>.</p>
+          <p className="hero-note">Or don&apos;t pay at all: <a href="#oss">self-host it free</a>.</p>
         </div>
       </section>
 
@@ -388,7 +341,7 @@ export default async function LandingPage({
             </div>
             <div className="foot-col">
               <h4>Company</h4>
-              <a href="#waitlist">Cloud waitlist</a>
+              <a href="/signup">Get started</a>
               <a href="/blog">Blog</a>
               <a href="/privacy">Privacy policy</a>
               <a href="/terms">Terms of service</a>

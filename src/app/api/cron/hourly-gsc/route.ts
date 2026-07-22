@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { planGate } from "@/lib/billing";
 import { getFreshSnapshots, inspectIndexStatus } from "@/lib/gsc";
 import { gscCronReadiness } from "@/lib/gsc-readiness";
 import { checkCron } from "@/lib/cron-auth";
@@ -67,6 +68,10 @@ async function runProject(project: Project): Promise<Record<string, unknown>> {
   // project must never 500 the run, fail the GitHub Action, or email the
   // owner. The index sweep below is gated too: it reads with the same
   // service account, so without access it could only burn quota on failures.
+  // Plan gate (cloud only): downgraded-past or lapsed accounts pause instead
+  // of consuming service. Informational skip, same as the setup gate.
+  const gate = await planGate(project.id);
+  if (!gate.allowed) return { skipped: `plan: ${gate.reason}` };
   const readiness = await gscCronReadiness(project.id, project.gsc_site_url);
   if (!readiness.ready) return { skipped: readiness.skipped };
   const snaps = await getFreshSnapshots(project.gsc_site_url!);

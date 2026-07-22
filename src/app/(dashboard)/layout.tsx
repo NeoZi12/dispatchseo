@@ -4,6 +4,7 @@ import { DispatchMark } from "@/components/logo";
 import { ProjectSwitcher } from "@/components/project-switcher";
 import { ModeSwitch } from "@/components/mode-switch";
 import { getActiveProjectOrNull, scopedProjects } from "@/lib/active-project";
+import { isCloudMode } from "@/lib/cloud";
 
 // Shared shell for every dashboard screen. Auth is checked per page (the
 // requireDashboard gate in auth-gate.ts) - this layout is presentation only. force-dynamic
@@ -24,9 +25,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // chrome without switcher/mode for that one request.
   const [projects, active] = await Promise.all([scopedProjects(), getActiveProjectOrNull()]);
 
+  const billing = isCloudMode();
   return (
     <div className="flex min-h-screen bg-neutral-950 text-neutral-100">
-      <Sidebar />
+      <Sidebar billing={billing} />
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-20 border-b border-neutral-800/80 bg-neutral-950/90 backdrop-blur">
           <div className="grid h-14 grid-cols-[1fr_auto_1fr] items-center px-4 sm:px-6">
@@ -48,7 +50,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             </div>
           </div>
           <div className="px-4 sm:px-6">
-            <MobileNav />
+            <MobileNav billing={billing} />
           </div>
         </header>
         <main className="min-w-0 flex-1 px-4 py-8 sm:px-6 lg:px-8">{children}</main>

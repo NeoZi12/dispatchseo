@@ -188,11 +188,26 @@ const LINKS: NavLink[] = GROUPS.flatMap((g) => g.links);
 
 const SETTINGS: NavLink = { href: "/settings", label: "Settings", Icon: SettingsIcon };
 
+function BillingIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <path d="M2 10h20" />
+      <path d="M6 15h4" />
+    </svg>
+  );
+}
+
+// Cloud deployments only - self-host has nothing to bill. The layout decides
+// (isCloudMode is server-side) and passes `billing` down.
+const BILLING: NavLink = { href: "/billing", label: "Billing", Icon: BillingIcon };
+
 // Routes reachable outside the sidebar, so the topbar title still resolves.
 const EXTRA_TITLES: { href: string; label: string }[] = [
   { href: "/settings", label: "Settings" },
   { href: "/new", label: "New project" },
   { href: "/playbook", label: "Backlinks" },
+  { href: "/billing", label: "Billing" },
 ];
 
 function isActive(href: string, pathname: string) {
@@ -217,7 +232,7 @@ function SidebarLink({ link, pathname }: { link: NavLink; pathname: string }) {
   );
 }
 
-export function Sidebar() {
+export function Sidebar({ billing = false }: { billing?: boolean }) {
   const pathname = usePathname();
   return (
     <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-neutral-800/80 md:flex">
@@ -252,6 +267,7 @@ export function Sidebar() {
         ))}
       </nav>
       <div className="shrink-0 border-t border-neutral-800/80 px-3 py-3">
+        {billing ? <SidebarLink link={BILLING} pathname={pathname} /> : null}
         <SidebarLink link={SETTINGS} pathname={pathname} />
       </div>
     </aside>
@@ -260,11 +276,11 @@ export function Sidebar() {
 
 // Small screens can't fit a fixed sidebar - fall back to a horizontal
 // scroller under the topbar with the same links and icons.
-export function MobileNav() {
+export function MobileNav({ billing = false }: { billing?: boolean }) {
   const pathname = usePathname();
   return (
     <nav className="-mx-1 flex items-center gap-1 overflow-x-auto px-1 pb-2 md:hidden">
-      {[...LINKS, SETTINGS].map((l) => {
+      {[...LINKS, ...(billing ? [BILLING] : []), SETTINGS].map((l) => {
         const active = isActive(l.href, pathname);
         return (
           <Link

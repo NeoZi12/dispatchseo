@@ -119,11 +119,50 @@ export async function remainingSites(userId: string): Promise<number | null> {
   return Math.max(0, sub!.sites_limit - (count ?? 0));
 }
 
-// The tracked-keyword allowance left on a project's plan. Tracked keywords x
-// daily SERP checks is ~90% of DataForSEO cost, so this cap is the real abuse
-// guard. null = unlimited (self-host, or billing unconfigured, or a project
-// with no owner - pre-0031 / not a cloud tenant). owner_user_id is looked up
-// directly because the MCP's currentProject() doesn't carry that column.
+// The projects an owner's plan actually covers: the OLDEST sites_limit ones.
+// Deterministic and stable, so a Scale->Starter downgrade doesn't delete
+// anything - the newest sites just fall outside coverage (crons skip them,
+// data stays, upgrading re-covers them instantly).
+async function ownedProjectsOldestFirst(ownerId: string): Promise<string[]> {
+  const { data } = await db()
+    .from("projects")
+    .select("id")
+    .eq("owner_user_id", ownerId)
+    .order("created_at", { ascending: true });
+  return ((data ?? []) as Array<{ id: string }>).map((r) => r.id);
+}
+
+// Is this project covered by its owner's current plan? Crons call this per
+// project; not-allowed is an informational skip (the "crons never run what
+// setup hasn't finished" pattern), never an error. Self-host, unconfigured
+// billing, and ownerless projects are always allowed.
+export async function planGate(
+  projectId: string,
+): Promise<{ allowed: true } | { allowed: false; reason: string }> {
+  if (!isCloudMode() || !polarConfigured()) return { allowed: true };
+  const { data, error } = await db()
+    .from("projects")
+    .select("owner_user_id")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (error || !data) return { allowed: true }; // pre-0031 tolerance
+  const ownerId = (data as { owner_user_id: string | null }).owner_user_id;
+  if (!ownerId) return { allowed: true };
+  const sub = await getSubscription(ownerId);
+  if (!isActive(sub)) return { allowed: false, reason: "subscription inactive" };
+  const covered = (await ownedProjectsOldestFirst(ownerId)).slice(0, sub!.sites_limit);
+  if (!covered.includes(projectId)) {
+    return { allowed: false, reason: `beyond the plan's ${sub!.sites_limit}-site limit` };
+  }
+  return { allowed: true };
+}
+
+// The tracked-keyword allowance left on this project's ACCOUNT plan (the
+// limit is per account, not per site - otherwise 3 sites x 300 would
+// triple the quota). Tracked keywords x daily SERP checks is ~90% of
+// DataForSEO cost, so this cap is the real abuse guard. null = unlimited
+// (self-host, billing unconfigured, or ownerless project). owner_user_id is
+// looked up directly because the MCP's currentProject() doesn't carry it.
 export async function remainingKeywords(projectId: string): Promise<number | null> {
   if (!isCloudMode() || !polarConfigured()) return null;
   const { data, error } = await db()
@@ -137,10 +176,11 @@ export async function remainingKeywords(projectId: string): Promise<number | nul
   if (!ownerId) return null;
   const sub = await getSubscription(ownerId);
   if (!isActive(sub)) return 0;
+  const owned = await ownedProjectsOldestFirst(ownerId);
   const { count } = await db()
     .from("keywords")
     .select("id", { count: "exact", head: true })
-    .eq("project_id", projectId)
+    .in("project_id", owned)
     .eq("status", "tracking");
   return Math.max(0, sub!.keywords_limit - (count ?? 0));
 }

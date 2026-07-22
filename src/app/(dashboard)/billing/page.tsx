@@ -95,7 +95,10 @@ export default async function BillingPage({
                 </p>
               ) : (
                 <a
-                  href={`/api/polar/checkout?tier=${tier}`}
+                  // Active subscribers change plans in Polar's portal (it
+                  // prorates and REPLACES the subscription); a fresh checkout
+                  // would stack a second parallel subscription.
+                  href={active ? "/api/polar/portal" : `/api/polar/checkout?tier=${tier}`}
                   className="mt-4 block rounded-lg bg-white px-4 py-2 text-center text-sm font-medium text-neutral-950"
                 >
                   {active ? "Switch" : "Choose"} {TIER_COPY[tier].name}
