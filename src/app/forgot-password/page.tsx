@@ -1,8 +1,8 @@
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { isCloudMode } from "@/lib/cloud";
 import { supabaseAuth } from "@/lib/cloud-auth";
+import { backendBaseUrl } from "@/lib/pipeline-pack";
 import { isValidEmail } from "@/lib/waitlist";
 import { DispatchMark } from "@/components/logo";
 import { AuthShell } from "@/components/auth-shell";
@@ -25,10 +25,13 @@ async function sendReset(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   if (!isValidEmail(email)) redirect("/forgot-password?error=invalid");
 
-  const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  const redirectTo = `${proto}://${host}/auth/callback?next=/reset-password`;
+  // The reset link must point at OUR origin, never one derived from request
+  // headers - a spoofed Host/X-Forwarded-Host would land the recovery token
+  // on an attacker's domain (classic reset poisoning). backendBaseUrl() is
+  // the instance's canonical origin chain; headers stay out of it.
+  const base =
+    process.env.NODE_ENV === "development" ? "http://localhost:3000" : await backendBaseUrl();
+  const redirectTo = `${base}/auth/callback?next=/reset-password`;
 
   try {
     const supabase = await supabaseAuth();
