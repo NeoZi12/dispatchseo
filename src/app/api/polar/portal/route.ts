@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { NextResponse, type NextRequest } from "next/server";
+import { ResourceNotFound } from "@polar-sh/sdk/models/errors/resourcenotfound.js";
 import { currentUser } from "@/lib/cloud-auth";
 import { isCloudMode } from "@/lib/cloud";
 import { polar, polarConfigured } from "@/lib/billing";
@@ -16,8 +17,14 @@ export async function GET(req: NextRequest) {
   try {
     const session = await polar().customerSessions.create({ externalCustomerId: user.id });
     url = session.customerPortalUrl;
-  } catch {
-    // No Polar customer yet (never checked out) - nothing to show.
+  } catch (err) {
+    // ResourceNotFound = no Polar customer for this user (never checked out,
+    // or a subscription row that never went through Polar) - nothing to show.
+    // Anything else (auth, network, Polar outage) must NOT be silently sold to
+    // the user as "pick a plan first", so log it before the same fallback.
+    if (!(err instanceof ResourceNotFound)) {
+      console.error(`[billing] portal session failed for ${user.id}: ${String(err)}`);
+    }
     redirect("/billing?error=no-customer");
   }
   redirect(url);
