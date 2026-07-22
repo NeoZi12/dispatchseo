@@ -99,9 +99,8 @@ cd dispatchseo &&
 
 That's it. The stack now includes its own HTTPS proxy: it fetches the
 certificate, renews it forever, and `start.sh` prints your new address.
-Open `https://dispatch.your-domain.com`, choose a dashboard password, and
-the setup wizard starts. From now on the dashboard is a bookmark, from
-any device.
+From now on the dashboard is a bookmark, from any device - and opening
+it is the next step.
 
 Three situations you might hit - skip any that aren't you:
 
@@ -149,12 +148,26 @@ DNS lands you won't need it again.
 
 </Step>
 
-<Step title="The builder token comes from your own computer">
+<Step title="Walk the setup wizard">
 
-Do this after finishing the setup wizard in your browser - the wizard's
-One-tap merge step creates the GitHub access the builder reuses. (Doing
-it earlier breaks nothing: the builder just idles and says what it's
-waiting for.)
+Open `https://dispatch.your-domain.com` in your browser (the certificate
+can take a minute after DNS lands - just refresh). Choose a dashboard
+password, and the setup wizard starts.
+
+The wizard is the actual product setup - your site, Google Search
+Console, keyword data, publish mode, and connecting Claude Code. It
+takes about 10 minutes, checks every step on the spot, and saves your
+progress, so you can close the tab and come back. Every screen is
+covered in
+[The setup wizard, step by step](/docs/setup-wizard) if you want to read
+ahead.
+
+**Finish the wizard before the next step** - its One-tap merge screen
+creates the GitHub access the builder below reuses.
+
+</Step>
+
+<Step title="The builder token comes from your own computer">
 
 The builder is your own Claude Code running inside the stack, building
 guides on your Claude subscription. It needs one token, and the token has
