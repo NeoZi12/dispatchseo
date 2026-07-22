@@ -33,6 +33,9 @@ export function proxy(req: NextRequest) {
     // Cloud account creation - only meaningful in CLOUD_MODE (the page
     // itself bounces self-host visitors to /login).
     pathname === "/signup" ||
+    // OAuth return leg for cloud Google sign-in: the visitor has no session
+    // yet by definition when they land here.
+    pathname === "/auth/callback" ||
     // First-boot wizard: must be reachable before any password exists. Only
     // the exact path - /setup/keys stays behind the cookie-presence gate.
     pathname === "/setup" ||

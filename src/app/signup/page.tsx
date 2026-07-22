@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { DispatchMark } from "@/components/logo";
+import { AuthDivider, GoogleSignInButton } from "@/components/google-signin";
 import { isCloudMode } from "@/lib/cloud";
 import { supabaseAuth } from "@/lib/cloud-auth";
 
@@ -59,12 +60,15 @@ export default async function SignupPage({
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-neutral-950 p-6">
-      <form action={signup} className="w-full max-w-xs space-y-4">
+      <div className="w-full max-w-xs space-y-4">
         <h1 className="flex items-center gap-2.5 text-xl font-semibold text-white">
           <DispatchMark className="h-7 w-auto" />
           DispatchSEO
         </h1>
-        <input type="email" name="email" placeholder="Email" autoFocus className={inputCls} />
+        <GoogleSignInButton label="Sign up with Google" />
+        <AuthDivider />
+        <form action={signup} className="space-y-4">
+        <input type="email" name="email" placeholder="Email" className={inputCls} />
         <input
           type="password"
           name="password"
@@ -90,13 +94,14 @@ export default async function SignupPage({
         >
           Create account
         </button>
+        </form>
         <p className="text-sm text-neutral-500">
           Already have one?{" "}
           <Link href="/login" className="text-neutral-300 underline">
             Sign in
           </Link>
         </p>
-      </form>
+      </div>
     </main>
   );
 }
