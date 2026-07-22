@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { bustInstanceCache } from "@/lib/dashboard-auth";
 import { dashboardAuth } from "@/lib/auth-gate";
 import { isCloudMode } from "@/lib/cloud";
+import { assertProjectOwned, assertRowOwned, assertRowsOwned } from "@/lib/tenant-guard";
 import { bustGhTokenCache, dispatchToolBuild, mergePr } from "@/lib/github";
 import { getActiveProject, PROJECT_COOKIE } from "@/lib/active-project";
 import {
@@ -40,6 +41,7 @@ async function assertAuthed() {
 
 export async function decideSuggestion(id: string, decision: "approved" | "rejected") {
   await assertAuthed();
+  await assertRowOwned("suggestions", id);
   // select("*") tolerates rows from before migrations 0013/0014 - the source
   // and queue_position keys just come back undefined.
   const { data, error } = await db()
@@ -192,6 +194,7 @@ export async function restoreSuggestion(id: string) {
 // adds choose "queue it"; this is the later "actually, build it now").
 export async function buildToolNow(id: string): Promise<{ ok: boolean; message: string }> {
   await assertAuthed();
+  await assertRowOwned("suggestions", id);
   const { data, error } = await db().from("suggestions").select("*").eq("id", id).single();
   if (error) return { ok: false, message: error.message };
   if (data.type !== "tool" || data.status !== "approved") {
@@ -256,6 +259,7 @@ export async function dismissTrendTopic(id: string) {
 
 export async function setProspectStatus(id: string, status: string) {
   await assertAuthed();
+  await assertRowOwned("backlink_prospects", id);
   const allowed = ["new", "contacted", "acquired", "rejected"];
   if (!allowed.includes(status)) throw new Error("Bad status");
   const { error } = await db().from("backlink_prospects").update({ status }).eq("id", id);
@@ -277,6 +281,7 @@ export async function mergeSeoPr(number: number) {
 // carries the migration nudge.
 export async function markIndexRequested(id: string) {
   await assertAuthed();
+  await assertRowOwned("pages", id);
   const { error } = await db()
     .from("pages")
     .update({ index_requested_at: new Date().toISOString() })
@@ -290,6 +295,7 @@ export async function markIndexRequested(id: string) {
 export async function markIndexRequestedBulk(ids: string[]) {
   await assertAuthed();
   if (ids.length === 0) return;
+  await assertRowsOwned("pages", ids);
   const { error } = await db()
     .from("pages")
     .update({ index_requested_at: new Date().toISOString() })
@@ -446,6 +452,11 @@ export async function connectGscServiceAccount(
   formData: FormData,
 ): Promise<ConnectGscState> {
   await assertAuthed();
+  // instance_settings is deployment-wide - one tenant must not overwrite the
+  // shared credential. Cloud uses the per-project Google OAuth connect.
+  if (isCloudMode()) {
+    return { error: "On the hosted version, connect Search Console with the one-click Google button instead." };
+  }
   const raw = String(formData.get("json") ?? "").trim();
   if (!raw) return { error: "Paste the contents of the downloaded JSON key file." };
   let parsed: { client_email?: string; private_key?: string };
@@ -546,6 +557,11 @@ export async function connectGithubToken(
   formData: FormData,
 ): Promise<ConnectGithubState> {
   await assertAuthed();
+  // Same instance-wide concern as the GSC key: the merge token is stored in
+  // instance_settings. Cloud merges will go through the GitHub App instead.
+  if (isCloudMode()) {
+    return { error: "Not available on the hosted version - PR merging is handled per account." };
+  }
   const token = String(formData.get("token") ?? "").trim();
   if (!token) return { error: "Paste the token GitHub generated." };
   const project = await getActiveProject();
@@ -645,6 +661,7 @@ export async function switchProject(slug: string) {
   await assertAuthed();
   const project = await getProjectBySlug(slug);
   if (!project) throw new Error("Unknown project");
+  await assertProjectOwned(project.id);
   const jar = await cookies();
   jar.set(PROJECT_COOKIE, project.slug, {
     path: "/",
@@ -674,6 +691,13 @@ export async function deleteProject(
 
   const project = await getProjectBySlug(slug);
   if (!project) return { error: "Unknown project." };
+  // Cloud: deleting is for the project's OWNER alone - the scariest of the
+  // id-swapping (IDOR) targets, since 0006 cascades the delete everywhere.
+  try {
+    await assertProjectOwned(project.id);
+  } catch {
+    return { error: "Unknown project." };
+  }
   if (project.id === DEFAULT_PROJECT_ID) {
     return { error: "The home project can't be deleted." };
   }
