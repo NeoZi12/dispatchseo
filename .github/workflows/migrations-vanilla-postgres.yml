@@ -1,0 +1,60 @@
+# Every migration must apply on the docker stack's vanilla Postgres, not
+# just Supabase - an unguarded reference to Supabase-only objects (the auth
+# schema, auth.uid(), storage) breaks every self-host install at boot.
+# Caught live on 2026-07-22 when 0031's `references auth.users(id)` killed a
+# fresh VPS install; this gate makes that class of regression impossible to
+# ship. Applies setup.sql TWICE (idempotency is load-bearing: the migrate
+# container replays it on every boot), and fails if setup.sql wasn't
+# regenerated after a migration edit. Push/PR-triggered, not scheduled, so
+# no deploy-check report step is needed.
+name: migrations-vanilla-postgres
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+      - "scripts/generate-setup-sql.mjs"
+      - ".github/workflows/migrations-vanilla-postgres.yml"
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "scripts/generate-setup-sql.mjs"
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: dispatch
+          POSTGRES_PASSWORD: dispatch-ci
+          POSTGRES_DB: dispatchseo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dispatch -d dispatchseo"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: setup.sql is regenerated (not stale)
+        run: |
+          node scripts/generate-setup-sql.mjs
+          git diff --exit-code supabase/migrations/setup.sql || {
+            echo "::error::setup.sql is stale - run 'node scripts/generate-setup-sql.mjs' and commit it alongside the migration"
+            exit 1
+          }
+      - name: apply on vanilla Postgres (fresh database)
+        env:
+          PGPASSWORD: dispatch-ci
+        run: psql -h localhost -U dispatch -d dispatchseo -v ON_ERROR_STOP=1 -q -f supabase/migrations/setup.sql
+      - name: apply again (idempotency - the migrate container replays on every boot)
+        env:
+          PGPASSWORD: dispatch-ci
+        run: psql -h localhost -U dispatch -d dispatchseo -v ON_ERROR_STOP=1 -q -f supabase/migrations/setup.sql

@@ -185,6 +185,14 @@ re-snapshot.
   in-flight code keeps writing valid rows. Add a new numbered file rather than
   editing an existing one; they are applied to Supabase manually (no migration
   runner wired into the build).
+- **Every migration must also apply on vanilla Postgres — the docker stack
+  replays the concatenated `setup.sql` on every boot.** Supabase-only objects
+  (the `auth` schema, `auth.uid()`, storage) must be guarded in a `DO` block
+  that checks the object exists (pattern: `0031_cloud_users.sql`); an
+  unguarded reference breaks every self-host install at first boot. After any
+  migration change, run `node scripts/generate-setup-sql.mjs` and commit the
+  regenerated `setup.sql` — CI (`migrations-vanilla-postgres.yml`) applies it
+  twice against `postgres:17-alpine` and fails the push otherwise.
 - Any new operational table needs a `project_id` (default the ClockedCode id) and
   its uniqueness constraints scoped per-project — see `0004_projects.sql`.
 - Server-only modules (`db.ts`, anything touching the service role or secrets)
