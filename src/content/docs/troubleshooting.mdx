@@ -17,21 +17,30 @@ Home page's setup cards tell you what's missing.
 
 ## Docker
 
+Every command in this section runs inside the `dispatchseo` folder the
+install created.
+
 **Something won't start.** `docker compose ps` shows the state - everything
 except the one-shot `migrate` container should be `running`, and `app`
 turns `healthy` once it can reach the database. `docker compose logs app`
 (or `logs cron`, `logs postgrest`) has the detail.
 
-**Port 4005 is taken.** Set `DISPATCH_PORT=4006` (any free port) in `.env`
-and `docker compose up -d` again.
+**Port 4005 is taken.** Pick any free port instead:
+
+```bash
+echo "DISPATCH_PORT=4006" >> .env && sh start.sh
+```
 
 **Cron jobs aren't running.** `docker compose logs cron` shows every hit -
 the schedule prints at startup, and each run logs a timestamped line. Cron
 failures also ride the dashboard banner + email rails like any other
 install.
 
-**Start over from scratch.** `docker compose down -v` deletes the database
-volume - **all data** - then `docker compose up -d` boots fresh.
+**Start over from scratch.** This deletes **all data**, then boots fresh:
+
+```bash
+docker compose down -v && sh start.sh
+```
 
 **The builder isn't building.** `docker compose logs builder` says exactly
 what it's waiting for - usually the `CLAUDE_CODE_OAUTH_TOKEN` in `.env`, or

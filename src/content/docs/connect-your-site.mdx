@@ -16,9 +16,15 @@ step where DispatchSEO stops being a dashboard and becomes a pipeline.
 
 ## The one command
 
-1. Log in to your dashboard and add your site as a project.
-2. The dashboard shows you a single command. Paste it into Claude Code
-   **inside your site's repo**.
+1. Log in to your dashboard and add your site as a project (the setup
+   wizard does this with you; this page exists for adding more sites
+   later).
+2. The dashboard shows you a single command with your project's key
+   already filled in. Copy it.
+3. On your own computer, open a terminal **in your website's repo
+   folder** (the folder with the `.git` in it) and paste the command. It
+   connects Claude Code to DispatchSEO and walks you through the rest,
+   explaining each thing it asks for before asking.
 
 Your agent does the rest of the install itself: it connects to the MCP
 server, reads the served instructions, writes its own workflow files into

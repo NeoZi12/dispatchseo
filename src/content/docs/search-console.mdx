@@ -8,28 +8,49 @@ clicks, and positions for your site, snapshotted hourly. Connecting it
 takes a service account - a Google robot identity that can read your
 Search Console data without your password.
 
+The setup wizard walks you through all of this with a check button at the
+end - this page is the same walkthrough in document form, every click
+spelled out. It's a one-time ritual: the same service account works for
+every site you ever add.
+
 ## Create the service account
 
-1. In [Google Cloud Console](https://console.cloud.google.com), create a
-   project (or reuse any existing one).
-2. Enable the **Search Console API** for it (APIs & Services → Library).
-3. Create a **service account** (IAM & Admin → Service Accounts). No roles
-   needed - it only needs to exist.
-4. On the service account, create a **JSON key** (Keys → Add key → JSON)
-   and download it.
+1. Open [console.cloud.google.com](https://console.cloud.google.com) and
+   sign in with the Google account that can see your site in Search
+   Console.
+2. **Create a project:** click the project picker in the top bar → **New
+   project** → name it `dispatchseo` → **Create**. (Already have any
+   project? Reusing it is fine.)
+3. **Turn on the API:** open
+   [the Search Console API page](https://console.cloud.google.com/apis/library/searchconsole.googleapis.com)
+   and click **Enable**.
+4. **Create the account:** open
+   [Service Accounts](https://console.cloud.google.com/iam-admin/serviceaccounts),
+   click **Create service account**, name it `dispatchseo`, click
+   **Create and continue**, skip the roles screen (**Continue**), click
+   **Done**. It needs no permissions - it just needs to exist.
+5. **Download its key:** click the account you just made → **Keys** tab →
+   **Add key** → **Create new key** → pick **JSON** → **Create**. A
+   `.json` file downloads. That file is a password for your search data -
+   keep it out of screenshots, chats, and git.
 
 ## Grant it access to your site
 
-1. Open [Search Console](https://search.google.com/search-console) →
-   Settings → Users and permissions.
-2. Add the service account's email - it looks like
-   `name@project.iam.gserviceaccount.com` - as a **Full** user.
+1. On the service account's page, copy its **email** - it ends in
+   `.iam.gserviceaccount.com`.
+2. Open [Search Console](https://search.google.com/search-console), pick
+   your site, then **Settings → Users and permissions → Add user**.
+3. Paste the email, set Permission to **Full**, click **Add**.
 
 ## Give it to DispatchSEO
 
-Paste the JSON key when the setup wizard or the dashboard's
-**Connect Search Console** card asks for it. Env-var installs set it
-directly instead:
+Open the downloaded `.json` file in any text editor, select **all** of
+it, and paste it where the setup wizard (or the dashboard's **Connect
+Search Console** card) asks. Press **Verify connection** - it asks Google
+right then and tells you whether it worked. If Google says no at first,
+wait a few minutes and verify again; permissions can lag.
+
+Env-var installs can set it directly instead:
 
 ```bash
 GSC_SERVICE_ACCOUNT_JSON=...   # the whole JSON, single line

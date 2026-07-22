@@ -7,16 +7,31 @@ description: One command starts the whole product on any machine with Docker. Op
 
 <Step title="Install Docker">
 
-- **Mac / Windows:** install [Docker Desktop](https://docs.docker.com/get-docker/)
-  and open it once, so the whale icon shows in your menu bar / tray.
-- **Linux:** install `docker` and the compose plugin from
-  [docs.docker.com/engine/install](https://docs.docker.com/engine/install/).
+Docker is the free program that runs DispatchSEO in its own sealed box -
+you install it once and never touch it again.
+
+- **Mac / Windows:** download
+  [Docker Desktop](https://docs.docker.com/get-docker/), install it like
+  any app, and open it once - you'll see a whale icon appear in the menu
+  bar (Mac) or system tray (Windows). The whale means it's running.
+- **Linux:** paste this in a terminal:
+
+  ```bash
+  curl -fsSL https://get.docker.com | sh
+  ```
+
+To confirm it's ready, this should print a version number:
+
+```bash
+docker --version
+```
 
 </Step>
 
 <Step title="Run the command">
 
-In a terminal (on Windows: WSL or Git Bash, not plain PowerShell):
+Open a terminal - the **Terminal** app on Mac, **Git Bash** or **WSL** on
+Windows (plain PowerShell can't run this) - and paste:
 
 ```bash
 git clone https://github.com/NeoZi12/dispatchseo &&
@@ -25,8 +40,7 @@ git clone https://github.com/NeoZi12/dispatchseo &&
 ```
 
 The first boot downloads the prebuilt images (or builds them from source
-when it cannot). Re-runs take
-seconds.
+when it cannot) - a few minutes. Re-runs take seconds.
 
 </Step>
 
@@ -76,7 +90,8 @@ router works without any port forwarding.
 | `cron` | Triggers rank checks, GSC snapshots, and weekly research on schedule |
 | `builder` | Headless Claude Code - builds guides and tools, runs research (below) |
 
-Check on it any time:
+Check on it any time - these (and every command below) run inside the
+`dispatchseo` folder the install created:
 
 ```bash
 docker compose ps      # everything except the one-shot migrate should be running
@@ -93,16 +108,31 @@ AI-visibility scan - and on auto-mode projects it merges green guide PRs. It
 only makes outbound connections (to GitHub and Anthropic), which is why a
 localhost install is fully automatic with no tunnel or domain.
 
-Turning it on is one token:
+Turning it on is one token. All three commands run in the `dispatchseo`
+folder:
 
-1. Run `claude setup-token` and copy the `sk-ant-oat...` token. Builds run
-   on your existing Claude subscription.
-2. Add it to `.env` (swap in your token): `echo "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat-PASTE-YOURS" >> .env`
-3. `docker compose up -d builder`
+**a.** Create the token (builds run on your existing Claude
+subscription - DispatchSEO bills nothing):
 
-GitHub access reuses the token from the wizard's One-tap merge step. Until
-the Claude token is set, the container idles and
-`docker compose logs builder` says what it's waiting for.
+```bash
+claude setup-token
+```
+
+**b.** Save it, with your `sk-ant-oat...` token swapped in:
+
+```bash
+echo "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat-PASTE-YOUR-TOKEN-HERE" >> .env
+```
+
+**c.** Start the builder and check on it:
+
+```bash
+docker compose up -d builder && docker compose logs builder --tail 5
+```
+
+It either starts polling for work, or tells you exactly what it's still
+waiting for. GitHub access reuses the token from the wizard's One-tap
+merge step - nothing to configure twice.
 
 ## Configuration
 
