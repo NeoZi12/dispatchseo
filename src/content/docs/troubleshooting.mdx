@@ -6,14 +6,51 @@ description: Where to look when something breaks, and fixes for the common cases
 ## Where failures surface
 
 Every scheduled job logs its runs. Failures show as a red banner on the
-dashboard Home page, and - if you set `RESEND_API_KEY` + `ALERT_EMAIL` -
-you get an email, at most one per job per day. Set those two if you run in
-auto mode: nobody opens the dashboard on a normal day, so the email is what
-actually surfaces a broken job.
+dashboard Home page, and - if you set up the failure email below - land in
+your inbox too, at most one email per job per day.
 
 A skipped job is not a failed job: capabilities you haven't finished setting
 up (no Search Console yet, no DataForSEO) skip quietly by design, and the
-Home page's setup cards tell you what's missing.
+Home page's setup cards tell you what's missing. The same goes for delays:
+a machine that was asleep or powered off never emails you - schedules catch
+up on their own, and only a job that fails while the stack is actually
+running counts as broken.
+
+## Get emailed when something breaks
+
+Optional, two minutes, and strongly recommended if you picked **Automatic**
+publish mode: in auto mode nobody opens the dashboard on a normal day, so
+the email is what actually tells you a job broke. In semi-automatic mode
+you visit weekly anyway, so the red banner already has you covered - set
+this up if you'd rather not wait for your next visit.
+
+**a. Create a free Resend account.** Emails are sent through
+[Resend](https://resend.com/signup) - free tier, no credit card, and no
+domain setup needed for this.
+
+**b. Create an API key.** After signing in, open
+[resend.com/api-keys](https://resend.com/api-keys), click
+**Create API Key**, name it `dispatchseo`, leave the defaults, and copy the
+key. It starts with `re_` and is shown only once.
+
+**c. Add two lines to `.env`.** On the machine running DispatchSEO, inside
+the `dispatchseo` folder, run this with both values replaced - the key you
+just copied, and your email:
+
+```bash
+echo "RESEND_API_KEY=re_PASTE-YOUR-KEY-HERE" >> .env &&
+  echo "ALERT_EMAIL=you@example.com" >> .env &&
+  sh start.sh
+```
+
+One catch to know: `ALERT_EMAIL` must be **the same email you signed up to
+Resend with**. Alerts go out through Resend's built-in sender, which only
+delivers to its own account's address. (Verified a domain in Resend? Then
+you can send from it to any address - set `ALERT_EMAIL_FROM` to something
+like `DispatchSEO <alerts@your-domain.com>` in `.env` too.)
+
+That's it. From the next run onward, failures email you. No email means
+everything is working.
 
 ## Docker
 

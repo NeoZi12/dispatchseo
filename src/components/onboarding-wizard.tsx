@@ -984,6 +984,21 @@ export function OnboardingWizard({
           <p className="mt-2.5 text-center text-sm text-neutral-400">
             Switch anytime with the Semi / Auto toggle in the top bar.
           </p>
+          {modeChoice === "auto" ? (
+            <p className="mt-3 rounded-lg border border-emerald-400/20 bg-emerald-400/5 p-3 text-sm text-neutral-300">
+              One tip for automatic mode: after setup, spend two minutes on the{" "}
+              <a
+                href="https://dispatchseo.com/docs/troubleshooting#get-emailed-when-something-breaks"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-violet-400 underline underline-offset-2 hover:text-violet-300"
+              >
+                failure email
+              </a>
+              . When everything runs itself, nobody opens the dashboard on a normal
+              day - the email is what tells you if a job ever breaks.
+            </p>
+          ) : null}
           <div className="mt-5 flex items-center justify-between">
             <button
               type="button"

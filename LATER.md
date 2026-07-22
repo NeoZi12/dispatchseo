@@ -109,3 +109,14 @@ chatbot in dashboard, charts libraries, dark mode, settings pages, mobile app.
   the forwarded headers and Supabase enforces its redirect allowlist), but the
   cloud-hardening pass should pin it to a deploy-time origin env instead of
   request headers - belongs to the CLOUD_MODE workstream.
+
+- **Cloud: built-in alert email, zero config (CLOUD_MODE workstream).** On
+  the cloud deployment, failure alerts must work without the user setting
+  anything: our `RESEND_API_KEY` in the Vercel env, sender
+  `alerts@dispatchseo.com` (verify the domain in Resend first - as of
+  2026-07-20 the live sender is still alerts@clockedcode.com), recipient =
+  the signed-in user's account email instead of a global `ALERT_EMAIL`.
+  Self-host stays bring-your-own-key on purpose: shipping our key in a
+  public repo is impossible, a relay endpoint is a spam/deliverability
+  liability, and phoning home breaks the self-host promise. "Alerting built
+  in" becomes a cloud-vs-self-host comparison row.
