@@ -89,6 +89,17 @@ export const mdxComponents: MDXComponents = {
   ),
   td: (props) => <td className="border-b border-neutral-800 px-3 py-2 text-neutral-300" {...props} />,
   hr: () => <hr className="my-8 border-neutral-800" />,
+  // Screenshots in guides: light-mode captures on the dark page get a
+  // border + padding so they read as a framed figure, not a glare block.
+  img: (props) => (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      className="my-5 h-auto max-w-full rounded-xl border border-neutral-800 bg-white p-2"
+      loading="lazy"
+      alt=""
+      {...props}
+    />
+  ),
   Link,
   McpAnatomyGrid,
   TransportScorecard,

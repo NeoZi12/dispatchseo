@@ -47,8 +47,14 @@ the dashboard a proper HTTPS address instead.
 <Step title="Give it its address: your domain, automatic HTTPS">
 
 You already own a domain - your website's - so this is one DNS record and
-one line in `.env`. Never touched DNS before? The record part, spelled
-out:
+one line in `.env`.
+
+One thing before the steps: everywhere below, `dispatch.your-domain.com`
+is a placeholder. Keep the `dispatch` part, replace `your-domain.com`
+with the domain you actually own. If your website is `acme.com`, your
+dashboard's address will be `dispatch.acme.com`.
+
+Never touched DNS before? The record part, spelled out:
 
 **a. Open your domain's DNS settings.** They live wherever your domain is
 managed - usually the registrar you bought it from (Namecheap, GoDaddy,
@@ -57,29 +63,33 @@ nameservers there. Log in, pick the domain, and look for the section
 called **DNS**, **DNS records**, **Manage DNS**, or **Zone editor** -
 every host has one, the name just varies.
 
-**b. Add one A record.** There's an "Add record" button; fill the form
-with exactly this:
+**b. Add one A record.** Click **Add record** and fill the form like
+this (Cloudflare shown - other hosts have the same fields under slightly
+different names):
 
-| Field | Paste / pick exactly this |
-| --- | --- |
-| Type | `A` |
-| Name (or Host) | `dispatch` |
-| Value (or "Points to") | your server's IP - the same one you SSH into, shown in your VPS provider's dashboard |
-| TTL | leave whatever it already says |
+![Cloudflare's Add record form filled in: Type A, Name dispatch, IPv4 address 203.0.113.10, Proxy status switched to DNS only, TTL Auto](/screenshots/cloudflare-a-record.png)
 
-That creates `dispatch.your-domain.com`, and it's the address every
-command below uses. Save the record. **On Cloudflare:** switch the record to **DNS only** (the grey
-cloud, not the orange "Proxied" one) - the proxy blocks the certificate
-handshake in the next step.
+- **Type:** `A`
+- **Name** (some hosts call it Host): `dispatch`
+- **IPv4 address** (some hosts call it Value or "Points to"): your
+  server's IP - the same one you SSH into. The screenshot shows a
+  placeholder; put your real one.
+- **Proxy status** (Cloudflare only): switch it to **DNS only**, the grey
+  cloud - exactly as in the screenshot. Orange "Proxied" blocks the
+  certificate handshake in the next step.
+- **TTL:** leave whatever it already says.
+
+Save the record. That creates `dispatch.your-domain.com`, the address
+every command below uses.
 
 **c. Confirm it landed.** After a few minutes, run this on your own
-computer - it should print your server's IP:
+computer (your domain swapped in) - it should print your server's IP:
 
 ```bash
 ping -c 1 dispatch.your-domain.com
 ```
 
-**d. Tell DispatchSEO the domain** - swap in yours:
+**d. Tell DispatchSEO the domain** - your domain swapped in here too:
 
 ```bash
 cd dispatchseo &&
