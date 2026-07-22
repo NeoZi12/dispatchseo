@@ -71,6 +71,10 @@ if [ -n "$DOMAIN" ]; then
   echo '  (a fresh certificate can take a minute after DNS lands - just refresh)'
 else
   echo "  Next step -> open  http://localhost:$PORT  in your browser."
+  echo "
+  (on a VPS? localhost means the server itself - give the dashboard a real
+   address instead: add DOMAIN=dispatch.your-domain.com to .env and re-run
+   sh start.sh. Guide: https://dispatchseo.com/docs/vps)"
 fi
 echo '  The setup wizard takes it from there.
 
