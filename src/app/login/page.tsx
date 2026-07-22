@@ -58,9 +58,11 @@ const inputCls =
 function CloudLoginPage({ error }: { error?: string }) {
   return (
     <AuthShell>
-      <h1 className="flex items-center gap-2.5 text-xl font-semibold text-white">
-        <DispatchMark className="h-7 w-auto" />
-        DispatchSEO
+      <h1 className="text-xl font-semibold text-white">
+        <Link href="/" className="flex items-center gap-2.5">
+          <DispatchMark className="h-7 w-auto" />
+          DispatchSEO
+        </Link>
       </h1>
       <GoogleSignInButton label="Continue with Google" />
       <AuthDivider />

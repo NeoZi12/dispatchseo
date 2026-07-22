@@ -88,9 +88,11 @@ export default async function SignupPage({
 
   return (
     <AuthShell>
-        <h1 className="flex items-center gap-2.5 text-xl font-semibold text-white">
-          <DispatchMark className="h-7 w-auto" />
-          DispatchSEO
+        <h1 className="text-xl font-semibold text-white">
+          <Link href="/" className="flex items-center gap-2.5">
+            <DispatchMark className="h-7 w-auto" />
+            DispatchSEO
+          </Link>
         </h1>
         <p className="text-neutral-300">
           {domain ? (
@@ -147,6 +149,17 @@ export default async function SignupPage({
           <Link href="/login" className="text-neutral-300 underline">
             Sign in
           </Link>
+        </p>
+        <p className="text-xs text-neutral-600">
+          By signing up, you agree to our{" "}
+          <Link href="/terms" className="underline hover:text-neutral-400">
+            terms of service
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" className="underline hover:text-neutral-400">
+            privacy policy
+          </Link>
+          .
         </p>
     </AuthShell>
   );

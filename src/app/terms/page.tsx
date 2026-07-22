@@ -46,6 +46,16 @@ export default function TermsPage() {
       </section>
 
       <section className="space-y-3 text-sm leading-relaxed">
+        <h2 className="text-lg font-medium text-white">Your account</h2>
+        <p>
+          You must be at least 18 to use the hosted service, and the information you sign up
+          with must be accurate. You are responsible for keeping your sign-in method secure and
+          for everything done under your account. Connect only websites and repositories you
+          own or are authorized to manage.
+        </p>
+      </section>
+
+      <section className="space-y-3 text-sm leading-relaxed">
         <h2 className="text-lg font-medium text-white">Plans, billing, and cancellation</h2>
         <p>
           Paid plans are billed monthly in advance through our payment provider, Polar, who acts
@@ -87,12 +97,57 @@ export default function TermsPage() {
       </section>
 
       <section className="space-y-3 text-sm leading-relaxed">
+        <h2 className="text-lg font-medium text-white">Third-party services</h2>
+        <p>
+          The service works by connecting to accounts you bring: GitHub, Google Search Console,
+          your Claude subscription (Anthropic), and optionally others. Your use of those
+          services is governed by their own terms, and we are not responsible for their
+          availability, their pricing, or decisions they make about your accounts. Payments are
+          processed by Polar as merchant of record under Polar&apos;s own terms.
+        </p>
+      </section>
+
+      <section className="space-y-3 text-sm leading-relaxed">
+        <h2 className="text-lg font-medium text-white">Content responsibility</h2>
+        <p>
+          Content is drafted by AI under your configuration and shipped as pull requests for
+          your review. You decide what gets published on your site, and you are responsible for
+          its accuracy, its legality, and its compliance with the policies of the platforms it
+          appears on (including search engines&apos; content guidelines). You indemnify us
+          against third-party claims arising from content you publish or from your breach of
+          these terms.
+        </p>
+      </section>
+
+      <section className="space-y-3 text-sm leading-relaxed">
+        <h2 className="text-lg font-medium text-white">Suspension and termination</h2>
+        <p>
+          You can delete your account at any time. We may suspend or terminate an account that
+          breaches these terms, abuses the service or the connected APIs, or creates risk for
+          us or other users - with notice where reasonable. After termination or deletion we
+          remove your stored data within 30 days, except records we must keep for billing or
+          legal reasons (which Polar retains as merchant of record).
+        </p>
+      </section>
+
+      <section className="space-y-3 text-sm leading-relaxed">
         <h2 className="text-lg font-medium text-white">Warranty and liability</h2>
         <p>
-          The service is provided &quot;as is&quot;. SEO results depend on many factors outside
-          our control, and we don&apos;t guarantee particular rankings or traffic. To the extent
-          allowed by law, our liability for any claim relating to the service is limited to the
-          amount you paid us in the three months before the claim.
+          The service is provided &quot;as is&quot;, without warranties of any kind, and we
+          don&apos;t promise uninterrupted or error-free operation. SEO results depend on many
+          factors outside our control, and we don&apos;t guarantee particular rankings or
+          traffic. To the extent allowed by law, we are not liable for indirect or
+          consequential damages, and our total liability for any claim relating to the service
+          is limited to the amount you paid us in the three months before the claim.
+        </p>
+      </section>
+
+      <section className="space-y-3 text-sm leading-relaxed">
+        <h2 className="text-lg font-medium text-white">Governing law</h2>
+        <p>
+          These terms are governed by the laws of Israel, and disputes belong to the competent
+          courts there - without limiting any consumer rights you hold under the mandatory law
+          of your own country.
         </p>
       </section>
 

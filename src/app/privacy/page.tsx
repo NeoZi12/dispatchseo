@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   description: "What data DispatchSEO collects, how it is used, and how to remove it.",
 };
 
-const EFFECTIVE = "July 17, 2026";
+const EFFECTIVE = "July 22, 2026";
 
 export default function PrivacyPage() {
   return (
@@ -35,24 +35,50 @@ export default function PrivacyPage() {
       <section className="space-y-3 text-sm leading-relaxed">
         <h2 className="text-lg font-medium text-white">Data we collect</h2>
         <p>
-          <strong className="text-neutral-100">Waitlist email.</strong> If you join the cloud
-          waitlist we store the email address you submit, and use it only to contact you about
-          the DispatchSEO cloud launch. It is never sold or shared.
+          <strong className="text-neutral-100">Account data.</strong> When you create an
+          account we store your email address and, if you sign in with Google, the basic
+          profile Google shares for sign-in (name, email, avatar). Sign-in itself never asks
+          for access to your Google data - that is a separate, optional consent described
+          below. We use your email to run your account and to send service messages such as
+          setup and failure alerts; we don&apos;t send marketing email without your consent,
+          and we never sell it.
+        </p>
+        <p>
+          <strong className="text-neutral-100">Billing data.</strong> Payments are handled by
+          Polar as merchant of record; your card details go to Polar and its payment
+          processor, never to us. We store your plan, subscription status, and Polar customer
+          reference so the service knows what your account includes.
+        </p>
+        <p>
+          <strong className="text-neutral-100">Site and integration data.</strong> To run your
+          SEO we store what you connect and what the service produces: your site&apos;s domain
+          and repository name, tracked keywords, rank history, generated article and tool
+          records, and the tokens you provide (such as a GitHub token) - tokens are stored
+          encrypted (AES-256-GCM) and deleted when you disconnect them.
         </p>
         <p>
           <strong className="text-neutral-100">Google Search Console data.</strong> If you
-          connect your Google account, DispatchSEO requests read-only access to your Search
-          Console data (the <code>webmasters.readonly</code> scope). It reads your properties
-          list and search analytics: queries, clicks, impressions, and average positions. It
-          cannot modify anything in your Google account. The OAuth refresh token is stored
-          encrypted (AES-256-GCM) and is deleted immediately when you click Disconnect. Search
-          statistics derived from this data are stored per site to power rank tracking and
-          reporting.
+          connect Search Console, DispatchSEO requests read-only access (the{" "}
+          <code>webmasters.readonly</code> scope). It reads your properties list and search
+          analytics: queries, clicks, impressions, and average positions. It cannot modify
+          anything in your Google account. Any Google OAuth refresh token is stored encrypted
+          (AES-256-GCM) and is deleted immediately when you disconnect. Search statistics
+          derived from this data are stored per site to power rank tracking and reporting.
         </p>
         <p>
-          <strong className="text-neutral-100">Login cookie.</strong> The dashboard sets one
-          authentication cookie after password login. There are no advertising or analytics
-          cookies on the dashboard.
+          <strong className="text-neutral-100">Cookies.</strong> The dashboard sets
+          authentication cookies to keep you signed in, and a short-lived cookie may carry
+          your typed domain from signup into setup. There are no advertising cookies.
+        </p>
+      </section>
+
+      <section className="space-y-3 text-sm leading-relaxed">
+        <h2 className="text-lg font-medium text-white">Where it lives and who processes it</h2>
+        <p>
+          The hosted service runs on Vercel with a Supabase (Postgres) database; email alerts
+          are delivered by Resend; payments run through Polar; keyword and ranking data comes
+          from DataForSEO. These providers process data only to run the service. We never sell
+          your data or share it for advertising.
         </p>
       </section>
 
@@ -77,17 +103,20 @@ export default function PrivacyPage() {
       <section className="space-y-3 text-sm leading-relaxed">
         <h2 className="text-lg font-medium text-white">Deleting your data</h2>
         <p>
-          Disconnecting Google on the dashboard deletes the stored OAuth token. To remove
-          everything else (waitlist entry, stored search statistics), open an issue at{" "}
-          <a className="text-white underline" href="https://github.com/NeoZi12/dispatchseo/issues">
-            github.com/NeoZi12/dispatchseo
+          Disconnecting an integration on the dashboard deletes its stored token immediately.
+          To delete your account and everything stored with it (sites, keywords, rank history,
+          search statistics), email{" "}
+          <a className="text-white underline" href="mailto:support@dispatchseo.com">
+            support@dispatchseo.com
           </a>{" "}
-          or email the maintainer, and it will be deleted within 30 days. You can also revoke
-          DispatchSEO&apos;s access at any time from your{" "}
+          and it will be deleted within 30 days - billing records stay with Polar as merchant
+          of record where the law requires it. You can also revoke DispatchSEO&apos;s access at
+          any time from your{" "}
           <a className="text-white underline" href="https://myaccount.google.com/permissions">
             Google account permissions
           </a>
-          .
+          . If you joined our old pre-launch waitlist, that email is covered by the same
+          request.
         </p>
       </section>
 
