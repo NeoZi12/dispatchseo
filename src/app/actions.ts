@@ -9,6 +9,7 @@ import { bustInstanceCache } from "@/lib/dashboard-auth";
 import { dashboardAuth } from "@/lib/auth-gate";
 import { isCloudMode } from "@/lib/cloud";
 import { assertProjectOwned, assertRowOwned, assertRowsOwned } from "@/lib/tenant-guard";
+import { remainingSites } from "@/lib/billing";
 import { bustGhTokenCache, dispatchToolBuild, mergePr } from "@/lib/github";
 import { getActiveProject, PROJECT_COOKIE } from "@/lib/active-project";
 import {
@@ -814,6 +815,13 @@ async function createProjectCore(
   if (isCloudMode()) {
     const auth = await dashboardAuth();
     if (!auth?.user) return { error: "Sign in again to create a project." };
+    const remaining = await remainingSites(auth.user.id);
+    if (remaining !== null && remaining <= 0) {
+      return {
+        error:
+          "Your plan doesn't have room for another site - pick or upgrade a plan on the Billing page.",
+      };
+    }
     row.owner_user_id = auth.user.id;
   }
   // A fresh instance's fixed-id default project (setup.sql seeds it NEUTRAL,
