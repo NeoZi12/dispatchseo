@@ -150,6 +150,11 @@ Vultr, ...); a 1 GB Ubuntu or Debian box is enough.
      itself. Then set `APP_URL=https://dispatch.your-domain.com` in
      `.env` and run `sh start.sh` again.
 
+   To be clear about which is which: the first two exist so you can see
+   the wizard in the next sixty seconds. Day to day you'll use the
+   domain - set it up once and the dashboard is just a bookmark, from
+   any device, no terminal involved.
+
 5. **The builder token comes from your own computer**, not the VPS:
    `claude setup-token` opens a browser login, which a headless server
    can't do. Run it locally, copy the `sk-ant-oat...` token into the
