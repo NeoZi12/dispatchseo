@@ -144,12 +144,6 @@ export default async function SignupPage({
             Create account
           </button>
         </form>
-        <p className="text-sm text-neutral-500">
-          Already have one?{" "}
-          <Link href="/login" className="text-neutral-300 underline">
-            Sign in
-          </Link>
-        </p>
         <p className="text-xs text-neutral-600">
           By signing up, you agree to our{" "}
           <Link href="/terms" className="underline hover:text-neutral-400">
@@ -160,6 +154,12 @@ export default async function SignupPage({
             privacy policy
           </Link>
           .
+        </p>
+        <p className="text-sm text-neutral-500">
+          Already have one?{" "}
+          <Link href="/login" className="text-neutral-300 underline">
+            Sign in
+          </Link>
         </p>
     </AuthShell>
   );
