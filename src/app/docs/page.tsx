@@ -57,7 +57,7 @@ const INSTALL_PATHS = [
     href: "/docs/vps",
     icon: ServerIcon,
     title: "A VPS or server",
-    description: "Same command over SSH, plus HTTPS.",
+    description: "One line installs everything, HTTPS included.",
   },
   {
     href: "/docs/local-development",
