@@ -152,18 +152,22 @@ async function selectProjects<T>(
   return run(COLS_PRE_0028);
 }
 
-// Until migration 0004 runs, the projects table doesn't exist. Synthesizing
-// ClockedCode from env keeps the deployed dashboard working in that window -
-// the same tolerance pattern site_profile and playbook_status use.
+// Until migration 0004 runs, the projects table doesn't exist. Synthesizing a
+// project from env keeps the deployed dashboard working in that window - the
+// same tolerance pattern site_profile and playbook_status use. Mirrors the
+// NEUTRAL 0004 seed row: this object can surface in ANY install's dashboard
+// during a DB error, so nothing here may carry another site's branding -
+// site facts come only from env (domain is derived from GSC_SITE_URL).
 function envFallbackProject(): Project {
+  const gscSiteUrl = process.env.GSC_SITE_URL ?? null;
   return {
     id: DEFAULT_PROJECT_ID,
-    slug: DEFAULT_PROJECT_SLUG,
-    name: "ClockedCode",
-    domain: "clockedcode.com",
-    gsc_site_url: process.env.GSC_SITE_URL ?? null,
-    github_repo: process.env.SEO_TARGET_REPO ?? "NeoZi12/clockedcode",
-    content_mode: "existing", // ClockedCode has its blog already
+    slug: "default",
+    name: "Your site",
+    domain: gscSiteUrl?.replace(/^(sc-domain:|https?:\/\/)/, "").replace(/\/+$/, "") ?? "",
+    gsc_site_url: gscSiteUrl,
+    github_repo: process.env.SEO_TARGET_REPO ?? null,
+    content_mode: "detect",
     content_path_hint: null,
     dataforseo_login: null,
     dataforseo_password: null,
@@ -191,7 +195,7 @@ function envFallbackProject(): Project {
 // ERROR rather than silently running the synthetic fallback (the crons +
 // deploy-check). `degraded` is non-null ONLY when the projects query failed for
 // a NON-schema reason (a transient blip / outage) - meaning we fell back to the
-// synthetic ClockedCode project and may be SKIPPING real tenants. A genuinely-
+// synthetic default project and may be SKIPPING real tenants. A genuinely-
 // absent table (pre-0004) returns degraded:null with the fallback, because that
 // IS the correct answer during first-boot, before migration 0004 runs.
 export async function listProjectsChecked(): Promise<{
