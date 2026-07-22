@@ -36,6 +36,9 @@ export function proxy(req: NextRequest) {
     // Privacy policy must be public: Google's OAuth consent screen links to
     // it and the verification reviewers open it logged-out.
     pathname === "/privacy" ||
+    // Google-data usage page: written for the OAuth branding reviewers, who
+    // open it logged-out (linked from the homepage footer + FAQ).
+    pathname === "/google-data" ||
     PUBLIC_FILES.has(pathname) ||
     // The marketing landing page - cloud deployment only. Self-hosted installs
     // never set LANDING_ENABLED, so their / stays gated (the page itself also

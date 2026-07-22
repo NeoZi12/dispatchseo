@@ -336,6 +336,10 @@ export default async function LandingPage({
               <div className="a">Claude Code is the first-class path and what we test against. The server speaks standard MCP though, so other MCP clients can connect to the same tools. Adapters for other coding agents will come when people ask for them.</div>
             </details>
             <details>
+              <summary>What does DispatchSEO do with my Google data?</summary>
+              <div className="a">It reads your Google Search Console data with read-only access: the queries your site shows up for, plus clicks, impressions, and average position. That&apos;s what powers the keyword recommendations and the rank tracking. Nothing in your Google account gets modified, nothing is sold or shared, and you can disconnect anytime. Full details on the <a href="/google-data">Google data usage</a> page.</div>
+            </details>
+            <details>
               <summary>When does the cloud version launch?</summary>
               <div className="a">When the waitlist proves the demand. Waitlist members get the first invites and founding-member pricing. Meanwhile the self-hosted version is complete and free, so you don&apos;t have to wait to start.</div>
             </details>
@@ -387,6 +391,7 @@ export default async function LandingPage({
               <a href="#waitlist">Cloud waitlist</a>
               <a href="/blog">Blog</a>
               <a href="/privacy">Privacy policy</a>
+              <a href="/google-data">Google data usage</a>
               <a href="/login">Log in</a>
             </div>
           </div>
