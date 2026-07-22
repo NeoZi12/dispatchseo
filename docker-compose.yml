@@ -81,6 +81,10 @@ services:
     networks: [dispatch]
 
   app:
+    # Prebuilt image when pullable (public repo), local build otherwise -
+    # start.sh picks. Forks with modified code: set BUILD_FROM_SOURCE=1 in
+    # .env so your changes actually run instead of the upstream image.
+    image: ghcr.io/neozi12/dispatchseo:latest
     build: .
     restart: always
     environment:
@@ -126,6 +130,7 @@ services:
     networks: [dispatch]
 
   builder:
+    image: ghcr.io/neozi12/dispatchseo-builder:latest
     build: ./docker/builder
     restart: always
     environment:

@@ -36,10 +36,18 @@ if [ -z "$PORT" ]; then
   echo "APP_URL=http://localhost:$PORT" >> .env
 fi
 
-# --build makes re-runs pick up code changes, so upgrading is just
-# "git pull && sh start.sh". Unchanged code hits the layer cache and
-# adds only a few seconds.
-docker compose up -d --build
+# Prefer the prebuilt images (published to GHCR by CI) - first boot becomes
+# a download instead of a Next.js compile, which matters on small VPSes.
+# Anything that can't pull lands on the local build automatically: modified
+# forks (set BUILD_FROM_SOURCE=1 in .env to force it), offline machines, or
+# a private repo phase. --build on the fallback keeps upgrades honest:
+# "git pull && sh start.sh" always runs the code you just pulled.
+if ! grep -q '^BUILD_FROM_SOURCE=1' .env 2>/dev/null \
+  && docker compose pull --quiet app builder >/dev/null 2>&1; then
+  docker compose up -d --no-build
+else
+  docker compose up -d --build
+fi
 
 echo '
   DispatchSEO is running.

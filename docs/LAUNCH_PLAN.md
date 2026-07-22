@@ -45,7 +45,9 @@ checklist; memory holds the reasoning.
 - [x] Docs + llms.txt + SKILL.md; CONTRIBUTING.md + issue templates (bug/feature YAML
       forms + config.yml routing questions to Discussions); Discussions ENABLED (2026-07-17)
 - [ ] Flip public with FRESH GIT HISTORY (squash to one initial commit; keep private archive).
-      At flip: enable secret scanning + Dependabot.
+      At flip: enable secret scanning + Dependabot, AND make the two GHCR packages
+      public (ghcr.io/neozi12/dispatchseo + dispatchseo-builder, published by
+      publish-images.yml) - until then installs fall back to building locally.
       ⚠ SQUASH IS MANDATORY, NOT OPTIONAL: Neo decided (2026-07-17) to KEEP the current
       dashboard password, and it exists in old git history (was in PHASE4_HANDOFF.md).
       Flipping public without the squash exposes the LIVE password. Never skip.
