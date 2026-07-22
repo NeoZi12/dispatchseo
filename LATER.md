@@ -94,3 +94,11 @@ chatbot in dashboard, charts libraries, dark mode, settings pages, mobile app.
   the OSS repo is the growth engine pre-launch. When the paid cloud opens,
   switch to the Postiz layout: cloud CTAs primary everywhere, self-host demoted
   to footer/docs links and a pricing-page FAQ entry.
+
+- **Optional in-stack Caddy for VPS installs.** A `caddy` service in
+  docker-compose (profile-gated, off by default): owner sets
+  `DOMAIN=dispatch.example.com` in `.env`, start.sh brings Caddy up on
+  80/443 and HTTPS just happens - no host-level install, no Caddyfile.
+  Would collapse the VPS guide's step 5 into one env var. Not a launch
+  blocker: DNS + open ports remain manual either way, and it conflicts
+  with proxies users already run, so it must stay opt-in.
