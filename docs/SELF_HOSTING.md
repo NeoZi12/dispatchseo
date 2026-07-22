@@ -135,20 +135,59 @@ Vultr, ...); a 1 GB Ubuntu or Debian box is enough.
      `http://your-server-ip:3000`. This is plain HTTP: your dashboard
      password crosses the internet unencrypted, so treat it as a first
      look, not a way to run.
-   - **Domain + HTTPS (the way to run long-term)** - point a subdomain's
-     DNS at the server, install [Caddy](https://caddyserver.com)
-     (`apt install caddy`), and give it two lines in
-     `/etc/caddy/Caddyfile`:
+   - **Domain + HTTPS (the way to run long-term)** - about ten minutes,
+     once, and every command below is copy-paste:
 
-     ```
-     dispatch.your-domain.com {
-         reverse_proxy localhost:3000
-     }
-     ```
+     1. **Point a subdomain at the server.** In your domain's DNS
+        settings, add an **A record**: name `dispatch` (or anything you
+        like), value = your server's IP. Give it a few minutes to
+        propagate.
 
-     `systemctl reload caddy` and Caddy fetches the HTTPS certificate by
-     itself. Then set `APP_URL=https://dispatch.your-domain.com` in
-     `.env` and run `sh start.sh` again.
+     2. **Open the web ports** in the firewall - Caddy needs them to
+        prove domain ownership and fetch the certificate:
+
+        ```bash
+        ufw allow 80 && ufw allow 443
+        ```
+
+        (Or open ports 80 + 443 in your provider's firewall panel.)
+
+     3. **Install Caddy** (the official repo works on any Debian or
+        Ubuntu - a plain `apt install caddy` doesn't everywhere):
+
+        ```bash
+        apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+        curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+        curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
+        apt update && apt install -y caddy
+        ```
+
+     4. **Tell Caddy about your subdomain** - swap in your real domain,
+        then paste:
+
+        ```bash
+        cat > /etc/caddy/Caddyfile << 'EOF'
+        dispatch.your-domain.com {
+            reverse_proxy localhost:3000
+        }
+        EOF
+        systemctl reload caddy
+        ```
+
+        Caddy fetches and renews the HTTPS certificate by itself -
+        there is no certbot step.
+
+     5. **Tell DispatchSEO its address** - in the `.env` next to
+        `start.sh`, set:
+
+        ```bash
+        APP_URL=https://dispatch.your-domain.com
+        ```
+
+        then run `sh start.sh` again. Open
+        `https://dispatch.your-domain.com` - that's your dashboard's
+        home from now on. (If the certificate isn't there yet, give DNS
+        a few more minutes and reload once.)
 
    To be clear about which is which: the first two exist so you can see
    the wizard in the next sixty seconds. Day to day you'll use the
