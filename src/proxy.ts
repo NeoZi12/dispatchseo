@@ -39,6 +39,10 @@ export function proxy(req: NextRequest) {
     // Google-data usage page: written for the OAuth branding reviewers, who
     // open it logged-out (linked from the homepage footer + FAQ).
     pathname === "/google-data" ||
+    // Plain app-description page: set as the OAuth consent screen's
+    // "Application home page", so Google's branding checker opens it
+    // logged-out.
+    pathname === "/about" ||
     PUBLIC_FILES.has(pathname) ||
     // The marketing landing page - cloud deployment only. Self-hosted installs
     // never set LANDING_ENABLED, so their / stays gated (the page itself also
