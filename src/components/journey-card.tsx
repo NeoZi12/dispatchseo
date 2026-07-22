@@ -251,13 +251,20 @@ export function JourneyCard({
         {/* No fake timeline for an unmeasured site - say what's missing and
             where to fix it. */}
         <p className="text-base text-neutral-300">
-          {journey.expectation}{" "}
-          <Link
-            href="/settings"
-            className="whitespace-nowrap text-sky-400 underline underline-offset-2 hover:text-sky-300"
-          >
-            Open Settings
-          </Link>
+          {journey.expectation}
+          {/* Waiting on Google is not actionable - a settings link there
+              sends owners to redo a finished step. */}
+          {journey.gsc_waiting ? null : (
+            <>
+              {" "}
+              <Link
+                href="/settings"
+                className="whitespace-nowrap text-sky-400 underline underline-offset-2 hover:text-sky-300"
+              >
+                Open Settings
+              </Link>
+            </>
+          )}
         </p>
         {weekly.lines.length > 0 ? (
           <p className="border-t border-neutral-800/70 pt-3 text-base text-neutral-300">

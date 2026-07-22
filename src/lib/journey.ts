@@ -19,7 +19,13 @@ import type { AnalyticsOverview } from "./analytics-data";
 // Stage vocabulary lives in journey-meta.ts (client-safe, no db import) so
 // the onboarding wizard can share the exact words - the MCP parity rule
 // applied to copy. Re-exported here for server-side consumers.
-import { JOURNEY_STAGES, STAGE_META, type JourneyStageKey } from "./journey-meta";
+import {
+  JOURNEY_STAGES,
+  STAGE_META,
+  SETUP_WAITING_EXPECTATION,
+  type JourneyStageKey,
+} from "./journey-meta";
+import { gscCronReadiness } from "./gsc-readiness";
 
 export { JOURNEY_STAGES, STAGE_META, type JourneyStageKey };
 
@@ -45,6 +51,10 @@ export type Journey = {
   milestones: Milestone[];
   fresh_milestones: Milestone[]; // achieved within the last 7 days
   gsc_connected: boolean;
+  // True only in the "setup" stage when the readiness probe says the GSC
+  // connection works but Google has no rows yet - the banner then says
+  // "waiting on Google, nothing needs you" and drops its settings link.
+  gsc_waiting: boolean;
 };
 
 const earliest = (dates: Array<string | null | undefined>): string | null => {
@@ -139,6 +149,7 @@ export function computeJourney(
       (m) => m.achieved_at != null && new Date(m.achieved_at).getTime() >= weekAgo,
     ),
     gsc_connected: gscConnected,
+    gsc_waiting: false,
   };
 }
 
@@ -157,5 +168,23 @@ export async function getJourney(
     .order("checked_at", { ascending: true })
     .limit(1);
   if (!error && data?.[0]) firstTop10 = (data[0] as { checked_at: string }).checked_at;
-  return computeJourney(project, overview, firstTop10);
+  const journey = computeJourney(project, overview, firstTop10);
+
+  // "Setup" covers both not-connected and connected-but-Google-has-nothing.
+  // The readiness probe (same one the crons gate on) tells them apart; the
+  // waiting case swaps in copy that asks for nothing instead of sending the
+  // owner back to a step they finished. Probe failures leave the setup nag
+  // as-is - the honest default when we can't verify.
+  if (journey.stage === "setup") {
+    try {
+      const readiness = await gscCronReadiness(project.id, project.gsc_site_url);
+      if (readiness.ready) {
+        journey.gsc_waiting = true;
+        journey.expectation = SETUP_WAITING_EXPECTATION;
+      }
+    } catch {
+      // keep the setup copy
+    }
+  }
+  return journey;
 }

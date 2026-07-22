@@ -54,6 +54,14 @@ export const STAGE_META: Record<
   },
 };
 
+// The "setup" stage covers two very different situations, and only one of
+// them needs the owner. When the connection verifiably works (the readiness
+// probe answers ok) but Google has no rows yet - normal for a young site,
+// reports lag ~2 days - the banner must say so instead of sending the owner
+// to redo a finished step. getJourney swaps this in for that case.
+export const SETUP_WAITING_EXPECTATION =
+  "Search Console is connected and answering - Google just hasn't recorded any search activity for this site yet. That's normal early on: reports lag about two days, and pages need to appear in searches before there's anything to report. Nothing here needs you; this fills in on its own.";
+
 // The visible timeline, in order. "setup" is deliberately absent - it's a
 // wiring problem, not a stage of the journey.
 export const JOURNEY_STAGES: JourneyStageKey[] = [
