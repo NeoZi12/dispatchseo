@@ -99,10 +99,65 @@ And if none of these appeal to you, that is exactly what the
 4. **Choose a dashboard password** and the setup wizard starts. Jump to
    [The setup wizard, step by step](#the-setup-wizard-step-by-step).
 
-Installing on a VPS is the same two steps over SSH. The dashboard then
-answers on the server's address (`http://your-server-ip:3000`). Want it on
-a real domain with HTTPS? Put any reverse proxy in front and set `APP_URL`
-in `.env` to match - optional, purely cosmetic; the pipeline doesn't need it.
+## Install on a VPS
+
+Same install, done over SSH. Any provider works (Hetzner, DigitalOcean,
+Vultr, ...); a 1 GB Ubuntu or Debian box is enough.
+
+1. **Connect** from your own terminal:
+
+   ```bash
+   ssh root@your-server-ip
+   ```
+
+2. **Install Docker** with the official one-liner:
+
+   ```bash
+   curl -fsSL https://get.docker.com | sh
+   ```
+
+3. **Clone and start**, same as anywhere:
+
+   ```bash
+   git clone https://github.com/NeoZi12/dispatchseo &&
+     cd dispatchseo &&
+     sh start.sh
+   ```
+
+4. **Open the dashboard.** The stack listens on port 3000 of the server,
+   and you have three ways to reach it:
+
+   - **SSH tunnel (encrypted, zero setup)** - on your own computer run
+     `ssh -L 3000:localhost:3000 root@your-server-ip`, then open
+     `http://localhost:3000`. The server's firewall stays fully closed.
+   - **Open the port (quick look only)** - allow port 3000 in the
+     firewall (`ufw allow 3000`, or your provider's panel) and browse
+     `http://your-server-ip:3000`. This is plain HTTP: your dashboard
+     password crosses the internet unencrypted, so treat it as a first
+     look, not a way to run.
+   - **Domain + HTTPS (the way to run long-term)** - point a subdomain's
+     DNS at the server, install [Caddy](https://caddyserver.com)
+     (`apt install caddy`), and give it two lines in
+     `/etc/caddy/Caddyfile`:
+
+     ```
+     dispatch.your-domain.com {
+         reverse_proxy localhost:3000
+     }
+     ```
+
+     `systemctl reload caddy` and Caddy fetches the HTTPS certificate by
+     itself. Then set `APP_URL=https://dispatch.your-domain.com` in
+     `.env` and run `sh start.sh` again.
+
+5. **The builder token comes from your own computer**, not the VPS:
+   `claude setup-token` opens a browser login, which a headless server
+   can't do. Run it locally, copy the `sk-ant-oat...` token into the
+   VPS's `.env`, then `docker compose up -d builder` on the server.
+
+That's the whole difference from a local install. The wizard and
+everything after it are identical - except this machine never sleeps, so
+the schedules actually fire at their scheduled times.
 
 ### What the command actually did
 
