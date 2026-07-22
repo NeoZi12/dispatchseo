@@ -33,6 +33,12 @@ export function proxy(req: NextRequest) {
     // Cloud account creation - only meaningful in CLOUD_MODE (the page
     // itself bounces self-host visitors to /login).
     pathname === "/signup" ||
+    // Password recovery - both legs serve logged-out visitors by definition
+    // (a locked-out user has no session), so they must clear the gate the same
+    // way /login and /signup do. The pages themselves bounce self-host visitors
+    // to /login and re-check the recovery session server-side.
+    pathname === "/forgot-password" ||
+    pathname === "/reset-password" ||
     // OAuth return leg for cloud Google sign-in: the visitor has no session
     // yet by definition when they land here.
     pathname === "/auth/callback" ||
