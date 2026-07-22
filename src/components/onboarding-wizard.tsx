@@ -1192,33 +1192,28 @@ export function OnboardingWizard({
           </div>
 
           {isDocker ? (
-            <div className="mt-4 space-y-2">
+            <div className="mt-4 space-y-3">
               <p className="text-[15px] text-neutral-300">
-                <b className="font-semibold text-neutral-100">3.</b> Turn on automatic builds -
-                one time, in the folder you installed DispatchSEO from:
+                <b className="font-semibold text-neutral-100">3.</b> Turn on automatic builds.
+                One time, two pastes:
               </p>
-              <div className="rounded-lg bg-neutral-900 px-3.5 py-3 text-sm leading-relaxed text-neutral-400">
-                <ol className="list-decimal space-y-1 pl-4">
-                  <li>
-                    Run <code className="font-mono text-neutral-200">claude setup-token</code> in
-                    a terminal and copy the <code className="font-mono text-neutral-200">sk-ant-oat...</code>{" "}
-                    token.
-                  </li>
-                  <li>
-                    Add it to <code className="font-mono text-neutral-200">.env</code> as{" "}
-                    <code className="font-mono text-neutral-200">CLAUDE_CODE_OAUTH_TOKEN=</code>{" "}
-                    (one line, no breaks).
-                  </li>
-                  <li>
-                    Run <code className="font-mono text-neutral-200">docker compose up -d builder</code>.
-                  </li>
-                </ol>
-                <p className="mt-2 text-neutral-500">
-                  That&apos;s the builder: your Claude Code running inside Docker, building on
-                  schedule with no public URL needed. Until it&apos;s on, nothing builds
-                  automatically - everything else still works.
-                </p>
-              </div>
+              <p className="text-sm text-neutral-400">
+                <b className="font-medium text-neutral-200">a.</b> On your own computer, run this
+                and copy the <code className="font-mono text-neutral-300">sk-ant-oat...</code>{" "}
+                token it prints (it opens a browser login):
+              </p>
+              <CopyBox text="claude setup-token" />
+              <p className="text-sm text-neutral-400">
+                <b className="font-medium text-neutral-200">b.</b> In the folder DispatchSEO was
+                installed from (on a VPS: over SSH), paste this with your token swapped in:
+              </p>
+              <CopyBox text='echo "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat-PASTE-YOUR-TOKEN-HERE" >> .env && docker compose up -d builder && docker compose logs builder --tail 5' />
+              <p className="text-sm text-neutral-500">
+                The last command shows the builder waking up - it either starts polling for work
+                or says exactly what it&apos;s still waiting for. That&apos;s your Claude Code
+                running inside Docker, building on schedule, no public URL needed. Until
+                it&apos;s on, nothing builds automatically - everything else still works.
+              </p>
             </div>
           ) : null}
 
