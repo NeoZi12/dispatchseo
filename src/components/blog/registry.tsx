@@ -16,6 +16,9 @@ import { ConnectionChecklist } from "./connection-checklist";
 import { SelfHostPatternTable } from "./self-host-pattern-table";
 import { AgentStackFactRow } from "./agent-stack-fact-row";
 import { OpenCoreChecklist } from "./open-core-checklist";
+import { AgentModelCompareTable } from "./agent-model-compare-table";
+import { SeoAgentCapabilityGrid } from "./seo-agent-capability-grid";
+import { SeoAgentRealityFactRow } from "./seo-agent-reality-fact-row";
 import { slugify } from "@/lib/slugify";
 
 // The components every blog MDX file renders with: typographic defaults that
@@ -105,4 +108,7 @@ export const mdxComponents: MDXComponents = {
   SelfHostPatternTable,
   AgentStackFactRow,
   OpenCoreChecklist,
+  AgentModelCompareTable,
+  SeoAgentCapabilityGrid,
+  SeoAgentRealityFactRow,
 };

@@ -1,0 +1,62 @@
+---
+title: What an AI SEO agent actually is (it's not AI-writing bolted onto SEO software)
+description: Most "AI SEO agent" pages describe a writing feature bolted onto SEO software. The other model puts an agent CLI in the driver's seat and reduces the backend to state - shown with this site's own real, unflattering numbers.
+date: 2026-07-22
+keyword: ai seo agent
+cover: /blog/covers/ai-seo-agent.webp
+---
+
+An AI SEO agent, in most of what ranks for the term right now, is SEO software with a writing feature bolted on: audits and rank tracking, plus a button that drafts content inside the vendor's own editor. A second, far-less-covered kind flips that arrangement - the agent CLI you already run for coding does the reasoning and the drafting, and the backend underneath it is reduced to state: a queue, keyword history, rank checks, nothing that thinks. This guide covers what page 1 currently means by the term, then goes deep on the second kind using dispatchseo.com's own production system - the one that wrote this sentence - as the live example.
+
+> **TL;DR** - Most "AI SEO agent" products today (Nightwatch, Frase, Relevance AI, and similar) are SEO platforms with an AI-writing or AI-audit feature layered on top; the model runs in the vendor's infrastructure and a person still moves the output into a CMS. The other model, agent-as-driver, puts the reasoning in an agent CLI you already run (Claude Code) and shrinks the backend to state - a suggestions queue, tracked keywords, rank history. DispatchSEO is one: a 46-tool MCP server with no content-generation tool of its own, because Claude Code drafts directly and opens the pull request. It's 8 days old with 0 clicks yet, which this guide reports plainly rather than dressing up.
+
+## What "AI SEO agent" means on page 1 right now
+
+Search this term and the consensus is fairly tight: an AI SEO agent is software that runs SEO tasks on its own rather than just describing them, built around four capability areas - pulling keyword opportunities, generating optimized drafts, applying technical fixes like meta tags and schema, and watching rankings to trigger a refresh when something decays. Nightwatch, Frase, and Relevance AI all sell some version of this bundle; Ahrefs and Lyzr both publish long explainers on the category without shipping a full agent themselves. It's a real, useful bundle - and every one of those four capabilities runs inside a vendor's own product, which is the detail the marketing copy tends to skip past.
+
+<SeoAgentCapabilityGrid />
+
+## Two different things hiding under one label
+
+Strip the marketing layer off and "AI SEO agent" is actually naming two different systems that happen to share a label, and they don't overlap much once you look at what decides what happens next.
+
+<AgentModelCompareTable />
+
+The bolted-on model optimizes for a clean UI around a model the vendor controls end to end. The agent-as-driver model optimizes for the opposite: the reasoning already lives in a CLI you run for everything else, so the only thing worth building custom is the state that CLI needs between runs - which is a database and a scheduler, not a chat window.
+
+## What agent-as-driver looks like in production
+
+DispatchSEO is the concrete version: a single-owner SEO manager where Claude Code does the actual research, writing, and judgment calls, and the backend's only job is holding what a headless run needs between sessions - the suggestions queue, tracked keywords, GSC snapshots, and the bearer token that says which site a given run is allowed to touch. A full loop looks like this: a scheduled run [connects over MCP](/blog/claude-code-mcp-server) and calls `propose_suggestion` with a keyword, its volume and difficulty, and a plain-text SERP rationale; the owner (or a build-first policy for guides inside the auto-approve zone) approves it; a later run picks the oldest approved item, drafts the guide against this repo's own conventions, and opens a pull request; the owner merges. Nothing in that chain is a vendor feature - it's this site's own [MCP server](/blog/mcp-server-examples), driven by [a scheduled Claude Code job](/blog/claude-code-github-actions), the same pattern documented for this pipeline generally.
+
+## Does it actually work? Real numbers, unvarnished
+
+The single highest-ranking result for this exact query is a Reddit thread titled "Do AI SEO Agents actually work?" - a fair question, and one most vendor pages answer with a case study instead of raw numbers. Here are this project's real ones, pulled from its own `get_site_stats` and `get_rankings` during the session that wrote this page:
+
+<SeoAgentRealityFactRow />
+
+Read those honestly: a domain this young has no backlink authority regardless of which model built its content, so a page sitting in the 60s for a KD-14 keyword three days after publish isn't a verdict on the agent, it's the normal cold-start curve every new site rides. What agent-as-driver actually buys you here isn't a shortcut past that curve - nothing does - it's that the curve is queryable in your own database the moment you want to look, instead of living inside a vendor's dashboard you'd lose access to the day a subscription lapses.
+
+## Honest tradeoffs, and who this doesn't fit
+
+Agent-as-driver gives up real things the bolted-on model ships out of the box: no built-in writing UI (Claude Code's terminal is the interface), no polished multi-user dashboard for a team of non-technical marketers, no crawl-scale backlink index like Ahrefs maintains - `add_backlink_prospect` records prospects you or the agent found, it doesn't crawl the web for them. It also isn't free in the way "self-hosted" sometimes implies: DataForSEO usage is metered per project, so you're managing a bill instead of a vendor managing it for you.
+
+That makes the fit narrow on purpose. It's a good match if you already pay for an agent CLI, already hold your own Vercel/Supabase/GitHub accounts, and want SEO to be one more scheduled job those accounts run rather than a new subscription and a new login. It's the wrong tool if you need a support contract behind the thing failing at 2am, a GUI a non-technical teammate can drive without touching code, or an SLA - a hosted SaaS platform is the honest answer in every one of those cases.
+
+## FAQ
+
+**Is DispatchSEO an "AI SEO agent" or just SEO software with AI features?**
+Agent-as-driver, specifically: the reasoning happens in Claude Code, not in a model the backend hosts. The MCP server has no content-generation tool at all - Claude Code drafts directly and opens the pull request.
+
+**Do AI SEO agents actually improve rankings?**
+It depends entirely on the site, not the agent - a brand-new domain climbs slowly no matter what wrote its content, since ranking authority comes from age and links, not from who drafted the page. This guide shows its own unflattering early numbers rather than a cherry-picked success case.
+
+**What's the difference between an AI SEO agent and an AI SEO tool?**
+In most current usage, none reliably - "tool" and "agent" both get applied to the same bolted-on-AI-writing products. The distinction worth tracking is where the reasoning runs and who reviews the output before it ships, not which noun the vendor picked.
+
+**Can an AI SEO agent publish content without a human reviewing it?**
+DispatchSEO's can't by design - every guide ships as a pull request labeled `seo` that a person merges; nothing writes to the live site automatically. Whether other tools skip that step depends on the product, not the category.
+
+**Do I need my own SEO software subscription to run an agent-as-driver setup?**
+You need accounts, not seats: your own hosting (Vercel/Supabase or similar), a keyword-data source if you want volume and difficulty numbers, and the agent CLI itself. None of that is billed per user the way vendor SEO platforms are.
+
+None of this is an argument that a SaaS AI-SEO-agent tool is wrong for a team it already works for. It's a narrower claim: if you already run an agent CLI against your own code, the SEO half of your stack doesn't need a second AI product bolted onto a dashboard - it needs a database, a scheduler, and a queue the agent you already trust can read from directly. That's what's running underneath this page, eight days in, real numbers and all.
