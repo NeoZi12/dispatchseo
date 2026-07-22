@@ -123,10 +123,14 @@ subscription - DispatchSEO bills nothing):
 claude setup-token
 ```
 
-**b.** Save it, with your `sk-ant-oat...` token swapped in:
+**b.** Save it, with your `sk-ant-oat...` token swapped in. Run this in
+the `dispatchseo` folder - the first part checks you're in the right
+place before writing anything:
 
 ```bash
-echo "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat-PASTE-YOUR-TOKEN-HERE" >> .env
+[ -f start.sh ] &&
+  echo "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat-PASTE-YOUR-TOKEN-HERE" >> .env ||
+  echo "Wrong folder - run this inside the dispatchseo folder"
 ```
 
 **c.** Start the builder and check on it:

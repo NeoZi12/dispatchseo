@@ -33,14 +33,18 @@ domain setup needed for this.
 **Create API Key**, name it `dispatchseo`, leave the defaults, and copy the
 key. It starts with `re_` and is shown only once.
 
-**c. Add two lines to `.env`.** On the machine running DispatchSEO, inside
-the `dispatchseo` folder, run this with both values replaced - the key you
-just copied, and your email:
+**c. Add two lines to `.env`.** On the machine running DispatchSEO
+(on a VPS: over SSH, not your own computer), inside the `dispatchseo`
+folder, run this with both values replaced - the key you just copied, and
+your email. The first part checks you're in the right folder before
+writing anything:
 
 ```bash
-echo "RESEND_API_KEY=re_PASTE-YOUR-KEY-HERE" >> .env &&
+[ -f start.sh ] &&
+  echo "RESEND_API_KEY=re_PASTE-YOUR-KEY-HERE" >> .env &&
   echo "ALERT_EMAIL=you@example.com" >> .env &&
-  sh start.sh
+  sh start.sh ||
+  echo "Wrong folder - run this inside the dispatchseo folder"
 ```
 
 One catch to know: `ALERT_EMAIL` must be **the same email you signed up to

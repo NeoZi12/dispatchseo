@@ -649,7 +649,7 @@ export default async function Home() {
                 "In the folder DispatchSEO was installed from (on a VPS: over SSH), paste the command below with your token swapped in.",
                 "Within ~10 minutes the builder checks in and this card disappears by itself.",
               ]}
-              command={'echo "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat-PASTE-YOUR-TOKEN-HERE" >> .env && docker compose up -d builder'}
+              command={'[ -f start.sh ] && echo "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat-PASTE-YOUR-TOKEN-HERE" >> .env && docker compose up -d builder || echo "Wrong folder - run this inside the dispatchseo folder (on a VPS: ssh in first)"'}
               closing="Until then everything else still works - research, approvals, rankings - only automatic building waits."
             />
           ) : null}
@@ -669,7 +669,7 @@ export default async function Home() {
                 </>,
                 "In the folder DispatchSEO was installed from (on a VPS: over SSH), paste the command below with both values swapped in. The email must be the one you signed up to Resend with - alerts go out through Resend's built-in sender, which only delivers to its own account's address.",
               ]}
-              command={'echo "RESEND_API_KEY=re_PASTE-YOUR-KEY-HERE" >> .env && echo "ALERT_EMAIL=you@example.com" >> .env && sh start.sh'}
+              command={'[ -f start.sh ] && echo "RESEND_API_KEY=re_PASTE-YOUR-KEY-HERE" >> .env && echo "ALERT_EMAIL=you@example.com" >> .env && sh start.sh || echo "Wrong folder - run this inside the dispatchseo folder (on a VPS: ssh in first)"'}
               closing="At most one email per job per day, and a machine that was asleep or off never counts as broken. No email means everything is working."
             />
           ) : null}

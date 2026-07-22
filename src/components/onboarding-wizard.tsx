@@ -1226,7 +1226,7 @@ export function OnboardingWizard({
                 <b className="font-medium text-neutral-200">b.</b> In the folder DispatchSEO was
                 installed from (on a VPS: over SSH), paste this with your token swapped in:
               </p>
-              <CopyBox text='echo "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat-PASTE-YOUR-TOKEN-HERE" >> .env && docker compose up -d builder && docker compose logs builder --tail 5' />
+              <CopyBox text='[ -f start.sh ] && echo "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat-PASTE-YOUR-TOKEN-HERE" >> .env && docker compose up -d builder && docker compose logs builder --tail 5 || echo "Wrong folder - run this inside the dispatchseo folder (on a VPS: ssh in first)"' />
               <p className="text-sm text-neutral-500">
                 The last command shows the builder waking up - it either starts polling for work
                 or says exactly what it&apos;s still waiting for. That&apos;s your Claude Code
