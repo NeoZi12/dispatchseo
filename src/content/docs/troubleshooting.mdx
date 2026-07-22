@@ -42,6 +42,20 @@ install.
 docker compose down -v && sh start.sh
 ```
 
+**The build died with `Killed` / exit code 137.** The machine ran out of
+memory compiling the app from source - it happens on 1 GB servers when
+the prebuilt images can't be pulled. Give the machine swap (spillover
+memory on disk), then start again:
+
+```bash
+fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile &&
+  swapon /swapfile && echo '/swapfile none swap sw 0 0' >> /etc/fstab
+sh start.sh
+```
+
+The build gets slower but finishes, and the swap stays useful for the
+running stack too.
+
 **The builder isn't building.** `docker compose logs builder` says exactly
 what it's waiting for - usually the `CLAUDE_CODE_OAUTH_TOKEN` in `.env`, or
 a project whose setup wizard isn't finished yet.
