@@ -14,7 +14,6 @@ import {
 } from "@/components/cloud-onboarding-wizard";
 import { CLOUD_WIZARD_SCREENS, SELF_HOST_WIZARD_SCREENS } from "@/lib/wizard-screens";
 import { DispatchMark } from "@/components/logo";
-import { PixelDispatcher } from "@/components/pixel-dispatcher";
 
 export const dynamic = "force-dynamic";
 
@@ -253,9 +252,10 @@ export default async function OnboardingPage({
             Stuck? Open the quick guide ↗
           </a>
         </div>
-        {/* The landing hero's dispatcher, already at the desk for this site's
-            shift - `working` skips the walk-in so a re-render can't restart it. */}
-        <PixelDispatcher working className="mx-auto mb-6 w-[min(300px,80vw)]" />
+        {/* TEMP: animation removed to test whether its constant DOM mutation
+            is what triggers the ~0.3s remount / focus-loss (Chrome translate
+            re-scan suspected). Restore once confirmed. */}
+        <div className="mb-6" translate="no" />
         {cloud ? (
           <CloudOnboardingWizard
             resume={cloudResume}
