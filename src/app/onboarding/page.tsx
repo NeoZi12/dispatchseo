@@ -141,8 +141,9 @@ export default async function OnboardingPage({
   const params = await searchParams;
 
   // Cloud: plan before site. A fresh account with no subscription pays
-  // first (/billing), then comes back here; project creation enforces the
-  // same rule server-side, this is just the honest front door.
+  // first (/plans - a standalone pricing page, no dashboard chrome), then
+  // comes back here; project creation enforces the same rule server-side,
+  // this is just the honest front door.
   if (isCloudMode() && auth.user) {
     const [{ getSubscription, isActive }, mine] = await Promise.all([
       import("@/lib/billing"),
@@ -150,7 +151,7 @@ export default async function OnboardingPage({
     ]);
     if (mine.length === 0 && !isActive(await getSubscription(auth.user.id))) {
       // Fresh from Polar checkout, webhook not landed yet: absorb the race
-      // instead of bouncing someone who JUST paid back to /billing. A short
+      // instead of bouncing someone who JUST paid back to /plans. A short
       // server-side retry catches the common sub-second webhook; the
       // confirming screen's poll covers the rest.
       if (params.checkout === "success") {
@@ -168,7 +169,7 @@ export default async function OnboardingPage({
           );
         }
       } else {
-        redirect("/billing");
+        redirect("/plans");
       }
     }
   }
