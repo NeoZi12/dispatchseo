@@ -17,7 +17,7 @@ type Status = {
   rank_checks: number;
 };
 
-export function FirstRunBackground({ slug }: { slug: string }) {
+export function FirstRunBackground({ slug, cloud = false }: { slug: string; cloud?: boolean }) {
   const [status, setStatus] = useState<Status | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -57,15 +57,26 @@ export function FirstRunBackground({ slug }: { slug: string }) {
     return (
       <div className="flex items-center gap-2.5 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] px-4 py-3">
         <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400" aria-hidden />
-        <p className="text-sm text-amber-100/90">
-          <b className="font-medium text-amber-200">The first keyword research hasn&apos;t landed.</b>{" "}
-          Paste{" "}
-          <code className="rounded bg-neutral-900 px-1.5 py-0.5 font-mono text-[13px] text-neutral-200">
-            /seo-research
-          </code>{" "}
-          into Claude Code (in your site&apos;s repo) to run it now - ideas show up here in
-          about 10-20 minutes.
-        </p>
+        {cloud ? (
+          // Cloud is hands-off: research runs on the schedule via GitHub
+          // Actions, there is no command to paste. Say so honestly instead of
+          // handing a self-host rescue command that doesn't apply here.
+          <p className="text-sm text-amber-100/90">
+            <b className="font-medium text-amber-200">Your first keyword research hasn&apos;t run yet.</b>{" "}
+            On your plan it runs automatically on the schedule - nothing to paste. Ideas land here as
+            soon as it does.
+          </p>
+        ) : (
+          <p className="text-sm text-amber-100/90">
+            <b className="font-medium text-amber-200">The first keyword research hasn&apos;t landed.</b>{" "}
+            Paste{" "}
+            <code className="rounded bg-neutral-900 px-1.5 py-0.5 font-mono text-[13px] text-neutral-200">
+              /seo-research
+            </code>{" "}
+            into Claude Code (in your site&apos;s repo) to run it now - ideas show up here in
+            about 10-20 minutes.
+          </p>
+        )}
       </div>
     );
   }

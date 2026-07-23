@@ -726,7 +726,11 @@ export default async function Home() {
             <SetupStep
               title="Google Search Console"
               state="connected, syncing"
-              why={`Done on your side: the service account can read the ${project.domain} property. Traffic lands with the next hourly sync, and Google's own data runs 2-3 days behind on top - this card disappears by itself once the first day arrives.`}
+              why={
+                isCloudMode() && project.gsc_oauth_refresh_token
+                  ? `Done on your side: your Google account is connected to the ${project.domain} property. Traffic lands with the next hourly sync, and Google's own data runs 2-3 days behind on top - this card disappears by itself once the first day arrives.`
+                  : `Done on your side: the service account can read the ${project.domain} property. Traffic lands with the next hourly sync, and Google's own data runs 2-3 days behind on top - this card disappears by itself once the first day arrives.`
+              }
             />
           ) : null}
           {needsGsc && !gscWaiting && isCloudMode() ? (
@@ -929,7 +933,7 @@ export default async function Home() {
 
       {/* Background first runs (research / rank check) - the wizard tracks
           only owner actions, so the machine work shows here, self-hiding. */}
-      {pipelineInstalled ? <FirstRunBackground slug={project.slug} /> : null}
+      {pipelineInstalled ? <FirstRunBackground slug={project.slug} cloud={isCloudMode()} /> : null}
 
       {/* ---------- THE GRAPH ---------- */}
       <section className="space-y-3">
