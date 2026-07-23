@@ -75,6 +75,11 @@ and slash commands.
    exception worth a diff-and-ask: a file the owner visibly hand-edited
    beyond the known adaptation spots (custom steps, extra jobs) - never
    silently discard work like that.
+3. Call \`mark_install_step\` with step=\`workflows\`. (These stamps feed the
+   live checklist the owner watches on the wizard finale - stamp each step
+   RIGHT AFTER finishing it, throughout this install. Best-effort always:
+   if the tool is missing or errors, continue - a progress tick must never
+   stop an install.)
 
 ### Part 2 - adapt to THIS repo (the pack is a template, not gospel)
 
@@ -140,6 +145,9 @@ Inspect this repo and adjust these known spots before committing:
 - **IndexNow dispatches** in the merge steps reference an indexnow.yml the
   repo may not have; the \`|| echo\` fallbacks make that harmless. Mention it
   as a nice-to-have, do not build it in this run.
+
+When the adaptation is done and the install command proved green, call
+\`mark_install_step\` with step=\`adaptation\`.
 
 ### Part 3 - secrets and repo settings
 
@@ -248,6 +256,9 @@ on its FIRST real build:
 \`gh label create seo --repo {{REPO}} --color 0e8a16 --description "DispatchSEO SEO pipeline" 2>/dev/null; gh label create seo-tool --repo {{REPO}} --color 1d76db --description "DispatchSEO tool PR" 2>/dev/null\`
 (exit code 1 = already exists = fine).
 
+With the permission set and both labels in place, call \`mark_install_step\`
+with step=\`repo_settings\`.
+
 ### Part 4 - ship, then continue into setup
 
 1. Commit the shim on a branch and open a PR titled "Install the DispatchSEO
@@ -334,7 +345,8 @@ on its FIRST real build:
      claims the research job on its next poll and runs it in the
      background within ~10 minutes. Tell the owner: "your first keyword
      research starts automatically in the background - ideas appear on
-     the dashboard in about 10-20 minutes" and END the session there.
+     the dashboard in about 10-20 minutes", call \`mark_install_step\` with
+     step=\`research\`, and END the session there.
      Only when \`builder_last_seen_at\` is null/stale does the old
      fallback apply: run the research workflow YOURSELF in this session
      (get_instructions workflow=research), then confirm with
@@ -351,7 +363,8 @@ on its FIRST real build:
      This first research run fills the suggestions queue immediately -
      tell the owner ideas land on their dashboard in roughly 10-20
      minutes. Pacing does not block it: a fresh project has built nothing
-     yet, so the daily slot is free.
+     yet, so the daily slot is free. Call \`mark_install_step\` with
+     step=\`research\` once dispatched.
    - Dispatch \`gh workflow run seo-geo-scan.yml --repo {{REPO}}\` as well:
      the first AI-visibility scan gives the dashboard's AI section a real
      baseline today instead of waiting for its Wednesday schedule.

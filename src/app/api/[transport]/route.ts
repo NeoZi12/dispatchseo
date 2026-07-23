@@ -2023,6 +2023,63 @@ const mcpHandler = createMcpHandler(
     );
 
     server.registerTool(
+      "mark_install_step",
+      {
+        title: "Mark an install step done",
+        description:
+          "Progress ticker for the owner's wizard finale: stamp one install " +
+          "step the moment you FINISH it, so the checklist the owner is " +
+          "watching ticks in real time instead of sitting dark for 20-60 " +
+          "minutes. Steps: workflows (pack files written), adaptation " +
+          "(stack adapted + install command proven), repo_settings (Actions " +
+          "PR permission + labels), content_home (blog section found or " +
+          "scaffolded), site_facts (conventions.md written), research " +
+          "(first keyword research kicked off or handed to the builder). " +
+          "Call it once per step, right after the step - never in advance. " +
+          "Purely informational and always safe: it unlocks nothing " +
+          "(mark_pipeline_installed does that) and a failure here must " +
+          "never stop the install.",
+        inputSchema: {
+          step: z.enum([
+            "workflows",
+            "adaptation",
+            "repo_settings",
+            "content_home",
+            "site_facts",
+            "research",
+          ]),
+        },
+      },
+      async ({ step }) => {
+        const p = currentProject();
+        // Read-merge-write; a lone install agent writes these, so the race
+        // window is theoretical. Tolerant of the 0036 column not existing
+        // yet (older self-host DB): report noted:false instead of failing -
+        // this tool must never be the reason an install stops.
+        const { data } = await db()
+          .from("projects")
+          .select("install_progress")
+          .eq("id", p.id)
+          .single();
+        const current =
+          (data?.install_progress as Record<string, string> | null) ?? {};
+        const { error } = await db()
+          .from("projects")
+          .update({ install_progress: { ...current, [step]: new Date().toISOString() } })
+          .eq("id", p.id);
+        if (error) {
+          return ok({
+            noted: false,
+            reason: /install_progress|column/i.test(error.message)
+              ? "backend predates migration 0036 - progress display unavailable, continue the install"
+              : error.message,
+          });
+        }
+        return ok({ noted: true, step });
+      },
+    );
+
+    server.registerTool(
       "mark_pipeline_installed",
       {
         title: "Mark pipeline installed",

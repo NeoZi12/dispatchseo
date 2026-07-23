@@ -83,6 +83,9 @@ Treat that answer as a hint, not truth - owners misremember their own repos.
      in the PR description.
 5. If you scaffolded, downstream workflows can only publish once that PR
    merges - tell the owner merging it is what makes the site publishable.
+6. Call \`mark_install_step\` with step=\`content_home\` (best-effort - a
+   missing tool or an error never stops setup; it only feeds the owner's
+   progress checklist).
 
 ### Part 2 - write \`.dispatchseo/conventions.md\`
 
@@ -125,6 +128,9 @@ value where the token is a color, so the dashboard renders real swatches),
 \`fonts\`, \`voice_rules\`, \`exemplar_guides\`, \`exemplar_visuals\`,
 \`tool_reference\`, \`analytics\`, \`notes\`. Full replace: send everything
 each time. Re-run this mirror whenever the conventions file changes.
+
+Then call \`mark_install_step\` with step=\`site_facts\` (best-effort, same
+rule as the content_home stamp).
 
 ### Part 3 - personalize the site profile
 

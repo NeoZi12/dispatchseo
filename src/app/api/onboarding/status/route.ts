@@ -130,6 +130,18 @@ export async function GET(req: Request): Promise<Response> {
     : await openInstallPr(project);
 
   return Response.json({
+    // Agent-reported step stamps (mark_install_step) - {} on pre-0036 rows
+    // or when the agent predates the tool; the finale's checklist treats
+    // absence as "no signal", never as "broken".
+    install_progress:
+      ((project as { install_progress?: unknown }).install_progress as
+        | Record<string, string>
+        | undefined) ?? {},
+    // Lets the finale checklist name the content-home step honestly:
+    // "create" = the agent scaffolds a blog from scratch (the step that
+    // stretches installs toward an hour), "existing"/"detect" are quick.
+    content_mode:
+      ((project as { content_mode?: unknown }).content_mode as string | undefined) ?? null,
     repo_connected: Boolean(project.pipeline_installed_at) || Boolean(canary),
     canary_ok: canary?.ok ?? null, // null = hasn't run yet
     canary_error: canary && !canary.ok ? (canary.errors[0] ?? null) : null,
