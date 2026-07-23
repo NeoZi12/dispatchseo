@@ -32,7 +32,14 @@ and slash commands.
    valid; the project's configured repo decides, nothing else). If the
    remote does NOT match {{REPO}}, STOP and say where the owner should run
    this instead - never install the shim into a repo the project does not
-   point at.
+   point at. **One diagnosis to offer before anything else:** if the owner
+   says they JUST connected this repo from the wizard, the near-certain
+   cause is that this Claude Code session started BEFORE their
+   \`claude mcp add\` ran - connections load once, at startup, so the session
+   is still holding an older project's key. Tell them to close and reopen
+   Claude Code in this folder and paste the install command again; that is
+   a restart, not an error (2026-07-23: this exact case cost an owner three
+   confused round-trips).
 2. Confirm \`gh auth status\` works and the account can push branches and set
    secrets on this repo. If not, have the owner run \`gh auth login\` first.
 3. **Brief the owner on everything this run will need - BEFORE doing
@@ -40,9 +47,13 @@ and slash commands.
    language:
    - "I already have your project's MCP key (it is how I am connected) -
      you do nothing for that one."
-   - "You will create a Claude Code token when we get to secrets - two
-     commands in your terminal, about a minute, and we will VERIFY it works
-     before it goes anywhere." (The builders run on their subscription.)
+   - Only on a HOSTED backend (public URL - the local-backend fast path at
+     the top of Part 3 decides): "You will create a Claude Code token when
+     we get to secrets - two commands in your terminal, about a minute, and
+     we will VERIFY it works before it goes anywhere." (The builders run on
+     their subscription.) On a LOCAL backend say instead: "No token step
+     here - your builds run in the builder container, which gets its token
+     in the wizard's automatic-builds step."
    - Only if this project will wire its OWN DataForSEO account into this repo
      (check \`get_project\`'s \`dataforseo_repo_mcp\` - NOT keyword_source: a
      cloud project can be DataForSEO-backed through the platform's bundled
@@ -143,6 +154,18 @@ already set SEO_MCP_API_KEY, CLAUDE_CODE_OAUTH_TOKEN, and (when applicable)
 the DataForSEO pair - all verified at set time. Skip whatever exists and
 only fill gaps using the steps below; do not re-mint a Claude token that is
 already stored.
+
+**Local-backend fast path (backend URL is localhost / 127.x / a private
+address):** GitHub-hosted workflows cannot reach this backend, and Part 4
+disables the phone-home schedules accordingly - so GitHub never runs Claude
+for this project. Therefore SKIP step 2 (CLAUDE_CODE_OAUTH_TOKEN - the
+builder container already holds the token from the wizard's automatic-builds
+step) and SKIP step 4 (the trend-scan smoke test - it exercises a workflow
+Part 4 disables two steps later). Steps 1 and 3, the Actions PR permission,
+and the labels still apply everywhere: the canary and tool-validate
+workflows stay live on every install and depend on them. This fast path
+plus Part 4's builder-first research cuts a local install from ~40 minutes
+to ~10-15.
 
 1. \`SEO_MCP_API_KEY\` - set it yourself via \`gh secret set\`. The value is
    this session's MCP Bearer token (already proven to work - it is how you
@@ -301,16 +324,29 @@ on its FIRST real build:
    for almost a week with an empty queue. Once the install PR is merged
    (the smoke test in Part 3 already required that; if it has not merged
    yet, ask the owner to merge now):
-   - **Local backend? Run research yourself instead of dispatching.** If
-     the backend URL this connection uses is only reachable from this
-     machine (localhost / 127.x / 0.0.0.0), GitHub-hosted runs cannot
-     phone home to it, so dispatching workflows proves nothing. Skip the
-     dispatches below; instead run the research workflow YOURSELF, right
-     now, in this session (get_instructions workflow=research, follow
-     it), then confirm with get_suggestions that ideas landed. Either
-     way the owner does nothing: the dashboard tells them research is
-     running in the background, so never hand them /seo-research as a
-     required step - it is the rescue path, not the install path.
+   - **Local backend? The builder runs research - do NOT run it in this
+     session by default.** If the backend URL this connection uses is only
+     reachable from this machine (localhost / 127.x / 0.0.0.0),
+     GitHub-hosted runs cannot phone home to it, so skip every dispatch
+     below. But do NOT run research inline either: check
+     \`get_cron_health\` - if \`builder_last_seen_at\` is recent (the owner
+     completed the wizard's automatic-builds step), the in-stack builder
+     claims the research job on its next poll and runs it in the
+     background within ~10 minutes. Tell the owner: "your first keyword
+     research starts automatically in the background - ideas appear on
+     the dashboard in about 10-20 minutes" and END the session there.
+     Only when \`builder_last_seen_at\` is null/stale does the old
+     fallback apply: run the research workflow YOURSELF in this session
+     (get_instructions workflow=research), then confirm with
+     get_suggestions - and remind the owner to finish the wizard's
+     automatic-builds step so future runs need no terminal.
+     **If this session builds ANY content itself** (the fallback, or an
+     owner asking for a first guide now): follow the FULL build contract
+     from get_instructions workflow=build-guide - PR labeled \`seo\`,
+     \`update_suggestion\` through in_progress to done, \`log_page\` with the
+     final URL. A guide the backend never heard about is invisible on the
+     dashboard (2026-07-23 e2e: a scaffold PR bundled a guide, skipped
+     both calls, and Guides showed empty while the blog was live).
    - Dispatch \`gh workflow run seo-weekly-research.yml --repo {{REPO}}\`.
      This first research run fills the suggestions queue immediately -
      tell the owner ideas land on their dashboard in roughly 10-20
