@@ -26,7 +26,10 @@ export async function placeAtFront(
     .filter((s) => (s.type === "tool") === isTool && s.queue_position != null)
     .map((s) => s.queue_position as number);
   const front = positions.length ? Math.min(...positions) - 1 : 0;
-  await client.from("suggestions").update({ queue_position: front }).eq("id", id);
+  // Scope the write by project_id too, not just id: every caller today passes an
+  // id it already proved belongs to this project, but enforcing it at the data
+  // layer means a future caller can never front-place another tenant's row.
+  await client.from("suggestions").update({ queue_position: front }).eq("id", id).eq("project_id", projectId);
 }
 
 // Persist an explicit build order for one queue (guides and tools are
@@ -64,7 +67,10 @@ export async function writeQueueOrder(
 
   const results = await Promise.all(
     [...orderedIds, ...tail].map((id, idx) =>
-      client.from("suggestions").update({ queue_position: idx + 1 }).eq("id", id),
+      // ids are already validated against this project above; the extra
+      // project_id filter keeps the "every queue_position write is scoped"
+      // invariant enforced at the data layer, matching placeAtFront.
+      client.from("suggestions").update({ queue_position: idx + 1 }).eq("id", id).eq("project_id", projectId),
     ),
   );
   const failed = results.find((r) => r.error);
