@@ -679,7 +679,10 @@ export function CloudOnboardingWizard(props: {
           <h2 className="text-2xl font-semibold tracking-tight">You&apos;re live.</h2>
           <p className="mb-4 text-base text-neutral-400">
             Installing the pipeline into {created?.name ?? "your"}&apos;s repo now - no more
-            pastes needed.
+            pastes needed. This runs on GitHub and usually takes{" "}
+            <b className="font-medium text-neutral-200">5-15 minutes</b>. You can leave this page
+            and come back - setup finishes on its own, and your dashboard unlocks the moment
+            it&apos;s done.
           </p>
 
           <div className="rounded-xl bg-neutral-900 p-4">{renderInstallBanner()}</div>

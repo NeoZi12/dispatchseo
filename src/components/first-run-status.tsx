@@ -141,7 +141,7 @@ export function FirstRunStatus({ slug, cloud }: { slug: string; cloud?: boolean 
                 - the install finishes the moment it merges
               </>
             ) : cloud ? (
-              "Setting up your site (a background run personalizes everything - a few minutes)"
+              "Setting up your site (a background run personalizes everything - usually 5-15 minutes)"
             ) : (
               "Installing the automation pipeline (your agent opens a PR for you to merge)"
             )
