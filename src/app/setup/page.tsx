@@ -1,16 +1,21 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { COOKIE_NAME, cookieSecure, cookieValue } from "@/lib/dashboard-auth";
-import { claimInstance, getSetupState, type SetupState } from "@/lib/setup";
+import { claimInstance, getSetupState } from "@/lib/setup";
 import { missingMigrations } from "@/lib/schema-check";
 import { DispatchMark } from "@/components/logo";
 import { PixelDispatcher } from "@/components/pixel-dispatcher";
 import { PasswordInput } from "@/app/setup/password-input";
 
-// First-boot setup wizard. Public by design: it only ever renders
-// instructions or the claim form, and claiming is race-safe (single-row PK).
-// Once the instance is claimed - or on classic env installs - it redirects
-// to /login and never shows again.
+// First-boot setup wizard for the DOCKER self-host stack - the only install
+// that ever renders this page. Cloud accounts onboard through /signup and
+// classic env installs (DASHBOARD_PASSWORD set) are born "ready", so both
+// redirect to /login. The old manual Supabase-into-Vercel walkthrough that
+// used to live here is gone with that install path; the two database states
+// are container-failure triage now, not steps.
+// Public by design: it only ever renders instructions or the claim form,
+// and claiming is race-safe (single-row PK). Once the instance is claimed
+// it redirects to /login and never shows again.
 export const dynamic = "force-dynamic";
 
 async function claim(formData: FormData) {
@@ -63,65 +68,6 @@ function Code({ children }: { children: React.ReactNode }) {
   return <b className="font-semibold text-white">{children}</b>;
 }
 
-// The three-step rail. Bolder than the dashboard wizard's thin segmented
-// line - numbered, connected circles with labels - because this page has
-// nothing else competing for attention. Prior steps fill solid violet with a
-// check, the current step gets the same fill plus a soft ring, everything
-// after stays neutral.
-const SETUP_STEPS: { key: SetupState; label: string }[] = [
-  { key: "no-db", label: "Connect database" },
-  { key: "no-tables", label: "Create tables" },
-  { key: "unclaimed", label: "Choose password" },
-];
-
-function SetupProgress({ state }: { state: SetupState }) {
-  const idx = SETUP_STEPS.findIndex((s) => s.key === state);
-  return (
-    <ol className="flex" aria-label="Setup progress">
-      {SETUP_STEPS.map((s, i) => {
-        const done = i < idx;
-        const current = i === idx;
-        return (
-          <li key={s.key} className="relative flex flex-1 flex-col items-center">
-            {i < SETUP_STEPS.length - 1 && (
-              <span
-                aria-hidden
-                className={`absolute left-1/2 top-5 h-0.5 w-full -translate-y-1/2 transition-colors ${
-                  done ? "bg-violet-500" : "bg-neutral-800"
-                }`}
-              />
-            )}
-            <span
-              className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[15px] font-semibold transition-colors ${
-                done
-                  ? "bg-violet-500 text-neutral-950"
-                  : current
-                    ? "bg-violet-500 text-neutral-950 ring-4 ring-violet-500/20"
-                    : "bg-neutral-800 text-neutral-500"
-              }`}
-            >
-              {done ? (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="h-4 w-4" aria-hidden>
-                  <polyline points="20 6 9 17 4 12" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              ) : (
-                i + 1
-              )}
-            </span>
-            <span
-              className={`mt-2.5 max-w-[7.5rem] text-center text-[13px] font-medium leading-tight ${
-                current ? "text-violet-300" : done ? "text-neutral-300" : "text-neutral-600"
-              }`}
-            >
-              {s.label}
-            </span>
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
 export default async function SetupPage({
   searchParams,
 }: {
@@ -130,12 +76,8 @@ export default async function SetupPage({
   const state = await getSetupState();
   if (state === "ready") redirect("/login");
   const { error } = await searchParams;
-  // Docker self-host: the stack bundles its own Postgres, so the two
-  // database gates only appear when a container is unhealthy - show
-  // docker triage instead of the cloud (Supabase/Vercel) walkthrough.
-  const docker = Boolean(process.env.POSTGREST_URL);
   // Which migrations the probe says are absent - names the exact gap on the
-  // tables step so a partial paste is diagnosable at a glance.
+  // tables screen so a partial migrate run is diagnosable at a glance.
   const missing = state === "no-tables" ? await missingMigrations() : [];
 
   return (
@@ -153,15 +95,9 @@ export default async function SetupPage({
             <DispatchMark className="h-8 w-auto" />
             DispatchSEO setup
           </h1>
-          {/* The numbered rail narrates the manual cloud walkthrough. Docker
-              installs have no steps to walk - the DB screens are failure
-              triage and the password screen is the whole wizard, so a
-              "Step 3 of 3" opener would just be the Supabase-era frame
-              leaking through. */}
-          {!docker && <SetupProgress state={state} />}
         </div>
 
-        {state === "no-db" && docker && (
+        {state === "no-db" && (
           <div className="space-y-6 rounded-xl border border-neutral-800 bg-neutral-900/60 p-7">
             <div>
               <h2 className="text-2xl font-semibold text-white">Waiting for the database</h2>
@@ -187,63 +123,20 @@ export default async function SetupPage({
             <a href="/setup" className={`block w-full text-center ${primaryAction}`}>
               Check again
             </a>
+            {/* Contributors running from source hit this state when their
+                .env.local lacks a database - point them at the doc instead
+                of leaving docker triage as the only clue. */}
+            <p className="text-sm text-neutral-500">
+              Running from source, not Docker?{" "}
+              <a href="/docs/local-development" className="underline hover:text-neutral-300">
+                The local development guide
+              </a>{" "}
+              lists the env this deploy is missing.
+            </p>
           </div>
         )}
 
-        {state === "no-db" && !docker && (
-          <div className="space-y-6 rounded-xl border border-neutral-800 bg-neutral-900/60 p-7">
-            <div>
-              <h2 className="text-2xl font-semibold text-white">Step 1 of 3 - connect your database</h2>
-              <p className="mt-3 text-lg leading-relaxed text-neutral-400">
-                You'll copy two values from Supabase into Vercel. Two browser
-                tabs, about five minutes.
-              </p>
-            </div>
-            <ol className="space-y-6">
-              <Step n={1}>
-                Sign in to{" "}
-                <a href="https://supabase.com/dashboard" className="text-indigo-400 underline" target="_blank" rel="noreferrer">
-                  Supabase
-                </a>{" "}
-                and open any project - or click <Code>New project</Code>,
-                it's free and ready in a minute.
-              </Step>
-              <Step n={2}>
-                In a second tab, open your DispatchSEO project on{" "}
-                <a href="https://vercel.com/dashboard" className="text-indigo-400 underline" target="_blank" rel="noreferrer">
-                  vercel.com
-                </a>
-                , then <Code>Settings</Code> → <Code>Environment Variables</Code>.
-                The next two steps paste into it.
-              </Step>
-              <Step n={3}>
-                In Supabase, copy the <Code>Project URL</Code> from your
-                project's home page. In Vercel, save it as{" "}
-                <Code>SUPABASE_URL</Code>.
-              </Step>
-              <Step n={4}>
-                In Supabase, open{" "}
-                <a href="https://supabase.com/dashboard/project/_/settings/api-keys" className="text-indigo-400 underline" target="_blank" rel="noreferrer">
-                  API Keys
-                </a>{" "}
-                and copy the <Code>sb_secret_</Code> key (called{" "}
-                <Code>service_role</Code> on older projects). In Vercel, save
-                it as <Code>SUPABASE_SERVICE_ROLE_KEY</Code>.
-              </Step>
-              <Step n={5}>
-                In Vercel: <Code>Deployments</Code> → <Code>⋯</Code> →{" "}
-                <Code>Redeploy</Code>. When it finishes, come back here.
-              </Step>
-            </ol>
-            {/* Plain link, not a server action: the flow guarantees a redeploy
-                between page load and click, which kills any action reference. */}
-            <a href="/setup" className={`block w-full text-center ${primaryAction}`}>
-              I did this - check again
-            </a>
-          </div>
-        )}
-
-        {state === "no-tables" && docker && (
+        {state === "no-tables" && (
           <div className="space-y-6 rounded-xl border border-neutral-800 bg-neutral-900/60 p-7">
             <div>
               <h2 className="text-2xl font-semibold text-white">Waiting for the tables</h2>
@@ -276,64 +169,13 @@ export default async function SetupPage({
           </div>
         )}
 
-        {state === "no-tables" && !docker && (
-          <div className="space-y-6 rounded-xl border border-neutral-800 bg-neutral-900/60 p-7">
-            <div>
-              <h2 className="text-2xl font-semibold text-white">Step 2 of 3 - create the tables</h2>
-              <p className="mt-3 text-lg leading-relaxed text-neutral-400">
-                Database connected. One paste of SQL creates every table, and
-                it's safe to run more than once.
-              </p>
-            </div>
-            <ol className="space-y-6">
-              <Step n={1}>
-                Open{" "}
-                <a
-                  href="https://github.com/NeoZi12/dispatchseo/blob/main/supabase/migrations/setup.sql"
-                  className="text-indigo-400 underline"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  setup.sql
-                </a>{" "}
-                and copy the whole file (the copy icon, top right).
-              </Step>
-              <Step n={2}>
-                Paste it into your project's{" "}
-                <a
-                  href="https://supabase.com/dashboard/project/_/sql/new"
-                  className="text-indigo-400 underline"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  SQL Editor
-                </a>{" "}
-                in Supabase and press <Code>Run</Code>.{" "}
-                <Code>Success. No rows returned</Code> means you're done.
-              </Step>
-            </ol>
-            {missing.length > 0 && (
-              <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-sm text-amber-200">
-                Still missing: {missing.join(", ")}. Running setup.sql adds
-                exactly these and skips anything you already have.
-              </p>
-            )}
-            <a href="/setup" className={`block w-full text-center ${primaryAction}`}>
-              Tables created - check again
-            </a>
-          </div>
-        )}
-
         {state === "unclaimed" && (
           <div className="space-y-6 rounded-xl border border-neutral-800 bg-neutral-900/60 p-7">
             <div>
-              <h2 className="text-2xl font-semibold text-white">
-                {docker ? "Choose your password" : "Step 3 of 3 - choose your password"}
-              </h2>
+              <h2 className="text-2xl font-semibold text-white">Choose your password</h2>
               <p className="mt-3 text-lg leading-relaxed text-neutral-400">
-                {docker ? "" : "Last step. "}Pick the password you'll use to
-                log in to this dashboard - everything else is generated for
-                you on the next screen.
+                Pick the password you'll use to log in to this dashboard -
+                everything else is generated for you on the next screen.
               </p>
             </div>
             <form action={claim} className="space-y-4">
