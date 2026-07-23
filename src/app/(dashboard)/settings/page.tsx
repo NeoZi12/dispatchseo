@@ -6,6 +6,7 @@ import { credsForProject } from "@/lib/dataforseo";
 import { DEFAULT_PROJECT_ID, fetchProjectToken } from "@/lib/projects";
 import { isCloudMode } from "@/lib/cloud";
 import { ClaudeTokenConnect } from "@/components/claude-token-connect";
+import { hasRepoSecret } from "@/lib/github-app-secrets";
 import { DeleteProjectForm } from "@/components/delete-project";
 import { KeywordSourceSettings } from "@/components/keyword-source-settings";
 import { SiteLaunchedRow } from "@/components/site-launched";
@@ -29,6 +30,14 @@ export default async function SettingsPage() {
   const project = await getActiveProject();
   const isDefault = project.id === DEFAULT_PROJECT_ID;
   const mcpToken = await fetchProjectToken(project.id);
+  // Whether a Claude Code token is already stored on the repo, so Settings can
+  // say "you're done, this is only for rotating" instead of looking like a
+  // required first-time setup. GitHub never returns secret values, only
+  // existence; fail closed (treat as not-set) on any error.
+  const claudeTokenSet =
+    isCloudMode() && project.github_installation_id
+      ? await hasRepoSecret(project, "CLAUDE_CODE_OAUTH_TOKEN").catch(() => false)
+      : false;
   const hdrs = await headers();
   const dashOrigin = `${hdrs.get("x-forwarded-proto") ?? "https"}://${hdrs.get("host") ?? "dispatchseo.com"}`;
 
@@ -82,7 +91,7 @@ export default async function SettingsPage() {
           <SectionTitle sub="the token builds run on - rotate it here whenever it expires or gets revoked">
             Claude Code token
           </SectionTitle>
-          <ClaudeTokenConnect />
+          <ClaudeTokenConnect connected={claudeTokenSet} />
         </section>
       ) : null}
 

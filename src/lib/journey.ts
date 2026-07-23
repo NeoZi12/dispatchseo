@@ -26,6 +26,7 @@ import {
   type JourneyStageKey,
 } from "./journey-meta";
 import { gscCronReadiness } from "./gsc-readiness";
+import { isCloudMode } from "./cloud";
 
 export { JOURNEY_STAGES, STAGE_META, type JourneyStageKey };
 
@@ -176,14 +177,29 @@ export async function getJourney(
   // owner back to a step they finished. Probe failures leave the setup nag
   // as-is - the honest default when we can't verify.
   if (journey.stage === "setup") {
-    try {
-      const readiness = await gscCronReadiness(project.id, project.gsc_site_url);
-      if (readiness.ready) {
-        journey.gsc_waiting = true;
-        journey.expectation = SETUP_WAITING_EXPECTATION;
+    // Cloud connects GSC through per-project OAuth, not the shared service
+    // account - so the service-account readiness probe (gscCronReadiness) is
+    // blind to it and would wrongly nag "finish the Connect Search Console
+    // step" (with an Open-Settings link) on a project that's already connected
+    // and just waiting for its first sync. Mirror the Home setup card, which
+    // already treats an OAuth-connected cloud property as the waiting state.
+    const cloudGscConnected =
+      isCloudMode() &&
+      Boolean(project.gsc_oauth_refresh_token) &&
+      Boolean(project.gsc_site_url);
+    if (cloudGscConnected) {
+      journey.gsc_waiting = true;
+      journey.expectation = SETUP_WAITING_EXPECTATION;
+    } else {
+      try {
+        const readiness = await gscCronReadiness(project.id, project.gsc_site_url);
+        if (readiness.ready) {
+          journey.gsc_waiting = true;
+          journey.expectation = SETUP_WAITING_EXPECTATION;
+        }
+      } catch {
+        // keep the setup copy
       }
-    } catch {
-      // keep the setup copy
     }
   }
   return journey;
