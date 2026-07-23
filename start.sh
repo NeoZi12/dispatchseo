@@ -48,6 +48,12 @@ if [ -z "$PORT" ]; then
     done
   fi
   echo "DISPATCH_PORT=$PORT" >> .env
+fi
+
+# APP_URL follows the chosen port. Written outside the port block above:
+# a hand-pinned DISPATCH_PORT used to skip it, leaving the compose default
+# pointing at 4005 while the dashboard actually served on the pinned port.
+if ! grep -q '^APP_URL=..*' .env; then
   echo "APP_URL=http://localhost:$PORT" >> .env
 fi
 
