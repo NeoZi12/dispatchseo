@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 
 // Pixel-art hero scene: the agent (a clay-colored blob, our nod to Claude
 // Code's mascot) walks in from the left, hops onto the chair at the dispatch
 // desk, a headset drops onto its head, and it settles in for the shift:
 // breathing, blinking, the monitor's rank chart climbing, the coffee steaming.
-// Everything is drawn as SVG rects from character grids - no image assets,
-// crisp at any size.
+//
+// Rendered on a <canvas>, NOT SVG-in-the-DOM, on purpose: an SVG frame
+// animation re-creates dozens of <rect> nodes ~8x/second, and that constant
+// DOM churn makes page-scanning tools (Chrome Translate, Grammarly) re-walk
+// the whole document on every frame - which stole focus from form fields on
+// the onboarding wizard (2026-07-23). A canvas updates its bitmap with zero
+// DOM mutation, so nothing downstream can react to it.
 
 const TICK_MS = 120;
 
@@ -16,6 +21,13 @@ const WALK_END = 34; // walking ends, hop begins
 const HOP_END = 38; // hop ends, seated
 const DROP_START = 40; // headset starts dropping
 const DROP_END = 45; // headset on - idle loop from here
+
+// The drawing coordinate space (matches the old SVG viewBox "20 12 128 32"):
+// everything is authored in these units, then offset into a 128x32 canvas.
+const VB_X = 20;
+const VB_Y = 12;
+const VB_W = 128;
+const VB_H = 32;
 
 const PALETTE: Record<string, string> = {
   c: "#d97757", // clay body
@@ -80,25 +92,38 @@ const CHART_TARGETS = [2, 3, 4, 5];
 const CHART_X = [90, 92, 94, 96];
 const CHART_BASE = 27; // bars grow upward from here
 
-function gridRects(grid: string[], ox: number, oy: number, keyPrefix: string) {
-  const rects = [];
+function fillPx(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  color: string,
+) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x - VB_X, y - VB_Y, w, h);
+}
+
+function drawGrid(
+  ctx: CanvasRenderingContext2D,
+  grid: string[],
+  ox: number,
+  oy: number,
+) {
   for (let r = 0; r < grid.length; r++) {
     for (let col = 0; col < grid[r].length; col++) {
       const ch = grid[r][col];
       if (ch === ".") continue;
-      rects.push(
-        <rect key={`${keyPrefix}-${r}-${col}`} x={ox + col} y={oy + r} width={1} height={1} fill={PALETTE[ch]} />
-      );
+      fillPx(ctx, ox + col, oy + r, 1, 1, PALETTE[ch]);
     }
   }
-  return rects;
 }
 
-function px(x: number, y: number, fill: string, key: string, w = 1, h = 1) {
-  return <rect key={key} x={x} y={y} width={w} height={h} fill={fill} />;
-}
+// Draw the whole scene at tick t. Same composition + order as the old SVG,
+// so later paints (desk, monitor) still sit in front of the character.
+function drawScene(ctx: CanvasRenderingContext2D, t: number) {
+  ctx.clearRect(0, 0, VB_W, VB_H);
 
-function Scene({ t }: { t: number }) {
   // --- character position + frame ---
   let charX: number;
   let charY: number;
@@ -114,7 +139,6 @@ function Scene({ t }: { t: number }) {
     charX = SEAT_X;
     charY = SEAT_Y;
     const idle = t - DROP_END;
-    // breathing bob + occasional blink once settled
     if (idle >= 0) {
       charY += idle % 16 < 8 ? 0 : 1;
       grid = idle % 27 < 2 ? SIT_BLINK : SIT;
@@ -123,105 +147,107 @@ function Scene({ t }: { t: number }) {
     }
   }
 
-  // --- headset ---
-  let headset = null;
+  // --- headset drop offset ---
+  let headsetY: number | null = null;
   if (t >= DROP_START) {
     const drops = [-10, -7, -4, -2, -1];
-    const dy = drops[Math.min(t - DROP_START, drops.length - 1)];
-    headset = gridRects(HEADSET, charX, charY + dy, "hp");
+    headsetY = charY + drops[Math.min(t - DROP_START, drops.length - 1)];
   }
 
-  // --- monitor: off until the headset lands, then it boots and the chart
-  // bars grow left to right and reset ---
   const screenOn = t >= DROP_END;
-  const chart = [];
+
+  // floor
+  fillPx(ctx, 24, 40, 120, 1, "#232329");
+  fillPx(ctx, 40, 41, 88, 1, "#17171b");
+
+  // chair: backrest, seat, legs
+  fillPx(ctx, 64, 26, 2, 6, "#3a3a42");
+  fillPx(ctx, 66, 32, 12, 2, "#3a3a42");
+  fillPx(ctx, 67, 34, 2, 6, "#2e2e35");
+  fillPx(ctx, 74, 34, 2, 6, "#2e2e35");
+
+  // character + headset
+  drawGrid(ctx, grid, charX, charY);
+  if (headsetY !== null) drawGrid(ctx, HEADSET, charX, headsetY);
+
+  // desk
+  fillPx(ctx, 77, 30, 32, 1, "#3a3a42");
+  fillPx(ctx, 77, 31, 32, 1, "#2e2e35");
+  fillPx(ctx, 78, 32, 2, 8, "#2e2e35");
+  fillPx(ctx, 105, 32, 2, 8, "#2e2e35");
+
+  // keyboard
+  fillPx(ctx, 79, 29, 7, 1, "#2e2e35");
+  fillPx(ctx, 80, 29, 1, 1, "#3a3a42");
+  fillPx(ctx, 82, 29, 1, 1, "#3a3a42");
+  fillPx(ctx, 84, 29, 1, 1, "#3a3a42");
+
+  // monitor: bezel, screen, chart, live dot, stand
+  fillPx(ctx, 88, 19, 13, 9, "#26262c");
+  fillPx(ctx, 89, 20, 11, 7, screenOn ? "#12121a" : "#0a0a0c");
   if (screenOn) {
     const growth = Math.floor(((t - DROP_END) % 46) / 2);
     for (let i = 0; i < CHART_TARGETS.length; i++) {
       const h = Math.min(CHART_TARGETS[i], Math.max(0, growth - i * 3));
-      if (h > 0) chart.push(px(CHART_X[i], CHART_BASE - h, "#4ade80", `bar${i}`, 2, h));
+      if (h > 0) fillPx(ctx, CHART_X[i], CHART_BASE - h, 2, h, "#4ade80");
     }
   }
+  if (screenOn && t % 6 < 3) fillPx(ctx, 98, 21, 1, 1, "#8b5cf6");
+  fillPx(ctx, 93, 28, 3, 2, "#26262c");
 
-  // --- coffee steam ---
-  const steam =
-    t % 8 < 4
-      ? [px(103, 24, "#4b4b55", "s1"), px(104, 22, "#3a3a42", "s2")]
-      : [px(104, 24, "#4b4b55", "s1"), px(103, 22, "#3a3a42", "s2")];
-
-  return (
-    <svg
-      viewBox="20 12 128 32"
-      role="img"
-      aria-label="Pixel art: a small AI agent walks to a desk, puts on a headset, and starts typing away"
-      shapeRendering="crispEdges"
-      className="block h-auto w-full"
-    >
-      {/* floor */}
-      {px(24, 40, "#232329", "floor", 120, 1)}
-      {px(40, 41, "#17171b", "floor2", 88, 1)}
-
-      {/* chair: backrest, seat, legs */}
-      {px(64, 26, "#3a3a42", "chback", 2, 6)}
-      {px(66, 32, "#3a3a42", "chseat", 12, 2)}
-      {px(67, 34, "#2e2e35", "chleg1", 2, 6)}
-      {px(74, 34, "#2e2e35", "chleg2", 2, 6)}
-
-      {/* character + headset */}
-      {gridRects(grid, charX, charY, "ch")}
-      {headset}
-
-      {/* desk */}
-      {px(77, 30, "#3a3a42", "dtop", 32, 1)}
-      {px(77, 31, "#2e2e35", "dtop2", 32, 1)}
-      {px(78, 32, "#2e2e35", "dleg1", 2, 8)}
-      {px(105, 32, "#2e2e35", "dleg2", 2, 8)}
-
-      {/* keyboard */}
-      {px(79, 29, "#2e2e35", "kb", 7, 1)}
-      {px(80, 29, "#3a3a42", "kb1")}
-      {px(82, 29, "#3a3a42", "kb2")}
-      {px(84, 29, "#3a3a42", "kb3")}
-
-      {/* monitor: bezel, screen, chart, live dot, stand */}
-      {px(88, 19, "#26262c", "mbez", 13, 9)}
-      {px(89, 20, screenOn ? "#12121a" : "#0a0a0c", "mscr", 11, 7)}
-      {chart}
-      {screenOn && t % 6 < 3 ? px(98, 21, "#8b5cf6", "live", 1, 1) : null}
-      {px(93, 28, "#26262c", "mstand", 3, 2)}
-
-      {/* mug + steam */}
-      {px(103, 27, "#8b5cf6", "mug", 2, 3)}
-      {px(105, 28, "#6d3fd8", "mughandle", 1, 1)}
-      {steam}
-    </svg>
-  );
+  // mug + steam
+  fillPx(ctx, 103, 27, 2, 3, "#8b5cf6");
+  fillPx(ctx, 105, 28, 1, 1, "#6d3fd8");
+  if (t % 8 < 4) {
+    fillPx(ctx, 103, 24, 1, 1, "#4b4b55");
+    fillPx(ctx, 104, 22, 1, 1, "#3a3a42");
+  } else {
+    fillPx(ctx, 104, 24, 1, 1, "#4b4b55");
+    fillPx(ctx, 103, 22, 1, 1, "#3a3a42");
+  }
 }
 
-// working: start already seated at the desk (skip the 5s walk-in) and loop
-// the typing/idle animation - the right state for a loading spinner, where
-// the agent is "on the job" rather than arriving.
-export function PixelDispatcher({ className, working }: { className?: string; working?: boolean }) {
-  const [t, setT] = useState(working ? DROP_END : 0);
-  const [reduced, setReduced] = useState(false);
+// working: start already seated at the desk (skip the ~5s walk-in) and loop
+// the typing/idle animation - the right state for a persistent header or a
+// loading spinner, where the agent is "on the job" rather than arriving.
+export function PixelDispatcher({
+  className,
+  working,
+}: {
+  className?: string;
+  working?: boolean;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    if (mq.matches) {
-      setReduced(true);
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!ctx) return;
+    // Reduced motion: paint the settled scene once, no ticking.
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      drawScene(ctx, DROP_END + 36);
       return;
     }
-    const id = setInterval(() => setT((v) => v + 1), TICK_MS);
+    let t = working ? DROP_END : 0;
+    drawScene(ctx, t);
+    const id = setInterval(() => {
+      t += 1;
+      drawScene(ctx, t);
+    }, TICK_MS);
     return () => clearInterval(id);
-  }, []);
+  }, [working]);
 
-  // Reduced motion: skip straight to the settled scene, no timers.
-  // className overrides the landing page's .pixel-stage sizing so other
-  // surfaces (the onboarding wizard) can size it with utilities instead of
-  // needing landing.css.
   return (
     <div className={className ?? "pixel-stage"}>
-      <Scene t={reduced ? DROP_END + 36 : t} />
+      <canvas
+        ref={canvasRef}
+        width={VB_W}
+        height={VB_H}
+        role="img"
+        aria-label="Pixel art: a small AI agent at a dispatch desk, headset on, working"
+        translate="no"
+        className="block h-auto w-full [image-rendering:pixelated]"
+      />
     </div>
   );
 }

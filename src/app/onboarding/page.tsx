@@ -14,6 +14,7 @@ import {
 } from "@/components/cloud-onboarding-wizard";
 import { CLOUD_WIZARD_SCREENS, SELF_HOST_WIZARD_SCREENS } from "@/lib/wizard-screens";
 import { DispatchMark } from "@/components/logo";
+import { PixelDispatcher } from "@/components/pixel-dispatcher";
 
 export const dynamic = "force-dynamic";
 
@@ -252,10 +253,11 @@ export default async function OnboardingPage({
             Stuck? Open the quick guide ↗
           </a>
         </div>
-        {/* TEMP: animation removed to test whether its constant DOM mutation
-            is what triggers the ~0.3s remount / focus-loss (Chrome translate
-            re-scan suspected). Restore once confirmed. */}
-        <div className="mb-6" translate="no" />
+        {/* The landing hero's dispatcher, already at the desk for this shift.
+            Canvas-rendered, so its per-frame redraw never mutates the DOM and
+            can't re-trigger page scanners (Translate/Grammarly) that stole
+            input focus when this was an SVG. */}
+        <PixelDispatcher working className="mx-auto mb-6 w-[min(300px,80vw)]" />
         {cloud ? (
           <CloudOnboardingWizard
             resume={cloudResume}
