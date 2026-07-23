@@ -875,7 +875,12 @@ async function createProjectCore(
     .select("id, domain, github_repo")
     .eq("id", DEFAULT_PROJECT_ID)
     .maybeSingle();
-  const claimDefault = Boolean(defRow && !defRow.github_repo && !defRow.domain);
+  // Claiming the fixed-id seed row in place is a SELF-HOST first-boot mechanic.
+  // On cloud it must never happen: the seed row is shared, so if it were ever
+  // transiently neutral (re-seed, migration replay) two racing signups could
+  // both "claim" it and annex the default project id + its legacy MCP_API_KEY /
+  // DataForSEO fallbacks. Cloud signups always INSERT a fresh row.
+  const claimDefault = !isCloudMode() && Boolean(defRow && !defRow.github_repo && !defRow.domain);
   const write = (r: Record<string, unknown>) =>
     claimDefault
       ? db().from("projects").update(r).eq("id", DEFAULT_PROJECT_ID)

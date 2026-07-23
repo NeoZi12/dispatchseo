@@ -1,7 +1,9 @@
+import { redirect } from "next/navigation";
 import { requireDashboard } from "@/lib/auth-gate";
 import Link from "next/link";
 import { instanceCronSecret } from "@/lib/dashboard-auth";
 import { DEFAULT_PROJECT_ID, fetchProjectToken } from "@/lib/projects";
+import { isCloudMode } from "@/lib/cloud";
 import { DispatchMark } from "@/components/logo";
 
 // Post-claim reveal: the keys the instance generated for itself. Guarded
@@ -23,6 +25,13 @@ function KeyBlock({ label, value, hint }: { label: string; value: string; hint: 
 }
 
 export default async function SetupKeysPage() {
+  // Docker self-host ONLY. These are the DEFAULT project's (ClockedCode's) live
+  // MCP token + cron secret. In CLOUD_MODE, requireDashboard() passes for any
+  // signed-in tenant and the proxy gates this route by cookie presence alone -
+  // so without this guard any customer could read the maintainer's live keys.
+  // Mirror the sibling setup/page.tsx redirect; keys live per-project on
+  // Settings in cloud, never here.
+  if (isCloudMode()) redirect("/login");
   await requireDashboard();
 
   const [mcpToken, cronSecret] = await Promise.all([
