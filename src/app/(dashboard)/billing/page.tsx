@@ -48,7 +48,7 @@ export default async function BillingPage({
         hint={
           active
             ? `You're on ${TIER_COPY[sub!.tier].name} - ${sub!.sites_limit} site${sub!.sites_limit === 1 ? "" : "s"}, ${sub!.keywords_limit} tracked keywords.`
-            : "Pick a plan to unlock your sites - Starter comes with a 7-day free trial."
+            : "Pick a plan to unlock your sites - Starter comes with a 7-day free trial; Growth and Scale start today."
         }
       />
 
@@ -93,8 +93,12 @@ export default async function BillingPage({
                 <span className="text-sm font-normal text-neutral-500">/mo</span>
               </p>
               <p className="mt-1 text-sm text-neutral-400">{TIER_COPY[tier].sub}</p>
-              {tier === "starter" && !active ? (
-                <p className="mt-1 text-xs font-medium text-emerald-300">7-day free trial</p>
+              {!active ? (
+                tier === "starter" ? (
+                  <p className="mt-1 text-xs font-medium text-emerald-300">7-day free trial</p>
+                ) : (
+                  <p className="mt-1 text-xs font-medium text-neutral-500">Billed today</p>
+                )
               ) : null}
               <ul className="mt-3 space-y-1 text-sm text-neutral-400">
                 <li>
@@ -114,7 +118,11 @@ export default async function BillingPage({
                   href={active ? "/api/polar/portal" : `/api/polar/checkout?tier=${tier}`}
                   className="mt-4 block rounded-lg bg-white px-4 py-2 text-center text-sm font-medium text-neutral-950"
                 >
-                  {active ? "Switch" : "Choose"} {TIER_COPY[tier].name}
+                  {active
+                    ? `Switch ${TIER_COPY[tier].name}`
+                    : tier === "starter"
+                      ? "Start free trial"
+                      : `Choose ${TIER_COPY[tier].name}`}
                 </a>
               )}
             </div>

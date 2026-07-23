@@ -273,7 +273,7 @@ export default async function LandingPage() {
             </details>
             <details>
               <summary>How do I get started on cloud?</summary>
-              <div className="a">Sign up and start with the 7-day free trial on Starter - you enter a card at checkout, nothing is charged until the trial ends, and you can cancel in one click before then. The setup wizard walks you through connecting your site, about ten minutes end to end. Need more sites? Upgrade to Growth or Scale anytime, or start there directly.</div>
+              <div className="a">Sign up and start your 7-day free trial on Starter - you enter a card at checkout, nothing is charged until the trial ends, and you can cancel in one click before then. The setup wizard walks you through connecting your site, about ten minutes end to end. Need more sites right away? Pick Growth or Scale at checkout (billed today), or upgrade anytime.</div>
             </details>
           </div>
         </div>
