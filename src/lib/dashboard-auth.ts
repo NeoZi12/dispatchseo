@@ -13,6 +13,18 @@ const MESSAGE = "seo-dashboard-v1";
 
 export { COOKIE_NAME };
 
+// Whether the session cookie may carry the Secure attribute. Hardcoding true
+// breaks plain-HTTP installs: every browser rejects Secure cookies from
+// http://<ip> origins, and stable Safari rejects them even on http://localhost
+// (WebKit's loopback fix is still beta-only as of Safari 26) - the wizard and
+// login then bounce back silently with no error. Trust the protocol the
+// visitor actually arrived on: Next's standalone server and the bundled Caddy
+// both set x-forwarded-proto, and a missing header just means the cookie goes
+// unmarked, which still works.
+export function cookieSecure(h: Headers): boolean {
+  return (h.get("x-forwarded-proto") ?? "").split(",")[0].trim() === "https";
+}
+
 type InstanceRow = {
   dashboard_password_hash: string;
   cron_secret: string;

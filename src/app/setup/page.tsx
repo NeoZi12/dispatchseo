@@ -1,6 +1,6 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { COOKIE_NAME, cookieValue } from "@/lib/dashboard-auth";
+import { COOKIE_NAME, cookieSecure, cookieValue } from "@/lib/dashboard-auth";
 import { claimInstance, getSetupState, type SetupState } from "@/lib/setup";
 import { missingMigrations } from "@/lib/schema-check";
 import { DispatchMark } from "@/components/logo";
@@ -30,7 +30,7 @@ async function claim(formData: FormData) {
   const jar = await cookies();
   jar.set(COOKIE_NAME, await cookieValue(), {
     httpOnly: true,
-    secure: true,
+    secure: cookieSecure(h),
     sameSite: "lax",
     maxAge: 60 * 60 * 24 * 30,
     path: "/",

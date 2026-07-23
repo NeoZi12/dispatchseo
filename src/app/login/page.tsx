@@ -1,7 +1,7 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { COOKIE_NAME, cookieValue, isCorrectPassword } from "@/lib/dashboard-auth";
+import { COOKIE_NAME, cookieSecure, cookieValue, isCorrectPassword } from "@/lib/dashboard-auth";
 import { getSetupState } from "@/lib/setup";
 import { isCloudMode } from "@/lib/cloud";
 import { supabaseAuth } from "@/lib/cloud-auth";
@@ -17,7 +17,8 @@ import { AuthShell } from "@/components/auth-shell";
 
 async function login(formData: FormData) {
   "use server";
-  const ip = clientIp(await headers());
+  const h = await headers();
+  const ip = clientIp(h);
   if (await loginLockedUntil(ip)) {
     redirect("/login?error=locked");
   }
@@ -30,7 +31,7 @@ async function login(formData: FormData) {
   const jar = await cookies();
   jar.set(COOKIE_NAME, await cookieValue(), {
     httpOnly: true,
-    secure: true,
+    secure: cookieSecure(h),
     sameSite: "lax",
     maxAge: 60 * 60 * 24 * 30,
     path: "/",
