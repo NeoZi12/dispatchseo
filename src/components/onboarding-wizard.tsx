@@ -103,7 +103,10 @@ function GscSteps({ domain, muted }: { domain: string; muted?: boolean }) {
           >
             Google Search Console
           </a>{" "}
-          and pick {domain}.
+          and pick {domain}. Not listed yet? Click <b className={bold}>Add property</b>,
+          choose <b className={bold}>Domain</b>, enter {domain}, and add the DNS record it
+          shows where your domain is registered - verification is usually instant. Then
+          come back here.
         </>,
         <>
           Go to <b className={bold}>Settings</b>, then <b className={bold}>Users and permissions</b>.
@@ -1131,6 +1134,11 @@ export function OnboardingWizard({
               <b className="font-medium text-neutral-100">inside your site&apos;s repo</b>:
             </p>
             <CopyBox text={created ? mcpAddCommand(created.slug, origin, created.mcpToken) : ""} />
+            <p className="text-[13px] text-neutral-500">
+              Already had Claude Code open in that repo? Close and reopen it after this
+              command - it only loads connections at startup, so an open session can&apos;t
+              see the one you just added.
+            </p>
           </div>
 
           <div className="mt-4 space-y-2">
@@ -1141,12 +1149,26 @@ export function OnboardingWizard({
             <CopyBox emphasis text={INSTALL_COMMAND} />
           </div>
 
-          <div className="mt-4 rounded-lg bg-neutral-900 px-3.5 py-3 text-sm text-neutral-400">
-            Your agent takes it from there: it writes the automation workflows into your repo,
-            sets the secrets, personalizes your backlink playbook, and starts the first keyword
-            research - approving its steps as you go in the chat. Needs Claude Code and the
-            GitHub CLI (<code className="font-mono text-neutral-300">gh</code>) installed; safe
-            to re-run any time.
+          <div className="mt-4 space-y-2 rounded-xl border border-violet-500/25 bg-violet-500/[0.06] px-4 py-3.5 text-sm text-neutral-300">
+            <p>
+              <b className="font-semibold text-neutral-100">Then let the agent work - this is
+              the long part.</b>{" "}
+              Typically 10-20 minutes. If your site has no blog yet, the agent builds your
+              whole content home from scratch, which can stretch toward an hour - it&apos;s
+              building real infrastructure, not stuck.
+            </p>
+            <p>
+              <b className="font-semibold text-neutral-100">It&apos;s a conversation, not
+              fire-and-forget.</b>{" "}
+              Along the way your agent will ask you to approve its plan and merge one PR -
+              keep the chat visible and follow its instructions. The checklist below fills
+              itself in as it works.
+            </p>
+            <p className="text-[13px] text-neutral-500">
+              Needs Claude Code and the GitHub CLI (
+              <code className="font-mono text-neutral-400">gh</code>) installed; safe to
+              re-run any time.
+            </p>
           </div>
 
           {isDocker ? (
@@ -1165,7 +1187,12 @@ export function OnboardingWizard({
                 <b className="font-medium text-neutral-200">b.</b> In the folder DispatchSEO was
                 installed from (on a VPS: over SSH), paste this with your token swapped in:
               </p>
-              <CopyBox text='[ -f start.sh ] && echo "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat-PASTE-YOUR-TOKEN-HERE" >> .env && docker compose up -d builder && docker compose logs builder --tail 5 || echo "Wrong folder - run this inside the dispatchseo folder (on a VPS: ssh in first)"' />
+              {/* The placeholder must NOT start with sk-ant-oat: the builder
+                  accepts any token matching that prefix, so a verbatim paste
+                  of the old placeholder passed validation and failed only at
+                  build time (2026-07-23 e2e). This shape gets rejected with a
+                  clear log line instead. */}
+              <CopyBox text='[ -f start.sh ] && echo "CLAUDE_CODE_OAUTH_TOKEN=PASTE-YOUR-TOKEN-HERE" >> .env && docker compose up -d builder && docker compose logs builder --tail 5 || echo "Wrong folder - run this inside the dispatchseo folder (on a VPS: ssh in first)"' />
               <p className="text-sm text-neutral-500">
                 The last command shows the builder waking up - it either starts polling for work
                 or says exactly what it&apos;s still waiting for. That&apos;s your Claude Code
@@ -1173,6 +1200,16 @@ export function OnboardingWizard({
                 it&apos;s on, nothing builds automatically - everything else still works.
               </p>
             </div>
+          ) : null}
+
+          {isDocker ? (
+            <p className="mt-4 rounded-lg bg-neutral-900 px-3.5 py-3 text-sm text-neutral-400">
+              <b className="font-medium text-neutral-200">From tomorrow on:</b> your dashboard
+              lives at <b className="font-medium text-neutral-200">{origin}</b> whenever
+              Docker is running - bookmark it. Ever find it down? Re-run{" "}
+              <code className="font-mono text-neutral-300">sh start.sh</code> in the install
+              folder and it comes back.
+            </p>
           ) : null}
 
           <details className="group mt-4 rounded-xl bg-neutral-900 px-4 py-3">

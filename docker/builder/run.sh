@@ -175,6 +175,8 @@ while :; do
     sleep 1800; continue
   fi
   case "$CLAUDE_CODE_OAUTH_TOKEN" in
+    *PASTE-YOUR-TOKEN*) log "idle - CLAUDE_CODE_OAUTH_TOKEN is still the wizard's placeholder; edit .env and swap in the real token from 'claude setup-token', then: docker compose up -d builder"
+       sleep 1800; continue ;;
     sk-ant-oat*) : ;;
     *) log "idle - CLAUDE_CODE_OAUTH_TOKEN does not look like a Claude Code OAuth token (expected sk-ant-oat...); re-run 'claude setup-token' and paste it without line breaks"
        sleep 1800; continue ;;

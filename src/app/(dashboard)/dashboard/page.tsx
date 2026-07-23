@@ -52,6 +52,7 @@ import { getPacing } from "@/lib/pacing";
 import { mcpAddCommand, setupCommand } from "@/lib/mcp-connect";
 import { PacingLine } from "@/components/pacing-info";
 import { AgentStatus } from "@/components/agent-status";
+import { DockerAccessTip } from "@/components/docker-access-tip";
 import { FirstRunBackground } from "@/components/first-run-background";
 import AiVisibilitySection from "./ai-visibility-section";
 
@@ -585,6 +586,7 @@ export default async function Home() {
           title="Home"
           hint={`How ${project.domain} is doing, what's running on its own, and what needs you.`}
         />
+        {process.env.POSTGREST_URL ? <DockerAccessTip /> : null}
         {cronIssues.length > 0 ? (
           <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm">
             <p className="font-medium text-red-200">Background jobs need attention</p>
