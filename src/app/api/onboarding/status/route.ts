@@ -16,7 +16,10 @@ let prCache: { repo: string; at: number; pr: { url: string; title: string } | nu
 async function openInstallPr(repo: string | null): Promise<{ url: string; title: string } | null> {
   if (!repo) return null;
   if (prCache && prCache.repo === repo && Date.now() - prCache.at < 60_000) return prCache.pr;
-  const prs = await openSeoPrs(repo);
+  // live: the wizard is waiting for the install PR to APPEAR - the 60s SWR
+  // cache in openSeoPrs would stack on prCache above and delay that moment
+  // to ~2-3 minutes. prCache alone already bounds this to 1 call/min/repo.
+  const prs = await openSeoPrs(repo, { live: true });
   const pr = prs[0] ? { url: prs[0].html_url, title: prs[0].title } : null;
   prCache = { repo, at: Date.now(), pr };
   return pr;

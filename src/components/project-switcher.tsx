@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { switchProject } from "@/app/actions";
 
@@ -59,7 +58,6 @@ export function ProjectSwitcher({
 }) {
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
-  const router = useRouter();
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -122,9 +120,12 @@ export function ProjectSwitcher({
                 onClick={() => {
                   setOpen(false);
                   if (isActive) return;
+                  // No router.refresh() after the action: switchProject's
+                  // revalidatePath already streams the re-rendered page back
+                  // in the same response - a refresh here rendered the whole
+                  // dashboard a second time and doubled the switch latency.
                   start(async () => {
                     await switchProject(p.slug);
-                    router.refresh();
                   });
                 }}
                 className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-neutral-800"

@@ -1,7 +1,7 @@
 "use server";
 
 import { randomBytes } from "node:crypto";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
@@ -272,6 +272,11 @@ export async function mergeSeoPr(number: number) {
   await assertAuthed();
   const project = await getActiveProject();
   const result = await mergePr(project.github_repo, number);
+  // openSeoPrs caches the PR list for 60s per repo - mergePr already busts
+  // the tag for future requests; updateTag additionally expires it for THIS
+  // request (read-your-own-writes), so the merged PR's "Ready to ship" card
+  // is gone on the very render this action streams back.
+  if (project.github_repo) updateTag(`seo-prs:${project.github_repo}`);
   revalidatePath("/dashboard");
   return result;
 }

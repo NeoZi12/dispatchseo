@@ -11,6 +11,7 @@
 // stores in instance_settings (0030). Cached per process; the connect
 // action busts it.
 
+import { revalidateTag } from "next/cache";
 import { instanceSettings } from "./dashboard-auth";
 import { decryptSecret } from "./crypto";
 
@@ -68,16 +69,27 @@ export type SeoPr = {
   preview_url: string | null;
 };
 
-export async function openSeoPrs(repo: string | null | undefined): Promise<SeoPr[]> {
+export async function openSeoPrs(
+  repo: string | null | undefined,
+  opts?: { live?: boolean },
+): Promise<SeoPr[]> {
   const target = repoOrDefault(repo);
   if (!target) return [];
   try {
-    // no-store: revalidate's stale-while-revalidate serves a pre-merge PR list
-    // long after auto-merge ran, leaving a ghost "Ready to ship" card. One user
-    // hitting GitHub live is well within even the unauthenticated rate limit.
+    // 60s SWR instead of no-store: a live GitHub round-trip blocked every
+    // Home render. Ghost-card safety is kept two ways - every mergePr call
+    // (dashboard button AND the MCP merge_pr tool) busts this repo's tag
+    // immediately, and the short TTL bounds an external auto-merge's ghost
+    // card to ~a minute instead of the long-lived stale list the old comment
+    // warned about. The tag is per-repo so one tenant's merge never drops
+    // every other tenant's cached list. live: true opts back into a fresh
+    // fetch for callers that watch for a PR to APPEAR (the onboarding poll)
+    // and layer their own cache over this.
     const res = await fetch(`${API}/repos/${target}/pulls?state=open&per_page=20`, {
       headers: await headers(),
-      cache: "no-store",
+      ...(opts?.live
+        ? { cache: "no-store" as const }
+        : { next: { revalidate: 60, tags: [`seo-prs:${target}`] } }),
     });
     if (!res.ok) return [];
     const prs = (await res.json()) as Array<{
@@ -215,6 +227,10 @@ export async function mergePr(
       signal: AbortSignal.timeout(20000),
     });
     const body = (await res.json().catch(() => ({}))) as { message?: string };
+    // Bust the cached open-PR list for THIS repo on every successful merge,
+    // whichever door it came through (dashboard action or the MCP merge_pr
+    // tool) - otherwise the "Ready to ship" card ghosts for up to a minute.
+    if (res.ok) revalidateTag(`seo-prs:${target}`, "max");
     return { ok: res.ok, message: body.message ?? (res.ok ? "merged" : `HTTP ${res.status}`) };
   } catch (e) {
     const timedOut = e instanceof Error && e.name === "TimeoutError";

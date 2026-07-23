@@ -18,9 +18,16 @@ import { decryptSecret } from "./crypto";
 // never blindly writing an empty "yesterday" row.
 
 let credCache: { raw: string | null } | null = null;
+// The googleapis client, cached per process alongside the credential it was
+// built from. GoogleAuth caches its OAuth access token per instance (and
+// auto-refreshes on expiry), so reusing the client skips the JWT token
+// exchange that a fresh instance pays on every single API call.
+let clientCache: Awaited<ReturnType<typeof buildSearchConsole>> | null = null;
 
 export function bustGscCredCache() {
   credCache = null;
+  clientCache = null;
+  fresh24Cache.clear();
 }
 
 async function credentialJson(): Promise<string | null> {
@@ -39,9 +46,7 @@ async function credentialJson(): Promise<string | null> {
   return raw;
 }
 
-async function searchConsole() {
-  const raw = await credentialJson();
-  if (!raw) throw new Error("Missing GSC service account (connect it in the wizard or set GSC_SERVICE_ACCOUNT_JSON)");
+function buildSearchConsole(raw: string) {
   const credentials = JSON.parse(raw);
   const auth = new google.auth.GoogleAuth({
     credentials,
@@ -50,6 +55,14 @@ async function searchConsole() {
   // timeout bounds a hung GSC call (same posture as dataforseo.ts's 25s) so a
   // single slow request can't silently eat a cron's whole function budget.
   return google.searchconsole({ version: "v1", auth, timeout: 25000 });
+}
+
+async function searchConsole() {
+  if (clientCache) return clientCache;
+  const raw = await credentialJson();
+  if (!raw) throw new Error("Missing GSC service account (connect it in the wizard or set GSC_SERVICE_ACCOUNT_JSON)");
+  clientCache = buildSearchConsole(raw);
+  return clientCache;
 }
 
 // The service account's email - onboarding shows this so the user can add it
@@ -132,11 +145,22 @@ export type Fresh24h = {
   prevImpressions: number;
 };
 
+// Per-site TTL cache for the fresh-24h call: it renders on every Home and
+// Analytics visit, and a live GSC query was the slowest thing on the page.
+// The data is hourly-granularity anyway, so five minutes of staleness is
+// honest; only successful results are cached (errors stay live). Entries for
+// renamed/corrected site URLs just expire unused - accepted: the map is
+// bounded by distinct sites ever queried on this instance, a few tiny rows.
+const FRESH24_TTL = 5 * 60000;
+const fresh24Cache = new Map<string, { at: number; data: Fresh24h }>();
+
 // Live "last 24 hours" totals from GSC's fresh hourly data (dataState
 // HOURLY_ALL), plus the 24 hours before for the trend arrow. Fresh numbers
 // are provisional - Google revises them as hours finalize. Throws on API
 // errors; callers decide the fallback.
 export async function getFresh24h(site: string): Promise<Fresh24h> {
+  const hit = fresh24Cache.get(site);
+  if (hit && Date.now() - hit.at < FRESH24_TTL) return hit.data;
   const sc = await searchConsole();
   const now = Date.now();
 
@@ -166,6 +190,7 @@ export async function getFresh24h(site: string): Promise<Fresh24h> {
       out.prevImpressions += r.impressions ?? 0;
     }
   }
+  fresh24Cache.set(site, { at: now, data: out });
   return out;
 }
 

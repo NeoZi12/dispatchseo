@@ -244,6 +244,8 @@ export default async function Home() {
     scanRes,
     pacing,
     cronHealth,
+    mergeReady,
+    saEmail,
   ] = await Promise.all([
     client
       .from("suggestions")
@@ -296,6 +298,10 @@ export default async function Home() {
     // belong to us as the operator. Passing the slug scopes it; self-host
     // (single owner) keeps the full deployment view.
     getCronHealth(isCloudMode() ? project.slug : undefined),
+    // Both were sequential awaits further down - each one stalled the whole
+    // render on its first (uncached) call, so they ride the big fan-out now.
+    canMerge(),
+    serviceAccountEmail(),
   ]);
 
   // Two guide numbers from one query (0033): "logged" drives the setup cards
@@ -439,7 +445,6 @@ export default async function Home() {
   // once done, and every condition is computed for the ACTIVE project. Cards
   // the wizard's power-ups step unchecked stay hidden (powerups_skipped).
   const skippedPowerup = (key: string) => project.powerups_skipped.includes(key);
-  const mergeReady = await canMerge();
   const needsMergeToken = !mergeReady && !skippedPowerup("merge");
   // Free-tier DIY: the project chose DataForSEO as its keyword source but has
   // no account connected yet. Free-mode projects (serpapi/gsc) never see this
@@ -476,7 +481,6 @@ export default async function Home() {
     !profileRes.error && profileRes.data == null && !skippedPowerup("playbook") && !pipelineTodo;
   // GSC connection: the project has a property configured but no traffic data
   // has ever landed - the service account is not on the property yet.
-  const saEmail = await serviceAccountEmail();
   const needsGsc =
     Boolean(project.gsc_site_url) && overview.gscDaily.length === 0 && saEmail != null;
   // Only probe Google when the card would show at all: a successful read

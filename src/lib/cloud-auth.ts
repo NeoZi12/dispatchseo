@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 
@@ -45,7 +46,12 @@ export type CloudUser = { id: string; email: string | null };
 // The signed-in user, validated against the Supabase Auth server (getUser
 // verifies the JWT remotely - never trust getSession alone for auth
 // decisions). Null = signed out, or cloud auth not configured.
-export async function currentUser(): Promise<CloudUser | null> {
+//
+// React cache(): the remote getUser round-trip runs ONCE per request. The
+// layout, the auth gate, the onboarding gate, and active-project all call
+// this on every dashboard render - uncached that was ~5 sequential auth
+// round-trips per navigation.
+export const currentUser = cache(async (): Promise<CloudUser | null> => {
   if (!cloudAuthConfigured()) return null;
   try {
     const supabase = await supabaseAuth();
@@ -55,4 +61,4 @@ export async function currentUser(): Promise<CloudUser | null> {
   } catch {
     return null;
   }
-}
+});

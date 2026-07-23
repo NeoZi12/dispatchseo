@@ -1,8 +1,9 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { db } from "./db";
-import { listProjects, listProjectsForOwner } from "./projects";
+import { listProjects } from "./projects";
 import { isCloudMode } from "./cloud";
-import { currentUser } from "./cloud-auth";
+import { scopedProjects } from "./active-project";
 
 // "The wizard is a must": the dashboard stays locked until the OWNER'S side
 // of setup is genuinely done - which means the pipeline install completed
@@ -15,14 +16,15 @@ import { currentUser } from "./cloud-auth";
 // screens (onboarding_screen null, pre-0030) pass on a connected repo
 // alone, and any DB error fails OPEN via listProjects (whose env-fallback
 // row carries a repo) - a transient outage must never lock the owner out.
-export async function hasConfiguredProject(): Promise<boolean> {
+export const hasConfiguredProject = cache(async (): Promise<boolean> => {
   // CLOUD_MODE: the question is whether THIS user finished setup, not
   // whether any tenant on the deployment did - a neighbor's configured
-  // project must not unlock a fresh account's dashboard.
+  // project must not unlock a fresh account's dashboard. scopedProjects is
+  // the request-cached user+projects lookup the layout and active-project
+  // already share - reusing it makes this gate free instead of a second
+  // auth round-trip + projects query on every page.
   if (isCloudMode()) {
-    const user = await currentUser();
-    if (!user) return false;
-    const mine = await listProjectsForOwner(user.id);
+    const mine = await scopedProjects();
     return mine.some((p) => p.pipeline_installed_at != null || Boolean(p.github_repo));
   }
   try {
@@ -45,7 +47,7 @@ export async function hasConfiguredProject(): Promise<boolean> {
   }
   const all = await listProjects();
   return all.some((p) => Boolean(p.github_repo));
-}
+});
 
 // Call after the page's auth check. Pages, not layout, because the
 // (dashboard) route group's layout also wraps /onboarding itself - and the
