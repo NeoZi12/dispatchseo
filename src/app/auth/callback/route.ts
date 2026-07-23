@@ -58,7 +58,12 @@ export async function GET(req: NextRequest) {
         })
       : await supabase.auth.exchangeCodeForSession(code as string);
     if (error) return fail();
-    url.pathname = next;
+    // `next` may carry its own query string (e.g. /onboarding?new=1). Apply
+    // path and query separately - assigning the whole string to .pathname
+    // would percent-encode the `?` into the path and 404.
+    const q = next.indexOf("?");
+    url.pathname = q === -1 ? next : next.slice(0, q);
+    url.search = q === -1 ? "" : next.slice(q);
     return NextResponse.redirect(url);
   } catch {
     return fail();
