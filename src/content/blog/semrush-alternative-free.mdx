@@ -1,0 +1,58 @@
+---
+title: The free Semrush alternative isn't one tool - it's a stack. Here's exactly what's in it.
+description: Every "free Semrush alternative" listicle names the same handful of tools without saying what breaks once you're running all of them. The real limits per tool, current Semrush pricing verified live, and what changes when the same jobs run behind one system.
+date: 2026-07-23
+keyword: semrush alternative free
+cover: /blog/covers/semrush-alternative-free.webp
+---
+
+Search "Semrush alternative, free" and the honest answer is never one product - it's the same short list of separate tools every listicle recommends: Google Search Console, Google Keyword Planner, Ahrefs Webmaster Tools, a freemium suite like Mangools or Ubersuggest, and a question-clustering tool like Answer Socrates. Each one replaces a slice of what Semrush does, at no cost, with a real limit attached. What the listicles skip is the part that costs you time once you're running all of them at once: none of the tools know the others exist, so you're the integration layer, copying numbers between six tabs by hand.
+
+> **TL;DR** - There's no single free Semrush replacement, there's a stack: Google Search Console for your own site's data, Google Keyword Planner for keyword ideas (gated behind a Google Ads account), Ahrefs Webmaster Tools for site audit and backlinks (capped at 1,000 results, your own verified sites only), plus a freemium suite (Mangools or Ubersuggest) and a question tool like Answer Socrates. That's seven separate logins doing what one Semrush seat does for $117.33/mo - and none of the seven talk to each other. DispatchSEO is the other model: the same jobs, behind one bearer token and a suggestions queue, run by the Claude Code you already pay for.
+
+## The actual free stack, tool by tool
+
+<FreeStackTable />
+
+Every one of these is real and free, and every one is also narrower than its own marketing page implies. Ahrefs Webmaster Tools is the standout - a genuine site audit and backlink checker for $0 - but "backlink checker" quietly means *your own verified sites only*; the moment you want to see what's linking to a competitor, Ahrefs Webmaster Tools stops and the paid product starts. Keyword Planner's "free" comes with its own gate: Google doesn't hand out access to a bare email address, it wants a Google Ads account and a campaign created first. Mangools and Ubersuggest are freemium in the ordinary sense - a taste, capped, designed to convert.
+
+## What Semrush itself actually costs
+
+<StackCostFactRow />
+
+That $117.33/mo figure is the SEO plan's price today, fetched live from Semrush's own pricing page while writing this - a handful of older "alternative" posts still quote a stale $139.95 number that predates a plan restructuring. There's no permanent free Semrush tier anymore, only a 7-day trial with no card required. The seven-tool free stack isn't approximating a discount version of that $117/mo plan - it's approximating the shape of it, feature by feature, at the cost of running seven accounts instead of one.
+
+## The part every listicle skips: nothing in that stack talks to the others
+
+This is the gap the "top N free alternatives" format can't show, because it's a format built around ranking tools one at a time, not around running them together. In practice: Keyword Planner gives you a volume range, you paste it into a spreadsheet. Ahrefs Webmaster Tools flags a technical issue, you copy it into a different doc. Search Console shows a query climbing, and nothing tells the other six tools that happened - you're the one who has to notice, remember, and act. There's no shared history across a week, no queue of what to do next, nothing that runs on a schedule instead of when you remember to open a tab. That's not a knock on any single tool in the table above; it's the cost of "free" meaning seven separate, unconnected products instead of one system.
+
+## What one wired system looks like instead
+
+DispatchSEO is the worked example, because it's what's building this page: the same jobs from the table above, plus rank tracking and backlink prospecting, running behind one project token instead of seven logins.
+
+<WiredLoopFlow />
+
+Nothing in that chain is a vendor feature bought off a pricing page - it's [this project's own MCP server](/blog/claude-code-mcp-server), driven by [an agent-as-driver setup](/blog/ai-seo-agent) where Claude Code does the research and writing and the backend only holds state between runs. The stack pieces don't disappear - DispatchSEO's own Search Console pull still is Search Console, its DataForSEO-backed keyword data still comes from a paid research API somewhere upstream - what disappears is the manual handoff between them. A run that finds a keyword can queue it, track it, and build a guide against it without a person copying a number between tabs.
+
+## Honest limits: when the stack is still the right call
+
+Nothing here replaces Semrush's actual differentiator - a crawl-scale database covering competitors' sites, not just your own. If the job is "see what a rival ranks for and how they got their backlinks," every free tool above stops at your own verified property, and DispatchSEO doesn't fix that either; `add_backlink_prospect` records prospects a person or an agent found, it doesn't crawl the web the way Semrush or Ahrefs' paid tier does. A wired system also isn't the right trade if you don't already run an agent CLI - building one just to save seven logins is [solving a smaller problem with a bigger one](/blog/self-hosted-ai). The free stack, tab-switching and all, is genuinely the right answer for a single site checked occasionally, or a team that already has a person whose job is doing that manual handoff.
+
+## FAQ
+
+**Is there a completely free alternative to Semrush?**
+Not one tool - a stack. Google Search Console and Google Keyword Planner cost nothing and need no card; Ahrefs Webmaster Tools adds a real (if capped) site audit and backlink checker for verified sites. Together they cover most of what a solo site needs; none of them cover competitor research at Semrush's scale.
+
+**What does Semrush actually cost per month right now?**
+$117.33/mo for the entry SEO plan, billed annually ($139/mo billed monthly), verified against Semrush's own pricing page. There's no permanent free plan - only a 7-day trial.
+
+**Can Ahrefs Webmaster Tools replace Semrush for backlinks?**
+Only for your own sites. It's genuinely free and shows real backlink data, but it's capped at 1,000 backlinks and restricted to verified properties - checking a competitor's backlink profile needs a paid tool.
+
+**Do I need a Google Ads account to use Keyword Planner?**
+Yes. Google's own product page confirms Keyword Planner requires a Google Ads account and a created campaign before it opens, even though using it costs nothing.
+
+**Is DispatchSEO free?**
+Free in software cost - no per-seat fee - but not free in the way "self-hosted" sometimes implies. It runs on your own Vercel and Supabase accounts, needs the Claude subscription you likely already pay for, and its keyword data is metered per project through whichever research API you connect.
+
+If you already run an agent CLI daily, wiring these jobs together is an afternoon's work, not a new subscription. If you don't, the seven tabs above are still exactly what most solo sites run their SEO on, and there's nothing wrong with that being the whole answer.
