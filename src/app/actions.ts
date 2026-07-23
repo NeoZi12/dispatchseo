@@ -8,7 +8,12 @@ import { db } from "@/lib/db";
 import { bustInstanceCache } from "@/lib/dashboard-auth";
 import { dashboardAuth } from "@/lib/auth-gate";
 import { isCloudMode } from "@/lib/cloud";
-import { assertProjectOwned, assertRowOwned, assertRowsOwned } from "@/lib/tenant-guard";
+import {
+  assertInstallationClaimable,
+  assertProjectOwned,
+  assertRowOwned,
+  assertRowsOwned,
+} from "@/lib/tenant-guard";
 import { remainingSites } from "@/lib/billing";
 import { bustGhTokenCache, dispatchToolBuild, mergePr } from "@/lib/github";
 import { getActiveProject, PROJECT_COOKIE } from "@/lib/active-project";
@@ -1162,6 +1167,9 @@ export async function attachGithubInstallation(projectSlug: string, installation
   const project = await getProjectBySlug(projectSlug);
   if (!project) throw new Error("Unknown project");
   await assertProjectOwned(project.id);
+  // Installation ids are enumerable integers - refuse one already bound to
+  // another tenant (see assertInstallationClaimable).
+  await assertInstallationClaimable(installationId);
   const { getInstallation, listInstallationRepos } = await import("@/lib/github-app");
   if (!(await getInstallation(installationId))) {
     throw new Error("That installation does not belong to the DispatchSEO app");

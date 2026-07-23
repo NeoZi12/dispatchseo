@@ -2,7 +2,7 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { requireDashboard } from "@/lib/auth-gate";
 import { verifyState } from "@/lib/gsc-oauth";
 import { getProjectBySlug } from "@/lib/projects";
-import { assertProjectOwned } from "@/lib/tenant-guard";
+import { assertInstallationClaimable, assertProjectOwned } from "@/lib/tenant-guard";
 import { getInstallation, listInstallationRepos } from "@/lib/github-app";
 import { db } from "@/lib/db";
 
@@ -48,6 +48,12 @@ export async function GET(req: Request): Promise<Response> {
       const project = await getProjectBySlug(slug);
       if (!project) redirect("/onboarding?gh=error&msg=unknown-project");
       await assertProjectOwned(project.id);
+      // installation_id is an enumerable integer from the query string; state
+      // proves the caller owns the PROJECT, not the installation. Refuse one
+      // already bound to another tenant, or a signed-in attacker could wire a
+      // victim's installation into their own project and write to the
+      // victim's repo through our App.
+      await assertInstallationClaimable(installationId);
 
       const installation = await getInstallation(installationId);
       if (!installation) redirect("/onboarding?gh=error&msg=install-not-found");

@@ -34,6 +34,28 @@ export async function assertRowOwned(
   }
 }
 
+// GitHub App installation ids are small sequential integers - trivially
+// enumerable. Before binding one to a project, refuse any installation that
+// is already attached to a DIFFERENT owner's project: without this, a
+// signed-in attacker could claim another customer's installation and then
+// commit files, write secrets, and dispatch workflows into the victim's
+// repo through our App. (Residual: a never-yet-attached installation can't
+// be bound to an owner this way - GitHub's setup redirect is unsigned and
+// we hold no GitHub user identity - but the victim's own callback then
+// fails loudly on this same check instead of silently sharing the repo.)
+export async function assertInstallationClaimable(installationId: number): Promise<void> {
+  const owned = await ownedProjectIds();
+  if (!owned) return;
+  const { data, error } = await db()
+    .from("projects")
+    .select("id")
+    .eq("github_installation_id", installationId);
+  if (error) throw new Error("Not found");
+  for (const row of (data ?? []) as Array<{ id: string }>) {
+    if (!owned.has(row.id)) throw new Error("Not found");
+  }
+}
+
 // Bulk variant: every id must resolve AND be owned - a partially-foreign
 // batch is rejected whole rather than silently filtered.
 export async function assertRowsOwned(
