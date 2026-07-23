@@ -33,7 +33,9 @@ content pipeline that ships pull requests, rank tracking, and a dashboard
 where you stay in control.
 </p>
 
-<p align="center">Self-hosting is one command on any machine with Docker:</p>
+<p align="center">Self-hosting is one command on any machine with Docker -
+run it from any plain folder (not inside your website's repo; it creates
+its own <code>dispatchseo</code> folder):</p>
 
 ```bash
 git clone https://github.com/NeoZi12/dispatchseo &&

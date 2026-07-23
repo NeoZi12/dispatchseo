@@ -6,7 +6,8 @@ step-by-step content, one page per task, and it's also served by your own
 instance at `/docs` once you're running - so it works offline too. This
 file is just the map.
 
-The short version:
+The short version - run from any plain folder (not inside your website's
+repo; it creates its own `dispatchseo` folder):
 
 ```bash
 git clone https://github.com/NeoZi12/dispatchseo &&
