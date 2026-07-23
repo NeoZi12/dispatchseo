@@ -72,6 +72,8 @@ jobs:
       - name: Expand the picked subject into takes
         uses: anthropics/claude-code-action@v1
         with:
+          # Cloud fires this as the DispatchSEO GitHub App (a Bot actor), and the App also authored the workflow commits, so scheduled runs are bot-actored too. Every trigger here needs repo write access, so allowing bots is safe; without this claude-code-action aborts with "non-human actor".
+          allowed_bots: "*"
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           show_full_output: true
