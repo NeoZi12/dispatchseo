@@ -4,6 +4,7 @@ import { COOKIE_NAME, cookieSecure, cookieValue } from "@/lib/dashboard-auth";
 import { claimInstance, getSetupState, type SetupState } from "@/lib/setup";
 import { missingMigrations } from "@/lib/schema-check";
 import { DispatchMark } from "@/components/logo";
+import { PixelDispatcher } from "@/components/pixel-dispatcher";
 import { PasswordInput } from "@/app/setup/password-input";
 
 // First-boot setup wizard. Public by design: it only ever renders
@@ -141,6 +142,13 @@ export default async function SetupPage({
     <main className="flex min-h-screen items-center justify-center bg-neutral-950 p-6">
       <div className="w-full max-w-3xl space-y-10">
         <div className="space-y-6">
+          {/* The landing hero's pixel agent, settling in for the shift while
+              the owner picks a password. Its .pixel-stage sizing lives in
+              landing.css (scoped to .ld, not loaded here), so the wrapper
+              recreates it with utilities. */}
+          <div className="mx-auto w-full max-w-md [&_svg]:block [&_svg]:h-auto [&_svg]:w-full">
+            <PixelDispatcher />
+          </div>
           <h1 className="flex items-center gap-2.5 text-2xl font-semibold text-white">
             <DispatchMark className="h-8 w-auto" />
             DispatchSEO setup
