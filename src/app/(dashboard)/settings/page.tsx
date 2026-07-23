@@ -82,6 +82,7 @@ export default async function SettingsPage() {
         <KeywordSourceSettings
           current={project.keyword_source}
           hasDataforseoCreds={Boolean(project.dataforseo_login && project.dataforseo_password)}
+          bundledDataforseo={isCloudMode()}
           hasSerpapiKey={Boolean(project.serpapi_key)}
         />
       </section>

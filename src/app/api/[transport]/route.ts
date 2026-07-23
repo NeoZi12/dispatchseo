@@ -881,6 +881,12 @@ const mcpHandler = createMcpHandler(
         if (rows.length === 0) {
           if (!p.gsc_site_url) {
             note = "setup incomplete: no Search Console property connected for this project.";
+          } else if (isCloudMode() && p.gsc_oauth_refresh_token) {
+            // Cloud connects Search Console through per-project OAuth; the
+            // service-account probe below is blind to it and would wrongly
+            // report "access not granted". OAuth-connected = waiting on the
+            // first sync, not a setup gap.
+            note = `Search Console is connected for ${p.gsc_site_url} but no data has synced yet - GSC data lags 2-3 days, and the next hourly refresh picks it up.`;
           } else {
             const probe = await gscAccessProbe(p.gsc_site_url);
             note =

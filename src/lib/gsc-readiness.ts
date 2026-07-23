@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { gscAccessProbe } from "./gsc";
+import { isCloudMode } from "./cloud";
 
 // The cron-side setup gate for everything GSC. Rule: an automation may only
 // run against a project whose prerequisite is verifiably ready - incomplete
@@ -23,16 +24,26 @@ import { gscAccessProbe } from "./gsc";
 
 export type GscReadiness = { ready: true } | { ready: false; skipped: string };
 
-export async function gscCronReadiness(
-  projectId: string,
-  site: string | null,
-): Promise<GscReadiness> {
+export async function gscCronReadiness(project: {
+  id: string;
+  gsc_site_url: string | null;
+  gsc_oauth_refresh_token: string | null;
+}): Promise<GscReadiness> {
+  const site = project.gsc_site_url;
   if (!site) return { ready: false, skipped: "no GSC property connected" };
+
+  // Cloud connects GSC through per-project OAuth and picks a property - that
+  // consent IS the access grant. The service-account probe below is blind to it
+  // (cloud never grants the shared service account), so an OAuth-connected cloud
+  // project is ready; a bad token or wrong property then surfaces as a real
+  // fetch error in the cron (isolated by Promise.allSettled), not a permanent
+  // silent "setup incomplete" skip.
+  if (isCloudMode() && project.gsc_oauth_refresh_token) return { ready: true };
 
   const { count, error } = await db()
     .from("gsc_stats")
     .select("*", { count: "exact", head: true })
-    .eq("project_id", projectId);
+    .eq("project_id", project.id);
   if (!error && (count ?? 0) > 0) return { ready: true };
 
   const probe = await gscAccessProbe(site);

@@ -438,7 +438,12 @@ export async function connectSerpapi(
 export async function chooseDataforseoSource() {
   await assertAuthed();
   const project = await getActiveProject();
-  if (!project.dataforseo_login || !project.dataforseo_password) {
+  // Cloud bundles DataForSEO (the platform account) - a paying tenant switches
+  // back to the plan they already have, no creds to paste. Only self-host needs
+  // its own account here. (If bundled is over budget it degrades gracefully at
+  // runtime; that's never a reason to block the switch itself.)
+  const hasOwn = Boolean(project.dataforseo_login && project.dataforseo_password);
+  if (!isCloudMode() && !hasOwn) {
     throw new Error("Connect DataForSEO credentials first.");
   }
   const { error } = await db()

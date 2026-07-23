@@ -1,6 +1,8 @@
 import { google } from "googleapis";
 import { instanceSettings } from "./dashboard-auth";
 import { decryptSecret } from "./crypto";
+import { isCloudMode } from "./cloud";
+import { oauthSearchConsole } from "./gsc-oauth";
 
 // Google Search Console (Search Analytics) client. Reads clicks/impressions
 // per project: ONE service account serves every project - its email just
@@ -63,6 +65,24 @@ async function searchConsole() {
   if (!raw) throw new Error("Missing GSC service account (connect it in the wizard or set GSC_SERVICE_ACCOUNT_JSON)");
   clientCache = buildSearchConsole(raw);
   return clientCache;
+}
+
+export type GscClient = Awaited<ReturnType<typeof searchConsole>>;
+
+// Per-project GSC client - the one resolver the crons and live cards read
+// through. Cloud projects connect Search Console via their OWN OAuth
+// (webmasters.readonly) and NEVER grant the shared service account, so their
+// data must be read with the project's OAuth token; self-host (and any project
+// with no OAuth token) uses the shared service account. Without this, cloud
+// properties get probed against a service account they never granted -> 403 ->
+// gsc_stats never fills.
+export async function gscClientForProject(project: {
+  gsc_oauth_refresh_token: string | null;
+}): Promise<GscClient> {
+  if (isCloudMode() && project.gsc_oauth_refresh_token) {
+    return oauthSearchConsole(project.gsc_oauth_refresh_token);
+  }
+  return searchConsole();
 }
 
 // The service account's email - onboarding shows this so the user can add it
@@ -158,10 +178,10 @@ const fresh24Cache = new Map<string, { at: number; data: Fresh24h }>();
 // HOURLY_ALL), plus the 24 hours before for the trend arrow. Fresh numbers
 // are provisional - Google revises them as hours finalize. Throws on API
 // errors; callers decide the fallback.
-export async function getFresh24h(site: string): Promise<Fresh24h> {
+export async function getFresh24h(site: string, scArg?: GscClient): Promise<Fresh24h> {
   const hit = fresh24Cache.get(site);
   if (hit && Date.now() - hit.at < FRESH24_TTL) return hit.data;
-  const sc = await searchConsole();
+  const sc = scArg ?? (await searchConsole());
   const now = Date.now();
 
   // Dates are PT days and both bounds are inclusive; 3 days back covers the
@@ -267,8 +287,8 @@ async function datesWithData(
 // Returns a finalized-data snapshot for the most recent date with data, or
 // null if the window has no data at all. Used by the daily cron - the slow,
 // authoritative path.
-export async function getLatestSnapshot(site: string): Promise<GscSnapshot | null> {
-  const sc = await searchConsole();
+export async function getLatestSnapshot(site: string, scArg?: GscClient): Promise<GscSnapshot | null> {
+  const sc = scArg ?? (await searchConsole());
   const latest = (await datesWithData(sc, site, 10)).pop();
   if (!latest) return null;
   return snapshotDay(sc, site, latest);
@@ -284,8 +304,9 @@ export async function gscQueryPositions(
   site: string,
   keywords: string[],
   windowDays = 7,
+  scArg?: GscClient,
 ): Promise<Map<string, { position: number; clicks: number; impressions: number }>> {
-  const sc = await searchConsole();
+  const sc = scArg ?? (await searchConsole());
   const today = new Date();
   const start = new Date(today.getTime() - windowDays * 86400000);
   const res = await sc.searchanalytics.query({
@@ -327,8 +348,9 @@ export type IndexInspection = {
 export async function inspectIndexStatus(
   site: string,
   pageUrl: string,
+  scArg?: GscClient,
 ): Promise<IndexInspection> {
-  const sc = await searchConsole();
+  const sc = scArg ?? (await searchConsole());
   const res = await sc.urlInspection.index.inspect({
     requestBody: { siteUrl: site, inspectionUrl: pageUrl },
   });
@@ -342,8 +364,8 @@ export async function inspectIndexStatus(
 // hour both moves today's numbers intraday and converges each row to its
 // final values once Google finalizes it (fresh numbers can be revised in
 // either direction until then).
-export async function getFreshSnapshots(site: string, days = 3): Promise<GscSnapshot[]> {
-  const sc = await searchConsole();
+export async function getFreshSnapshots(site: string, days = 3, scArg?: GscClient): Promise<GscSnapshot[]> {
+  const sc = scArg ?? (await searchConsole());
   const dates = (await datesWithData(sc, site, 7, "ALL")).slice(-days);
   return Promise.all(dates.map((d) => snapshotDay(sc, site, d, "ALL")));
 }

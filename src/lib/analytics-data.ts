@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { credsForProject } from "./dataforseo";
 import { getDomainRating, type DomainRating } from "./domain-rating";
-import { getFresh24h, type Fresh24h } from "./gsc";
+import { getFresh24h, gscClientForProject, type Fresh24h } from "./gsc";
 import type { Project } from "./projects";
 import {
   aggregatePageTraffic,
@@ -122,7 +122,9 @@ export async function getAnalyticsOverview(project: Project): Promise<AnalyticsO
     // Fresh data is a nice-to-have; a GSC hiccup must not take down the page.
     // No GSC property connected yet -> no fresh numbers, by definition.
     project.gsc_site_url
-      ? getFresh24h(project.gsc_site_url).catch(() => null)
+      ? gscClientForProject(project)
+          .then((sc) => getFresh24h(project.gsc_site_url!, sc))
+          .catch(() => null)
       : Promise.resolve(null),
   ]);
 

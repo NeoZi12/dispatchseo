@@ -21,12 +21,17 @@ const SOURCES = {
 export function KeywordSourceSettings({
   current,
   hasDataforseoCreds,
+  bundledDataforseo = false,
   hasSerpapiKey,
 }: {
   current: keyof typeof SOURCES;
   hasDataforseoCreds: boolean;
+  // Cloud bundles DataForSEO, so a tenant can switch straight to it with no BYO
+  // account - show the switch button, never the connect form.
+  bundledDataforseo?: boolean;
   hasSerpapiKey: boolean;
 }) {
+  const canSwitchDataforseo = hasDataforseoCreds || bundledDataforseo;
   const [open, setOpen] = useState<"dataforseo" | "serpapi" | null>(null);
   const [confirmGsc, setConfirmGsc] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -51,7 +56,7 @@ export function KeywordSourceSettings({
         <span className="text-sm text-neutral-200">DataForSEO</span>
         {current === "dataforseo" ? (
           <span className="text-xs text-emerald-400">active</span>
-        ) : hasDataforseoCreds ? (
+        ) : canSwitchDataforseo ? (
           <button
             type="button"
             disabled={pending}
@@ -70,7 +75,7 @@ export function KeywordSourceSettings({
           </button>
         )}
       </div>
-      {open === "dataforseo" && current !== "dataforseo" && !hasDataforseoCreds ? (
+      {open === "dataforseo" && current !== "dataforseo" && !canSwitchDataforseo ? (
         <div className="border-b border-neutral-800 py-3">
           <DataforseoConnectForm />
         </div>

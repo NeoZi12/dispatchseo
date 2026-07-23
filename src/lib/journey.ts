@@ -192,7 +192,7 @@ export async function getJourney(
       journey.expectation = SETUP_WAITING_EXPECTATION;
     } else {
       try {
-        const readiness = await gscCronReadiness(project.id, project.gsc_site_url);
+        const readiness = await gscCronReadiness(project);
         if (readiness.ready) {
           journey.gsc_waiting = true;
           journey.expectation = SETUP_WAITING_EXPECTATION;

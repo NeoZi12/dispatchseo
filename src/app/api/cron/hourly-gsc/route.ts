@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { planGate } from "@/lib/billing";
-import { getFreshSnapshots, inspectIndexStatus } from "@/lib/gsc";
+import { getFreshSnapshots, inspectIndexStatus, gscClientForProject, type GscClient } from "@/lib/gsc";
 import { gscCronReadiness } from "@/lib/gsc-readiness";
 import { checkCron } from "@/lib/cron-auth";
 import { reportCronRun } from "@/lib/cron-alerts";
@@ -26,7 +26,7 @@ export const maxDuration = 60;
 // never fails the snapshot half.
 const INSPECT_BUDGET = 10;
 
-async function verifyIndexing(project: Project): Promise<Record<string, unknown>> {
+async function verifyIndexing(project: Project, sc: GscClient): Promise<Record<string, unknown>> {
   const { data, error } = await db()
     .from("pages")
     .select("id, url")
@@ -43,7 +43,7 @@ async function verifyIndexing(project: Project): Promise<Record<string, unknown>
   for (const row of rows) {
     const now = new Date().toISOString();
     try {
-      const result = await inspectIndexStatus(project.gsc_site_url!, row.url);
+      const result = await inspectIndexStatus(project.gsc_site_url!, row.url, sc);
       const isIndexed = result.verdict === "PASS";
       const { error: upErr } = await db()
         .from("pages")
@@ -72,13 +72,16 @@ async function runProject(project: Project): Promise<Record<string, unknown>> {
   // of consuming service. Informational skip, same as the setup gate.
   const gate = await planGate(project.id);
   if (!gate.allowed) return { skipped: `plan: ${gate.reason}` };
-  const readiness = await gscCronReadiness(project.id, project.gsc_site_url);
+  const readiness = await gscCronReadiness(project);
   if (!readiness.ready) return { skipped: readiness.skipped };
-  const snaps = await getFreshSnapshots(project.gsc_site_url!);
+  // Resolve the client once: OAuth for a connected cloud project, service
+  // account otherwise. Both the snapshot and index-inspection calls share it.
+  const sc = await gscClientForProject(project);
+  const snaps = await getFreshSnapshots(project.gsc_site_url!, 3, sc);
   // No snapshot data is no reason to skip index verification - a brand-new
   // site with zero impressions is exactly where it matters most.
   if (snaps.length === 0) {
-    return { skipped: "no GSC data in window", indexing: await verifyIndexing(project) };
+    return { skipped: "no GSC data in window", indexing: await verifyIndexing(project, sc) };
   }
 
   for (const snap of snaps) {
@@ -97,7 +100,7 @@ async function runProject(project: Project): Promise<Record<string, unknown>> {
     );
     if (error) throw new Error(`${snap.date}: ${error.message}`);
   }
-  const indexing = await verifyIndexing(project);
+  const indexing = await verifyIndexing(project, sc);
   return { upserted: snaps.map((s) => s.date), indexing };
 }
 

@@ -3,7 +3,7 @@ import { planGate } from "@/lib/billing";
 import { credsForProject, serpAiOverview } from "@/lib/dataforseo";
 import { serpProviderForProject, providerRank } from "@/lib/serp";
 import { refreshDomainRating } from "@/lib/domain-rating";
-import { getLatestSnapshot, gscQueryPositions } from "@/lib/gsc";
+import { getLatestSnapshot, gscQueryPositions, gscClientForProject } from "@/lib/gsc";
 import { gscCronReadiness, type GscReadiness } from "@/lib/gsc-readiness";
 import { checkCron } from "@/lib/cron-auth";
 import {
@@ -67,6 +67,8 @@ async function runRanks(
     const positions = await gscQueryPositions(
       project.gsc_site_url!,
       tracked.map((k) => k.keyword),
+      7,
+      await gscClientForProject(project),
     );
     // No impressions in the window = unknown, not "not ranking" - skip those
     // rows so the dashboard keeps the last known value instead of lying.
@@ -180,7 +182,7 @@ async function runProject(project: Project): Promise<Record<string, unknown>> {
   // (GSC-mode ranks + the snapshot half): a project whose owner hasn't
   // finished the Search Console step skips as information, not as a failure
   // that 500s the run and emails the owner. See gsc-readiness.ts.
-  const gscReady = await gscCronReadiness(project.id, project.gsc_site_url);
+  const gscReady = await gscCronReadiness(project);
 
   // --- 1. Ranks (source follows the project's keyword_source) ---
   try {
@@ -197,7 +199,7 @@ async function runProject(project: Project): Promise<Record<string, unknown>> {
     if (!gscReady.ready) {
       result.gsc = { skipped: gscReady.skipped };
     } else {
-      const snap = await getLatestSnapshot(project.gsc_site_url!);
+      const snap = await getLatestSnapshot(project.gsc_site_url!, await gscClientForProject(project));
       if (!snap) {
         result.gsc = { skipped: "no GSC data in window" };
       } else {
