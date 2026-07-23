@@ -188,8 +188,9 @@ export function FirstRunStatus({ slug, cloud }: { slug: string; cloud?: boolean 
           </a>
         ) : (
           <p className="text-sm text-neutral-500">
-            This page updates itself - your agent&apos;s chat shows what it&apos;s doing, and
-            anything that needs YOU appears above with a link.
+            {cloud
+              ? "This page updates itself as the background setup run works on GitHub - anything that needs YOU appears above with a link."
+              : "This page updates itself - your agent's chat shows what it's doing, and anything that needs YOU appears above with a link."}
           </p>
         )}
       </div>

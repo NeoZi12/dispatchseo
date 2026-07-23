@@ -708,7 +708,7 @@ export function CloudOnboardingWizard(props: {
             </div>
           </details>
 
-          {created ? <FirstRunStatus slug={created.slug} /> : null}
+          {created ? <FirstRunStatus slug={created.slug} cloud /> : null}
         </section>
       ) : null}
     </div>
