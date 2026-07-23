@@ -601,6 +601,32 @@ export async function connectGithubToken(
   if (repoInfo.permissions && !repoInfo.permissions.push) {
     return { error: "The token can read the repo but not write to it - it needs push access to merge PRs." };
   }
+  // The permissions field above reflects the OWNER's repo access, not what
+  // this token was granted - a fine-grained token without Contents access
+  // passes it and then the builder can't even clone (2026-07-23 e2e: install
+  // sailed through, every background build died on clone). Probe the
+  // capability the builder actually uses: reading the repo's commits.
+  try {
+    const probe = await fetch(
+      `https://api.github.com/repos/${project.github_repo}/commits?per_page=1`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json",
+          "User-Agent": "dispatchseo-onboarding",
+        },
+        signal: AbortSignal.timeout(8000),
+      },
+    );
+    // 409 = empty repo (no commits yet) - contents access proven anyway.
+    if (!probe.ok && probe.status !== 409) {
+      return {
+        error: `The token can see ${project.github_repo} but can't read its code, so builds can't clone it. Fine-grained token? Give it "Contents" repository permission (Read and write) and paste it again.`,
+      };
+    }
+  } catch {
+    return { error: "Could not reach GitHub - try again." };
+  }
   const enc = await encryptSecret(token);
   const { data, error } = await db()
     .from("instance_settings")
