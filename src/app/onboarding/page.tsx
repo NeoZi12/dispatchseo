@@ -253,9 +253,9 @@ export default async function OnboardingPage({
             Stuck? Open the quick guide ↗
           </a>
         </div>
-        {/* The landing hero's dispatcher, settling in for this site's shift -
-            same component, wizard-sized. */}
-        <PixelDispatcher className="mx-auto mb-6 w-[min(300px,80vw)]" />
+        {/* The landing hero's dispatcher, already at the desk for this site's
+            shift - `working` skips the walk-in so a re-render can't restart it. */}
+        <PixelDispatcher working className="mx-auto mb-6 w-[min(300px,80vw)]" />
         {cloud ? (
           <CloudOnboardingWizard
             resume={cloudResume}
