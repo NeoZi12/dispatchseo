@@ -687,6 +687,18 @@ export function CloudOnboardingWizard(props: {
 
           <div className="rounded-xl bg-neutral-900 p-4">{renderInstallBanner()}</div>
 
+          {/* The dashboard unlocks the moment the repo is connected (which it is
+              by now), so don't trap the owner on this page - the background run
+              keeps going and the dashboard shows its own "setting up" banner. */}
+          <div className="mt-4 flex justify-center">
+            <a
+              href="/dashboard"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-900 px-5 py-2.5 text-sm font-semibold text-neutral-100 transition-colors hover:border-violet-500/50 hover:bg-neutral-800"
+            >
+              Explore your dashboard while this finishes →
+            </a>
+          </div>
+
           <p className="mt-4 rounded-lg bg-neutral-900 px-3.5 py-3 text-sm text-neutral-400">
             Keyword data: included in your plan - nothing to set up.
           </p>

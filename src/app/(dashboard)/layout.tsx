@@ -5,6 +5,7 @@ import { ProjectSwitcher } from "@/components/project-switcher";
 import { ModeSwitch } from "@/components/mode-switch";
 import { getActiveProjectOrNull, scopedProjects } from "@/lib/active-project";
 import { isCloudMode } from "@/lib/cloud";
+import { SetupProgressBanner } from "@/components/setup-progress-banner";
 
 // Shared shell for every dashboard screen. Auth is checked per page (the
 // requireDashboard gate in auth-gate.ts) - this layout is presentation only. force-dynamic
@@ -26,6 +27,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const [projects, active] = await Promise.all([scopedProjects(), getActiveProjectOrNull()]);
 
   const billing = isCloudMode();
+  // Cloud unlocks the dashboard as soon as a repo is connected (onboarding-gate),
+  // so the owner can explore while the background setup run personalizes their
+  // site. Show a top banner in exactly that window - repo connected but the run
+  // hasn't stamped pipeline_installed_at yet - so the half-filled dashboard
+  // reads as "still setting up", not "broken".
+  const setupInProgress =
+    billing && active != null && Boolean(active.github_repo) && active.pipeline_installed_at == null;
   return (
     <div className="flex min-h-screen bg-neutral-950 text-neutral-100">
       <Sidebar billing={billing} />
@@ -53,6 +61,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <MobileNav billing={billing} />
           </div>
         </header>
+        {setupInProgress && active && (
+          <SetupProgressBanner
+            slug={active.slug}
+            repo={active.github_repo}
+            since={active.github_app_installed_at}
+          />
+        )}
         <main className="min-w-0 flex-1 px-4 py-8 sm:px-6 lg:px-8">{children}</main>
       </div>
     </div>
