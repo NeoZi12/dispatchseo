@@ -10,8 +10,13 @@ export const BACKLINKS_STEPS = [
 export const BACKLINKS = `## Workflow: backlinks <keyword or competitor domain>
 
 1. Via the DataForSEO MCP backlinks endpoints: find domains linking to the
-   top pages ranking for the keyword (or to the competitor domain). Projects
-   without DataForSEO credentials cannot run this workflow - say so and stop.
+   top pages ranking for the keyword (or to the competitor domain). This
+   needs the project's OWN DataForSEO account wired into this repo's
+   DataForSEO MCP - check \`get_project\`'s \`dataforseo_repo_mcp\` field, not
+   keyword_source. Projects on the platform's bundled DataForSEO
+   (\`dataforseo_billed_to: "platform"\`, no repo-side credentials by design -
+   they're server-side only) can't run backlink prospecting yet; say so and
+   stop. Same for projects with no DataForSEO access at all.
 2. Filter to relevant, plausibly-reachable prospects (niche blogs, tool
    directories, newsletters; skip spam and giants that will never respond).
 3. \`add_backlink_prospect\` each with a concrete reason ("links to X's

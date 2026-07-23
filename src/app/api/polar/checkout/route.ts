@@ -23,7 +23,10 @@ export async function GET(req: NextRequest) {
     products: [productId],
     externalCustomerId: user.id,
     customerEmail: user.email ?? undefined,
-    successUrl: `${origin}/billing?success=1`,
+    // Straight into the wizard - the onboarding gate absorbs the webhook
+    // race (checkout=success renders a confirming poll, never a bounce
+    // back to /billing after the user just paid).
+    successUrl: `${origin}/onboarding?new=1&checkout=success`,
   });
   redirect(checkout.url);
 }

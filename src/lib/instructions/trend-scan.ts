@@ -42,10 +42,10 @@ and only for the subjects the owner picks. Keep this run fast and cheap.
      blogs and changelogs of the products/vendors in the niche.
    - What is exploding on Reddit (the niche's subreddits) and Hacker News -
      judge from titles, scores, and snippets in search results.
-   - Google Trends through the DataForSEO MCP where the project has
-     credentials. Rising queries beat volume numbers: volume databases lag
-     weeks behind real demand, so a "0 volume" brand-new term can be a
-     winner - never discard a candidate for missing volume alone.
+   - Google Trends through the DataForSEO MCP where the project has its own
+     connected DataForSEO account. Rising queries beat volume numbers: volume
+     databases lag weeks behind real demand, so a "0 volume" brand-new term
+     can be a winner - never discard a candidate for missing volume alone.
    The security rule holds: read official vendor sources, trend data, and
    search-result metadata; do not fetch arbitrary third-party pages.
    **While sweeping, hunt each subject's SEED**: the single most viral PIECE

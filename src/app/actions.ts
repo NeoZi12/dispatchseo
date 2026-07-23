@@ -57,7 +57,7 @@ export async function decideSuggestion(id: string, decision: "approved" | "rejec
   // builder picks them up on schedule.
   if (decision === "approved" && data?.type === "tool") {
     const project = data.project_id ? await getProjectById(data.project_id) : null;
-    await dispatchToolBuild(project?.github_repo, id);
+    await dispatchToolBuild(project, id);
   }
   // Approving a trend find puts it at the front of the queue - that's the
   // whole point of the radar: it ships next morning, while the hype window
@@ -202,7 +202,7 @@ export async function buildToolNow(id: string): Promise<{ ok: boolean; message: 
     return { ok: false, message: "Only queued tool ideas can be built." };
   }
   const project = data.project_id ? await getProjectById(data.project_id) : null;
-  await dispatchToolBuild(project?.github_repo, id);
+  await dispatchToolBuild(project, id);
   revalidatePath("/dashboard");
   revalidatePath("/research");
   return { ok: true, message: "Build requested - the PR lands in a few minutes." };
@@ -271,7 +271,7 @@ export async function setProspectStatus(id: string, status: string) {
 export async function mergeSeoPr(number: number) {
   await assertAuthed();
   const project = await getActiveProject();
-  const result = await mergePr(project.github_repo, number);
+  const result = await mergePr(project, number);
   // openSeoPrs caches the PR list for 60s per repo - mergePr already busts
   // the tag for future requests; updateTag additionally expires it for THIS
   // request (read-your-own-writes), so the merged PR's "Ready to ship" card
@@ -759,10 +759,13 @@ async function createProjectCore(
   if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain)) {
     return { error: "That domain does not look right - use something like usagecut.com." };
   }
+  // Cloud connects the repo via the GitHub App AFTER creation (wizard c1), so
+  // an empty repo is the normal cloud case, not an error.
   if (!repo) {
-    return { error: "Add your GitHub repo - Claude publishes content there as pull requests." };
-  }
-  if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) {
+    if (!isCloudMode()) {
+      return { error: "Add your GitHub repo - Claude publishes content there as pull requests." };
+    }
+  } else if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) {
     return {
       error:
         "Could not read that repo - paste the GitHub URL (https://github.com/owner/repo) or just owner/repo.",
@@ -828,6 +831,9 @@ async function createProjectCore(
       };
     }
     row.owner_user_id = auth.user.id;
+    // Bundled DataForSEO is the paid-tier default - the cloud wizard has no
+    // keyword-source step (budget caps degrade to GSC-only under the hood).
+    row.keyword_source = "dataforseo";
   }
   // A fresh instance's fixed-id default project (setup.sql seeds it NEUTRAL,
   // no domain/repo) is claimed in place by the first real site: same row,
@@ -1010,4 +1016,168 @@ export async function setContentPrefs(prefs: unknown) {
   const { error } = await saveContentPrefs(project, prefs);
   if (error) throw new Error(error);
   revalidatePath("/instructions");
+}
+
+// ---- cloud onboarding: GitHub App + Claude token + zero-touch install ------
+
+export type ChooseRepoState = { ok: true; repo: string } | { error: string } | null;
+
+// The cloud wizard's repo picker (c1): the App is installed, several repos
+// are in scope, the owner picks one. Re-validated against the LIVE
+// installation repo list - a stale or tampered client payload can only ever
+// select a repo the installation really covers. Same logic backs the
+// set_github_repo MCP tool.
+export async function chooseGithubRepo(
+  _prev: ChooseRepoState,
+  formData: FormData,
+): Promise<ChooseRepoState> {
+  await assertAuthed();
+  if (!isCloudMode()) return { error: "Self-host connects the repo in step 1 instead." };
+  const repo = String(formData.get("repo") ?? "").trim();
+  if (!repo) return { error: "Pick a repository." };
+  const project = await getActiveProject();
+  await assertProjectOwned(project.id);
+  if (!project.github_installation_id) {
+    return { error: "Install the DispatchSEO GitHub App first." };
+  }
+  const { listInstallationRepos } = await import("@/lib/github-app");
+  let repos: Array<{ full_name: string }>;
+  try {
+    repos = await listInstallationRepos(project.github_installation_id);
+  } catch {
+    return { error: "Could not reach GitHub - try again." };
+  }
+  if (!repos.some((r) => r.full_name === repo)) {
+    return { error: "That repository is not part of your DispatchSEO installation." };
+  }
+  const { error } = await db().from("projects").update({ github_repo: repo }).eq("id", project.id);
+  if (error) return { error: error.message };
+  revalidatePath("/onboarding");
+  return { ok: true, repo };
+}
+
+export type ConnectClaudeState = { ok: true } | { error: string } | null;
+
+// The cloud wizard's one unavoidable paste: the owner's `claude setup-token`
+// output, written straight into their repo as the CLAUDE_CODE_OAUTH_TOKEN
+// Actions secret via the App. Shape-checked only (no local Claude session
+// exists here to live-verify against) - the pack's seo-token-check workflow
+// verifies it for real right after the setup dispatch. Nothing is persisted
+// on our side: the plaintext lives for this request alone.
+export async function connectClaudeToken(
+  _prev: ConnectClaudeState,
+  formData: FormData,
+): Promise<ConnectClaudeState> {
+  await assertAuthed();
+  if (!isCloudMode()) return { error: "Self-host stores the token during the terminal setup instead." };
+  // Strip ALL whitespace, not just trim: terminals line-wrap long tokens and
+  // the copied text carries a real newline mid-token (the known VS Code
+  // terminal gotcha).
+  const token = String(formData.get("token") ?? "").replace(/\s+/g, "");
+  if (!token) return { error: "Paste the token that `claude setup-token` printed." };
+  if (!token.startsWith("sk-ant-oat") || token.length < 60) {
+    return {
+      error:
+        "That doesn't look like a Claude Code token (they start with sk-ant-oat). Run `claude setup-token` and copy its whole output.",
+    };
+  }
+  const project = await getActiveProject();
+  await assertProjectOwned(project.id);
+  const { setRepoSecret } = await import("@/lib/github-app-secrets");
+  const res = await setRepoSecret(project, "CLAUDE_CODE_OAUTH_TOKEN", token);
+  if (!res.ok) return { error: `Could not store the token on your repo: ${res.error}` };
+  revalidatePath("/onboarding");
+  return { ok: true };
+}
+
+// The cloud finale's install trigger (c5): commits the pipeline pack into
+// the connected repo through the App and fires the seo-setup workflow.
+// Idempotent - c5 re-fires it on every mount/resume and each step tolerates
+// having already happened (an up-to-date repo skips straight to the setup
+// dispatch).
+export async function runPipelineInstall(): Promise<
+  { ok: true; mode: string; pr_url?: string; setup_dispatched: boolean } | { error: string }
+> {
+  await assertAuthed();
+  if (!isCloudMode()) return { error: "Self-host installs via the terminal setup command." };
+  const project = await getActiveProject();
+  await assertProjectOwned(project.id);
+  if (project.pipeline_installed_at) {
+    return { ok: true, mode: "already-installed", setup_dispatched: false };
+  }
+  const { installPipelineToRepo } = await import("@/lib/pipeline-install");
+  const result = await installPipelineToRepo(project);
+  if (!result.ok) return { error: result.error ?? "install failed" };
+  return {
+    ok: true,
+    mode: result.mode ?? "direct",
+    pr_url: result.pr_url,
+    setup_dispatched: result.setup_dispatched,
+  };
+}
+
+export type WizardGscPropertyState = { ok: true } | { error: string } | null;
+
+// The cloud wizard's inline property picker (c3): corrects onboarding's
+// `sc-domain:` guess to the property the connected Google account really
+// has. Validated against the live property list, same as /google's button;
+// setTrackedProperty is also the set_gsc_property MCP tool's backing call.
+export async function wizardSetGscProperty(
+  _prev: WizardGscPropertyState,
+  formData: FormData,
+): Promise<WizardGscPropertyState> {
+  await assertAuthed();
+  const siteUrl = String(formData.get("site_url") ?? "").trim();
+  if (!siteUrl) return { error: "Pick a property." };
+  const project = await getActiveProject();
+  if (isCloudMode()) await assertProjectOwned(project.id);
+  if (!project.gsc_oauth_refresh_token) {
+    return { error: "Connect Google first - then pick the property." };
+  }
+  const { oauthListSites, setTrackedProperty } = await import("@/lib/gsc-oauth");
+  let sites: Array<{ siteUrl: string }>;
+  try {
+    sites = await oauthListSites(project.gsc_oauth_refresh_token);
+  } catch {
+    return { error: "Could not read your Search Console properties - try again." };
+  }
+  if (!sites.some((s) => s.siteUrl === siteUrl)) {
+    return { error: "That property is not on the connected Google account." };
+  }
+  const err = await setTrackedProperty(project.id, siteUrl);
+  if (err) return { error: err };
+  revalidatePath("/onboarding");
+  revalidatePath("/google");
+  return { ok: true };
+}
+
+// The no-state install path: someone added the App from github.com directly
+// (Marketplace, org settings), so the callback couldn't tie the installation
+// to a project. The onboarding page renders a chooser; this attaches the
+// verified installation to the picked project - and connects the repo too
+// when the installation covers exactly one.
+export async function attachGithubInstallation(projectSlug: string, installationId: number) {
+  await assertAuthed();
+  if (!isCloudMode()) throw new Error("Cloud only");
+  const project = await getProjectBySlug(projectSlug);
+  if (!project) throw new Error("Unknown project");
+  await assertProjectOwned(project.id);
+  const { getInstallation, listInstallationRepos } = await import("@/lib/github-app");
+  if (!(await getInstallation(installationId))) {
+    throw new Error("That installation does not belong to the DispatchSEO app");
+  }
+  const row: Record<string, unknown> = {
+    github_installation_id: installationId,
+    github_app_installed_at: new Date().toISOString(),
+  };
+  try {
+    const repos = await listInstallationRepos(installationId);
+    if (repos.length === 1 && !project.github_repo) row.github_repo = repos[0].full_name;
+  } catch {
+    // repo list is a nicety here - the wizard's picker covers it
+  }
+  const { error } = await db().from("projects").update(row).eq("id", project.id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/onboarding");
+  redirect("/onboarding");
 }

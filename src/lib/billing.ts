@@ -119,6 +119,20 @@ export async function remainingSites(userId: string): Promise<number | null> {
   return Math.max(0, sub!.sites_limit - (count ?? 0));
 }
 
+// The owner lookup planGate, remainingKeywords, and platformBudgetGate (see
+// dataforseo-usage.ts) all need: which user owns this project, or null for
+// self-host/pre-0031 rows. Collapses any lookup error the same way every
+// caller already tolerated - "can't tell who owns it" reads as "don't gate".
+export async function ownerUserIdForProject(projectId: string): Promise<string | null> {
+  const { data, error } = await db()
+    .from("projects")
+    .select("owner_user_id")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return (data as { owner_user_id: string | null }).owner_user_id;
+}
+
 // The projects an owner's plan actually covers: the OLDEST sites_limit ones.
 // Deterministic and stable, so a Scale->Starter downgrade doesn't delete
 // anything - the newest sites just fall outside coverage (crons skip them,
@@ -140,13 +154,7 @@ export async function planGate(
   projectId: string,
 ): Promise<{ allowed: true } | { allowed: false; reason: string }> {
   if (!isCloudMode() || !polarConfigured()) return { allowed: true };
-  const { data, error } = await db()
-    .from("projects")
-    .select("owner_user_id")
-    .eq("id", projectId)
-    .maybeSingle();
-  if (error || !data) return { allowed: true }; // pre-0031 tolerance
-  const ownerId = (data as { owner_user_id: string | null }).owner_user_id;
+  const ownerId = await ownerUserIdForProject(projectId); // null = pre-0031 row or no owner
   if (!ownerId) return { allowed: true };
   const sub = await getSubscription(ownerId);
   if (!isActive(sub)) return { allowed: false, reason: "subscription inactive" };
@@ -165,14 +173,8 @@ export async function planGate(
 // looked up directly because the MCP's currentProject() doesn't carry it.
 export async function remainingKeywords(projectId: string): Promise<number | null> {
   if (!isCloudMode() || !polarConfigured()) return null;
-  const { data, error } = await db()
-    .from("projects")
-    .select("owner_user_id")
-    .eq("id", projectId)
-    .maybeSingle();
   // Column/table missing (pre-0031) or no owner: don't cap.
-  if (error || !data) return null;
-  const ownerId = (data as { owner_user_id: string | null }).owner_user_id;
+  const ownerId = await ownerUserIdForProject(projectId);
   if (!ownerId) return null;
   const sub = await getSubscription(ownerId);
   if (!isActive(sub)) return 0;

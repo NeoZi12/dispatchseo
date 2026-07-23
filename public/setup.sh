@@ -1,7 +1,7 @@
 #!/bin/bash
 # DispatchSEO one-command setup.
 # Run from INSIDE your website's repo, with the line your dashboard gives you:
-#   curl -fsSL https://dispatchseo.com/setup.sh | bash -s -- <project-key> <slug> [backend-url]
+#   curl -fsSL https://dispatchseo.com/setup.sh | bash -s -- <project-key> <slug> [backend-url] [bundled]
 #
 # What it does, in order: checks your folder + tools, connects Claude Code in
 # this folder to your DispatchSEO project, saves the GitHub Actions secrets
@@ -17,6 +17,7 @@ set -o pipefail
 TOKEN="${1:-}"
 SLUG="${2:-project}"
 BASE="${3:-https://dispatchseo.com}"
+BUNDLED="${4:-0}"
 
 say() { printf '%s\n' "$*"; }
 hr()  { say "-----------------------------------------------"; }
@@ -130,32 +131,40 @@ if [ "$REPLY" != "y" ] && [ "$REPLY" != "Y" ]; then
   fi
 fi
 
-# DataForSEO - only if this project uses it.
-say ""
-say "  Does this project use DataForSEO for keyword data? [y/n]"
-say "  (If you picked the free mode in onboarding, answer n.)"
-ask
-if [ "$REPLY" = "y" ] || [ "$REPLY" = "Y" ]; then
+# DataForSEO - only if this project uses its own account. Cloud projects on
+# the bundled plan skip this entirely: the platform bills a DataForSEO
+# account server-side, so there is nothing to collect here (the owner can
+# still connect their own later, from Settings, for unmetered usage).
+if [ "$BUNDLED" = "1" ]; then
   say ""
-  say "  Your DataForSEO LOGIN is your account email. Type it and press Enter:"
-  read -r DFS_LOGIN < /dev/tty
-  say ""
-  say "  Your DataForSEO PASSWORD is the API password from"
-  say "  app.dataforseo.com/api-access - NOT your dashboard login password."
-  say "  Paste it and press Enter (it won't be shown):"
-  read -r -s DFS_PASS < /dev/tty
-  say ""
-  say "  Verifying against DataForSEO..."
-  dfs=$(curl -s --max-time 30 -u "$DFS_LOGIN:$DFS_PASS" https://api.dataforseo.com/v3/appendix/user_data | grep -o '"status_code":20000' | head -1)
-  if [ -n "$dfs" ]; then
-    printf '%s' "$DFS_LOGIN" | gh secret set DATAFORSEO_LOGIN --repo "$REPO"
-    printf '%s' "$DFS_PASS"  | gh secret set DATAFORSEO_PASSWORD --repo "$REPO"
-    say "  DataForSEO verified and saved."
-  else
-    die "DataForSEO rejected those credentials. Double-check: LOGIN = account email, PASSWORD = the API password from app.dataforseo.com/api-access. Then rerun this script."
-  fi
+  say "  DataForSEO is included with your plan - nothing to set up here."
 else
-  say "  Skipping DataForSEO - the workflows handle its absence cleanly."
+  say ""
+  say "  Does this project use DataForSEO for keyword data? [y/n]"
+  say "  (If you picked the free mode in onboarding, answer n.)"
+  ask
+  if [ "$REPLY" = "y" ] || [ "$REPLY" = "Y" ]; then
+    say ""
+    say "  Your DataForSEO LOGIN is your account email. Type it and press Enter:"
+    read -r DFS_LOGIN < /dev/tty
+    say ""
+    say "  Your DataForSEO PASSWORD is the API password from"
+    say "  app.dataforseo.com/api-access - NOT your dashboard login password."
+    say "  Paste it and press Enter (it won't be shown):"
+    read -r -s DFS_PASS < /dev/tty
+    say ""
+    say "  Verifying against DataForSEO..."
+    dfs=$(curl -s --max-time 30 -u "$DFS_LOGIN:$DFS_PASS" https://api.dataforseo.com/v3/appendix/user_data | grep -o '"status_code":20000' | head -1)
+    if [ -n "$dfs" ]; then
+      printf '%s' "$DFS_LOGIN" | gh secret set DATAFORSEO_LOGIN --repo "$REPO"
+      printf '%s' "$DFS_PASS"  | gh secret set DATAFORSEO_PASSWORD --repo "$REPO"
+      say "  DataForSEO verified and saved."
+    else
+      die "DataForSEO rejected those credentials. Double-check: LOGIN = account email, PASSWORD = the API password from app.dataforseo.com/api-access. Then rerun this script."
+    fi
+  else
+    say "  Skipping DataForSEO - the workflows handle its absence cleanly."
+  fi
 fi
 
 # Allow Actions to open PRs (the builders publish via PRs). The 2026-07-20

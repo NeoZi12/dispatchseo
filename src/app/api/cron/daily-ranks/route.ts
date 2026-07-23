@@ -13,6 +13,8 @@ import {
 } from "@/lib/ai-visibility";
 import { reportCronRun } from "@/lib/cron-alerts";
 import { listProjectsChecked, type Project } from "@/lib/projects";
+import { isCloudMode } from "@/lib/cloud";
+import { platformBalanceAlert } from "@/lib/dataforseo-balance";
 
 // Daily cron, now per project: for EVERY project, three independent halves - one
 // failing must not kill the other, and one project failing must not kill the
@@ -272,6 +274,18 @@ export async function GET(req: Request): Promise<Response> {
       result[slug] = { error: r.reason instanceof Error ? r.reason.message : String(r.reason) };
     }
   });
+
+  // Once per run, not per project: the shared account bundled cloud
+  // DataForSEO bills against. A low balance here would silently starve every
+  // platform-billed project's rank checks at once, so it's loud like a real
+  // regression - never an informational skip.
+  if (isCloudMode()) {
+    const alert = await platformBalanceAlert();
+    if (alert) {
+      hadError = true;
+      result._platform = { error: alert };
+    }
+  }
 
   console.log("[daily-ranks]", JSON.stringify(result));
   await reportCronRun("daily-ranks", result, hadError);

@@ -22,6 +22,11 @@ export function mcpAddCommand(slug: string, origin: string, token: string): stri
 // connects Claude Code, saves every Actions secret (each value verified
 // before it is stored), enables PR permissions, and hands off to the
 // owner's agent for the pipeline install. Run from inside the site's repo.
-export function setupCommand(slug: string, origin: string, token: string): string {
-  return `curl -fsSL ${origin}/setup.sh | bash -s -- ${token} ${slug} ${origin}`;
+// `bundled` (cloud only) skips the script's "does this project use
+// DataForSEO?" question entirely - a cloud project never needs its own
+// account to get DataForSEO-backed rank checks/research, since the platform
+// bills a bundled one server-side; the owner can still connect their own on
+// Settings later if they want unmetered usage.
+export function setupCommand(slug: string, origin: string, token: string, bundled = false): string {
+  return `curl -fsSL ${origin}/setup.sh | bash -s -- ${token} ${slug} ${origin} ${bundled ? "1" : "0"}`;
 }

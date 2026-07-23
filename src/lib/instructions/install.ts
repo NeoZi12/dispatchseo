@@ -43,11 +43,13 @@ and slash commands.
    - "You will create a Claude Code token when we get to secrets - two
      commands in your terminal, about a minute, and we will VERIFY it works
      before it goes anywhere." (The builders run on their subscription.)
-   - Only if this project's keyword source is DataForSEO (check
-     \`get_project\`): "Have your DataForSEO login email and your API
-     password ready - the API password is on app.dataforseo.com/api-access,
-     and it is NOT your dashboard login password." Ask them to open that
-     page now so it is ready when needed.
+   - Only if this project will wire its OWN DataForSEO account into this repo
+     (check \`get_project\`'s \`dataforseo_repo_mcp\` - NOT keyword_source: a
+     cloud project can be DataForSEO-backed through the platform's bundled
+     plan with nothing to collect here): "Have your DataForSEO login email
+     and your API password ready - the API password is on
+     app.dataforseo.com/api-access, and it is NOT your dashboard login
+     password." Ask them to open that page now so it is ready when needed.
    Wait for a simple go-ahead, then start.
 
 ### Part 1 - fetch and write the pack
@@ -193,9 +195,12 @@ already stored.
    \`\`\`
 
    Never store a token that failed the fake-HOME verification.
-3. \`DATAFORSEO_LOGIN\` + \`DATAFORSEO_PASSWORD\` - only if this project's
-   keyword source is DataForSEO; skip cleanly otherwise (the workflows
-   tolerate their absence). LOGIN is the account email. PASSWORD is the
+3. \`DATAFORSEO_LOGIN\` + \`DATAFORSEO_PASSWORD\` - only if \`get_project\`'s
+   \`dataforseo_repo_mcp\` is true (this repo gets its own DataForSEO MCP
+   server); skip cleanly otherwise - including a cloud project on the
+   platform's bundled plan, where DataForSEO is billed server-side and its
+   credentials must NEVER enter this repo (the workflows tolerate the
+   secrets' absence either way). LOGIN is the account email. PASSWORD is the
    **API password from app.dataforseo.com/api-access - NOT the dashboard
    login password** (the single most common mixup). Use the same
    credentials the owner connected on the DispatchSEO dashboard - the

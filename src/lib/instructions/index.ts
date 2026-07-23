@@ -11,6 +11,7 @@
 // the instruction set that produced it.
 
 import type { Project } from "@/lib/projects";
+import { hasDataforseo } from "@/lib/pipeline-pack";
 import { getPacing, type Pacing } from "@/lib/pacing";
 import {
   normalizeContentPrefs,
@@ -29,7 +30,7 @@ import { TREND_SCAN, TREND_SCAN_STEPS } from "./trend-scan";
 import { TREND_EXPAND, TREND_EXPAND_STEPS } from "./trend-expand";
 import { GEO_SCAN, GEO_SCAN_STEPS } from "./geo-scan";
 
-export const INSTRUCTIONS_VERSION = "2026-07-23.1";
+export const INSTRUCTIONS_VERSION = "2026-07-23.2";
 
 export const WORKFLOWS = [
   "install",
@@ -119,6 +120,20 @@ export async function renderInstructions(workflow: WorkflowName, project: Projec
   // Owner template controls from the Instructions page (content-prefs.ts) -
   // substituted here so the very next run obeys a just-saved preference.
   const prefs = normalizeContentPrefs(project.content_prefs);
+  // Whether THIS repo has its own DataForSEO MCP wired in (an account of its
+  // own, or the default project's env fallback) - see get_project's
+  // dataforseo_repo_mcp field. A cloud project on the bundled plan has
+  // DataForSEO-backed data through the seo-manager MCP (check_serp,
+  // get_domain_rank) but no repo-side DataForSEO server of its own.
+  const dataforseoRepoMcp = hasDataforseo(project);
+  const researchSourceNote = dataforseoRepoMcp
+    ? "- This project has its own DataForSEO account wired into the DataForSEO MCP - use it " +
+      "(volume, KD, keyword ideas, live SERPs, backlinks endpoints)."
+    : "- Use the seo-manager MCP's built-in `check_serp` (live organic results through the " +
+      "project's configured provider) and `suggest_keywords` (Google Autocomplete expansion). " +
+      "Without a directly-connected DataForSEO account there is no volume/KD data - the quality " +
+      "bar's SERP-weakness test and the best-answer test carry the decision instead, and you " +
+      "never invent numbers to fill the gap.";
   const raw = `${CORE}\n${BODIES[workflow]}`;
   let markdown = raw
     .replaceAll("{{SITE_NAME}}", project.name)
@@ -126,7 +141,8 @@ export async function renderInstructions(workflow: WorkflowName, project: Projec
     .replaceAll("{{REPO}}", project.github_repo ?? "the project repo")
     .replaceAll("{{CONTENT_HINT}}", contentHint)
     .replaceAll("{{OWNER_PREFS_GUIDE}}", renderGuidePrefsNote(prefs))
-    .replaceAll("{{OWNER_PREFS_TOOL}}", renderToolPrefsNote(prefs));
+    .replaceAll("{{OWNER_PREFS_TOOL}}", renderToolPrefsNote(prefs))
+    .replaceAll("{{RESEARCH_SOURCE_NOTE}}", researchSourceNote);
   if (pacing) {
     markdown = markdown.replaceAll("{{PACING_NOTE}}", pacing.note);
   }

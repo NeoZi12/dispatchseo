@@ -40,7 +40,7 @@ export async function requestTrendScan(
       message: `A scan already ran in the last ${TREND_COOLDOWN_MIN} minutes - the radar is current.`,
     };
   }
-  const result = await dispatchTrendScan(project.github_repo);
+  const result = await dispatchTrendScan(project);
   if (result.ok) {
     // Stamp fire-and-forget: on a pre-0016 schema the column is missing and
     // the cooldown simply leans on last_trend_scan_at alone.
@@ -79,7 +79,7 @@ export async function requestTrendExpand(
       message: "Ideas were already requested for this subject - they land here when the run finishes.",
     };
   }
-  const result = await dispatchTrendExpand(project.github_repo, topic.id, topic.title);
+  const result = await dispatchTrendExpand(project, topic.id, topic.title);
   if (result.ok) {
     await db()
       .from("trend_topics")

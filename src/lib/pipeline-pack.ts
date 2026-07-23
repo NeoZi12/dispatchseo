@@ -37,7 +37,7 @@ export async function backendBaseUrl(): Promise<string> {
 // RELIABILITY.md "conditional dataforseo block" deferred item - an
 // unset-credentials state must configure itself away, not ride along as a
 // maybe-crash in every scheduled agent run.
-function hasDataforseo(project: Project): boolean {
+export function hasDataforseo(project: Project): boolean {
   return project.dataforseo_login != null || project.id === DEFAULT_PROJECT_ID;
 }
 

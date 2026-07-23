@@ -88,6 +88,11 @@ export async function GET(req: Request): Promise<Response> {
     const token = await fetchProjectToken(p.id);
     if (!token) continue;
     const flags = effectiveAutomations(p);
+    // Defense in depth: this route feeds the self-hosted docker builder, which
+    // must never carry the cloud platform's bundled DataForSEO credentials -
+    // strip them even if a hybrid setup somehow got this far.
+    const dfsCreds = await credsForProject(p);
+    const jobDataforseo = dfsCreds?.billedTo === "platform" ? null : dfsCreds;
 
     // Health once per project; due-ness = no run row inside the window.
     const health = await getCronHealth(p.slug);
@@ -126,7 +131,7 @@ export async function GET(req: Request): Promise<Response> {
         repo: p.github_repo,
         mcp_token: token,
         prompt: PROMPTS[wf],
-        dataforseo: await credsForProject(p),
+        dataforseo: jobDataforseo,
       });
     }
 

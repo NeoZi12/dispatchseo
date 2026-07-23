@@ -3,9 +3,37 @@ title: The setup wizard, step by step
 description: What each wizard screen asks for, why, and what to do when a step gets stuck.
 ---
 
-The wizard starts the first time you open your dashboard. It takes about
-10 minutes, checks each step on the spot, and saves your progress as you
-go: close the tab whenever, and it reopens exactly where you stopped.
+The wizard starts the first time you open your dashboard. It checks each
+step on the spot and saves your progress as you go: close the tab
+whenever, and it reopens exactly where you stopped.
+
+## On dispatchseo.com (the hosted version)
+
+The hosted wizard is shorter - about 5 minutes, 5 steps - because the
+platform does the installing for you:
+
+1. **Add your site** - name and domain. No repo field here; that comes
+   from the GitHub App in the next step.
+2. **Connect GitHub** - one click installs the DispatchSEO GitHub App on
+   your site's repo. The platform then commits the pipeline into the repo
+   and manages PRs through the App - no tokens to create or paste.
+3. **Connect your Claude Code** - run `claude setup-token` on your
+   computer and paste the token it prints. It's stored as a secret on
+   **your repo**, never on our side, and builds run on your own Claude
+   Code subscription.
+4. **Connect Google Search Console** - one click, sign in with the Google
+   account that has access to your property, pick the property. Read-only,
+   revocable any time. No service account needed.
+5. **Publish mode** - decide whether pages ship only after you merge them
+   (semi-automatic) or fully on their own.
+
+Then the finale installs everything itself and shows live progress until
+your site's first data lands. Keyword data is included in your plan -
+there is nothing to set up for it.
+
+The rest of this page describes the **self-hosted** wizard, which has a
+few more steps because your own install does the work the platform does
+on the hosted version.
 
 ## Step 1 - Add your site
 

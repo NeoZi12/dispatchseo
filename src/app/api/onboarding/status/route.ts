@@ -13,13 +13,17 @@ import { openSeoPrs } from "@/lib/github";
 // every 6s and GitHub's unauthenticated rate limit is 60/hr.
 let prCache: { repo: string; at: number; pr: { url: string; title: string } | null } | null = null;
 
-async function openInstallPr(repo: string | null): Promise<{ url: string; title: string } | null> {
+async function openInstallPr(project: {
+  github_repo: string | null;
+  github_installation_id?: number | null;
+}): Promise<{ url: string; title: string } | null> {
+  const repo = project.github_repo;
   if (!repo) return null;
   if (prCache && prCache.repo === repo && Date.now() - prCache.at < 60_000) return prCache.pr;
   // live: the wizard is waiting for the install PR to APPEAR - the 60s SWR
   // cache in openSeoPrs would stack on prCache above and delay that moment
   // to ~2-3 minutes. prCache alone already bounds this to 1 call/min/repo.
-  const prs = await openSeoPrs(repo, { live: true });
+  const prs = await openSeoPrs(project, { live: true });
   const pr = prs[0] ? { url: prs[0].html_url, title: prs[0].title } : null;
   prCache = { repo, at: Date.now(), pr };
   return pr;
@@ -113,7 +117,7 @@ export async function GET(req: Request): Promise<Response> {
   // window where "merge it" is the owner's blocking move.
   const openPr = project.pipeline_installed_at
     ? null
-    : await openInstallPr(project.github_repo ?? null);
+    : await openInstallPr(project);
 
   return Response.json({
     repo_connected: Boolean(project.pipeline_installed_at) || Boolean(canary),

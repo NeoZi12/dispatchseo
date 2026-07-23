@@ -37,6 +37,7 @@ import { NextUpdate } from "@/components/next-update";
 import { getActiveProject } from "@/lib/active-project";
 import { DEFAULT_PROJECT_ID, effectiveAutomations, fetchProjectToken } from "@/lib/projects";
 import { credsForProject } from "@/lib/dataforseo";
+import { platformBudgetGate } from "@/lib/dataforseo-usage";
 import { DataforseoConnectForm } from "@/components/dataforseo-connect";
 import { gscAccessOk, serviceAccountEmail } from "@/lib/gsc";
 import { buildsActive } from "@/lib/builder-status";
@@ -268,8 +269,10 @@ export default async function Home() {
       .select("*")
       .eq("project_id", project.id)
       .eq("type", "guide"),
-    openSeoPrs(project.github_repo),
-    dataforseoBalance(dfsCreds),
+    openSeoPrs(project),
+    // Own-account balance only - bundled cloud customers run on OUR account,
+    // so their dashboard must never show our balance or nudge them to fund it.
+    dfsCreds?.billedTo === "own" ? dataforseoBalance(dfsCreds) : Promise.resolve(null),
     client.from("site_profile").select("id").eq("project_id", project.id).maybeSingle(),
     client.from("conventions").select("project_id").eq("project_id", project.id).maybeSingle(),
     client.from("playbook_status").select("slug, status").eq("project_id", project.id),
@@ -300,7 +303,7 @@ export default async function Home() {
     getCronHealth(isCloudMode() ? project.slug : undefined),
     // Both were sequential awaits further down - each one stalled the whole
     // render on its first (uncached) call, so they ride the big fan-out now.
-    canMerge(),
+    canMerge(project),
     serviceAccountEmail(),
   ]);
 
@@ -445,11 +448,27 @@ export default async function Home() {
   // once done, and every condition is computed for the ACTIVE project. Cards
   // the wizard's power-ups step unchecked stay hidden (powerups_skipped).
   const skippedPowerup = (key: string) => project.powerups_skipped.includes(key);
-  const needsMergeToken = !mergeReady && !skippedPowerup("merge");
+  // Cloud never shows the PAT card - the GitHub App carries merge rights;
+  // its loss has its own reconnect card below.
+  const needsMergeToken = !isCloudMode() && !mergeReady && !skippedPowerup("merge");
+  // The App was uninstalled (or the repo left the installation) while a
+  // pipeline exists: customer workflows keep running, but approvals,
+  // merges, and dispatches from here silently lost their credential.
+  const needsAppReconnect =
+    isCloudMode() && Boolean(project.github_repo) && project.github_installation_id == null;
+  // A paid cloud project that would otherwise ride the bundled DataForSEO
+  // plan, but its owner has spent through this month's shared usage budget
+  // (see dataforseo-usage.ts) - gets its own card below, distinct from "go
+  // connect an account" (needsDataforseo). Self-host and free-mode projects
+  // never see this: platformBudgetGate fails open outside CLOUD_MODE.
+  const platformBudget = isCloudMode() ? await platformBudgetGate(project.id) : { allowed: true as const };
+  const needsUsageLimit =
+    isCloudMode() && project.keyword_source === "dataforseo" && dfsCreds == null && !platformBudget.allowed;
   // Free-tier DIY: the project chose DataForSEO as its keyword source but has
   // no account connected yet. Free-mode projects (serpapi/gsc) never see this
   // card - their data source is already set.
-  const needsDataforseo = project.keyword_source === "dataforseo" && dfsCreds == null;
+  const needsDataforseo =
+    project.keyword_source === "dataforseo" && dfsCreds == null && !needsUsageLimit;
   const needsFunding = balance != null && balance < 10;
   // "Build your first page" assumes the pipeline exists - that's true for the
   // default project; a newly added project gets the pipeline-install card
@@ -482,12 +501,19 @@ export default async function Home() {
   // GSC connection: the project has a property configured but no traffic data
   // has ever landed - the service account is not on the property yet.
   const needsGsc =
-    Boolean(project.gsc_site_url) && overview.gscDaily.length === 0 && saEmail != null;
+    Boolean(project.gsc_site_url) &&
+    overview.gscDaily.length === 0 &&
+    (saEmail != null || isCloudMode());
   // Only probe Google when the card would show at all: a successful read
   // means the owner already added the service account and the card should
   // say "waiting on the first sync" instead of re-explaining the step.
+  // Cloud connects via the one-click OAuth instead - a stored refresh token
+  // means the owner's side is done, whatever the service account says.
   const gscWaiting =
-    needsGsc && project.gsc_site_url ? await gscAccessOk(project.gsc_site_url) : false;
+    needsGsc && project.gsc_site_url
+      ? (isCloudMode() && Boolean(project.gsc_oauth_refresh_token)) ||
+        (await gscAccessOk(project.gsc_site_url))
+      : false;
   // Docker installs: automatic builds need SOME build path alive - the
   // in-stack builder or the repo's GitHub Actions pipeline. buildsActive()
   // accepts evidence from either, so this card only shows when nothing has
@@ -512,8 +538,11 @@ export default async function Home() {
   const dashOrigin = `${hdrs.get("x-forwarded-proto") ?? "https"}://${hdrs.get("host") ?? "dispatchseo.com"}`;
   const connectCommand = mcpToken ? mcpAddCommand(project.slug, dashOrigin, mcpToken) : null;
   // The one-command onboarding (public/setup.sh): connect + verified secrets
-  // + agent hand-off, run inside the site's repo.
-  const setupCmd = mcpToken ? setupCommand(project.slug, dashOrigin, mcpToken) : null;
+  // + agent hand-off, run inside the site's repo. Cloud projects skip the
+  // script's DataForSEO question - the platform bundles it server-side.
+  const setupCmd = mcpToken
+    ? setupCommand(project.slug, dashOrigin, mcpToken, isCloudMode())
+    : null;
 
   // The funding card is the better surface for a low balance, so suppress the
   // amber nudge in Next actions whenever it shows.
@@ -526,7 +555,9 @@ export default async function Home() {
   // placeholder is gone) - hide the whole section once setup is complete.
   const hasSetupCards =
     needsMergeToken ||
+    needsAppReconnect ||
     needsDataforseo ||
+    needsUsageLimit ||
     needsFunding ||
     needsProfile ||
     needsFirstPage ||
@@ -661,6 +692,34 @@ export default async function Home() {
               <DataforseoConnectForm />
             </SetupStep>
           ) : null}
+          {needsUsageLimit ? (
+            <SetupStep
+              title="DataForSEO usage limit reached this month"
+              why="This project runs on your plan's bundled DataForSEO - no account of your own needed. Your account has used its full monthly allowance across every site you run, so rank checks and keyword research pause here until the period resets."
+              steps={[
+                <>
+                  <Link
+                    href="/billing"
+                    className="text-sky-400 underline underline-offset-2 hover:text-sky-300"
+                  >
+                    Upgrade your plan
+                  </Link>{" "}
+                  for a bigger monthly budget, or
+                </>,
+                <>
+                  connect your own DataForSEO account on{" "}
+                  <Link
+                    href="/settings"
+                    className="text-sky-400 underline underline-offset-2 hover:text-sky-300"
+                  >
+                    Settings
+                  </Link>{" "}
+                  for unlimited usage billed to your own balance instead.
+                </>,
+              ]}
+              closing="This card disappears on its own once next month starts, or once usage is no longer capped."
+            />
+          ) : null}
           {needsGsc && gscWaiting ? (
             <SetupStep
               title="Google Search Console"
@@ -668,7 +727,27 @@ export default async function Home() {
               why={`Done on your side: the service account can read the ${project.domain} property. Traffic lands with the next hourly sync, and Google's own data runs 2-3 days behind on top - this card disappears by itself once the first day arrives.`}
             />
           ) : null}
-          {needsGsc && !gscWaiting ? (
+          {needsGsc && !gscWaiting && isCloudMode() ? (
+            <SetupStep
+              title="Connect Google Search Console"
+              why={`Traffic numbers come straight from Google. One click connects the Google account that owns the ${project.domain} property - read-only access, revocable any time.`}
+              steps={[
+                <>
+                  <Link
+                    href="/google"
+                    className="text-sky-400 underline underline-offset-2 hover:text-sky-300"
+                  >
+                    Connect Google
+                  </Link>{" "}
+                  - sign in with the account that has Search Console access to {project.domain}.
+                </>,
+                "Pick the property if the guess was wrong - the connect page lists everything the account can see.",
+                "Done - traffic starts landing with the next hourly sync. Google's data runs 2-3 days behind, so give it a day or two.",
+              ]}
+              closing="This card disappears on its own once the first day of search data arrives."
+            />
+          ) : null}
+          {needsGsc && !gscWaiting && !isCloudMode() ? (
             <SetupStep
               title="Connect Google Search Console"
               why={`Traffic numbers come straight from Google. One click there gives DispatchSEO read access to the ${project.domain} property - copy the email below and add it as a user.`}
@@ -720,6 +799,24 @@ export default async function Home() {
               ]}
               command={'[ -f start.sh ] && echo "RESEND_API_KEY=re_PASTE-YOUR-KEY-HERE" >> .env && echo "ALERT_EMAIL=you@example.com" >> .env && sh start.sh || echo "Wrong folder - run this inside the dispatchseo folder (on a VPS: ssh in first)"'}
               closing="At most one email per job per day, and a machine that was asleep or off never counts as broken. No email means everything is working."
+            />
+          ) : null}
+          {needsAppReconnect ? (
+            <SetupStep
+              title="Reconnect the GitHub App"
+              why={`The DispatchSEO GitHub App no longer has access to ${project.github_repo} - it was uninstalled or the repo was removed from the installation. Your repo's scheduled workflows keep running, but approving tools, one-tap merge, and dashboard-triggered runs are paused until it's back.`}
+              steps={[
+                <>
+                  <a
+                    href={`/api/github/install/start?slug=${project.slug}`}
+                    className="text-sky-400 underline underline-offset-2 hover:text-sky-300"
+                  >
+                    Reinstall the DispatchSEO GitHub App
+                  </a>{" "}
+                  and grant it access to {project.github_repo}.
+                </>,
+                "That's it - nothing else changed, and no data was lost.",
+              ]}
             />
           ) : null}
           {needsMergeToken ? (
@@ -776,7 +873,25 @@ export default async function Home() {
               why={`Done on your side: your agent ran the install and setup for ${project.name}. The daily builder picks up the top approved idea each morning (05:00 UTC) - approve ideas in the Queue and the first PR shows up under Next actions. This card disappears once the first page ships.`}
             />
           ) : null}
-          {pipelineTodo ? (
+          {pipelineTodo && isCloudMode() ? (
+            <SetupStep
+              title="Finish setting up your site"
+              why={`Setup didn't finish for ${project.name} - the pipeline isn't fully installed yet. The wizard picks up exactly where it stopped and re-runs the remaining steps itself.`}
+              steps={[
+                <>
+                  <Link
+                    href="/onboarding"
+                    className="text-sky-400 underline underline-offset-2 hover:text-sky-300"
+                  >
+                    Resume setup
+                  </Link>{" "}
+                  - it re-checks everything and continues from the exact step that's missing.
+                </>,
+              ]}
+              closing="This card disappears once the pipeline install verifies."
+            />
+          ) : null}
+          {pipelineTodo && !isCloudMode() ? (
             <SetupStep
               title="Install the content pipeline in your repo"
               why={`The automations - daily guides, weekly tools, validation, auto-merge - run as GitHub Actions in your site's repo, on your own Claude Code subscription. One command sets up everything: it talks you through each step, checks every value actually works before saving it, then your own agent installs the pipeline and marks this card done.`}

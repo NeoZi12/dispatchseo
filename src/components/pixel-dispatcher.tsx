@@ -155,6 +155,7 @@ function Scene({ t }: { t: number }) {
       role="img"
       aria-label="Pixel art: a small AI agent walks to a desk, puts on a headset, and starts typing away"
       shapeRendering="crispEdges"
+      className="block h-auto w-full"
     >
       {/* floor */}
       {px(24, 40, "#232329", "floor", 120, 1)}
@@ -197,7 +198,7 @@ function Scene({ t }: { t: number }) {
   );
 }
 
-export function PixelDispatcher() {
+export function PixelDispatcher({ className }: { className?: string }) {
   const [t, setT] = useState(0);
   const [reduced, setReduced] = useState(false);
 
@@ -212,8 +213,11 @@ export function PixelDispatcher() {
   }, []);
 
   // Reduced motion: skip straight to the settled scene, no timers.
+  // className overrides the landing page's .pixel-stage sizing so other
+  // surfaces (the onboarding wizard) can size it with utilities instead of
+  // needing landing.css.
   return (
-    <div className="pixel-stage">
+    <div className={className ?? "pixel-stage"}>
       <Scene t={reduced ? DROP_END + 36 : t} />
     </div>
   );

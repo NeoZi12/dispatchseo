@@ -10,12 +10,50 @@
 // (classic installs); otherwise the encrypted copy the onboarding wizard
 // stores in instance_settings (0030). Cached per process; the connect
 // action busts it.
+//
+// CLOUD_MODE: pass the project (a RepoRef object) instead of a bare repo
+// string and every call authenticates with a per-installation GitHub App
+// token - per-tenant identity AND per-tenant rate limits. String callers
+// keep the instance-wide token path unchanged.
 
 import { revalidateTag } from "next/cache";
 import { instanceSettings } from "./dashboard-auth";
 import { decryptSecret } from "./crypto";
+import { isCloudMode } from "./cloud";
 
 const API = "https://api.github.com";
+
+// Either the legacy bare repo string or a project carrying its App
+// installation - github_repo identifies the target, the installation id
+// picks the credential.
+export type RepoRef =
+  | string
+  | { github_repo: string | null; github_installation_id?: number | null }
+  | null
+  | undefined;
+
+function refRepo(ref: RepoRef): string | null {
+  if (typeof ref === "string") return ref || null;
+  return ref?.github_repo ?? null;
+}
+
+function refInstallation(ref: RepoRef): number | null {
+  if (typeof ref === "string" || !ref) return null;
+  return ref.github_installation_id ?? null;
+}
+
+async function tokenForRef(ref: RepoRef): Promise<string | null> {
+  const installation = refInstallation(ref);
+  if (isCloudMode() && installation) {
+    try {
+      const { installationToken } = await import("./github-app");
+      return await installationToken(installation);
+    } catch {
+      return null;
+    }
+  }
+  return mergeToken();
+}
 
 let tokenCache: { value: string | null } | null = null;
 
@@ -39,26 +77,18 @@ export async function mergeToken(): Promise<string | null> {
   return token;
 }
 
-// No env fallback here on purpose: projects.github_repo is the only source,
-// so a project without a connected repo can never read or merge another
-// project's PRs. (The pre-migration fallback project carries SEO_TARGET_REPO
-// itself - see projects.ts.)
-function repoOrDefault(repo: string | null | undefined): string | null {
-  return repo ?? null;
-}
-
-async function headers(): Promise<Record<string, string>> {
+async function headers(ref?: RepoRef): Promise<Record<string, string>> {
   const h: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "User-Agent": "seo-manager-dashboard",
   };
-  const token = await mergeToken();
+  const token = await tokenForRef(ref);
   if (token) h.Authorization = `Bearer ${token}`;
   return h;
 }
 
-export async function canMerge(): Promise<boolean> {
-  return Boolean(await mergeToken());
+export async function canMerge(ref?: RepoRef): Promise<boolean> {
+  return Boolean(await tokenForRef(ref));
 }
 
 export type SeoPr = {
@@ -70,10 +100,10 @@ export type SeoPr = {
 };
 
 export async function openSeoPrs(
-  repo: string | null | undefined,
+  repo: RepoRef,
   opts?: { live?: boolean },
 ): Promise<SeoPr[]> {
-  const target = repoOrDefault(repo);
+  const target = refRepo(repo);
   if (!target) return [];
   try {
     // 60s SWR instead of no-store: a live GitHub round-trip blocked every
@@ -86,7 +116,7 @@ export async function openSeoPrs(
     // fetch for callers that watch for a PR to APPEAR (the onboarding poll)
     // and layer their own cache over this.
     const res = await fetch(`${API}/repos/${target}/pulls?state=open&per_page=20`, {
-      headers: await headers(),
+      headers: await headers(repo),
       ...(opts?.live
         ? { cache: "no-store" as const }
         : { next: { revalidate: 60, tags: [`seo-prs:${target}`] } }),
@@ -130,16 +160,16 @@ export type ToolBuildDispatch =
   | { dispatched: false; reason: "no-repo" | "no-token" | "github-error" };
 
 export async function dispatchToolBuild(
-  repo: string | null | undefined,
+  repo: RepoRef,
   suggestionId: string,
 ): Promise<ToolBuildDispatch> {
-  const target = repoOrDefault(repo);
+  const target = refRepo(repo);
   if (!target) return { dispatched: false, reason: "no-repo" };
-  if (!(await mergeToken())) return { dispatched: false, reason: "no-token" };
+  if (!(await tokenForRef(repo))) return { dispatched: false, reason: "no-token" };
   try {
     const res = await fetch(`${API}/repos/${target}/dispatches`, {
       method: "POST",
-      headers: { ...(await headers()), "Content-Type": "application/json" },
+      headers: { ...(await headers(repo)), "Content-Type": "application/json" },
       body: JSON.stringify({
         event_type: "seo-tool-approved",
         client_payload: { suggestion_id: suggestionId },
@@ -156,20 +186,20 @@ export async function dispatchToolBuild(
 // button gives live feedback and there is no sweep to catch a missed
 // dispatch.
 async function fireDispatch(
-  repo: string | null | undefined,
+  repo: RepoRef,
   eventType: string,
   payload: Record<string, unknown>,
   successMessage: string,
 ): Promise<{ ok: boolean; message: string }> {
-  const target = repoOrDefault(repo);
+  const target = refRepo(repo);
   if (!target) return { ok: false, message: "No pipeline repo connected for this project." };
-  if (!(await mergeToken())) {
+  if (!(await tokenForRef(repo))) {
     return { ok: false, message: "No GitHub token connected - see the one-tap merge step in setup." };
   }
   try {
     const res = await fetch(`${API}/repos/${target}/dispatches`, {
       method: "POST",
-      headers: { ...(await headers()), "Content-Type": "application/json" },
+      headers: { ...(await headers(repo)), "Content-Type": "application/json" },
       body: JSON.stringify({ event_type: eventType, client_payload: payload }),
     });
     if (!res.ok) return { ok: false, message: `GitHub answered HTTP ${res.status} - try again.` };
@@ -181,7 +211,7 @@ async function fireDispatch(
 
 // Stage 1 - the Scan now button wakes the repo's trend-scan workflow, which
 // sweeps the niche and puts trending SUBJECTS on the radar (topics only).
-export function dispatchTrendScan(repo: string | null | undefined) {
+export function dispatchTrendScan(repo: RepoRef) {
   return fireDispatch(
     repo,
     "seo-trend-scan",
@@ -195,7 +225,7 @@ export function dispatchTrendScan(repo: string | null | undefined) {
 // from the MCP, so the payload is a wake-up signal plus a label, not trusted
 // input on the CI side.
 export function dispatchTrendExpand(
-  repo: string | null | undefined,
+  repo: RepoRef,
   topicId: string,
   topicTitle: string,
 ) {
@@ -209,16 +239,16 @@ export function dispatchTrendExpand(
 
 
 export async function mergePr(
-  repo: string | null | undefined,
+  repo: RepoRef,
   number: number,
 ): Promise<{ ok: boolean; message: string }> {
-  if (!(await canMerge())) return { ok: false, message: "No GitHub merge token connected" };
-  const target = repoOrDefault(repo);
+  if (!(await canMerge(repo))) return { ok: false, message: "No GitHub merge token connected" };
+  const target = refRepo(repo);
   if (!target) return { ok: false, message: "No repo connected for this project" };
   try {
     const res = await fetch(`${API}/repos/${target}/pulls/${number}/merge`, {
       method: "PUT",
-      headers: { ...(await headers()), "Content-Type": "application/json" },
+      headers: { ...(await headers(repo)), "Content-Type": "application/json" },
       body: JSON.stringify({ merge_method: "squash" }),
       // Bound a hung GitHub response so it can't occupy the MCP's 60s budget
       // until the platform kills it. Every sibling call already fails
@@ -250,10 +280,11 @@ export async function mergePr(
 export async function verifyPipelinePrereqs(
   repo: string,
   requireApprove: boolean,
+  ref?: RepoRef,
 ): Promise<{ checked: boolean; problems: string[] }> {
-  const token = await mergeToken();
+  const token = await tokenForRef(ref ?? repo);
   if (!token) return { checked: false, problems: [] };
-  const h = await headers();
+  const h = await headers(ref ?? repo);
   const problems: string[] = [];
   try {
     const [wf, labels, perms, wfStates] = await Promise.all([

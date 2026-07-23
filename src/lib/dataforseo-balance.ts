@@ -1,5 +1,12 @@
 import type { DataforseoCreds } from "./dataforseo";
 
+// Below this, the shared account funding bundled cloud DataForSEO can run
+// dry before anyone notices - the per-tier usage budgets (dataforseo-usage.ts)
+// cap what any one owner can spend, but the account itself still needs
+// topping up like any project's own. Checked once per daily-ranks run, not
+// per project.
+const PLATFORM_BALANCE_ALERT_USD = 25;
+
 // DataForSEO account balance for the dashboard nudge, per project's own
 // credentials (free-tier DIY). The user_data endpoint is free to call, so a
 // short cache is fine - 5 minutes keeps the "Fund DataForSEO" card from
@@ -24,4 +31,22 @@ export async function dataforseoBalance(creds: DataforseoCreds | null): Promise<
   } catch {
     return null;
   }
+}
+
+// Same check, for the shared platform account bundled cloud DataForSEO bills
+// against. Not project-scoped - the daily-ranks cron calls this once per run,
+// not once per project. Missing envs (not in CLOUD_MODE, or platform
+// DataForSEO simply not configured yet) and a failed lookup both read as
+// "nothing to alert on", same tolerance as dataforseoBalance itself.
+export async function platformBalanceAlert(): Promise<string | null> {
+  const login = process.env.DATAFORSEO_PLATFORM_LOGIN;
+  const password = process.env.DATAFORSEO_PLATFORM_PASSWORD;
+  if (!login || !password) return null;
+  const balance = await dataforseoBalance({ login, password, billedTo: "platform" });
+  if (balance == null || balance >= PLATFORM_BALANCE_ALERT_USD) return null;
+  return (
+    `Platform DataForSEO balance is $${balance.toFixed(2)} - below the $${PLATFORM_BALANCE_ALERT_USD} ` +
+    "alert floor. Every bundled cloud project draws from this one account; top it up at " +
+    "app.dataforseo.com before it runs dry."
+  );
 }

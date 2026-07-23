@@ -922,3 +922,61 @@ alter table pages add column if not exists live_at timestamptz;
 alter table pages add column if not exists live_checked_at timestamptz;
 update pages set live_at = coalesce(published_at, created_at) where live_at is null;
 
+-- ============ 0034_github_app.sql ============
+-- 0034: GitHub App install core. Adds the columns the App's install flow
+-- (src/app/api/github/install/{start,callback}) writes: the installation id
+-- GitHub assigns when the owner installs/updates the App on a repo or org,
+-- and when that happened. Both are plain columns - no auth/storage objects
+-- involved - so unlike 0031 this needs no DO-guard to stay vanilla-Postgres
+-- safe; it applies identically on Supabase and the docker stack's setup.sql.
+--
+-- Auth plumbing only: the App does not yet replace github.ts's PAT-based
+-- calls (mergePr, dispatchToolBuild, ...) - that swap, plus webhook handling
+-- and per-project secret storage, are later steps.
+
+alter table projects add column if not exists github_installation_id bigint;
+alter table projects add column if not exists github_app_installed_at timestamptz;
+create index if not exists projects_github_installation_id_idx on projects (github_installation_id);
+
+-- ============ 0035_dataforseo_usage.sql ============
+-- 0035: bundled DataForSEO on cloud, per-tier metering. Platform credentials
+-- (DATAFORSEO_PLATFORM_LOGIN/PASSWORD) bill paid cloud projects that never
+-- connected their own DataForSEO account; this ledger is what keeps that
+-- spend inside each owner's tier budget. One row per (project, day,
+-- endpoint), incremented atomically through record_dataforseo_usage so
+-- concurrent calls never race a read-modify-write - same pattern as
+-- record_login_failure in 0021_login_lockout.sql. Only references `projects`
+-- (no auth schema), so no DO-block guard is needed for vanilla Postgres.
+create table if not exists dataforseo_usage (
+  project_id uuid not null references projects (id) on delete cascade,
+  day date not null,
+  endpoint text not null,
+  calls integer not null default 0,
+  cost_microusd bigint not null default 0,
+  updated_at timestamptz not null default now(),
+  primary key (project_id, day, endpoint)
+);
+
+-- Same posture as every other table: RLS on, zero policies - service-role only.
+alter table dataforseo_usage enable row level security;
+
+create or replace function record_dataforseo_usage(
+  p_project_id uuid,
+  p_day date,
+  p_endpoint text,
+  p_calls integer,
+  p_cost_microusd bigint
+)
+returns void
+language plpgsql
+as $$
+begin
+  insert into dataforseo_usage (project_id, day, endpoint, calls, cost_microusd, updated_at)
+  values (p_project_id, p_day, p_endpoint, p_calls, p_cost_microusd, now())
+  on conflict (project_id, day, endpoint) do update
+    set calls = dataforseo_usage.calls + excluded.calls,
+        cost_microusd = dataforseo_usage.cost_microusd + excluded.cost_microusd,
+        updated_at = now();
+end;
+$$;
+

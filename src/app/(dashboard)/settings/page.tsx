@@ -4,6 +4,8 @@ import { mcpAddCommand } from "@/lib/mcp-connect";
 import { getActiveProject } from "@/lib/active-project";
 import { credsForProject } from "@/lib/dataforseo";
 import { DEFAULT_PROJECT_ID, fetchProjectToken } from "@/lib/projects";
+import { isCloudMode } from "@/lib/cloud";
+import { ClaudeTokenConnect } from "@/components/claude-token-connect";
 import { DeleteProjectForm } from "@/components/delete-project";
 import { KeywordSourceSettings } from "@/components/keyword-source-settings";
 import { SiteLaunchedRow } from "@/components/site-launched";
@@ -74,6 +76,15 @@ export default async function SettingsPage() {
           hasSerpapiKey={Boolean(project.serpapi_key)}
         />
       </section>
+
+      {isCloudMode() && project.github_installation_id ? (
+        <section className="space-y-3">
+          <SectionTitle sub="the token builds run on - rotate it here whenever it expires or gets revoked">
+            Claude Code token
+          </SectionTitle>
+          <ClaudeTokenConnect />
+        </section>
+      ) : null}
 
       {mcpToken ? (
         <section className="space-y-3">

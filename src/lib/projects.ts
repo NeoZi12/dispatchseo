@@ -62,6 +62,11 @@ export type Project = {
   // encrypted like serpapi_key. Null = not connected; the service-account
   // path in gsc.ts works regardless.
   gsc_oauth_refresh_token: string | null;
+  // GitHub App installation (migration 0034, cloud onboarding). Null = the
+  // App is not installed for this project; github.ts then falls back to the
+  // instance-wide merge token.
+  github_installation_id: number | null;
+  github_app_installed_at: string | null;
   created_at: string;
 };
 
@@ -129,7 +134,7 @@ export const DEFAULT_PROJECT_ID = "00000000-0000-4000-8000-000000000001";
 
 // mcp_token deliberately excluded - only fetchProjectToken exposes it.
 const COLS =
-  "id, slug, name, domain, gsc_site_url, github_repo, content_mode, content_path_hint, dataforseo_login, dataforseo_password, keyword_source, serpapi_key, powerups_skipped, location_code, language_code, mode, auto_approve, auto_approve_tools, auto_build_guides, auto_build_tools, auto_merge, last_trend_scan_at, site_launched_at, pipeline_installed_at, content_prefs, gsc_oauth_refresh_token, created_at";
+  "id, slug, name, domain, gsc_site_url, github_repo, content_mode, content_path_hint, dataforseo_login, dataforseo_password, keyword_source, serpapi_key, powerups_skipped, location_code, language_code, mode, auto_approve, auto_approve_tools, auto_build_guides, auto_build_tools, auto_merge, last_trend_scan_at, site_launched_at, pipeline_installed_at, content_prefs, gsc_oauth_refresh_token, github_installation_id, github_app_installed_at, created_at";
 
 // COLS minus 0028's auto_approve_tools, for databases where that migration
 // hasn't run yet (migrations are applied manually, so code can reach prod
@@ -187,6 +192,8 @@ function envFallbackProject(): Project {
     pipeline_installed_at: null,
     content_prefs: {},
     gsc_oauth_refresh_token: null,
+    github_installation_id: null,
+    github_app_installed_at: null,
     created_at: new Date(0).toISOString(),
   };
 }

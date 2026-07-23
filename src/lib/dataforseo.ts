@@ -5,12 +5,19 @@
 // Auth is HTTP Basic with login (account email) + API password, PER PROJECT
 // (free-tier DIY: each project brings its own DataForSEO account, so every
 // call bills the project owner). credsForProject resolves a project's
-// credentials; only the default project falls back to the env pair. We do NOT
-// proxy or meter DataForSEO here - the crons call it directly, the agent uses
-// DataForSEO's own MCP for ad-hoc research.
+// credentials; only the default project falls back to the env pair. A third
+// branch (cloud only) resolves DATAFORSEO_PLATFORM_LOGIN/PASSWORD for paid
+// projects with no account of their own - see the billedTo field below and
+// dataforseo-usage.ts, which meters that spend. Those platform credentials
+// are server-side only: never written to a customer repo, never returned to
+// a client. We do NOT proxy or meter BYO DataForSEO here - the crons call it
+// directly, the agent uses DataForSEO's own MCP for ad-hoc research.
 
 import { DEFAULT_PROJECT_SLUG } from "./projects";
 import { decryptSecret } from "./crypto";
+import { isCloudMode } from "./cloud";
+import { planGate } from "./billing";
+import { platformBudgetGate, recordDataforseoUsage } from "./dataforseo-usage";
 
 const BASE = "https://api.dataforseo.com/v3";
 
@@ -20,12 +27,26 @@ const BASE = "https://api.dataforseo.com/v3";
 const LOCATION_CODE = 2840;
 const LANGUAGE_CODE = "en";
 
-export type DataforseoCreds = { login: string; password: string };
+export type DataforseoCreds = {
+  login: string;
+  password: string;
+  // "own" = the project's (or the instance's default-project env fallback's)
+  // own DataForSEO account - never metered here. "platform" = this backend's
+  // bundled account, billed to a paid cloud project with no account of its
+  // own; meterProjectId is who to charge (see the postOnce hook below and
+  // dataforseo-usage.ts).
+  billedTo: "own" | "platform";
+  meterProjectId?: string;
+};
 
-// A project's DataForSEO identity. Explicit-creds first; ONLY the default
-// project may ride the platform env credentials - a free-tier project without
-// its own account gets null, and callers skip the paid features gracefully.
+// A project's DataForSEO identity. Explicit-creds first, then (default
+// project only) the instance env fallback - both billed "own". Only then,
+// for CLOUD_MODE paid projects still without an account, the platform
+// credentials - gated by plan coverage and this month's shared budget so a
+// free-tier or over-budget project still gets null and skips the paid
+// features gracefully, exactly like before.
 export async function credsForProject(project: {
+  id: string;
   slug: string;
   dataforseo_login: string | null;
   dataforseo_password: string | null;
@@ -35,7 +56,11 @@ export async function credsForProject(project: {
     // A missing/rotated key must not 500 the dashboard or a cron, so a decrypt
     // failure degrades to "not connected" - the paid features just skip.
     try {
-      return { login: project.dataforseo_login, password: await decryptSecret(project.dataforseo_password) };
+      return {
+        login: project.dataforseo_login,
+        password: await decryptSecret(project.dataforseo_password),
+        billedTo: "own",
+      };
     } catch (err) {
       console.error(`DataForSEO password decrypt failed for project ${project.slug}:`, err);
       return null;
@@ -46,7 +71,26 @@ export async function credsForProject(project: {
     process.env.DATAFORSEO_LOGIN &&
     process.env.DATAFORSEO_PASSWORD
   ) {
-    return { login: process.env.DATAFORSEO_LOGIN, password: process.env.DATAFORSEO_PASSWORD };
+    return { login: process.env.DATAFORSEO_LOGIN, password: process.env.DATAFORSEO_PASSWORD, billedTo: "own" };
+  }
+  // Bundled cloud DataForSEO. These credentials are server-side ONLY: never
+  // written into a customer repo's secrets (the pipeline pack's dataforseo
+  // block only ships for hasDataforseo() projects, see pipeline-pack.ts) and
+  // never returned to a client - every consumer of this return value runs on
+  // the server.
+  if (
+    isCloudMode() &&
+    process.env.DATAFORSEO_PLATFORM_LOGIN &&
+    process.env.DATAFORSEO_PLATFORM_PASSWORD &&
+    (await planGate(project.id)).allowed &&
+    (await platformBudgetGate(project.id)).allowed
+  ) {
+    return {
+      login: process.env.DATAFORSEO_PLATFORM_LOGIN,
+      password: process.env.DATAFORSEO_PLATFORM_PASSWORD,
+      billedTo: "platform",
+      meterProjectId: project.id,
+    };
   }
   return null;
 }
@@ -164,6 +208,15 @@ async function postOnce<T = unknown>(
       `DataForSEO ${path} task error ${task.status_code}: ${task.status_message}`,
       TRANSIENT_TASK_CODES.has(task.status_code) || task.status_code >= 50000,
     );
+  }
+  // Meter platform-billed spend against the owner's monthly budget. This is
+  // the single HTTP chokepoint every caller goes through - including
+  // serpOrganic's depth-ladder, which calls postOnce directly and bypasses
+  // post() - so hooking here (not post()) catches every real paid call
+  // exactly once. Fire-and-forget: a ledger failure must never fail or slow
+  // down the call it's recording.
+  if (creds.billedTo === "platform" && creds.meterProjectId) {
+    recordDataforseoUsage(creds.meterProjectId, path, json.cost).catch(console.error);
   }
   return json as T;
 }

@@ -46,12 +46,21 @@ async function sign(payload: string): Promise<string> {
   return createHmac("sha256", secret).update(payload).digest("hex");
 }
 
-export async function makeState(projectSlug: string): Promise<string> {
-  const payload = `${projectSlug}.${Date.now()}`;
+// Where the callback should land the user afterwards. An allowlisted TAG,
+// never a raw URL - a URL here would be an open-redirect primitive.
+export type OauthReturnTo = "google" | "onboarding";
+
+export async function makeState(
+  projectSlug: string,
+  returnTo: OauthReturnTo = "google",
+): Promise<string> {
+  const payload = `${projectSlug}.${returnTo}.${Date.now()}`;
   return `${payload}.${await sign(payload)}`;
 }
 
-export async function verifyState(state: string): Promise<string | null> {
+export async function verifyStateDetailed(
+  state: string,
+): Promise<{ slug: string; returnTo: OauthReturnTo } | null> {
   const lastDot = state.lastIndexOf(".");
   if (lastDot < 0) return null;
   const payload = state.slice(0, lastDot);
@@ -60,17 +69,29 @@ export async function verifyState(state: string): Promise<string | null> {
   const a = Buffer.from(mac);
   const b = Buffer.from(expected);
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
-  const [slug, ts] = payload.split(".");
+  const parts = payload.split(".");
+  // Legacy 2-part states (slug.ts) may be in flight across a deploy.
+  const [slug, rawReturnTo, ts] =
+    parts.length === 3 ? parts : [parts[0], "google", parts[1]];
   if (!slug || !ts || Date.now() - Number(ts) > STATE_TTL_MS) return null;
-  return slug;
+  const returnTo: OauthReturnTo = rawReturnTo === "onboarding" ? "onboarding" : "google";
+  return { slug, returnTo };
 }
 
-export async function consentUrl(redirectUri: string, projectSlug: string): Promise<string> {
+export async function verifyState(state: string): Promise<string | null> {
+  return (await verifyStateDetailed(state))?.slug ?? null;
+}
+
+export async function consentUrl(
+  redirectUri: string,
+  projectSlug: string,
+  returnTo: OauthReturnTo = "google",
+): Promise<string> {
   return client(redirectUri).generateAuthUrl({
     access_type: "offline", // refresh token, so the connection survives
     prompt: "consent", // force the consent screen even on re-connect (demo video needs it)
     scope: [GSC_SCOPE],
-    state: await makeState(projectSlug),
+    state: await makeState(projectSlug, returnTo),
   });
 }
 

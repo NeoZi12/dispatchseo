@@ -60,7 +60,10 @@ function Row({
   );
 }
 
-export function FirstRunStatus({ slug }: { slug: string }) {
+// cloud: the App committed the pipeline and dispatched the setup workflow -
+// nobody pasted anything, so the waiting copy talks about the background
+// run instead of a terminal.
+export function FirstRunStatus({ slug, cloud }: { slug: string; cloud?: boolean }) {
   const [status, setStatus] = useState<Status | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -113,7 +116,9 @@ export function FirstRunStatus({ slug }: { slug: string }) {
               ? "Repo check failed"
               : s?.canary_ok || s?.pipeline_installed
                 ? "Repo connected - PR machinery proven"
-                : "Waiting for the install paste to run in Claude Code…"
+                : cloud
+                  ? "Proving the repo connection…"
+                  : "Waiting for the install paste to run in Claude Code…"
           }
           detail={s?.canary_error}
         />
@@ -135,6 +140,8 @@ export function FirstRunStatus({ slug }: { slug: string }) {
                 </a>{" "}
                 - the install finishes the moment it merges
               </>
+            ) : cloud ? (
+              "Setting up your site (a background run personalizes everything - a few minutes)"
             ) : (
               "Installing the automation pipeline (your agent opens a PR for you to merge)"
             )
@@ -151,7 +158,9 @@ export function FirstRunStatus({ slug }: { slug: string }) {
           label={
             s?.profile_written
               ? "Backlink playbook personalized"
-              : "Personalizing the backlink playbook (same paste - your agent handles it)"
+              : cloud
+                ? "Personalizing the backlink playbook (same background run)"
+                : "Personalizing the backlink playbook (same paste - your agent handles it)"
           }
         />
         {/* Docker installs only: an unlocked dashboard with no build path is

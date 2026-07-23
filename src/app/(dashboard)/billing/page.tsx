@@ -8,6 +8,8 @@ import {
   TIER_LIMITS,
   type Tier,
 } from "@/lib/billing";
+import { getActiveProjectOrNull } from "@/lib/active-project";
+import { platformUsageStatus } from "@/lib/dataforseo-usage";
 import { PageHeader } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +34,12 @@ export default async function BillingPage({
   const { success, error } = await searchParams;
   const sub = await getSubscription(auth.user.id);
   const active = isActive(sub);
+  // Usage is metered per project (the shared budget is per-owner, but
+  // check_serp's daily cap is per-project) - read it off the dashboard's
+  // active project. A brand-new active subscriber with no project yet just
+  // doesn't see the section; getActiveProjectOrNull never redirects.
+  const activeProject = active && polarConfigured() ? await getActiveProjectOrNull() : null;
+  const usage = activeProject ? await platformUsageStatus(activeProject.id) : null;
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">
@@ -113,6 +121,57 @@ export default async function BillingPage({
           );
         })}
       </div>
+
+      {usage ? (
+        <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-5">
+          <h3 className="font-semibold text-white">DataForSEO usage this period</h3>
+          {usage.billed_to === "platform" ? (
+            <>
+              <div className="mt-3 space-y-1.5">
+                <div className="flex items-baseline justify-between text-sm">
+                  <span className="text-neutral-300">
+                    ${usage.month_to_date_usd.toFixed(2)} of ${usage.budget_usd.toFixed(2)}
+                  </span>
+                  <span className="text-neutral-500">{Math.min(usage.percent_used, 100)}%</span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-800">
+                  <div
+                    className={`h-full rounded-full ${
+                      usage.percent_used >= 100
+                        ? "bg-red-500"
+                        : usage.percent_used >= 80
+                          ? "bg-amber-400"
+                          : "bg-emerald-400"
+                    }`}
+                    style={{ width: `${Math.min(usage.percent_used, 100)}%` }}
+                  />
+                </div>
+              </div>
+              <p className="mt-3 text-sm text-neutral-400">
+                check_serp today: {usage.check_serp_today} of {usage.check_serp_daily_cap}
+              </p>
+              <p className="mt-2 text-xs text-neutral-500">
+                Resets{" "}
+                {new Date(usage.resets_at).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                })}{" "}
+                UTC. Connect your own DataForSEO account on{" "}
+                <a href="/settings" className="text-neutral-300 underline">
+                  Settings
+                </a>{" "}
+                for unmetered usage.
+              </p>
+            </>
+          ) : (
+            <p className="mt-2 text-sm text-neutral-400">
+              {usage.billed_to === "own"
+                ? "Your active project uses its own connected DataForSEO account - it doesn't draw from a plan budget."
+                : "Your active project has no DataForSEO connected yet, so there's nothing to meter."}
+            </p>
+          )}
+        </div>
+      ) : null}
 
       <p className="text-sm text-neutral-500">
         Invoices, payment method, plan changes, cancellation:{" "}

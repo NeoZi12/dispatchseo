@@ -45,14 +45,10 @@ bearer token routes every call, and one owner can have several projects
 connected, so a stale or copy-pasted token would silently act on another
 site's data. On a mismatch, STOP and tell the owner to reconnect with the
 command from the dashboard's Settings -> Project key. The research source
-depends on the project's setup:
-- If the project has DataForSEO credentials, use the DataForSEO MCP
-  (volume, KD, keyword ideas, live SERPs, backlinks endpoints).
-- Otherwise use the seo-manager MCP's built-in \`check_serp\` (live organic
-  results through the project's configured provider) and \`suggest_keywords\`
-  (Google Autocomplete expansion). Without DataForSEO there is no volume/KD
-  data - the quality bar's SERP-weakness test and the best-answer test carry
-  the decision instead, and you never invent numbers to fill the gap.
+depends on \`get_project\`'s \`dataforseo_repo_mcp\` field (NOT keyword_source -
+a project can be DataForSEO-backed through the platform's bundled plan
+without this repo ever holding those credentials):
+{{RESEARCH_SOURCE_NOTE}}
 
 If a tool call fails, SAY SO and stop that step. Never fabricate data - no
 invented volumes, difficulties, positions, or stats, ever.
@@ -62,10 +58,12 @@ invented volumes, difficulties, positions, or stats, ever.
 - Volume floor: **> 500** (soft: > 300 only when intent fits the product
   perfectly). Applies only when volume data exists (DataForSEO projects).
 - KD ceiling is **DYNAMIC - it scales with the site's authority**. At the
-  START of every research run, fetch the site's domain rank once via the
-  DataForSEO backlinks summary (\`backlinks/summary/live\`, target
-  {{DOMAIN}}; the \`rank\` field is 0-1000, divide by 10 for a
-  DR-equivalent; a null result = not indexed yet = DR 0). Then apply:
+  START of every research run, call the seo-manager MCP's \`get_domain_rank\`
+  tool for the site's cached DR-equivalent (0-100, refreshed daily by the
+  domain-rating cron off the same DataForSEO backlinks summary this used to
+  call directly - works identically whether DataForSEO is this repo's own
+  account or the platform's bundled plan; a null \`dr\` means not indexed yet,
+  or the cron hasn't run its first pass - treat both as DR 0). Then apply:
 
   | DR-equivalent | Auto-approve zone | Pending zone (needs the human) |
   |---|---|---|

@@ -12,6 +12,7 @@ import { getJourney } from "@/lib/journey";
 import { getWeeklyProgress } from "@/lib/progress";
 import { AUTOMATIONS, gatherEvidence } from "@/lib/automations";
 import { credsForProject } from "@/lib/dataforseo";
+import { isCloudMode } from "@/lib/cloud";
 import { canMerge, dispatchToolBuild, mergePr, openSeoPrs, verifyPipelinePrereqs } from "@/lib/github";
 import {
   indexingBrowserCommand,
@@ -29,7 +30,7 @@ import {
 } from "@/lib/content-prefs";
 import { saveContentPrefs } from "@/lib/content-prefs-store";
 import { renderInstructions, WORKFLOWS } from "@/lib/instructions";
-import { getPipelinePack } from "@/lib/pipeline-pack";
+import { getPipelinePack, hasDataforseo } from "@/lib/pipeline-pack";
 import { effectiveAutomations, getProjectByToken } from "@/lib/projects";
 import { loadSiteProfile } from "@/lib/site-profile";
 import { currentProject, projectStore } from "@/lib/mcp-context";
@@ -50,6 +51,12 @@ import { serpProviderForProject, providerOrganic } from "@/lib/serp";
 import { gscAccessProbe } from "@/lib/gsc";
 import { setTrackedProperty } from "@/lib/gsc-oauth";
 import { expandKeyword } from "@/lib/suggest";
+import {
+  checkSerpDailyCapReached,
+  platformUsageStatus,
+  recordCheckSerpCall,
+} from "@/lib/dataforseo-usage";
+import { getDomainRating } from "@/lib/domain-rating";
 
 // The seo-manager MCP server. It is mostly a door to the Supabase state - the
 // suggestions queue, tracked keywords, published pages, GSC stats, and backlink
@@ -221,7 +228,7 @@ const mcpHandler = createMcpHandler(
                 : "Front of the queue.";
           }
           if (type === "tool" && build === "now") {
-            const dispatch = await dispatchToolBuild(p.github_repo, data.id);
+            const dispatch = await dispatchToolBuild(p, data.id);
             note = dispatch.dispatched
               ? "Build dispatched - the PR opens in a few minutes."
               : dispatch.reason === "no-repo"
@@ -350,7 +357,7 @@ const mcpHandler = createMcpHandler(
         let buildNote: string | undefined;
         if (effective === "approved" && data?.type === "tool") {
           if (owner) {
-            const dispatch = await dispatchToolBuild(p.github_repo, id);
+            const dispatch = await dispatchToolBuild(p, id);
             if (!dispatch.dispatched) {
               buildNote =
                 dispatch.reason === "no-repo"
@@ -437,7 +444,7 @@ const mcpHandler = createMcpHandler(
         if (data.type === "tool") {
           // Tools already build on approval - reuse that path. Honest about
           // a no-op dispatch: "waking up" over a missing pipeline is a lie.
-          const dispatch = await dispatchToolBuild(p.github_repo, id);
+          const dispatch = await dispatchToolBuild(p, id);
           return ok({
             ok: true,
             message: dispatch.dispatched
@@ -997,6 +1004,21 @@ const mcpHandler = createMcpHandler(
                 "add them in Settings.",
           );
         }
+        // Bundled cloud DataForSEO: check_serp is rate-limited per project,
+        // not metered against the cost budget (a live SERP lookup is cheap
+        // and interactive - the real spend guard is platformBudgetGate,
+        // enforced up in credsForProject). Only applies when this call is
+        // actually billed to the platform account; BYO and self-host projects
+        // are unaffected.
+        const billedToPlatform = provider.kind === "dataforseo" && provider.creds.billedTo === "platform";
+        if (billedToPlatform && (await checkSerpDailyCapReached(p.id))) {
+          return fail(
+            "Daily check_serp cap reached (30/day on the shared DataForSEO plan) - resets at UTC " +
+              "midnight. Use track_keywords for anything worth ongoing monitoring (the rank cron " +
+              "checks those daily), or connect your own DataForSEO account in Settings for " +
+              "unlimited checks.",
+          );
+        }
         try {
           const { results, ai } = await providerOrganic(
             provider,
@@ -1004,6 +1026,7 @@ const mcpHandler = createMcpHandler(
             p.location_code,
             p.language_code,
           );
+          if (billedToPlatform) void recordCheckSerpCall(p.id);
           return ok({
             keyword,
             source: provider.kind,
@@ -1022,6 +1045,59 @@ const mcpHandler = createMcpHandler(
               `DataForSEO/SerpApi credentials or balance need attention in Settings.`,
           );
         }
+      },
+    );
+
+    server.registerTool(
+      "get_domain_rank",
+      {
+        title: "Get domain rank",
+        description:
+          "The site's cached DataForSEO Domain Rating snapshot (0-100 DR-equivalent, " +
+          "referring domains, backlinks, spam score) - refreshed daily by the domain-rating " +
+          "cron, never a live paid call. Use this for the research quality bar's dynamic KD " +
+          "ceiling instead of calling a backlinks endpoint directly - it works the same " +
+          "whether the project has its own DataForSEO account or runs on the platform's " +
+          "bundled plan. A null dr means the domain isn't indexed yet, or the cron hasn't run " +
+          "its first pass for this project.",
+        inputSchema: {},
+      },
+      async () => {
+        const p = currentProject();
+        // null creds on purpose: this tool only ever serves the cached
+        // snapshot, never triggers a live (paid) refresh - that stays the
+        // daily domain-rating cron's job exclusively.
+        return ok(await getDomainRating(p.id, p.domain, null));
+      },
+    );
+
+    server.registerTool(
+      "get_dataforseo_usage",
+      {
+        title: "Get DataForSEO usage",
+        description:
+          "This project's DataForSEO billing status: who it's billed to (own connected " +
+          "account, the platform's bundled plan, or neither), month-to-date spend against the " +
+          "plan's monthly budget when billed to the platform, and today's check_serp count " +
+          "against its daily cap. For a project on its own account (or self-host), usage " +
+          "isn't metered here - billed_to reads 'own' or null and the spend/budget fields " +
+          "stay zero.",
+        inputSchema: {},
+      },
+      async () => {
+        const p = currentProject();
+        const status = await platformUsageStatus(p.id);
+        return ok(
+          status.billed_to === "platform"
+            ? status
+            : {
+                ...status,
+                note:
+                  status.billed_to === "own"
+                    ? "This project uses its own connected DataForSEO account - usage isn't metered against a platform budget."
+                    : "This project has no DataForSEO connected - usage isn't metered.",
+              },
+        );
       },
     );
 
@@ -1190,6 +1266,42 @@ const mcpHandler = createMcpHandler(
         const err = await setTrackedProperty(p.id, site_url);
         if (err) return fail(err);
         return ok({ project: p.slug, gsc_site_url: site_url });
+      },
+    );
+
+    server.registerTool(
+      "set_github_repo",
+      {
+        title: "Set the connected GitHub repo",
+        description:
+          "Cloud only: pick which repository of the project's GitHub App " +
+          "installation the content pipeline lives in. Validated against the " +
+          "installation's live repo list - a repo outside the installation is " +
+          "refused. Same write as the onboarding wizard's repo picker. " +
+          "Self-host connects the repo during project creation instead.",
+        inputSchema: { repo: z.string().min(3) },
+      },
+      async ({ repo }) => {
+        if (!isCloudMode()) return fail("Self-host connects the repo during project creation.");
+        const p = currentProject();
+        if (!p.github_installation_id) {
+          return fail("The DispatchSEO GitHub App is not installed for this project yet.");
+        }
+        const { listInstallationRepos } = await import("@/lib/github-app");
+        let repos: Array<{ full_name: string }>;
+        try {
+          repos = await listInstallationRepos(p.github_installation_id);
+        } catch {
+          return fail("Could not reach GitHub to validate the repo - try again.");
+        }
+        if (!repos.some((r) => r.full_name === repo)) {
+          return fail(
+            `"${repo}" is not part of this project's App installation. In scope: ${repos.map((r) => r.full_name).join(", ") || "none"}.`,
+          );
+        }
+        const { error } = await db().from("projects").update({ github_repo: repo }).eq("id", p.id);
+        if (error) return fail(error.message);
+        return ok({ project: p.slug, github_repo: repo });
       },
     );
 
@@ -1430,7 +1542,7 @@ const mcpHandler = createMcpHandler(
             .select("*")
             .eq("project_id", p.id)
             .order("created_at", { ascending: false }),
-          openSeoPrs(p.github_repo),
+          openSeoPrs(p),
         ]);
         if (sugRes.error) return fail(sugRes.error.message);
         const sugs = sugRes.data ?? [];
@@ -1471,7 +1583,7 @@ const mcpHandler = createMcpHandler(
       },
       async ({ number }) => {
         const p = currentProject();
-        const result = await mergePr(p.github_repo, number);
+        const result = await mergePr(p, number);
         if (!result.ok) return fail(result.message);
         return ok(result);
       },
@@ -1592,14 +1704,17 @@ const mcpHandler = createMcpHandler(
         description:
           "The project this token belongs to and how it's set up: domain, mode " +
           "(semi/auto), keyword source (dataforseo/serpapi/gsc), whether a SERP " +
-          "provider and Search Console are connected, the content-pipeline repo, " +
-          "and whether one-tap merge is available. Call it first in a session to " +
-          "know which capabilities apply. Secrets are never returned; credentials " +
-          "are managed on the dashboard's Settings screen only.",
+          "provider and Search Console are connected, whether THIS repo has its own " +
+          "DataForSEO MCP server (dataforseo_repo_mcp - false on the cloud bundled " +
+          "plan, see dataforseo_billed_to), the content-pipeline repo, and whether " +
+          "one-tap merge is available. Call it first in a session to know which " +
+          "capabilities apply. Secrets are never returned; credentials are managed " +
+          "on the dashboard's Settings screen only.",
         inputSchema: {},
       },
       async () => {
         const p = currentProject();
+        const dfsCreds = await credsForProject(p);
         return ok({
           name: p.name,
           slug: p.slug,
@@ -1607,14 +1722,26 @@ const mcpHandler = createMcpHandler(
           mode: p.mode,
           keyword_source: p.keyword_source,
           serp_provider_connected: (await serpProviderForProject(p)) != null,
-          dataforseo_connected: (await credsForProject(p)) != null,
+          dataforseo_connected: dfsCreds != null,
+          // Whether THIS repo gets a DataForSEO MCP server of its own (the
+          // pipeline pack's mcp-ci.json dataforseo block) - true only for a
+          // project with its own connected account, or the default project's
+          // env fallback. A cloud project on the platform's bundled plan is
+          // dataforseo_connected but NOT dataforseo_repo_mcp: those
+          // credentials are server-side only and never ship into a repo.
+          dataforseo_repo_mcp: hasDataforseo(p),
+          dataforseo_billed_to: dfsCreds?.billedTo ?? null,
           gsc_property: p.gsc_site_url,
           github_repo: p.github_repo,
+          // Cloud: whether the DispatchSEO GitHub App is installed for this
+          // project - tells "repo connected but App revoked" apart from
+          // "never connected".
+          github_app_installed: p.github_installation_id != null,
           // The onboarding "does the site have a blog?" answer - the setup
           // workflow's content-home hint (the repo wins on conflict).
           content_mode: p.content_mode,
           content_path_hint: p.content_path_hint,
-          merge_enabled: await canMerge(),
+          merge_enabled: await canMerge(p),
           location_code: p.location_code,
           language_code: p.language_code,
           // The trend-scan workflow's skip check: a scheduled run exits early
@@ -1934,6 +2061,7 @@ const mcpHandler = createMcpHandler(
           const verdict = await verifyPipelinePrereqs(
             p.github_repo,
             effectiveAutomations(p).auto_merge,
+            p,
           );
           if (verdict.problems.length > 0) {
             return fail(
