@@ -21,6 +21,9 @@ import { AgentModelCompareTable } from "./agent-model-compare-table";
 import { SeoAgentCapabilityGrid } from "./seo-agent-capability-grid";
 import { SeoAgentRealityFactRow } from "./seo-agent-reality-fact-row";
 import { Steps, Step } from "./steps";
+import { FreeStackTable } from "./free-stack-table";
+import { StackCostFactRow } from "./stack-cost-fact-row";
+import { WiredLoopFlow } from "./wired-loop-flow";
 import { slugify } from "@/lib/slugify";
 
 // The components every blog MDX file renders with: typographic defaults that
@@ -121,4 +124,7 @@ export const mdxComponents: MDXComponents = {
   SeoAgentRealityFactRow,
   Steps,
   Step,
+  FreeStackTable,
+  StackCostFactRow,
+  WiredLoopFlow,
 };
