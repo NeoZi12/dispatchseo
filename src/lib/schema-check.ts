@@ -47,6 +47,13 @@ const PROBES: Probe[] = [
   { migration: "0026_instance_settings", table: "instance_settings" },
   { migration: "0027_reliability", table: "suggestions", column: "started_at" },
   { migration: "0028_auto_approve_tools", table: "projects", column: "auto_approve_tools" },
+  { migration: "0029_gsc_service_account_in_db", table: "instance_settings", column: "gsc_service_account_json" },
+  { migration: "0030_wizard_owns_setup", table: "instance_settings", column: "gh_merge_token" },
+  // 0031's auth.users foreign keys are Supabase-only (DO-block guarded), but
+  // the subscriptions table itself is created on both platforms - safe probe.
+  { migration: "0031_cloud_users", table: "subscriptions" },
+  { migration: "0032_builder_heartbeat", table: "instance_settings", column: "builder_last_seen_at" },
+  { migration: "0033_page_liveness", table: "pages", column: "live_at" },
 ];
 
 async function probeMissing(p: Probe): Promise<boolean> {

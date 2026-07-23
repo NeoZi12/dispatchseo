@@ -992,7 +992,7 @@ export function OnboardingWizard({
             <p className="mt-3 rounded-lg border border-emerald-400/20 bg-emerald-400/5 p-3 text-sm text-neutral-300">
               One tip for automatic mode: after setup, spend two minutes on the{" "}
               <a
-                href="https://dispatchseo.com/docs/troubleshooting#get-emailed-when-something-breaks"
+                href="/docs/troubleshooting#get-emailed-when-something-breaks"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-violet-400 underline underline-offset-2 hover:text-violet-300"
