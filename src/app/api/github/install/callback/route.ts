@@ -65,7 +65,10 @@ export async function GET(req: Request): Promise<Response> {
       };
       // Exactly one repo -> auto-attach it; anything else (owner picked
       // "all repos", multiple, or somehow zero) needs the owner to choose.
-      if (repos.length === 1) patch.github_repo = repos[0].full_name;
+      // Never overwrite a repo already chosen: a later App reinstall/update
+      // (e.g. granting a different single repo) must not silently repoint an
+      // already-connected project - same guard as attachGithubInstallation.
+      if (repos.length === 1 && !project.github_repo) patch.github_repo = repos[0].full_name;
 
       const { error } = await db().from("projects").update(patch).eq("id", project.id);
       if (error) redirect("/onboarding?gh=error&msg=save-failed");

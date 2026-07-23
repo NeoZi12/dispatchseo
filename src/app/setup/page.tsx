@@ -6,6 +6,7 @@ import { missingMigrations } from "@/lib/schema-check";
 import { DispatchMark } from "@/components/logo";
 import { PixelDispatcher } from "@/components/pixel-dispatcher";
 import { PasswordInput } from "@/app/setup/password-input";
+import { isCloudMode } from "@/lib/cloud";
 
 // First-boot setup wizard for the DOCKER self-host stack - the only install
 // that ever renders this page. Cloud accounts onboard through /signup and
@@ -73,6 +74,10 @@ export default async function SetupPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
+  // Docker self-host only. In CLOUD_MODE there is no single-owner password to
+  // claim (Supabase Auth owns accounts), so this wizard must never render - the
+  // claim server action is locked independently in claimInstance().
+  if (isCloudMode()) redirect("/login");
   const state = await getSetupState();
   if (state === "ready") redirect("/login");
   const { error } = await searchParams;

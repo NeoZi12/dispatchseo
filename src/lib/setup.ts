@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { db } from "./db";
 import { bustInstanceCache, hashPassword } from "./dashboard-auth";
 import { missingMigrations } from "./schema-check";
+import { isCloudMode } from "./cloud";
 
 // First-boot setup wizard state machine (the /setup page). A fresh deploy
 // walks three gates: connect a database, run the migrations, claim the
@@ -59,6 +60,11 @@ export async function claimInstance(
   password: string,
   appUrl?: string | null,
 ): Promise<{ cronSecret: string } | { error: "already-claimed" }> {
+  // Cloud never claims a self-host password. This is the real lock behind the
+  // /setup page's redirect: the page guard only stops the form rendering, but
+  // this server action is invocable directly, so the mode check must live here
+  // too - otherwise an anonymous POST could seed instance_settings on cloud.
+  if (isCloudMode()) return { error: "already-claimed" };
   const state = await getSetupState();
   if (state !== "unclaimed") return { error: "already-claimed" };
   const cronSecret = randomBytes(24).toString("hex");

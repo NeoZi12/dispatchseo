@@ -54,6 +54,8 @@ const PROBES: Probe[] = [
   { migration: "0031_cloud_users", table: "subscriptions" },
   { migration: "0032_builder_heartbeat", table: "instance_settings", column: "builder_last_seen_at" },
   { migration: "0033_page_liveness", table: "pages", column: "live_at" },
+  { migration: "0034_github_app", table: "projects", column: "github_installation_id" },
+  { migration: "0035_dataforseo_usage", table: "dataforseo_usage" },
 ];
 
 async function probeMissing(p: Probe): Promise<boolean> {

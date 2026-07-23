@@ -140,7 +140,7 @@ export default async function LandingPage() {
         <div className="wrap">
           <div className="sec-h">
             <h2>Pick your plan</h2>
-            <p>Start with a 7-day free trial. Unlimited articles on every plan - the writing runs on your own Claude, so we never meter content.</p>
+            <p>Starter comes with a 7-day free trial; Growth and Scale start today. Unlimited articles on every plan - the writing runs on your own Claude, so we never meter content.</p>
           </div>
           <div className="cloud-adds">
             <span className="ca-label">Every plan includes</span>
@@ -205,7 +205,7 @@ export default async function LandingPage() {
                 <li>Failure alerts by email</li>
                 <li>Email support</li>
               </ul>
-              <a className="btn btn-solid" href="/signup">Start for free</a>
+              <a className="btn btn-solid" href="/signup">Choose Growth</a>
             </div>
             <div className="plan">
               <h3>Scale</h3>
@@ -234,7 +234,7 @@ export default async function LandingPage() {
                 <li>Failure alerts by email</li>
                 <li>Priority support</li>
               </ul>
-              <a className="btn btn-solid" href="/signup">Start for free</a>
+              <a className="btn btn-solid" href="/signup">Choose Scale</a>
             </div>
           </div>
         </div>
@@ -285,7 +285,7 @@ export default async function LandingPage() {
         <svg className="doodle doodle-f2" viewBox="0 0 64 64" aria-hidden="true"><path d="M8 52 L24 38 L34 46 L56 20 M56 20 L45 22 M56 20 L55 32" /></svg>
         <div className="wrap">
           <h2>Give your agent the keys.<br />Keep the lock.<span className="caret" /></h2>
-          <p>Start with a 7-day free trial. Setup takes about ten minutes.</p>
+          <p>Starter starts with a 7-day free trial. Setup takes about ten minutes.</p>
           <div className="cta-row">
             <a className="btn btn-solid" href="/signup">Start your free trial</a>
           </div>

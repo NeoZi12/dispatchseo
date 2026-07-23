@@ -7,6 +7,7 @@ import { getCronHealth, reportCronRun } from "@/lib/cron-alerts";
 import { buildsActive } from "@/lib/builder-status";
 import { backendBaseUrl } from "@/lib/pipeline-pack";
 import { openSeoPrs } from "@/lib/github";
+import { ownedProjectIds } from "@/lib/tenant-guard";
 
 // The open install PR, so the wizard can say "your move: merge this" with a
 // link instead of waiting silently. Cached 60s per repo: the wizard polls
@@ -73,6 +74,15 @@ export async function GET(req: Request): Promise<Response> {
   if (!slug) return Response.json({ error: "slug required" }, { status: 400 });
   const project = await getProjectBySlug(slug);
   if (!project) return Response.json({ error: "unknown project" }, { status: 404 });
+  // Cloud: a signed-in session is not enough - the slug must name a project
+  // THIS user owns. Without this, any tenant could read another's counts,
+  // cron errors, and install PR (and self-trigger their paid crons below) just
+  // by guessing a slug. Same generic 404 as an unknown project - never confirm
+  // a foreign project exists. ownedProjectIds() is null on self-host (no-op).
+  const owned = await ownedProjectIds();
+  if (owned && !owned.has(project.id)) {
+    return Response.json({ error: "unknown project" }, { status: 404 });
+  }
 
   const [keywords, rankChecks, suggestions, pages, gscRows, health, profile] = await Promise.all([
     db().from("keywords").select("id", { count: "exact", head: true }).eq("project_id", project.id),

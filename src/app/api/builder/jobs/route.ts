@@ -4,6 +4,7 @@ import { getCronHealth, reportCronRun } from "@/lib/cron-alerts";
 import { credsForProject } from "@/lib/dataforseo";
 import { mergeToken } from "@/lib/github";
 import { listProjects, fetchProjectToken, effectiveAutomations } from "@/lib/projects";
+import { isCloudMode } from "@/lib/cloud";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,11 @@ const CADENCE_HOURS: Record<string, number> = {
 };
 
 export async function GET(req: Request): Promise<Response> {
+  // Self-host only. This feeds the docker in-stack builder; cloud schedules run
+  // through GitHub Actions instead. Refusing in CLOUD_MODE keeps every tenant's
+  // MCP token + DataForSEO creds (below) off an endpoint the cloud never needs -
+  // defense in depth even though nothing in cloud calls it today.
+  if (isCloudMode()) return Response.json({ error: "not found" }, { status: 404 });
   const denied = await checkCron(req);
   if (denied) return denied;
   // Claiming is opt-in: only the builder's poll loop sends ?claim=1. A bare
