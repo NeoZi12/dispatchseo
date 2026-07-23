@@ -87,7 +87,17 @@ async function buildCloudResume(): Promise<CloudWizardResume | null> {
     savedScreen && (CLOUD_WIZARD_SCREENS as readonly string[]).includes(savedScreen)
       ? (savedScreen as CloudWizardResume["screen"])
       : "c5";
-  const screen = saved === "c0" ? "c1" : saved;
+  let screen = saved === "c0" ? "c1" : saved;
+
+  // c5 (the finale) fires runPipelineInstall, which hard-requires a connected
+  // repo, and c2-c4 are only ever reachable AFTER a repo is chosen. So with no
+  // github_repo the only honest resume is c1 - the Connect-GitHub / pick-a-repo
+  // screen. This is the safety net for lost screen persistence: the "Install
+  // the App" link is a full-page navigation that can cancel the in-flight
+  // setWizardScreen("c1") POST, leaving onboarding_screen null -> defaulting to
+  // c5 -> a finale that instantly errors "no repo connected" (the gh=pick_repo
+  // bounce when the owner picks "all repositories"). Seen 2026-07-23.
+  if (!project.github_repo) screen = "c1";
 
   let installationRepos: string[] | null = null;
   if (project.github_installation_id && !project.github_repo) {
