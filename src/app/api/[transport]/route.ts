@@ -34,6 +34,7 @@ import { effectiveAutomations, getProjectByToken } from "@/lib/projects";
 import { loadSiteProfile } from "@/lib/site-profile";
 import { currentProject, projectStore } from "@/lib/mcp-context";
 import { isProjectUrl } from "@/lib/url-guard";
+import { isLive, refreshPageLiveness, type LivenessRow } from "@/lib/page-liveness";
 import { AGENT_ENGINES, getAiVisibility, recordAiSnapshots } from "@/lib/ai-visibility";
 import { sortQueue } from "@/lib/metrics";
 import { placeAtFront, writeQueueOrder } from "@/lib/queue";
@@ -677,7 +678,10 @@ const mcpHandler = createMcpHandler(
         description:
           "Record a published page (matched by url; re-logging updates it). Call after a PR " +
           "is opened so the system knows the page exists - used for internal-linking decisions " +
-          "and to avoid duplicate coverage. type is guide|tool|landing. published_at (ISO " +
+          "and to avoid duplicate coverage. A newly logged page counts as 'awaiting publish' " +
+          "on the dashboard until its URL first serves HTTP 200 (verified automatically after " +
+          "the PR merges and deploys) - so logging at PR-open time is correct, not premature. " +
+          "type is guide|tool|landing. published_at (ISO " +
           "date/datetime) is when the page ACTUALLY went live - pass it when backfilling a " +
           "page published earlier, omit it for a page shipping right now. It matters: the " +
           "daily publishing pace reads this field, so a backfill stamped 'now' wrongly uses " +
@@ -734,7 +738,9 @@ const mcpHandler = createMcpHandler(
         title: "Get pages",
         description:
           "List every published page (url, title, type, primary_keyword). Call before writing " +
-          "new content to pick 2-3 existing pages to link to and to avoid covering a topic twice.",
+          "new content to pick 2-3 existing pages to link to and to avoid covering a topic twice. " +
+          "Each row carries live=true|false: false means the page was logged (its PR opened) " +
+          "but its URL has not served 200 yet - do not link to not-yet-live pages.",
         inputSchema: {},
       },
       async () => {
@@ -745,7 +751,11 @@ const mcpHandler = createMcpHandler(
           .eq("project_id", p.id)
           .order("created_at", { ascending: false });
         if (error) return fail(error.message);
-        return ok(data);
+        // Same verification pass the Guides screen runs: bounded, best-effort,
+        // flips freshly merged pages to live and keeps parked ones honest.
+        const rows = (data ?? []) as (LivenessRow & Record<string, unknown>)[];
+        await refreshPageLiveness(p, rows);
+        return ok(rows.map((r) => ({ ...r, live: isLive(r) })));
       },
     );
 
@@ -1317,7 +1327,10 @@ const mcpHandler = createMcpHandler(
           "This is the dashboard's red 'background jobs need attention' banner " +
           "as data - check it when rankings or GSC stats look frozen, when a " +
           "build seems missing, or to confirm the latest deploy passed its " +
-          "smoke test. Empty means no job has ever logged a run (fresh install).",
+          "smoke test. Empty means no job has ever logged a run (fresh install). " +
+          "An entry with update_available=true is NOT a failure: it means the " +
+          "repo's installed pipeline pack is a version behind this backend " +
+          "(informational - re-running the install workflow applies it).",
         inputSchema: {},
       },
       async () => {

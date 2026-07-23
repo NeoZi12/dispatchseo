@@ -58,6 +58,21 @@ function baseJobName(job: string): string {
   return i === -1 ? job : job.slice(0, i);
 }
 
+// "Pipeline update available" is NEWS, not a failure. The repo-side health
+// check has only one reporting channel (ok/fail), so it reports a stale pack
+// version through fail= - but a pending update is the normal state every
+// connected repo enters the moment the backend ships a new pack. Classify it
+// here so it surfaces as a quiet update notice (no red banner, no email,
+// no "agent needs attention"), while a real seo-pipeline-version failure
+// (rejected key, curl death) stays loud. Loudness is for regressions.
+export function isPipelineUpdateNotice(job: string, errors: string[]): boolean {
+  return (
+    baseJobName(job) === "seo-pipeline-version" &&
+    errors.length > 0 &&
+    errors.every((e) => e.includes("pipeline update available"))
+  );
+}
+
 // Boot-aware staleness clock for self-hosted installs. A laptop that was
 // asleep at 04:00 wakes up with jobs that are LATE, not broken - and even
 // GitHub-side runs that fired while the backend slept had their reports
@@ -103,6 +118,10 @@ export type CronHealth = {
   stale: boolean;
   last_run_at: string;
   errors: string[];
+  // A failed row that is really the "pipeline update available" report (see
+  // isPipelineUpdateNotice): dashboards and MCP consumers render it as an
+  // informational update notice instead of a job failure.
+  update_available: boolean;
 };
 
 // Pull the human-readable error strings out of a cron's result JSON: any
@@ -168,7 +187,11 @@ export async function reportCronRun(
     const errors = hadError ? collectErrors(result) : [];
     let emailedAt: string | null = null;
 
-    if (hadError) {
+    // Update notices log as failed rows (so they surface and mark_cron_fixed
+    // works) but never email - "a newer pack exists" is not worth waking the
+    // owner, and it would fire for EVERY connected repo of EVERY user on the
+    // morning after any backend deploy that touches the pack.
+    if (hadError && !isPipelineUpdateNotice(job, errors)) {
       // Transient vendor blips (tagged by dataforseo.ts / serp.ts AFTER
       // their in-call retries already failed) get one grace run: the run
       // still logs as failed and the banner shows it immediately, but the
@@ -301,6 +324,7 @@ export async function getCronHealth(projectSlug?: string): Promise<CronHealth[]>
     })
     .map((row) => {
       const job = row.job as string;
+      const errors = (row.errors as string[]) ?? [];
       const ageHours = staleAgeHours(new Date(row.created_at as string).getTime());
       return {
         job,
@@ -308,7 +332,8 @@ export async function getCronHealth(projectSlug?: string): Promise<CronHealth[]>
         // Unlisted jobs run per push/dispatch - no schedule, never stale.
         stale: ageHours > (STALE_HOURS[baseJobName(job)] ?? Infinity),
         last_run_at: row.created_at as string,
-        errors: (row.errors as string[]) ?? [],
+        errors,
+        update_available: !row.ok && isPipelineUpdateNotice(job, errors),
       };
     });
   const heartbeat = await pipelineHeartbeatAlerts(
@@ -390,6 +415,7 @@ async function pipelineHeartbeatAlerts(
           errors: [
             "pipeline is installed but its workflows have never reported to the dashboard - the repo's secrets are likely wrong; re-run the setup command from Home to fix them",
           ],
+          update_available: false,
         });
       } else {
         const ageHours = staleAgeHours(new Date(hb.created_at as string).getTime());
@@ -400,6 +426,7 @@ async function pipelineHeartbeatAlerts(
             stale: true,
             last_run_at: hb.created_at as string,
             errors: [],
+            update_available: false,
           });
         }
       }

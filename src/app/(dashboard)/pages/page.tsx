@@ -9,6 +9,7 @@ import {
   type PublishedPage,
   type Suggestion,
 } from "@/lib/metrics";
+import { isLive, refreshPageLiveness } from "@/lib/page-liveness";
 import {
   BigStatTile,
   EmptyState,
@@ -26,11 +27,15 @@ import {
 export const dynamic = "force-dynamic";
 
 // PublishedPage plus the "Request Google indexing" done-stamp from the Home
-// card (migration 0005) and the URL Inspection verification stamp (migration
-// 0010). Optional because rows predate the columns existing.
+// card (migration 0005), the URL Inspection verification stamp (migration
+// 0010), and the liveness stamps (migration 0033). Optional because rows
+// predate the columns existing.
 type PageRow = PublishedPage & {
   index_requested_at?: string | null;
   indexed_at?: string | null;
+  live_at?: string | null;
+  live_checked_at?: string | null;
+  pr_url?: string | null;
 };
 
 function shortDate(iso: string) {
@@ -74,6 +79,21 @@ export default async function PagesPage() {
   const done = (doneRes.data ?? []) as Suggestion[];
   const traffic = aggregatePageTraffic((gscRes.data ?? []) as GscFullRow[]);
 
+  // Verify any not-yet-live pages right now (bounded, best-effort): a guide
+  // whose PR just merged flips to live on this very render, and a guide whose
+  // PR is still parked stays honestly "awaiting publish" instead of counting
+  // as shipped (migration 0033 / the 2026-07-23 stranded-PR lesson).
+  await refreshPageLiveness(project, pages);
+
+  // Live = verified serving 200, OR proven by Google itself (impressions /
+  // URL-Inspection pass) for sites whose WAF blocks our probe.
+  const isRowLive = (p: PageRow) =>
+    isLive(p) ||
+    (traffic.get(normalizePageUrl(p.url))?.impressions ?? 0) > 0 ||
+    p.indexed_at != null;
+  const liveCount = pages.filter(isRowLive).length;
+  const pendingCount = pages.length - liveCount;
+
   // Headline numbers, from the same traffic roll-up the table uses.
   const indexedCount = pages.filter((p) => {
     const t = traffic.get(normalizePageUrl(p.url));
@@ -95,13 +115,17 @@ export default async function PagesPage() {
         <StatRow cols={3}>
           <BigStatTile
             title="Guides published"
-            value={pages.length}
-            sub="live on the site"
+            value={liveCount}
+            sub={
+              pendingCount > 0
+                ? `live on the site · ${pendingCount} awaiting publish`
+                : "live on the site"
+            }
           />
           <BigStatTile
             title="Indexed by Google"
             value={indexedCount}
-            sub={`of ${pages.length} published`}
+            sub={`of ${liveCount} published`}
           />
           <BigStatTile
             title="Clicks"
@@ -132,11 +156,14 @@ export default async function PagesPage() {
               const t = traffic.get(normalizePageUrl(p.url));
               const impressions = t?.impressions ?? 0;
               const clicks = t?.clicks ?? 0;
+              const live = isRowLive(p);
               return (
                 <Tr key={p.id}>
                   <Td>
+                    {/* A pending page's URL doesn't serve yet - send the
+                        owner to the PR (the thing that actually exists). */}
                     <a
-                      href={p.url}
+                      href={live ? p.url : (p.pr_url ?? p.url)}
                       target="_blank"
                       className="text-sky-400 underline underline-offset-2 hover:text-sky-300"
                     >
@@ -149,7 +176,14 @@ export default async function PagesPage() {
                       Inspection PASS (indexed_at, stamped by the hourly cron);
                       otherwise all we know is whether indexing was requested. */}
                   <Td className="whitespace-nowrap">
-                    {impressions > 0 || p.indexed_at ? (
+                    {!live ? (
+                      <span
+                        className="text-amber-300"
+                        title="The PR hasn't merged (or the deploy hasn't finished) - this URL doesn't serve yet. It flips to live automatically once it does."
+                      >
+                        Awaiting publish
+                      </span>
+                    ) : impressions > 0 || p.indexed_at ? (
                       <span
                         className="text-emerald-400"
                         title={
@@ -179,12 +213,16 @@ export default async function PagesPage() {
                   {/* Bing: every merged page is pinged via IndexNow automatically,
                       so "requested" is a given; Bing shares no per-page metrics. */}
                   <Td className="hidden whitespace-nowrap sm:table-cell">
-                    <span
-                      className="text-neutral-400"
-                      title="IndexNow pinged Bing and Yandex automatically when this page merged"
-                    >
-                      Pinged (auto)
-                    </span>
+                    {live ? (
+                      <span
+                        className="text-neutral-400"
+                        title="IndexNow pinged Bing and Yandex automatically when this page merged"
+                      >
+                        Pinged (auto)
+                      </span>
+                    ) : (
+                      <span className="text-neutral-500">—</span>
+                    )}
                   </Td>
                   <Td className="hidden whitespace-nowrap text-right tabular-nums md:table-cell">
                     {clicks.toLocaleString()}
@@ -192,7 +230,15 @@ export default async function PagesPage() {
                   <Td className="hidden whitespace-nowrap text-right tabular-nums text-neutral-300 md:table-cell">
                     {impressions.toLocaleString()}
                   </Td>
-                  <Td className="whitespace-nowrap text-neutral-400">{shortDate(p.created_at)}</Td>
+                  <Td className="whitespace-nowrap text-neutral-400">
+                    {live ? (
+                      shortDate(p.created_at)
+                    ) : (
+                      <span className="text-amber-300/80" title="Logged when its PR opened - publishes when the PR merges">
+                        PR open
+                      </span>
+                    )}
+                  </Td>
                 </Tr>
               );
             })}

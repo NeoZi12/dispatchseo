@@ -120,3 +120,11 @@ chatbot in dashboard, charts libraries, dark mode, settings pages, mobile app.
   public repo is impossible, a relay endpoint is a spam/deliverability
   liability, and phoning home breaks the self-host promise. "Alerting built
   in" becomes a cloud-vs-self-host comparison row.
+
+- **Demote a live page that starts 404ing.** 0033 verifies a page live once
+  (first HTTP 200) and never re-checks. A guide later unpublished/renamed
+  keeps showing as live until someone notices. A slow background sweep
+  (daily cron, a few pages per run) could flip `live_at` back to null on
+  sustained 404s - deferred because deletes/renames are rare, GSC
+  impressions dropping to zero already hints at it, and false demotions
+  (WAF, transient outage) are worse than a stale "live".

@@ -1,0 +1,6 @@
+# Path prefixes a guide PR may touch for seo-auto-merge to auto-merge it.
+# One prefix per line. Repo-owned: the pipeline pack never ships this file,
+# so pack updates cannot overwrite it. Reference layout for this repo:
+src/content/blog/
+src/components/blog/
+public/blog/covers/

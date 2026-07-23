@@ -664,12 +664,22 @@ export function IndexRequestedDoneAll({ ids }: { ids: string[] }) {
 // The cron banner's quiet per-issue escape hatch: the owner declares an
 // alert handled (the agent's equivalent is the mark_cron_fixed MCP tool).
 // Optimistic like its siblings - the whole banner clears on revalidate.
-export function CronFixedButton({ job }: { job: string }) {
+// tone matches the box it sits in: red for the failure banner, sky for the
+// pipeline-update notice (same action underneath either way).
+export function CronFixedButton({
+  job,
+  label = "mark fixed",
+  tone = "red",
+}: {
+  job: string;
+  label?: string;
+  tone?: "red" | "sky";
+}) {
   const [, start] = useTransition();
   const [state, setState] = useState<"idle" | "done" | "failed">("idle");
 
   if (state === "done")
-    return <span className="whitespace-nowrap text-xs text-emerald-400">✓ marked fixed</span>;
+    return <span className="whitespace-nowrap text-xs text-emerald-400">✓ {label}</span>;
   return (
     <span className="inline-flex items-center gap-1.5">
       <button
@@ -683,9 +693,13 @@ export function CronFixedButton({ job }: { job: string }) {
             }
           });
         }}
-        className="text-xs text-red-300/70 underline decoration-dotted underline-offset-2 transition-colors hover:text-red-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-400"
+        className={
+          tone === "sky"
+            ? "text-xs text-sky-300/70 underline decoration-dotted underline-offset-2 transition-colors hover:text-sky-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
+            : "text-xs text-red-300/70 underline decoration-dotted underline-offset-2 transition-colors hover:text-red-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-400"
+        }
       >
-        mark fixed
+        {label}
       </button>
       {state === "failed" ? (
         <span className="whitespace-nowrap text-xs text-red-400">{ERR}</span>

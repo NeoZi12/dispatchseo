@@ -55,8 +55,13 @@ and slash commands.
 1. Call the seo-manager MCP tool \`get_pipeline_pack\`. It returns every shim
    file as { path, content }, already personalized to this project.
 2. Write each file at exactly its returned path (create directories as
-   needed). If a file already exists, show the owner a diff summary and ask
-   before overwriting - an existing install may carry local adaptations.
+   needed). On an update run (files already exist), overwrite the pack's own
+   files freely - workflows carry no repo-specific truth anymore; everything
+   repo-specific lives in \`.dispatchseo/\` files the pack does NOT include
+   (conventions.md, publish-paths), and those must be LEFT ALONE. The one
+   exception worth a diff-and-ask: a file the owner visibly hand-edited
+   beyond the known adaptation spots (custom steps, extra jobs) - never
+   silently discard work like that.
 
 ### Part 2 - adapt to THIS repo (the pack is a template, not gospel)
 
@@ -101,12 +106,21 @@ Inspect this repo and adjust these known spots before committing:
 - **Public env placeholders** (NEXT_PUBLIC_*) in those workflows exist so
   the build never trips on missing vars. Replace them with whatever public
   env THIS repo's production build needs; drop the ones it doesn't.
-- **The auto-merge path gate** in seo-auto-merge.yml only auto-merges guide
-  PRs whose files all live under the content dirs (reference:
-  src/content/blog/ and src/components/blog/). Point those prefixes at this
-  repo's content home. If the content home does not exist yet, leave the
-  reference paths and fix them after the setup workflow (next step)
-  discovers or scaffolds it.
+- **The auto-merge path gate** only auto-merges guide PRs whose files all
+  live under the repo's publish dirs. Those dirs come from
+  \`.dispatchseo/publish-paths\` - one path prefix per line, # comments
+  allowed (reference default when the file is absent: src/content/blog/,
+  src/components/blog/, public/blog/covers/). WRITE that file now with this
+  repo's real guide layout: the content dir, the guide-components dir, the
+  cover-image dir, and any file every routine guide PR must touch (e.g. a
+  registry module that guides always append to). Never edit the fallback
+  paths inside seo-auto-merge.yml itself - the file is the config, the
+  workflow is disposable. This file is deliberately not part of the pack, so
+  pack updates can never clobber the adaptation (2026-07-23: an update
+  overwrote an adapted gate and a green guide PR sat unmerged while the
+  dashboard called it published). If the content home does not exist yet,
+  skip the file and write it after the setup workflow (next step) discovers
+  or scaffolds it.
 - **The tool validator** (seo-tool-validate.yml) builds the PR and exercises
   the tool page on localhost:3000 - adjust the port/start command if this
   repo serves differently.
@@ -214,8 +228,9 @@ on its FIRST real build:
 2. After the PR is open, run the \`setup\` workflow in this same session
    (get_instructions workflow=setup): it finds or scaffolds the content
    home, writes .dispatchseo/conventions.md, and personalizes the site
-   profile. If setup lands on a different content home than the auto-merge
-   path gate assumes, update the gate paths on the same install branch.
+   profile. If setup lands on a different content home than
+   .dispatchseo/publish-paths lists (or the file was skipped in Part 2),
+   write/update that file on the same install branch.
 3. **Verify everything, then unlock.** \`mark_pipeline_installed\` is not a
    status update - it is what UNLOCKS the owner's dashboard, so it may only
    be called when every line below is verifiably green. Check each one NOW;

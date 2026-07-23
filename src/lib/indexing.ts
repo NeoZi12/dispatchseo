@@ -22,7 +22,7 @@ import type { Project } from "./projects";
 
 // The pages row shape Home reads. index_requested_at is absent (key missing,
 // not null) until migration 0005 runs - callers treat that as "not done" and
-// Home shows a one-time migration nudge.
+// Home shows a one-time migration nudge. live_at absent until 0033.
 export type IndexingPageRow = {
   id: string;
   url: string;
@@ -32,6 +32,7 @@ export type IndexingPageRow = {
   created_at: string;
   index_requested_at?: string | null;
   indexed_at?: string | null;
+  live_at?: string | null;
 };
 
 // How long a page stays in the queue before we stop nagging. New pages
@@ -46,6 +47,10 @@ export function indexingQueue(
   const cutoff = now - WINDOW_DAYS * 24 * 60 * 60 * 1000;
   return rows.filter((p) => {
     if (p.index_requested_at || p.indexed_at) return false;
+    // Not verified live yet (0033): its PR hasn't merged or the deploy
+    // hasn't finished - asking Google to index a 404 wastes the daily GSC
+    // request quota. It enters the queue once the URL actually serves.
+    if ("live_at" in p && p.live_at == null) return false;
     const published = Date.parse(p.published_at ?? p.created_at);
     return Number.isFinite(published) && published >= cutoff;
   });

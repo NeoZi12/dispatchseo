@@ -27,7 +27,8 @@ import { GlanceSection } from "@/components/glance-stats";
 import { FREE_BACKLINKS, PAID_BACKLINKS } from "@/lib/playbook-data";
 import { getActivityReport, type ActivityLine } from "@/lib/activity";
 import { getCronHealth } from "@/lib/cron-alerts";
-import { buildCronFixPrompt } from "@/lib/cron-fix-prompt";
+import { buildCronFixPrompt, buildPipelineUpdatePrompt } from "@/lib/cron-fix-prompt";
+import { isLive } from "@/lib/page-liveness";
 import { getAnalyticsOverview } from "@/lib/analytics-data";
 import { getJourney } from "@/lib/journey";
 import { getWeeklyProgress } from "@/lib/progress";
@@ -231,7 +232,7 @@ export default async function Home() {
     sugRes,
     overview,
     kwCount,
-    pageCount,
+    guidesRes,
     prs,
     balance,
     profileRes,
@@ -255,9 +256,14 @@ export default async function Home() {
       .select("id", { count: "exact", head: true })
       .eq("project_id", project.id)
       .eq("status", "tracking"),
+    // Rows, not a head-count: the stat tile counts only pages verified live
+    // (0033), while the setup cards care whether anything was ever logged -
+    // two different numbers from the same cheap query. Tolerant of pre-0033
+    // schemas by selecting * (a named missing column would error the query;
+    // with * the key is simply absent and isLive treats that as live).
     client
       .from("pages")
-      .select("id", { count: "exact", head: true })
+      .select("*")
       .eq("project_id", project.id)
       .eq("type", "guide"),
     openSeoPrs(project.github_repo),
@@ -292,15 +298,28 @@ export default async function Home() {
     getCronHealth(isCloudMode() ? project.slug : undefined),
   ]);
 
+  // Two guide numbers from one query (0033): "logged" drives the setup cards
+  // (the pipeline demonstrably works once anything lands, merged or not);
+  // "live" is what the stat tile may honestly call published.
+  const guideRows = (guidesRes.data ?? []) as { id: string; url: string; live_at?: string | null }[];
+  const guidesLoggedCount = guideRows.length;
+  const guidesLiveCount = guideRows.filter(isLive).length;
+
   // Cron alert banner (gap A4): the latest run per job, surfaced when it
   // failed or hasn't run within its expected window. In cloud mode, drop the
   // operator-owned global jobs entirely - a tenant can't act on those.
-  const cronIssues = cronHealth
+  // "Pipeline update available" reports split off into their own quiet
+  // notice: an update waiting is the normal state after any backend deploy
+  // that ships a new pack, not a job failure worth a red banner.
+  const jobIssues = cronHealth
     .filter((h) => !isCloudMode() || h.job.includes(`--${project.slug}`))
     .filter((h) => !h.ok || h.stale);
+  const updateNotices = jobIssues.filter((h) => h.update_available);
+  const cronIssues = jobIssues.filter((h) => !h.update_available);
 
   // One-line version of the same trouble for the AgentStatus pill - the
   // green heartbeat flips red the moment any background job is unhealthy.
+  // Update notices deliberately excluded: the agent is fine, just outdatable.
   const agentAlert =
     cronIssues.length === 0
       ? null
@@ -434,11 +453,11 @@ export default async function Home() {
   // "build it right now" nudge only makes sense when a human drives.
   const needsFirstPage =
     isDefaultProject &&
-    (pageCount.count ?? 0) === 0 &&
+    guidesLoggedCount === 0 &&
     !hasShipped &&
     !effectiveAutomations(project).auto_build_guides;
   const needsPipeline =
-    !isDefaultProject && (pageCount.count ?? 0) === 0 && !hasShipped && !skippedPowerup("pipeline");
+    !isDefaultProject && guidesLoggedCount === 0 && !hasShipped && !skippedPowerup("pipeline");
   // The install's footprint: the workflow's final step stamps
   // pipeline_installed_at via mark_pipeline_installed (0018); the conventions
   // row (written by setup, which install chains into) stays as the fallback
@@ -561,6 +580,32 @@ export default async function Home() {
             </p>
           </div>
         ) : null}
+        {updateNotices.length > 0 ? (
+          <div className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm">
+            <p className="font-medium text-sky-200">Pipeline update available</p>
+            <p className="mt-1 text-sky-300/90">
+              The SEO workflows in{" "}
+              <span className="font-mono">{project.github_repo ?? "your site repo"}</span> are a
+              version behind this backend. Everything keeps publishing on the current version -
+              apply the update whenever convenient.
+              {updateNotices.map((h) => (
+                <span key={h.job} className="ml-2 whitespace-nowrap">
+                  <CronFixedButton job={h.job} label="mark applied" tone="sky" />
+                </span>
+              ))}
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <CopyButton
+                text={buildPipelineUpdatePrompt(project)}
+                label="Copy update prompt for Claude Code"
+              />
+              <p className="text-xs text-sky-300/70">
+                Paste it into Claude Code in the site repo - it applies the current pack, and this
+                notice clears after the next nightly check.
+              </p>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {/* ---------- THE PROGRESS STORY (stage, weekly movers, milestones) ---------- */}
@@ -574,7 +619,7 @@ export default async function Home() {
         daily={overview.gscDaily}
         fresh24={overview.fresh24}
         keywordsTracked={kwCount.count ?? 0}
-        guidesPublished={pageCount.count ?? 0}
+        guidesPublished={guidesLiveCount}
       />
 
       {/* ---------- INITIAL SETUP (hidden once every step is done) ---------- */}

@@ -4,9 +4,15 @@ name: SEO auto-merge
 # an hourly backstop) and merges an open PR labeled `seo` ONLY when both are
 # true:
 #   1. It is auto-mergeable content:
-#      - GUIDE PR: every changed file lives under src/content/blog/,
-#        src/components/blog/ (guides ship bespoke visual components), or
-#        public/blog/covers/ (the playbook's mandatory cover image).
+#      - GUIDE PR: every changed file lives under this repo's publish dirs.
+#        Those come from .dispatchseo/publish-paths on the default branch
+#        (one path prefix per line, # comments allowed) - written at
+#        install/setup time, owned by the repo, and NEVER shipped in the
+#        pipeline pack, so a pack update cannot clobber the adaptation
+#        (2026-07-23: an update overwrote an edited gate and a green guide
+#        PR sat unmerged while the dashboard said it was live). Without the
+#        file, the reference-stack defaults apply: src/content/blog/,
+#        src/components/blog/, public/blog/covers/.
 #      - TOOL PR (label `seo-tool`): carries the `tool-validated` label,
 #        meaning seo-tool-validate built the PR, exercised the LIVE page in a
 #        real browser, and proved the widget works.
@@ -87,6 +93,22 @@ jobs:
             exit 0
           fi
 
+          # Publish dirs a guide PR may touch: the repo-owned config file on
+          # the default branch, falling back to the reference-stack layout.
+          # The file is deliberately NOT part of the pipeline pack - pack
+          # updates overwrite workflows verbatim, and this repo's layout must
+          # survive that (the 2026-07-23 lesson: an update reverted an
+          # adapted gate and stranded a green guide PR unmerged for hours).
+          prefixes=$(gh api "repos/$REPO/contents/.dispatchseo/publish-paths" \
+            -H "Accept: application/vnd.github.raw" 2>/dev/null \
+            | grep -v '^[[:space:]]*#' | grep -v '^[[:space:]]*$' || true)
+          if [ -z "$prefixes" ]; then
+            prefixes=$'src/content/blog/\nsrc/components/blog/\npublic/blog/covers/'
+            echo "No .dispatchseo/publish-paths on the default branch - using the reference defaults."
+          fi
+          echo "Guide PRs may touch: $(echo "$prefixes" | tr '\n' ' ')"
+          prefixes_json=$(printf '%s\n' "$prefixes" | jq -R . | jq -s .)
+
           for n in $prs; do
             echo "::group::PR #$n"
 
@@ -94,9 +116,9 @@ jobs:
             #    - Tool PR (seo-tool label): must carry tool-validated - the
             #      live smoke-test's pass verdict. Tools legitimately touch
             #      registries/components, so no path check applies.
-            #    - Guide PR: every changed file must live in the blog content
-            #      dir or the blog components dir (the builder's mandatory
-            #      VISUALS step); anything else forces manual review.
+            #    - Guide PR: every changed file must live under one of the
+            #      allowed publish dirs above; anything else forces manual
+            #      review.
             labels=$(gh pr view "$n" --repo "$REPO" --json labels --jq '[.labels[].name] | join(" ")')
             if [[ " $labels " == *" seo-tool "* ]]; then
               if [[ " $labels " != *" tool-validated "* ]]; then
@@ -106,10 +128,10 @@ jobs:
               fi
               echo "PR #$n is a validated tool PR - checking the status rollup."
             else
-              outside=$(gh pr view "$n" --repo "$REPO" --json files \
-                --jq '[.files[].path | select((startswith("src/content/blog/") or startswith("src/components/blog/") or startswith("public/blog/covers/")) | not)] | length')
+              outside=$(gh pr view "$n" --repo "$REPO" --json files | jq --argjson prefixes "$prefixes_json" \
+                '[.files[].path | . as $f | select(($prefixes | any($f | startswith(.))) | not)] | length')
               if [ "$outside" != "0" ]; then
-                echo "PR #$n touches $outside file(s) outside the blog dirs (structural change) - leaving for manual review."
+                echo "PR #$n touches $outside file(s) outside the allowed publish dirs (structural change) - leaving for manual review. If these paths are part of this repo's normal guide layout, add them to .dispatchseo/publish-paths."
                 echo "::endgroup::"
                 continue
               fi
@@ -143,7 +165,7 @@ jobs:
                 # branch. Tool PRs yield an empty list; the IndexNow run then
                 # skips URL-polling and pings straight from the sitemap.
                 slugs=$(gh pr view "$n" --repo "$REPO" --json files \
-                  --jq '[.files[].path | select(test("^src/content/blog/.+\\.mdx$")) | sub("^src/content/blog/"; "") | sub("\\.mdx$"; "")] | join(" ")')
+                  --jq '[.files[].path | select(test("\\.mdx$")) | split("/") | last | sub("\\.mdx$"; "")] | join(" ")')
                 gh pr merge "$n" --repo "$REPO" --squash --delete-branch
                 # This squash push is made with GITHUB_TOKEN, and GITHUB_TOKEN
                 # pushes never trigger push-event workflows - so the IndexNow
@@ -152,6 +174,15 @@ jobs:
                 # exception to that rule).
                 gh workflow run indexnow.yml --repo "$REPO" -f slugs="$slugs" \
                   || echo "IndexNow dispatch failed - the sitemap still covers the URL on the next crawl."
+                # The same GITHUB_TOKEN rule silently skips publish-images
+                # (self-host docker images) and deploy-check (post-deploy
+                # smoke test) - both trigger on push, so an auto-merged
+                # commit left GHCR images stale and the deploy unverified
+                # until the next human push. Dispatch them explicitly too.
+                gh workflow run publish-images.yml --repo "$REPO" \
+                  || echo "publish-images dispatch failed - self-host images catch up on the next human push."
+                gh workflow run deploy-check.yml --repo "$REPO" \
+                  || echo "deploy-check dispatch failed - the deploy stays unverified until the next push."
                 ;;
               PENDING)
                 echo "PR #$n has checks still running - will retry next run."
