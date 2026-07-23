@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Dispatching } from "@/components/dispatching";
 
 // Shown when the user lands back from Polar checkout before the webhook has
 // written the subscription row. Polls /api/billing/status every 2s; on
@@ -66,9 +67,8 @@ export function PaymentConfirming() {
         </>
       ) : (
         <>
-          <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-neutral-700 border-t-violet-400" />
-          <h1 className="mt-5 text-xl font-semibold text-white">Confirming your payment...</h1>
-          <p className="mt-2 text-[15px] text-neutral-400">
+          <Dispatching label="Confirming your payment" className="mx-auto" />
+          <p className="mt-3 text-[15px] text-neutral-400">
             Usually takes a few seconds. You&apos;ll continue to setup automatically.
           </p>
         </>

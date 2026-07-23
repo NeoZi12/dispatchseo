@@ -4,6 +4,7 @@ import Link from "next/link";
 import { DispatchMark } from "@/components/logo";
 import { AuthDivider, GoogleSignInButton } from "@/components/google-signin";
 import { AuthShell } from "@/components/auth-shell";
+import { FormPending } from "@/components/dispatching";
 import { isCloudMode } from "@/lib/cloud";
 import { supabaseAuth } from "@/lib/cloud-auth";
 import { cleanDomain, isValidDomain } from "@/lib/domain";
@@ -71,16 +72,47 @@ export default async function SignupPage({
   if (sent) {
     return (
       <AuthShell>
-        <h1 className="flex items-center gap-2.5 text-xl font-semibold text-white">
+        <Link href="/" className="flex items-center gap-2.5 text-lg font-semibold text-white">
           <DispatchMark className="h-7 w-auto" />
           DispatchSEO
-        </h1>
-        <p className="text-neutral-300">
-          Check your inbox - we sent a confirmation link. Click it, then{" "}
-          <Link href="/login" className="text-white underline">
-            sign in
+        </Link>
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-violet-500/25 bg-violet-500/10">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-7 w-7 text-violet-300"
+            aria-hidden
+          >
+            <rect x="2" y="4" width="20" height="16" rx="2" />
+            <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+          </svg>
+        </div>
+        <div className="space-y-2">
+          <h1 className="text-2xl font-semibold tracking-tight text-white">Check your inbox</h1>
+          <p className="text-[15px] leading-relaxed text-neutral-400">
+            We sent a confirmation link to your email. Click it to verify your address and pick your
+            plan - the link expires in 24 hours.
+          </p>
+        </div>
+        <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 px-4 py-3 text-sm text-neutral-500">
+          Didn&apos;t get it within a minute? Check your spam folder, or{" "}
+          <Link
+            href="/signup"
+            className="text-violet-400 underline underline-offset-2 hover:text-violet-300"
+          >
+            try again
           </Link>
           .
+        </div>
+        <p className="text-sm text-neutral-500">
+          Already confirmed?{" "}
+          <Link href="/login" className="text-neutral-300 underline">
+            Sign in
+          </Link>
         </p>
       </AuthShell>
     );
@@ -116,6 +148,7 @@ export default async function SignupPage({
         <GoogleSignInButton label="Sign up with Google" domain={domain} />
         <AuthDivider />
         <form action={signup} className="space-y-4">
+          <FormPending label="Creating your account" />
           {domain ? <input type="hidden" name="domain" value={domain} /> : null}
           <input type="email" name="email" placeholder="Email" className={inputCls} />
           <input

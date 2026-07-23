@@ -198,8 +198,11 @@ function Scene({ t }: { t: number }) {
   );
 }
 
-export function PixelDispatcher({ className }: { className?: string }) {
-  const [t, setT] = useState(0);
+// working: start already seated at the desk (skip the 5s walk-in) and loop
+// the typing/idle animation - the right state for a loading spinner, where
+// the agent is "on the job" rather than arriving.
+export function PixelDispatcher({ className, working }: { className?: string; working?: boolean }) {
+  const [t, setT] = useState(working ? DROP_END : 0);
   const [reduced, setReduced] = useState(false);
 
   useEffect(() => {

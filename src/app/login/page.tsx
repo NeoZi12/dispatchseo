@@ -14,6 +14,7 @@ import {
 import { DispatchMark } from "@/components/logo";
 import { AuthDivider, GoogleSignInButton } from "@/components/google-signin";
 import { AuthShell } from "@/components/auth-shell";
+import { FormPending } from "@/components/dispatching";
 
 async function login(formData: FormData) {
   "use server";
@@ -73,6 +74,7 @@ function CloudLoginPage({ error, reset }: { error?: string; reset?: string }) {
       <GoogleSignInButton label="Continue with Google" />
       <AuthDivider />
       <form action={cloudLogin} className="space-y-4">
+        <FormPending label="Signing you in" />
         <input type="email" name="email" placeholder="Email" className={inputCls} />
         <input type="password" name="password" placeholder="Password" className={inputCls} />
         <div className="-mt-1 flex justify-end">
@@ -113,6 +115,7 @@ export default async function LoginPage({
   return (
     <main className="min-h-screen flex items-center justify-center bg-neutral-950 p-6">
       <form action={login} className="w-full max-w-xs space-y-4">
+        <FormPending label="Signing you in" />
         <h1 className="flex items-center gap-2.5 text-xl font-semibold text-white">
           <DispatchMark className="h-7 w-auto" />
           DispatchSEO

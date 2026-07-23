@@ -30,4 +30,39 @@
     scrollbar-width: thin;
     scrollbar-color: rgb(64 64 64 / 0.6) transparent;
   }
+
+  /* Tailwind v4 dropped the UA cursor:pointer on buttons - restore it app-wide
+     so every clickable control feels clickable (anchors already have it). */
+  button:not(:disabled),
+  summary,
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: default;
+  }
+}
+
+/* The "dispatching..." dots: appear in sequence and loop, a typing feel.
+   Each dot delays via inline animation-delay. */
+@keyframes dispatch-dot {
+  0%,
+  15% {
+    opacity: 0.2;
+  }
+  45% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.2;
+  }
+}
+.dispatch-dot {
+  animation: dispatch-dot 1.4s infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dispatch-dot {
+    animation: none;
+    opacity: 0.7;
+  }
 }
