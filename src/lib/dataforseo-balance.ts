@@ -1,4 +1,5 @@
 import type { DataforseoCreds } from "./dataforseo";
+import { platformDataforseoEnv } from "./dataforseo-usage";
 
 // Below this, the shared account funding bundled cloud DataForSEO can run
 // dry before anyone notices - the per-tier usage budgets (dataforseo-usage.ts)
@@ -39,10 +40,9 @@ export async function dataforseoBalance(creds: DataforseoCreds | null): Promise<
 // DataForSEO simply not configured yet) and a failed lookup both read as
 // "nothing to alert on", same tolerance as dataforseoBalance itself.
 export async function platformBalanceAlert(): Promise<string | null> {
-  const login = process.env.DATAFORSEO_PLATFORM_LOGIN;
-  const password = process.env.DATAFORSEO_PLATFORM_PASSWORD;
-  if (!login || !password) return null;
-  const balance = await dataforseoBalance({ login, password, billedTo: "platform" });
+  const creds = platformDataforseoEnv();
+  if (!creds) return null;
+  const balance = await dataforseoBalance({ ...creds, billedTo: "platform" });
   if (balance == null || balance >= PLATFORM_BALANCE_ALERT_USD) return null;
   return (
     `Platform DataForSEO balance is $${balance.toFixed(2)} - below the $${PLATFORM_BALANCE_ALERT_USD} ` +

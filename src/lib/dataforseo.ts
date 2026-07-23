@@ -17,7 +17,7 @@ import { DEFAULT_PROJECT_SLUG } from "./projects";
 import { decryptSecret } from "./crypto";
 import { isCloudMode } from "./cloud";
 import { planGate } from "./billing";
-import { platformBudgetGate, recordDataforseoUsage } from "./dataforseo-usage";
+import { platformBudgetGate, platformDataforseoEnv, recordDataforseoUsage } from "./dataforseo-usage";
 
 const BASE = "https://api.dataforseo.com/v3";
 
@@ -77,17 +77,19 @@ export async function credsForProject(project: {
   // written into a customer repo's secrets (the pipeline pack's dataforseo
   // block only ships for hasDataforseo() projects, see pipeline-pack.ts) and
   // never returned to a client - every consumer of this return value runs on
-  // the server.
+  // the server. platformDataforseoEnv resolves a dedicated DATAFORSEO_PLATFORM_*
+  // pair, else falls back to the base DATAFORSEO_* account (one funded account
+  // can serve every tenant - no second env pair to maintain).
+  const platform = platformDataforseoEnv();
   if (
     isCloudMode() &&
-    process.env.DATAFORSEO_PLATFORM_LOGIN &&
-    process.env.DATAFORSEO_PLATFORM_PASSWORD &&
+    platform &&
     (await planGate(project.id)).allowed &&
     (await platformBudgetGate(project.id)).allowed
   ) {
     return {
-      login: process.env.DATAFORSEO_PLATFORM_LOGIN,
-      password: process.env.DATAFORSEO_PLATFORM_PASSWORD,
+      login: platform.login,
+      password: platform.password,
       billedTo: "platform",
       meterProjectId: project.id,
     };

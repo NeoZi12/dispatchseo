@@ -147,6 +147,20 @@ export async function platformBudgetGate(
 // starts denying live calls - collapsing straight to null there would look
 // like the project silently lost its DataForSEO connection instead of hitting
 // a usage cap.
+// The platform's shared DataForSEO account for bundled cloud billing. A
+// dedicated pair (DATAFORSEO_PLATFORM_*) wins - it keeps the platform's shared
+// spend on its own invoice/balance for clean reconciliation - but fall back to
+// the base DATAFORSEO_* pair so a single funded account can serve every cloud
+// tenant without maintaining two env pairs. Server-side only; the one source of
+// truth for "which account bundled cloud draws on", shared by credsForProject
+// (dataforseo.ts) and platformBalanceAlert (dataforseo-balance.ts) so they can
+// never disagree about whether the platform is configured.
+export function platformDataforseoEnv(): { login: string; password: string } | null {
+  const login = process.env.DATAFORSEO_PLATFORM_LOGIN || process.env.DATAFORSEO_LOGIN;
+  const password = process.env.DATAFORSEO_PLATFORM_PASSWORD || process.env.DATAFORSEO_PASSWORD;
+  return login && password ? { login, password } : null;
+}
+
 async function resolveBilledTo(project: Project): Promise<"own" | "platform" | null> {
   if (project.dataforseo_login && project.dataforseo_password) return "own";
   if (
@@ -156,12 +170,7 @@ async function resolveBilledTo(project: Project): Promise<"own" | "platform" | n
   ) {
     return "own";
   }
-  if (
-    isCloudMode() &&
-    process.env.DATAFORSEO_PLATFORM_LOGIN &&
-    process.env.DATAFORSEO_PLATFORM_PASSWORD &&
-    (await planGate(project.id)).allowed
-  ) {
+  if (isCloudMode() && platformDataforseoEnv() && (await planGate(project.id)).allowed) {
     return "platform";
   }
   return null;
