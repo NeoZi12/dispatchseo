@@ -192,11 +192,15 @@ export function CloudOnboardingWizard(props: {
     });
   }
   useEffect(() => {
-    if (installedOnce.current) return;
+    // ONLY at the finale. Firing on any earlier screen calls runPipelineInstall
+    // before a project exists, whose getActiveProject() redirects a fresh user
+    // back to /onboarding - which remounts this wizard and re-fires the effect,
+    // a ~0.3s redirect loop that stole focus from every field (2026-07-23).
+    if (screen !== "c5" || installedOnce.current) return;
     installedOnce.current = true;
     fireInstall();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [screen]);
 
   function renderInstallBanner(): JSX.Element | null {
     if (!installResult) {
