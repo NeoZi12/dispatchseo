@@ -145,13 +145,18 @@ export default async function SetupPage({
             <DispatchMark className="h-8 w-auto" />
             DispatchSEO setup
           </h1>
-          <SetupProgress state={state} />
+          {/* The numbered rail narrates the manual cloud walkthrough. Docker
+              installs have no steps to walk - the DB screens are failure
+              triage and the password screen is the whole wizard, so a
+              "Step 3 of 3" opener would just be the Supabase-era frame
+              leaking through. */}
+          {!docker && <SetupProgress state={state} />}
         </div>
 
         {state === "no-db" && docker && (
           <div className="space-y-6 rounded-xl border border-neutral-800 bg-neutral-900/60 p-7">
             <div>
-              <h2 className="text-2xl font-semibold text-white">Step 1 of 3 - waiting for the database</h2>
+              <h2 className="text-2xl font-semibold text-white">Waiting for the database</h2>
               <p className="mt-3 text-lg leading-relaxed text-neutral-400">
                 Your stack bundles its own Postgres - nothing to sign up for.
                 The app just can't reach it yet, which usually means the
@@ -233,7 +238,7 @@ export default async function SetupPage({
         {state === "no-tables" && docker && (
           <div className="space-y-6 rounded-xl border border-neutral-800 bg-neutral-900/60 p-7">
             <div>
-              <h2 className="text-2xl font-semibold text-white">Step 2 of 3 - waiting for the tables</h2>
+              <h2 className="text-2xl font-semibold text-white">Waiting for the tables</h2>
               <p className="mt-3 text-lg leading-relaxed text-neutral-400">
                 The <Code>migrate</Code> container creates every table
                 automatically on boot - no SQL to paste. It hasn't finished
@@ -314,11 +319,13 @@ export default async function SetupPage({
         {state === "unclaimed" && (
           <div className="space-y-6 rounded-xl border border-neutral-800 bg-neutral-900/60 p-7">
             <div>
-              <h2 className="text-2xl font-semibold text-white">Step 3 of 3 - choose your password</h2>
+              <h2 className="text-2xl font-semibold text-white">
+                {docker ? "Choose your password" : "Step 3 of 3 - choose your password"}
+              </h2>
               <p className="mt-3 text-lg leading-relaxed text-neutral-400">
-                Last step. Pick the password you'll use to log in to this
-                dashboard - everything else is generated for you on the next
-                screen.
+                {docker ? "" : "Last step. "}Pick the password you'll use to
+                log in to this dashboard - everything else is generated for
+                you on the next screen.
               </p>
             </div>
             <form action={claim} className="space-y-4">
