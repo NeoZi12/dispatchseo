@@ -1,0 +1,56 @@
+---
+title: Every "Ahrefs alternative" list still sells you a seat - here's the one that doesn't
+description: SE Ranking, Mangools, Zapier's own list - all of it prices out as a cheaper paid seat, verified live against each vendor's own pricing page. The self-hosted, agent-driven model none of page 1 names, and what your own backlink index honestly can't do yet.
+date: 2026-07-24
+keyword: ahrefs alternative
+cover: /blog/covers/ahrefs-alternative.webp
+---
+
+Every current "Ahrefs alternative" list - SE Ranking, Mangools, Link Assistant, Zapier, Backlinko, the rest of page 1 - recommends the same shortlist of paid SaaS tools, each one cheaper than Ahrefs but built on the identical model: a seat, a login, a bill that scales with users instead of usage. None of that shortlist names the option that's grown up alongside it - a self-hosted backend an agent drives directly, with no seat to buy at all. This guide prices the current shortlist honestly against each vendor's own live pricing page, then covers the model none of them mention.
+
+> **TL;DR** - Every page-1 "Ahrefs alternative" today is still a paid SaaS seat: Ahrefs itself starts at $129/mo (Lite), SE Ranking's entry tier runs $103-129/mo, and the rest of the shortlist (Mangools, Ubersuggest) is a capped freemium tier built to convert you into one. A different category exists that no page-1 result names - self-hosted, agent-driven. DispatchSEO runs that model day to day: your own Vercel and Supabase accounts plus the Claude Code subscription you likely already pay for, with DataForSEO usage metered per project instead of a per-seat bill. It doesn't replace Ahrefs' crawl-scale backlink index, and this guide shows exactly what that means with this project's own numbers, pulled live.
+
+## The current shortlist, priced live
+
+<AlternativesScorecard />
+
+Ahrefs' own pricing hasn't stood still - Lite is $129/mo now, up from the $99/mo a few older "alternative" posts still quote. SE Ranking's Core tier, the one [seranking.com's own listicle](https://seranking.com/blog/ahrefs-alternatives/) recommends at position 3, works out to $103-129/mo depending on billing - cheaper, but the same shape: a monthly seat, gated features by tier. The freemium row - Mangools, Ubersuggest, and most of the rest of page 1 - genuinely costs nothing to start, with a real, honest catch: the free tier is capped by design, a taste of the product rather than a plan you run a real site on indefinitely.
+
+## Why a Reddit thread outranks every vendor's own page
+
+<SerpCompositionGrid />
+
+Two of page 1's ten organic results are Reddit threads, not vendor content - one of them, "Ahref's cheaper alternative?", sits at position 2, ahead of every paid tool's own marketing page. That's the SERP telling you something a keyword tool can't: people searching this term are price-shopping out loud, comparing notes with strangers instead of trusting a vendor's own "alternatives" page (which, structurally, always ranks its author's product first). Not one of the ten results - forum threads included - names a self-hosted or agent-driven option. The entire conversation, complaints and all, still assumes the answer is which seat to buy next.
+
+## Where a self-hosted, agent-driven setup fits into that table
+
+[DispatchSEO](/blog/self-hosted-ai) fills the row page 1 leaves blank: an SEO backend with no seats, no per-user pricing, and no chat UI to log into. [Claude Code connects to it as an MCP server](/blog/claude-code-mcp-server) the same way any MCP client connects to any server, and does the actual research and writing; the backend's only job is holding state between runs - tracked keywords, rank history, backlink prospects, a suggestions queue the owner approves from a dashboard. None of that asks you to trust a new vendor with a login: the code deploys to infrastructure you already control, and the only recurring bill is DataForSEO usage, metered to what you actually query. [A separate guide covers the free-tier version of this same wiring](/blog/semrush-alternative-free) - GSC, Keyword Planner, and the rest, joined instead of tab-switched, for anyone not ready to pay for DataForSEO access at all.
+
+## Running the same backlink check on this project's own account
+
+<BacklinkRealityCard />
+
+A project's own DataForSEO account sees your own backlinks, not a crawl-scale index of the entire web the way Ahrefs' actual product does - and the numbers above show it plainly rather than dressing it up. Ahrefs didn't build its reputation on pricing; it built it on an index crawled across billions of pages on its own schedule, which is hard to replicate and not something a self-hosted setup should pretend to match. What self-hosting changes is who owns the query layer sitting on top of your own site's data, not the size of the index underneath it.
+
+## When the paid seat is the smarter buy
+
+Stay on a paid tier if the actual job is competitor backlink research at Ahrefs' scale - no self-hosted account, this one included, replicates a crawl index built over a decade of continuous fetching. It's also the wrong trade if you don't already run an agent CLI day to day: standing one up just to dodge a $129/mo bill spends more time than it saves. And if a non-technical teammate needs a dashboard they can drive without touching code, a paid seat delivers that out of the box - a self-hosted backend, by design, hands you the database and the code instead.
+
+## FAQ
+
+**Does Ahrefs have a free tier at all?**
+Yes - Ahrefs Webmaster Tools, and it's a real product: site audit and backlink data for sites you've verified. It stops there; a competitor's backlink profile needs a paid tier.
+
+**How much has Ahrefs' entry price moved?**
+Lite lists at $129/mo as of this pricing check against ahrefs.com/pricing, with Standard at $249/mo and Advanced at $449/mo. Annual billing knocks up to 17% off any of them.
+
+**Does DispatchSEO charge a subscription instead of Ahrefs'?**
+No fee for the software itself, but real costs elsewhere: your own Vercel and Supabase accounts, plus DataForSEO usage billed to your own account and metered to what you query.
+
+**Will a self-hosted backend ever match Ahrefs' backlink index?**
+Not by design. It sees what your own connected account can see; Ahrefs' number comes from crawling the open web continuously, at a scale a single project's account never will.
+
+**Does this only make sense if I'm already running Claude Code?**
+Essentially, yes - the agent-as-driver model assumes an agent CLI already runs other jobs for you. Standing one up solely to dodge a SaaS seat is a worse trade than just paying for the seat.
+
+Page 1 keeps answering a narrower question than the one people are actually typing. "Which Ahrefs alternative" assumes the shape is settled and only the vendor is up for debate; the pricing above, checked live rather than copied from another post, is a fair answer to that narrower question. Whether a seat is the right shape at all is a separate call, and it comes down to one thing: does an agent CLI already sit in your toolchain, doing other work, on a clock you don't have to watch? Where it does, DispatchSEO is what that toolchain does with an SEO backend instead of a subscription. Where it doesn't, buy the seat - the shortlist above names the real ones, priced straight.

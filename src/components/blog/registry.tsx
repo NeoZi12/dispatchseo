@@ -24,6 +24,9 @@ import { Steps, Step } from "./steps";
 import { FreeStackTable } from "./free-stack-table";
 import { StackCostFactRow } from "./stack-cost-fact-row";
 import { WiredLoopFlow } from "./wired-loop-flow";
+import { AlternativesScorecard } from "./alternatives-scorecard";
+import { SerpCompositionGrid } from "./serp-composition-grid";
+import { BacklinkRealityCard } from "./backlink-reality-card";
 import { slugify } from "@/lib/slugify";
 
 // The components every blog MDX file renders with: typographic defaults that
@@ -127,4 +130,7 @@ export const mdxComponents: MDXComponents = {
   FreeStackTable,
   StackCostFactRow,
   WiredLoopFlow,
+  AlternativesScorecard,
+  SerpCompositionGrid,
+  BacklinkRealityCard,
 };
