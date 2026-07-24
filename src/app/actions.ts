@@ -793,7 +793,7 @@ async function createProjectCore(
 
   if (!name) return { error: "Give the project a name." };
   if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain)) {
-    return { error: "That domain does not look right - use something like usagecut.com." };
+    return { error: "That domain does not look right - use something like example.com." };
   }
   // Cloud connects the repo via the GitHub App AFTER creation (wizard c1), so
   // an empty repo is the normal cloud case, not an error.

@@ -277,6 +277,51 @@ export function OnboardingWizard({
     ConnectBuilderTokenState,
     FormData
   >(connectBuilderToken, null);
+  // Finale collapse: poll the same status the checklist reads, so once the
+  // agent is demonstrably working the kickoff commands fold away and a calm
+  // "let your agent work" banner takes over - the dense command list stops
+  // competing for attention (owner feedback: the finale felt overwhelming).
+  const [finaleStatus, setFinaleStatus] = useState<{
+    agentWorking: boolean;
+    buildsActive: boolean;
+  } | null>(null);
+  useEffect(() => {
+    if (screen !== "s5" || !created) return;
+    let stopped = false;
+    const slug = created.slug;
+    async function poll() {
+      try {
+        const res = await fetch(`/api/onboarding/status?slug=${encodeURIComponent(slug)}`, {
+          cache: "no-store",
+        });
+        if (!res.ok || stopped) return;
+        const s = (await res.json()) as {
+          install_progress?: Record<string, string>;
+          open_pr?: unknown;
+          canary_ok?: boolean | null;
+          pipeline_installed?: boolean;
+          builds_active?: boolean;
+        };
+        const progressCount = s.install_progress ? Object.keys(s.install_progress).length : 0;
+        setFinaleStatus({
+          agentWorking: Boolean(
+            progressCount > 0 || s.open_pr || s.canary_ok || s.pipeline_installed,
+          ),
+          buildsActive: Boolean(s.builds_active),
+        });
+      } catch {
+        /* transient - next tick retries */
+      }
+    }
+    void poll();
+    const id = setInterval(poll, 6000);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+    };
+  }, [screen, created]);
+  const agentWorking = finaleStatus?.agentWorking ?? false;
+  const buildsOn = Boolean(finaleStatus?.buildsActive) || Boolean(builderState && "ok" in builderState);
   useEffect(() => {
     if (ghState && "ok" in ghState) setScreen("s4b");
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -364,11 +409,11 @@ export function OnboardingWizard({
             {createState && "error" in createState ? <ErrorLine msg={createState.error} /> : null}
             <label className="block space-y-1.5">
               <span className="text-base font-medium text-neutral-200">Site name</span>
-              <input name="name" required placeholder="UsageCut" autoComplete="off" className={inputClass} />
+              <input name="name" required placeholder="My Site" autoComplete="off" className={inputClass} />
             </label>
             <label className="block space-y-1.5">
               <span className="text-base font-medium text-neutral-200">Your site&apos;s domain</span>
-              <input name="domain" required placeholder="usagecut.com" autoComplete="off" defaultValue={prefillDomain ?? undefined} className={inputClass} />
+              <input name="domain" required placeholder="example.com" autoComplete="off" defaultValue={prefillDomain ?? undefined} className={inputClass} />
               <span className="block text-sm leading-relaxed text-neutral-500">
                 The website whose rankings DispatchSEO will grow and track - not
                 where DispatchSEO is hosted.
@@ -1131,76 +1176,131 @@ export function OnboardingWizard({
             </svg>
           </StepIcon>
           <h2 className="text-2xl font-semibold tracking-tight">You&apos;re live.</h2>
-          <p className="mb-4 text-base text-neutral-400">
-            Two pastes and your Claude Code takes care of the rest.
-          </p>
 
-          <div className="space-y-2">
-            <p className="text-[15px] text-neutral-300">
-              <b className="font-semibold text-neutral-100">1.</b> Connect Claude Code to this
-              project - run this in a terminal,{" "}
-              <b className="font-medium text-neutral-100">inside your site&apos;s repo</b>:
+          {agentWorking ? (
+            // The agent is demonstrably working - a calm, prominent banner
+            // replaces the dense kickoff list so the page stops feeling
+            // overwhelming (owner feedback), with the checklist below carrying
+            // the detail.
+            <div className="mb-4 mt-1 rounded-xl border border-violet-500/30 bg-violet-500/[0.07] px-5 py-5">
+              <p className="text-xl font-semibold text-white">Let your agent work.</p>
+              <p className="mt-2 text-[15px] leading-relaxed text-neutral-300">
+                It&apos;s installing your pipeline and running your first keyword research -
+                typically 10-20 minutes, up to an hour if it&apos;s building your blog from
+                scratch. Keep the Claude Code chat visible: it&apos;ll ask you to approve its
+                plan and merge one PR. The checklist below fills itself in as it goes.
+              </p>
+            </div>
+          ) : (
+            <p className="mb-4 text-base text-neutral-400">
+              Two pastes and your Claude Code takes care of the rest.
             </p>
-            <CopyBox text={created ? mcpAddCommand(created.slug, origin, created.mcpToken) : ""} />
-            <p className="text-[13px] text-neutral-500">
-              Already had Claude Code open in that repo? Close and reopen it after this
-              command - it only loads connections at startup, so an open session can&apos;t
-              see the one you just added.
-            </p>
-          </div>
+          )}
 
-          <div className="mt-4 space-y-2">
-            <p className="text-[15px] text-neutral-300">
-              <b className="font-semibold text-neutral-100">2.</b> Open Claude Code in that repo
-              (type <b className="font-medium text-neutral-100">claude</b>) and paste:
-            </p>
-            <CopyBox emphasis text={INSTALL_COMMAND} />
-          </div>
+          {agentWorking ? (
+            // Steps 1 & 2 already did their job - tuck them into a one-click
+            // details so a dropped session can still recover the commands.
+            <details className="group rounded-xl bg-neutral-900 px-4 py-3">
+              <summary className="flex cursor-pointer select-none items-center justify-between text-sm font-medium text-neutral-400 transition-colors hover:text-neutral-200">
+                <span className="flex items-center gap-2">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden>
+                    <polyline points="20 6 9 17 4 12" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  Agent connected - setup commands (already run)
+                </span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 shrink-0 text-neutral-500 transition-transform group-open:rotate-180" aria-hidden>
+                  <polyline points="6 9 12 15 18 9" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </summary>
+              <div className="mt-3 space-y-4">
+                <div className="space-y-2">
+                  <p className="text-sm text-neutral-400">
+                    <b className="font-medium text-neutral-200">1.</b>{" "}
+                    Connect Claude Code (in your site&apos;s repo):
+                  </p>
+                  <CopyBox text={created ? mcpAddCommand(created.slug, origin, created.mcpToken) : ""} />
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm text-neutral-400">
+                    <b className="font-medium text-neutral-200">2.</b>{" "}
+                    Paste into Claude Code:
+                  </p>
+                  <CopyBox text={INSTALL_COMMAND} />
+                </div>
+              </div>
+            </details>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <p className="text-[15px] text-neutral-300">
+                  <b className="font-semibold text-neutral-100">1.</b>{" "}
+                  Connect Claude Code to this project - run this in a terminal,{" "}
+                  <b className="font-medium text-neutral-100">inside your site&apos;s repo</b>:
+                </p>
+                <CopyBox text={created ? mcpAddCommand(created.slug, origin, created.mcpToken) : ""} />
+                <p className="text-[13px] text-neutral-500">
+                  Already had Claude Code open in that repo? Close and reopen it after this
+                  command - it only loads connections at startup, so an open session can&apos;t
+                  see the one you just added.
+                </p>
+              </div>
 
-          <div className="mt-4 space-y-2 rounded-xl border border-violet-500/25 bg-violet-500/[0.06] px-4 py-3.5 text-sm text-neutral-300">
-            <p>
-              <b className="font-semibold text-neutral-100">Then let the agent work - this is
-              the long part.</b>{" "}
-              Typically 10-20 minutes. If your site has no blog yet, the agent builds your
-              whole content home from scratch, which can stretch toward an hour - it&apos;s
-              building real infrastructure, not stuck.
-            </p>
-            <p>
-              <b className="font-semibold text-neutral-100">It&apos;s a conversation, not
-              fire-and-forget.</b>{" "}
-              Along the way your agent will ask you to approve its plan and merge one PR -
-              keep the chat visible and follow its instructions. The checklist below fills
-              itself in as it works.
-            </p>
-            <p className="text-[13px] text-neutral-500">
-              Needs Claude Code and the GitHub CLI (
-              <code className="font-mono text-neutral-400">gh</code>) installed; safe to
-              re-run any time.
-            </p>
-          </div>
+              <div className="mt-4 space-y-2">
+                <p className="text-[15px] text-neutral-300">
+                  <b className="font-semibold text-neutral-100">2.</b>{" "}
+                  Open Claude Code in that repo (type{" "}
+                  <b className="font-medium text-neutral-100">claude</b>) and paste:
+                </p>
+                <CopyBox emphasis text={INSTALL_COMMAND} />
+              </div>
+
+              <div className="mt-4 space-y-2 rounded-xl border border-violet-500/25 bg-violet-500/[0.06] px-4 py-3.5 text-sm text-neutral-300">
+                <p>
+                  <b className="font-semibold text-neutral-100">Then let the agent work - this is
+                  the long part.</b>{" "}
+                  Typically 10-20 minutes. If your site has no blog yet, the agent builds your
+                  whole content home from scratch, which can stretch toward an hour - it&apos;s
+                  building real infrastructure, not stuck.
+                </p>
+                <p>
+                  <b className="font-semibold text-neutral-100">It&apos;s a conversation, not
+                  fire-and-forget.</b>{" "}
+                  Along the way your agent will ask you to approve its plan and merge one PR -
+                  keep the chat visible and follow its instructions. The checklist below fills
+                  itself in as it works.
+                </p>
+                <p className="text-[13px] text-neutral-500">
+                  Needs Claude Code and the GitHub CLI (
+                  <code className="font-mono text-neutral-400">gh</code>) installed; safe to
+                  re-run any time.
+                </p>
+              </div>
+            </>
+          )}
 
           {isDocker ? (
-            builderState && "ok" in builderState ? (
+            buildsOn ? (
               <div className="mt-4 rounded-xl border border-emerald-500/25 bg-emerald-500/[0.06] px-4 py-3.5 text-sm text-neutral-300">
                 <b className="font-semibold text-emerald-400">Automatic builds are on.</b> Your
-                token is saved (encrypted). The builder picks it up within a few minutes - the
-                &quot;Automatic builds&quot; row below turns green once it checks in.
+                token is saved (encrypted). The &quot;Automatic builds&quot; row below turns
+                green once the builder checks in.
               </div>
             ) : (
               <div className="mt-4 space-y-3">
                 <p className="text-[15px] text-neutral-300">
-                  <b className="font-semibold text-neutral-100">3.</b> Turn on automatic builds.
-                  One time:
+                  <b className="font-semibold text-neutral-100">3.</b>{" "}
+                  Turn on automatic builds. One time:
                 </p>
                 <p className="text-sm text-neutral-400">
-                  <b className="font-medium text-neutral-200">a.</b> On your own computer, run this
-                  and copy the <code className="font-mono text-neutral-300">sk-ant-oat...</code>{" "}
-                  token it prints (it opens a browser login):
+                  <b className="font-medium text-neutral-200">a.</b>{" "}
+                  On your own computer, run this and copy the{" "}
+                  <code className="font-mono text-neutral-300">sk-ant-oat...</code> token it
+                  prints (it opens a browser login):
                 </p>
                 <CopyBox text="claude setup-token" />
                 <p className="text-sm text-neutral-400">
-                  <b className="font-medium text-neutral-200">b.</b> Paste it here - that&apos;s it,
-                  no terminal or files to touch:
+                  <b className="font-medium text-neutral-200">b.</b>{" "}
+                  Paste it here - that&apos;s it, no terminal or files to touch:
                 </p>
                 <form action={builderAction} className="space-y-2.5">
                   {builderState && "error" in builderState ? (

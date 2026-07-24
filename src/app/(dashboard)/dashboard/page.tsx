@@ -594,6 +594,12 @@ export default async function Home() {
           hint={`How ${project.domain} is doing, what's running on its own, and what needs you.`}
         />
         {process.env.POSTGREST_URL ? <DockerAccessTip /> : null}
+        {/* First-run background work (research / rank check) - prominent near
+            the top so a fresh owner sees "it's filling in", not a dead page.
+            Self-hides once the queue and rankings land. */}
+        {pipelineInstalled ? (
+          <FirstRunBackground slug={project.slug} cloud={isCloudMode()} />
+        ) : null}
         {cronIssues.length > 0 ? (
           <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm">
             <p className="font-medium text-red-200">Background jobs need attention</p>
@@ -938,10 +944,6 @@ export default async function Home() {
         </div>
       </section>
       ) : null}
-
-      {/* Background first runs (research / rank check) - the wizard tracks
-          only owner actions, so the machine work shows here, self-hiding. */}
-      {pipelineInstalled ? <FirstRunBackground slug={project.slug} cloud={isCloudMode()} /> : null}
 
       {/* ---------- THE GRAPH ---------- */}
       <section className="space-y-3">

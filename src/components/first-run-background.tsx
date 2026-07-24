@@ -89,14 +89,15 @@ export function FirstRunBackground({ slug, cloud = false }: { slug: string; clou
         : "First rank check starts once research picks keywords";
 
   return (
-    <div className="flex items-center gap-2.5 rounded-xl border border-neutral-800 bg-neutral-900/60 px-4 py-3">
+    <div className="flex items-start gap-3 rounded-xl border border-violet-500/30 bg-violet-500/[0.07] px-4 py-3.5">
       <span
-        className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-neutral-600 border-t-neutral-200"
+        className="mt-0.5 h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-violet-400/40 border-t-violet-300"
         aria-hidden
       />
-      <p className="text-sm text-neutral-300">
-        <b className="font-medium text-neutral-100">Working in the background:</b> {line}. Nothing
-        for you to do - this line disappears on its own.
+      <p className="text-[15px] leading-relaxed text-neutral-200">
+        <b className="font-semibold text-white">Researching in the background - filling your dashboard.</b>{" "}
+        {line}. Nothing for you to do: your queue, rankings, and stats fill in on their own, and this
+        banner disappears when they do.
       </p>
     </div>
   );
