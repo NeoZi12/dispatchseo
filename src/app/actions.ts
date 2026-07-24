@@ -969,6 +969,11 @@ export async function wizardCreateProject(
   await assertAuthed();
   const result = await createProjectCore(formData);
   if ("error" in result) return result;
+  // The landing hero stashes the typed domain in pending_domain so step 1
+  // prefills once - but it's a 7-day cookie and was never cleared, so it
+  // lingered and pre-filled a STALE domain on every later signup. The site now
+  // exists; drop it so the next signup starts with a clean field.
+  (await cookies()).delete("pending_domain");
   return { ok: true, ...result };
 }
 

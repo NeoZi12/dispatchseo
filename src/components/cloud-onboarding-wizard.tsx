@@ -332,14 +332,14 @@ export function CloudOnboardingWizard(props: {
             {createState && "error" in createState ? <ErrorLine msg={createState.error} /> : null}
             <label className="block space-y-1.5">
               <span className="text-base font-medium text-neutral-200">Site name</span>
-              <input name="name" required placeholder="UsageCut" autoComplete="off" className={inputClass} />
+              <input name="name" required placeholder="Acme" autoComplete="off" className={inputClass} />
             </label>
             <label className="block space-y-1.5">
               <span className="text-base font-medium text-neutral-200">Your site&apos;s domain</span>
               <input
                 name="domain"
                 required
-                placeholder="usagecut.com"
+                placeholder="acme.com"
                 autoComplete="off"
                 defaultValue={prefillDomain ?? undefined}
                 className={inputClass}
