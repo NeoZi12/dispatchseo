@@ -485,22 +485,27 @@ async function pipelineHeartbeatAlerts(
       if (alreadyReported.has(job)) continue; // window already covers it
       // Wired = the install stamp, or a conventions row for installs that
       // predate migration 0018 - the same signals the Home install card uses.
-      let wired = p.pipeline_installed_at != null;
-      if (!wired) {
+      // Track WHEN it was wired: the grace window below needs a clock even
+      // while the install stamp is still null. Setup writes the conventions
+      // row BEFORE mark_pipeline_installed stamps, so there's a normal
+      // mid-setup window where a project is conventions-wired but unstamped -
+      // without a grace clock there, the "never reported" alarm false-fires
+      // during setup (exactly when we invite the owner to look around).
+      let wiredAt: string | null = (p.pipeline_installed_at as string | null) ?? null;
+      if (wiredAt == null) {
         const { data: conv, error: convErr } = await db()
           .from("conventions")
-          .select("project_id")
+          .select("updated_at")
           .eq("project_id", p.id)
           .maybeSingle();
-        wired = !convErr && conv != null;
+        if (convErr || conv == null) continue;
+        wiredAt = (conv.updated_at as string | null) ?? null;
       }
-      if (!wired) continue;
       // A fresh install's first daily heartbeat can be up to ~28h away
-      // (04:30 UTC schedule); give it 48h before "never reported" alarms.
-      if (
-        p.pipeline_installed_at != null &&
-        Date.now() - new Date(p.pipeline_installed_at as string).getTime() < 48 * 3600_000
-      ) {
+      // (04:30 UTC schedule); give it 48h from whenever the pipeline was wired
+      // (install stamp, else the conventions row) before "never reported"
+      // alarms. A null wiredAt can't be aged - treat it as too fresh to alarm.
+      if (wiredAt == null || Date.now() - new Date(wiredAt).getTime() < 48 * 3600_000) {
         continue;
       }
       const { data: hb, error: hbErr } = await db()
