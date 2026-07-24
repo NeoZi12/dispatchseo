@@ -61,7 +61,14 @@ export type InstallResult = {
 
 // The whole install, idempotent - c5 fires it on mount and re-fires it on
 // every resume, so each step must tolerate having already happened.
-export async function installPipelineToRepo(project: GhProject): Promise<InstallResult> {
+export async function installPipelineToRepo(
+  project: GhProject,
+  // dispatchSetup:false is the UPDATE path (cloud auto-refresh of the pack):
+  // rewrite the pack files but DON'T re-fire the one-time seo-setup run - the
+  // project is already personalized, and re-running it would burn a Claude run
+  // redoing done work. Defaults true for the install path.
+  opts: { dispatchSetup?: boolean } = {},
+): Promise<InstallResult> {
   const fail = (error: string): InstallResult => ({
     ok: false,
     error,
@@ -202,7 +209,7 @@ export async function installPipelineToRepo(project: GhProject): Promise<Install
   // wizard/Home nudge instead.
   const claudeTokenPresent = await hasRepoSecret(project, "CLAUDE_CODE_OAUTH_TOKEN");
   let setupDispatched = false;
-  if (claudeTokenPresent && mode !== "pr") {
+  if (opts.dispatchSetup !== false && claudeTokenPresent && mode !== "pr") {
     // Don't stack a second setup on top of one already running. The wizard
     // finale re-fires runPipelineInstall on every mount/resume (minutes apart),
     // and a setup run takes 4-7 min - without this guard 2-3 overlapping

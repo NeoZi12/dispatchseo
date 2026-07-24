@@ -1,6 +1,7 @@
+import { after } from "next/server";
 import { db } from "@/lib/db";
 import { checkCron } from "@/lib/cron-auth";
-import { reportCronRun } from "@/lib/cron-alerts";
+import { reportCronRun, isPipelineUpdateNotice } from "@/lib/cron-alerts";
 import { getProjectByToken, listProjectsChecked } from "@/lib/projects";
 import { missingMigrations } from "@/lib/schema-check";
 import { isCloudMode } from "@/lib/cloud";
@@ -47,12 +48,16 @@ export async function GET(req: Request): Promise<Response> {
   // poll mode); its job name gets suffixed with the project slug so two
   // projects reporting "seo-daily" never overwrite each other's state.
   let projectSuffix = "";
+  // Hoisted so the report path below can act on the reporting project (cloud
+  // pack auto-update). Null for the owner-token smoke tests (unscoped jobs).
+  let reporterProject: Awaited<ReturnType<typeof getProjectByToken>> | null = null;
   const denied = await checkCron(req);
   if (denied) {
     const auth = req.headers.get("authorization") ?? "";
     const token = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length).trim() : "";
     const project = token ? await getProjectByToken(token) : null;
     if (!project) return denied;
+    reporterProject = project;
     projectSuffix = `--${project.slug}`;
   }
 
@@ -91,6 +96,31 @@ export async function GET(req: Request): Promise<Response> {
   if (failMsg) {
     const result = { sha: liveSha || null, error: failMsg.slice(0, 300) };
     await reportCronRun(job, result, true);
+    // Cloud auto-update: a "pipeline update available" report means the repo's
+    // pack is a version behind ours. On cloud WE host the pipeline, so this is
+    // ours to fix - push the current pack through the GitHub App instead of
+    // showing the customer a "paste this into Claude Code" prompt (that's the
+    // self-host path; self-host has no App). Fire-and-forget via after() so the
+    // report response stays instant. dispatchSetup:false - the project is
+    // already set up, an update only refreshes the workflow shims; the pack is
+    // designed so re-applying never clobbers repo-owned adaptations
+    // (publish-paths etc. are never shipped in the pack). The next daily
+    // version check then reports ok and the notice clears on its own.
+    if (
+      isCloudMode() &&
+      reporterProject?.github_installation_id &&
+      isPipelineUpdateNotice(job, [result.error])
+    ) {
+      const proj = reporterProject;
+      after(async () => {
+        try {
+          const { installPipelineToRepo } = await import("@/lib/pipeline-install");
+          await installPipelineToRepo(proj, { dispatchSetup: false });
+        } catch (e) {
+          console.error(`[deploy-check] cloud pack auto-update failed for ${proj.slug}:`, e);
+        }
+      });
+    }
     return Response.json({ recorded: result.error, job });
   }
   if (url.searchParams.get("ok")) {

@@ -633,27 +633,42 @@ export default async function Home() {
         {updateNotices.length > 0 ? (
           <div className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm">
             <p className="font-medium text-sky-200">Pipeline update available</p>
-            <p className="mt-1 text-sky-300/90">
-              The SEO workflows in{" "}
-              <span className="font-mono">{project.github_repo ?? "your site repo"}</span> are a
-              version behind this backend. Everything keeps publishing on the current version -
-              apply the update whenever convenient.
-              {updateNotices.map((h) => (
-                <span key={h.job} className="ml-2 whitespace-nowrap">
-                  <CronFixedButton job={h.job} label="mark applied" tone="sky" />
-                </span>
-              ))}
-            </p>
-            <div className="mt-3 flex flex-wrap items-center gap-3">
-              <CopyButton
-                text={buildPipelineUpdatePrompt(project)}
-                label="Copy update prompt for Claude Code"
-              />
-              <p className="text-xs text-sky-300/70">
-                Paste it into Claude Code in the site repo - it applies the current pack, and this
-                notice clears after the next nightly check.
+            {isCloudMode() ? (
+              // Cloud hosts the pipeline: the backend pushes the pack update
+              // through the GitHub App automatically (see the deploy-check
+              // report handler). No customer action - just a heads-up that it's
+              // happening; the notice clears itself after the next check.
+              <p className="mt-1 text-sky-300/90">
+                The SEO workflows in{" "}
+                <span className="font-mono">{project.github_repo ?? "your site repo"}</span> are a
+                version behind - we&apos;re applying the update for you automatically through the
+                DispatchSEO GitHub App. Nothing to do; this clears after the next check.
               </p>
-            </div>
+            ) : (
+              <>
+                <p className="mt-1 text-sky-300/90">
+                  The SEO workflows in{" "}
+                  <span className="font-mono">{project.github_repo ?? "your site repo"}</span> are a
+                  version behind this backend. Everything keeps publishing on the current version -
+                  apply the update whenever convenient.
+                  {updateNotices.map((h) => (
+                    <span key={h.job} className="ml-2 whitespace-nowrap">
+                      <CronFixedButton job={h.job} label="mark applied" tone="sky" />
+                    </span>
+                  ))}
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <CopyButton
+                    text={buildPipelineUpdatePrompt(project)}
+                    label="Copy update prompt for Claude Code"
+                  />
+                  <p className="text-xs text-sky-300/70">
+                    Paste it into Claude Code in the site repo - it applies the current pack, and
+                    this notice clears after the next nightly check.
+                  </p>
+                </div>
+              </>
+            )}
           </div>
         ) : null}
       </div>
