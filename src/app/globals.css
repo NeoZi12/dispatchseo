@@ -66,3 +66,43 @@
     opacity: 0.7;
   }
 }
+
+/* Indeterminate top progress bar: shown while a project switch is in flight
+   (a server round-trip that writes the cookie + a router.refresh that re-fetches
+   every screen). That's the ~2s the page would otherwise sit frozen with no
+   feedback, so a sweeping bar signals "loading". A ~33%-wide segment sweeps
+   across the full width and repeats. */
+@keyframes dispatch-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+.dispatch-sweep {
+  animation: dispatch-sweep 1.1s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Keep a visible-but-calm pulse instead of a fast sweep. */
+  .dispatch-sweep {
+    animation: dispatch-dot 1.4s ease-in-out infinite;
+    transform: none;
+    width: 100%;
+  }
+}
+
+/* Spinner for the switcher button (replaces the chevron while pending). */
+@keyframes dispatch-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.dispatch-spin {
+  animation: dispatch-spin 0.7s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dispatch-spin {
+    animation-duration: 1.4s;
+  }
+}
