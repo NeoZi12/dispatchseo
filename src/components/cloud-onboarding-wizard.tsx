@@ -455,11 +455,14 @@ export function CloudOnboardingWizard(props: {
             nothing extra to pay, and nothing is billed by DispatchSEO.
           </p>
           <div className="rounded-xl bg-neutral-900 p-4">
-            <p className="mb-2 text-base font-medium text-neutral-200">Run this and copy what it prints</p>
+            <p className="mb-2 text-base font-medium text-neutral-200">
+              Run this in a terminal and copy what it prints
+            </p>
             <CopyBox text="claude setup-token" />
             <p className="mt-3 text-sm leading-relaxed text-neutral-400">
-              It opens a browser login, then prints a token starting with{" "}
-              <code className="font-mono text-neutral-300">sk-ant-oat...</code>. Paste it below.
+              Open a terminal on your computer — the macOS <b className="font-medium text-neutral-300">Terminal</b> app,
+              or the terminal panel in VS Code — and run the command above. It opens a browser login, then prints a
+              token starting with <code className="font-mono text-neutral-300">sk-ant-oat...</code>. Paste it below.
             </p>
             <form action={claudeAction} className="mt-3.5 space-y-2.5">
               {claudeState && "error" in claudeState ? <ErrorLine msg={claudeState.error} /> : null}
