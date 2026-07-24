@@ -5,6 +5,7 @@ import { DispatchMark } from "@/components/logo";
 import { FeatureShowcase } from "./feature-showcase";
 import { DomainCta } from "./domain-cta";
 import { PixelDispatcher } from "@/components/pixel-dispatcher";
+import { WhyCard } from "@/components/why-card";
 import "./landing.css";
 
 // Public landing page - cloud deployment only. Self-hosted installs never set
@@ -23,7 +24,7 @@ const GITHUB_URL = "https://github.com/NeoZi12/dispatchseo";
 const DOCS_URL = "/docs";
 
 export const metadata: Metadata = {
-  title: "DispatchSEO — Automate your SEO with Claude Code",
+  title: "DispatchSEO - Automate your SEO with Claude Code",
   description:
     "Claude Code researches keywords, writes guides, builds interactive tools, and tracks your ranks automatically. Every piece is a pull request you approve. Open source, free to self-host.",
 };
@@ -356,6 +357,9 @@ export default async function LandingPage() {
           </div>
         </div>
       </footer>
+
+      {/* ==================== FLOATING MASCOT EXPLAINER ==================== */}
+      <WhyCard />
     </div>
   );
 }

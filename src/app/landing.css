@@ -15,6 +15,8 @@
   --txt: #f4f4f5;
   --vio: #8b5cf6;
   --vio2: #a78bfa;
+  --clay: #d97757;
+  --clay2: #e08a68;
   --up: #4ade80;
   --disp: var(--font-jakarta), system-ui, sans-serif;
   --body: var(--font-dm), system-ui, sans-serif;
@@ -279,4 +281,71 @@ html:has(.ld) { scroll-behavior: smooth; }
   .ld .foot-grid { grid-template-columns: 1fr 1fr; }
   .ld .email-group { flex-direction: column; gap: 8px; border-radius: 14px; }
   .ld .email-group input[type="email"] { padding: 10px 14px; }
+}
+
+/* ---------- floating "why us" mascot explainer ---------- */
+/* Bottom-right, but deliberately NOT a round chat launcher (which reads as
+   live chat and baits the visitor): the resting state is a tilted speech-note
+   with the pixel agent peeking over its edge and a visible "Why DispatchSEO?"
+   label, so it's unmistakably a mascot aside. z-index sits above the sticky
+   nav (50). */
+.ld .why-fab { position: fixed; right: 22px; bottom: 22px; z-index: 60; display: flex; flex-direction: column; align-items: flex-end; }
+.ld .why-fab.is-hidden { opacity: 0; pointer-events: none; transform: translateY(12px); transition: opacity 0.3s ease, transform 0.3s ease; }
+
+/* resting tab: a slightly-tilted note with a speech tail */
+.ld .why-tab { position: relative; display: flex; align-items: center; gap: 12px; padding: 12px 15px 12px 14px; background: var(--card); border: 1.5px solid var(--line3); border-radius: 16px 16px 4px 16px; box-shadow: 0 14px 34px -12px rgba(0, 0, 0, 0.7); cursor: pointer; font-family: var(--body); color: var(--txt); transform: rotate(-1.4deg); transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease; }
+.ld .why-tab:hover { transform: rotate(0deg) translateY(-2px); border-color: var(--clay); box-shadow: 0 20px 44px -14px rgba(0, 0, 0, 0.75); }
+.ld .why-tab:focus-visible { outline: 2px solid var(--vio2); outline-offset: 3px; }
+/* speech tail hanging off the bottom-right corner */
+.ld .why-tab::after { content: ""; position: absolute; right: 22px; bottom: -7px; width: 13px; height: 13px; background: var(--card); border-right: 1.5px solid var(--line3); border-bottom: 1.5px solid var(--line3); border-bottom-right-radius: 3px; transform: rotate(45deg); transition: border-color 0.16s ease; }
+.ld .why-tab:hover::after { border-color: var(--clay); }
+
+/* mascot face peeking over the top-left edge of the note */
+.ld .why-tab-face { width: 34px; height: auto; flex-shrink: 0; margin-top: 0; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.4)); animation: why-bob 3.4s ease-in-out infinite; }
+@keyframes why-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .ld .why-tab-face { animation: none; } }
+
+.ld .why-tab-text { display: flex; flex-direction: column; line-height: 1.15; text-align: left; }
+.ld .why-tab-eyebrow { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--clay2); margin-bottom: 3px; }
+.ld .why-tab-title { font-family: var(--disp); font-weight: 800; font-size: 15px; color: #fff; letter-spacing: -0.01em; }
+.ld .why-tab-chev { width: 16px; height: 16px; color: var(--dim); flex-shrink: 0; transition: color 0.16s ease, transform 0.16s ease; }
+.ld .why-tab:hover .why-tab-chev { color: var(--clay); transform: translateX(2px); }
+
+/* the popped card */
+.ld .why-pop { position: absolute; bottom: calc(100% + 16px); right: 0; width: min(342px, calc(100vw - 32px)); background: var(--card); border: 1px solid var(--line2); border-radius: 20px; overflow: hidden; box-shadow: 0 30px 70px -24px rgba(0, 0, 0, 0.85); transform-origin: bottom right; animation: why-pop-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both; }
+@keyframes why-pop-in { from { opacity: 0; transform: translateY(10px) scale(0.94); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@media (prefers-reduced-motion: reduce) { .ld .why-pop { animation: none; } }
+
+.ld .why-x { position: absolute; top: 10px; right: 10px; z-index: 3; width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 9px; background: rgba(10, 10, 12, 0.55); color: var(--mut); cursor: pointer; backdrop-filter: blur(4px); transition: background 0.14s ease, color 0.14s ease; }
+.ld .why-x:hover { background: rgba(10, 10, 12, 0.82); color: #fff; }
+.ld .why-x:focus-visible { outline: 2px solid var(--vio2); outline-offset: 2px; }
+.ld .why-x svg { width: 16px; height: 16px; }
+
+/* the mascot is the star: full pixel scene as an animated diorama banner */
+.ld .why-diorama { position: relative; padding: 16px 20px 12px; background: radial-gradient(120% 150% at 50% 0%, #16121f 0%, #0a0a0c 72%); border-bottom: 1px solid var(--line); overflow: hidden; }
+.ld .why-diorama::before { content: ""; position: absolute; inset: -30% 8% 24%; background: radial-gradient(ellipse at center, rgba(139, 92, 246, 0.24), transparent 70%); filter: blur(16px); pointer-events: none; }
+.ld .why-stage { position: relative; width: 100%; }
+
+.ld .why-body { padding: 20px 22px 22px; }
+.ld .why-title { font-family: var(--disp); font-size: 21px; font-weight: 800; letter-spacing: -0.015em; color: #fff; margin-bottom: 8px; }
+.ld .why-lead { font-size: 14px; line-height: 1.55; color: var(--mut); margin-bottom: 18px; }
+.ld .why-lead b { color: var(--txt); }
+.ld .why-points { list-style: none; display: flex; flex-direction: column; gap: 13px; margin-bottom: 20px; }
+.ld .why-points li { display: flex; gap: 11px; font-size: 13.5px; line-height: 1.5; color: var(--mut); }
+.ld .why-pt { display: flex; flex-direction: column; gap: 3px; }
+.ld .why-pt b { color: #fff; font-weight: 700; font-size: 14px; letter-spacing: -0.005em; }
+.ld .why-pt-body { color: var(--mut); }
+.ld .why-points b { color: var(--txt); font-weight: 700; }
+.ld .why-ic { flex-shrink: 0; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 8px; background: rgba(217, 119, 87, 0.13); color: var(--clay2); margin-top: 1px; }
+.ld .why-ic svg { width: 15px; height: 15px; }
+
+.ld .why-cta { display: inline-flex; align-items: center; gap: 6px; font-family: var(--disp); font-weight: 700; font-size: 14px; color: var(--bg); text-decoration: none; padding: 10px 16px; border-radius: 10px; background: var(--clay); transition: transform 0.14s ease, box-shadow 0.14s ease, background 0.14s ease; }
+.ld .why-cta:hover { transform: translateY(-1px); background: var(--clay2); box-shadow: 0 10px 24px -8px rgba(217, 119, 87, 0.5); }
+.ld .why-cta:focus-visible { outline: 2px solid var(--vio2); outline-offset: 3px; }
+.ld .why-cta svg { width: 15px; height: 15px; transition: transform 0.14s ease; }
+.ld .why-cta:hover svg { transform: translateX(2px); }
+
+@media (max-width: 600px) {
+  .ld .why-fab { right: 14px; bottom: 14px; }
+  .ld .why-tab-title { font-size: 14px; }
 }
