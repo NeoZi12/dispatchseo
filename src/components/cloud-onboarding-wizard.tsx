@@ -644,17 +644,9 @@ export function CloudOnboardingWizard(props: {
           </p>
           {modeChoice === "auto" ? (
             <p className="mt-3 rounded-lg border border-emerald-400/20 bg-emerald-400/5 p-3 text-sm text-neutral-300">
-              One tip for automatic mode: after setup, spend two minutes on the{" "}
-              <a
-                href="/docs/troubleshooting#get-emailed-when-something-breaks"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-violet-400 underline underline-offset-2 hover:text-violet-300"
-              >
-                failure email
-              </a>
-              . When everything runs itself, nobody opens the dashboard on a normal day - the email
-              is what tells you if a job ever breaks.
+              In automatic mode nobody opens the dashboard on a normal day — so if a job ever breaks,
+              <b className="font-medium text-neutral-100"> we email you</b> at your account address
+              automatically. Nothing to set up; it&apos;s part of your plan.
             </p>
           ) : null}
           <div className="mt-5 flex items-center justify-end">

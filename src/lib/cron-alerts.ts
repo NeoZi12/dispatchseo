@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { isTransientErrorMessage } from "./dataforseo";
+import { isCloudMode } from "./cloud";
 
 // Cron failure alerts (LATER.md gap A4). Every cron route calls
 // reportCronRun() with its result JSON right before responding; this module
@@ -177,6 +178,70 @@ async function sendFailureEmail(job: string, errors: string[]): Promise<boolean>
   return true;
 }
 
+// Cloud bundle: the project owner behind a per-tenant job (job names carry the
+// slug, e.g. seo-daily--acme), resolved to their account email so a hands-off
+// CUSTOMER is alerted when their own automation breaks - the cloud answer to
+// self-host's BYO email. Cloud only: db() is the supabase-js service client
+// there (auth.admin available); self-host's single owner IS the operator.
+async function ownerContactForJob(
+  job: string,
+): Promise<{ email: string; domain: string | null } | null> {
+  const slug = jobProjectSlug(job);
+  if (!slug) return null;
+  try {
+    const { data: proj } = await db()
+      .from("projects")
+      .select("owner_user_id, domain")
+      .eq("slug", slug)
+      .maybeSingle();
+    const ownerId = (proj as { owner_user_id?: string | null } | null)?.owner_user_id;
+    if (!ownerId) return null;
+    const { data } = await db().auth.admin.getUserById(ownerId);
+    const email = data?.user?.email;
+    return email
+      ? { email, domain: (proj as { domain?: string | null }).domain ?? null }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+// The customer-facing failure alert: friendlier than the operator's ALERT_EMAIL
+// copy (no Vercel/Actions internals), pointing at their own dashboard.
+async function sendCustomerFailureEmail(
+  to: string,
+  domain: string | null,
+  job: string,
+  errors: string[],
+): Promise<boolean> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) return false;
+  const from = process.env.ALERT_EMAIL_FROM ?? "DispatchSEO <onboarding@resend.dev>";
+  const site = domain ?? "your site";
+  // Strip the "slug: " prefix collectErrors adds, for a clean customer line.
+  const list = errors
+    .slice(0, 8)
+    .map((e) => `- ${e.replace(/^[^:]+:\s*/, "")}`)
+    .join("\n");
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      from,
+      to,
+      subject: `DispatchSEO: a job needs attention on ${site}`,
+      text:
+        `Heads up - one of the automated jobs for ${site} (${baseJobName(job)}) just failed, ` +
+        `so it may have paused.\n\n${list || "(no detail captured)"}\n\n` +
+        `Most issues clear on their own on the next scheduled run. Open your DispatchSEO ` +
+        `dashboard for the latest status - if it keeps failing, just reply to this email.`,
+    }),
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) throw new Error(`Resend HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return true;
+}
+
 // The one call every cron route makes. Never throws.
 export async function reportCronRun(
   job: string,
@@ -227,11 +292,28 @@ export async function reportCronRun(
         alreadyEmailed = Boolean(recent && recent.length > 0);
       }
       if (!alreadyEmailed && persistedAcrossRuns) {
+        let sent = false;
         try {
-          if (await sendFailureEmail(job, errors)) emailedAt = new Date().toISOString();
+          if (await sendFailureEmail(job, errors)) sent = true;
         } catch (e) {
-          console.error(`[cron-alerts] ${job} failure email failed:`, e);
+          console.error(`[cron-alerts] ${job} operator failure email failed:`, e);
         }
+        // Cloud bundle: also alert the CUSTOMER (project owner's account email,
+        // from our Resend) so a hands-off owner hears their own job broke
+        // without setting up any email of their own. Per-tenant debounce comes
+        // free - the job name carries the slug, so cron_runs.emailed_at is
+        // already per-tenant.
+        if (isCloudMode()) {
+          try {
+            const owner = await ownerContactForJob(job);
+            if (owner && (await sendCustomerFailureEmail(owner.email, owner.domain, job, errors))) {
+              sent = true;
+            }
+          } catch (e) {
+            console.error(`[cron-alerts] ${job} customer failure email failed:`, e);
+          }
+        }
+        if (sent) emailedAt = new Date().toISOString();
       }
     }
 
