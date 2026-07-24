@@ -9,11 +9,13 @@ import { DispatchMark } from "@/components/logo";
 // it gets to say so plainly.
 const SITE_URL = "https://dispatchseo.com/";
 
+// Keep each label short enough to sit on ONE row in the narrow rail - benefit
+// first, no wrapping.
 const TICKS = [
-  "Keyword research on autopilot",
-  "Guides & tools shipped as PRs you approve",
-  "Daily rank + Search Console tracking",
-  "Open source, free to self-host",
+  "Keyword research",
+  "Fresh content weekly",
+  "Daily rank tracking",
+  "Free & open source",
 ];
 
 function CheckIcon({ className }: { className?: string }) {
@@ -46,9 +48,9 @@ export function SideAd({ className = "" }: { className?: string }) {
       </p>
       <ul className="mt-4 flex flex-col gap-2.5">
         {TICKS.map((tick) => (
-          <li key={tick} className="flex items-start gap-2.5">
-            <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-violet-400" />
-            <span className="text-[13px] leading-snug text-neutral-300">{tick}</span>
+          <li key={tick} className="flex items-center gap-2.5">
+            <CheckIcon className="h-4 w-4 shrink-0 text-violet-400" />
+            <span className="whitespace-nowrap text-[13px] text-neutral-300">{tick}</span>
           </li>
         ))}
       </ul>
