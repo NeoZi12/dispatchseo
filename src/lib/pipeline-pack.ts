@@ -15,17 +15,28 @@ export type PackFile = { path: string; content: string };
 
 // Where the pack's workflows call home, in priority order: APP_URL env
 // (explicit override) -> the URL captured at claim time (self-hosts get the
-// right domain with zero configuration) -> Vercel's own production URL env
-// (present on every Vercel deploy, covers pre-0027 claims) -> the cloud
-// domain as the true last resort. Before this chain, every self-hosted
-// deploy that didn't discover the undocumented APP_URL shipped pipelines
-// wired to the cloud backend - instant 401s on their very first CI run.
+// right domain with zero configuration) -> the cloud domain as the true last
+// resort. We deliberately do NOT fall back to VERCEL_PROJECT_PRODUCTION_URL:
+// that env holds the project's INTERNAL *.vercel.app alias, not the custom
+// domain, so whenever APP_URL and the stored app_url were both empty it
+// silently stamped the internal alias (e.g. dispatchseo-test4.vercel.app)
+// into every generated pack, password-reset link, and onboarding URL - the
+// cloud's own production instance leaked its alias exactly this way
+// (2026-07-24). A public URL must come from explicit config; guessing it from
+// Vercel's internal name is worse than the honest, visible default below.
 export async function backendBaseUrl(): Promise<string> {
   if (process.env.APP_URL) return process.env.APP_URL;
   const stored = (await instanceSettings())?.app_url;
   if (stored) return stored;
-  const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL;
-  if (vercel) return `https://${vercel}`;
+  // Neither source set. On the hosted cloud this never fires (APP_URL is set);
+  // on a self-host it means the owner skipped APP_URL (see content/docs/vps).
+  // Warn loudly instead of silently guessing, then fall back to the cloud
+  // domain rather than an internal Vercel alias.
+  console.warn(
+    "[pipeline-pack] No public backend URL configured: APP_URL is unset and no " +
+      "app_url was stored at claim time. Defaulting to https://dispatchseo.com. " +
+      "Self-hosted instances MUST set APP_URL to their own domain.",
+  );
   return "https://dispatchseo.com";
 }
 
