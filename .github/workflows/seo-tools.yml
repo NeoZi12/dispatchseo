@@ -64,10 +64,16 @@ jobs:
           if [ "$open" = "0" ]; then
             code=$(curl -s -o /tmp/mode.json -w "%{http_code}" --max-time 30 \
               -H "Authorization: Bearer $SEO_MCP_API_KEY" \
-              ${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}/api/project-mode)
+              https://dispatchseo.com/api/project-mode) || code=unreachable
             if [ "$code" = "200" ] && [ "$(jq -r '.automations.auto_build_tools' /tmp/mode.json)" = "false" ]; then
               echo "Tool builds are toggled off on the dashboard - skipping. The suggestion stays approved."
               open=paused
+            elif [ "$code" = "unreachable" ] || [ "$code" = "000" ] || [ "$code" = "502" ] || [ "$code" = "503" ] || [ "$code" = "504" ]; then
+              # Self-hosted backends reboot (kernel updates, docker restarts).
+              # Unreachable is a delay, not a failure - the later scheduled
+              # attempt and the in-stack builder both cover this window.
+              echo "Backend unreachable right now (rebooting?) - deferring to the next scheduled attempt."
+              open=defer
             elif [ "$code" != "200" ] && [ "$code" != "404" ]; then
               echo "::error::project-mode endpoint returned HTTP $code"; exit 1
             fi
@@ -119,9 +125,9 @@ jobs:
       - name: Set up pnpm
         if: steps.guard.outputs.open == '0'
         # No version input on purpose: pnpm/action-setup reads the exact pin
-        # from package.json's packageManager field, so CI always runs the same
-        # pnpm as dev machines. (A version input alongside packageManager
-        # hard-errors on any mismatch - plain string compare, not semver.)
+        # from package.json's packageManager field (pnpm@11.5.2), so CI always
+        # runs the same pnpm as dev machines. (A version input alongside
+        # packageManager hard-errors on any mismatch - plain string compare.)
         uses: pnpm/action-setup@v4
 
       - name: Set up Node
@@ -144,6 +150,8 @@ jobs:
         if: steps.guard.outputs.open == '0'
         uses: anthropics/claude-code-action@v1
         with:
+          # Cloud fires this as the DispatchSEO GitHub App (a Bot actor), and the App also authored the workflow commits, so scheduled runs are bot-actored too. Every trigger here needs repo write access, so allowing bots is safe; without this claude-code-action aborts with "non-human actor".
+          allowed_bots: "*"
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # Standard workflow token as input so the action skips the Claude
           # GitHub App exchange (same pattern as seo-daily.yml).
@@ -162,6 +170,10 @@ jobs:
           DATAFORSEO_PASSWORD: ${{ secrets.DATAFORSEO_PASSWORD }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MCP_TIMEOUT: "120000"
+          # Placeholder public env so `next build` never trips on missing vars.
+          NEXT_PUBLIC_SUPABASE_URL: "https://placeholder.supabase.co"
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder-anon-key"
+          NEXT_PUBLIC_SITE_URL: "https://dispatchseo.com"
 
       # Phone the outcome home: failures land on the DispatchSEO dashboard
       # banner + alert email (same rails as the crons); successes clear any
@@ -170,17 +182,16 @@ jobs:
         if: success() || failure()
         env:
           SEO_MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
-          URL: ${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           OUTCOME: ${{ job.status }}
         run: |
           if [ "$OUTCOME" = "success" ]; then
             curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
               --data-urlencode "job=seo-tools" --data-urlencode "ok=1" \
-              "$URL/api/cron/deploy-check" || true
+              "https://dispatchseo.com/api/cron/deploy-check" || true
           else
             curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
               --data-urlencode "job=seo-tools" \
               --data-urlencode "fail=workflow failed - $RUN_URL" \
-              "$URL/api/cron/deploy-check" || true
+              "https://dispatchseo.com/api/cron/deploy-check" || true
           fi

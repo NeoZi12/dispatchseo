@@ -1,49 +1,55 @@
-name: SEO geo scan
+name: SEO setup
 
-# Every Wednesday, measure AI visibility: the agent asks the questions
-# DispatchSEO's customers would ask an AI assistant (built from the tracked
-# keywords), answers them with real web search on the owner's own Claude
-# subscription, and records which answers cite dispatchseo.com via the seo-manager
-# MCP. Google's AI Overview side needs no agent - the daily rank cron already
-# snapshots it. No PR - results land on the dashboard's AI-visibility section.
+# DISPATCH-ONLY personalization run, fired by the DispatchSEO backend right
+# after it installs this pipeline (cloud zero-touch onboarding), or by hand
+# via workflow_dispatch. It is the same setup the self-host owner runs in a
+# local Claude Code session: read the repo, find or scaffold the content
+# home, write .dispatchseo/conventions.md, fill the site profile - then call
+# mark_pipeline_installed, which the backend re-verifies server-side before
+# stamping the project as installed. Safe to re-run: setup is idempotent and
+# reconciles instead of duplicating.
 
 on:
-  schedule:
-    - cron: "0 6 * * 3" # Wednesdays 06:00 UTC
+  repository_dispatch:
+    types: [seo-setup]
   workflow_dispatch:
 
 concurrency:
-  group: seo-geo-scan
+  group: seo-setup
   cancel-in-progress: false
 
 jobs:
-  geo-scan:
+  setup:
     runs-on: ubuntu-latest
+    # Real runs take 5-15 minutes on a first pass; past 30 is a hang.
     timeout-minutes: 30
     permissions:
-      contents: read
+      contents: write
+      pull-requests: write
       id-token: write
     steps:
       - uses: actions/checkout@v4
 
       # Fail fast, in plain language, when the Claude token secret is broken.
+      # Same preflight as every other workflow in this pack - a wrapped or
+      # empty token otherwise dies minutes in with a cryptic error.
       - name: Preflight - Claude token secret usable
         env:
           CLAUDE_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
           if [ -z "$CLAUDE_TOKEN" ]; then
-            echo "::error::The CLAUDE_CODE_OAUTH_TOKEN secret is missing or empty on this repo. Rerun the setup command from your DispatchSEO dashboard (it mints and VERIFIES a fresh token), or set one by hand: run 'claude setup-token', then pipe the token into 'gh secret set CLAUDE_CODE_OAUTH_TOKEN' without any whitespace."
+            echo "::error::The CLAUDE_CODE_OAUTH_TOKEN secret is missing or empty on this repo. Reconnect Claude Code from your DispatchSEO dashboard (Settings), or set one by hand: run 'claude setup-token', then pipe the token into 'gh secret set CLAUDE_CODE_OAUTH_TOKEN' without any whitespace."
             exit 1
           fi
           case "$CLAUDE_TOKEN" in
             sk-ant-oat*) echo "Claude token present." ;;
             *)
-              echo "::error::CLAUDE_CODE_OAUTH_TOKEN does not look like a Claude Code OAuth token (expected it to start with sk-ant-oat). It was probably line-wrapped or the wrong text was pasted when it was saved. Rerun the setup command from your DispatchSEO dashboard to mint and verify a replacement."
+              echo "::error::CLAUDE_CODE_OAUTH_TOKEN does not look like a Claude Code OAuth token (expected it to start with sk-ant-oat). It was probably line-wrapped or the wrong text was pasted when it was saved. Reconnect Claude Code from your DispatchSEO dashboard to store a verified replacement."
               exit 1 ;;
           esac
 
-      # Fail loudly if the seo-manager MCP is unreachable - without this a
-      # stale URL makes Claude see an empty toolset and "exit cleanly".
+      # Fail loudly if the seo-manager MCP is unreachable - setup without the
+      # backend would "succeed" while personalizing nothing.
       - name: Preflight - seo-manager MCP reachable
         env:
           SEO_MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
@@ -60,22 +66,26 @@ jobs:
           fi
           echo "seo-manager MCP OK ($url)"
 
-      - name: Run the geo scan
+      - name: Run setup
         uses: anthropics/claude-code-action@v1
         with:
           # Cloud fires this as the DispatchSEO GitHub App (a Bot actor), and the App also authored the workflow commits, so scheduled runs are bot-actored too. Every trigger here needs repo write access, so allowing bots is safe; without this claude-code-action aborts with "non-human actor".
           allowed_bots: "*"
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Full transcript in the step log - setup decisions (content home,
+          # conventions) should stay auditable after the fact.
           show_full_output: true
-          prompt: "FIRST call the seo-manager MCP tool get_instructions with workflow geo-scan, then follow the returned markdown exactly - it is the current playbook and overrides any cached knowledge of this pipeline. In brief: build ~15 customer questions from the tracked keywords and conventions, answer each with REAL web search (never from memory), judge whether the site is among the cited sources, record every result via record_ai_citations with verbatim answer excerpts, then read get_ai_visibility and report the citation counts and gap domains. If get_instructions is unavailable, fail loudly and exit without changes."
+          prompt: "FIRST call the seo-manager MCP tool get_instructions with workflow setup, then follow the returned markdown exactly - it is the current playbook and overrides any cached knowledge of this pipeline. In brief: study this repo and the live site, find or scaffold the content home, write .dispatchseo/conventions.md, fill the site profile via the seo-manager MCP, verify the pipeline prerequisites, and finish by calling mark_pipeline_installed. Commit any repo changes with git using the provided GITHUB_TOKEN, exactly as the instructions direct. Setup is idempotent - reconcile what exists, never duplicate. If get_instructions is unavailable, fail loudly and exit without changes."
           claude_args: |
             --mcp-config ./.github/mcp-ci.json
             --permission-mode bypassPermissions
-            --max-turns 120
+            --max-turns 150
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           SEO_MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
+          DATAFORSEO_LOGIN: ${{ secrets.DATAFORSEO_LOGIN }}
+          DATAFORSEO_PASSWORD: ${{ secrets.DATAFORSEO_PASSWORD }}
           MCP_TIMEOUT: "120000"
 
       # Phone the outcome home: failures land on the DispatchSEO dashboard
@@ -90,11 +100,11 @@ jobs:
         run: |
           if [ "$OUTCOME" = "success" ]; then
             curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
-              --data-urlencode "job=seo-geo-scan" --data-urlencode "ok=1" \
+              --data-urlencode "job=seo-setup" --data-urlencode "ok=1" \
               "https://dispatchseo.com/api/cron/deploy-check" || true
           else
             curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
-              --data-urlencode "job=seo-geo-scan" \
-              --data-urlencode "fail=workflow failed - $RUN_URL" \
+              --data-urlencode "job=seo-setup" \
+              --data-urlencode "fail=setup run failed - $RUN_URL" \
               "https://dispatchseo.com/api/cron/deploy-check" || true
           fi

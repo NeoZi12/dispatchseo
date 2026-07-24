@@ -60,10 +60,10 @@ jobs:
           if [ "$OUTCOME" = "success" ]; then
             curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
               --data-urlencode "job=seo-canary" --data-urlencode "ok=1" \
-              "${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}/api/cron/deploy-check" || true
+              "https://dispatchseo.com/api/cron/deploy-check" || true
           else
             curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
               --data-urlencode "job=seo-canary" \
               --data-urlencode "fail=install canary could not open a PR - enable 'Allow GitHub Actions to create and approve pull requests' (repo Settings -> Actions -> General) and re-run setup" \
-              "${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}/api/cron/deploy-check" || true
+              "https://dispatchseo.com/api/cron/deploy-check" || true
           fi

@@ -68,7 +68,7 @@ jobs:
         run: |
           code=$(curl -s -o /tmp/mode.json -w "%{http_code}" --max-time 30 \
             -H "Authorization: Bearer $SEO_MCP_API_KEY" \
-            ${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}/api/project-mode)
+            https://dispatchseo.com/api/project-mode)
           merge=on
           if [ "$code" = "200" ]; then
             if [ "$(jq -r '.automations.auto_merge' /tmp/mode.json)" = "false" ]; then merge=off; fi
@@ -162,8 +162,11 @@ jobs:
               SUCCESS)
                 echo "PR #$n has all checks green - merging."
                 # Grab the guide slugs BEFORE merging - the merge deletes the
-                # branch. Tool PRs yield an empty list; the IndexNow run then
-                # skips URL-polling and pings straight from the sitemap.
+                # branch. Layout-independent on purpose (any changed .mdx
+                # file's basename is its slug), so it works with whatever
+                # content home .dispatchseo/publish-paths names. Tool PRs
+                # yield an empty list; the IndexNow run then skips
+                # URL-polling and pings straight from the sitemap.
                 slugs=$(gh pr view "$n" --repo "$REPO" --json files \
                   --jq '[.files[].path | select(test("\\.mdx$")) | split("/") | last | sub("\\.mdx$"; "")] | join(" ")')
                 gh pr merge "$n" --repo "$REPO" --squash --delete-branch
@@ -174,11 +177,14 @@ jobs:
                 # exception to that rule).
                 gh workflow run indexnow.yml --repo "$REPO" -f slugs="$slugs" \
                   || echo "IndexNow dispatch failed - the sitemap still covers the URL on the next crawl."
-                # The same GITHUB_TOKEN rule silently skips publish-images
-                # (self-host docker images) and deploy-check (post-deploy
-                # smoke test) - both trigger on push, so an auto-merged
-                # commit left GHCR images stale and the deploy unverified
-                # until the next human push. Dispatch them explicitly too.
+                # REPO-SPECIFIC (this backend repo): the same GITHUB_TOKEN rule
+                # silently skips publish-images (self-host docker images) and
+                # deploy-check (post-deploy smoke test) - both trigger on push,
+                # so an auto-merged commit left GHCR images stale and the deploy
+                # unverified until the next human push. Dispatch them explicitly
+                # too. (Not part of the pipeline pack - re-applied on pack
+                # updates; the || echo fallbacks make it a no-op in any repo
+                # that lacks these workflows.)
                 gh workflow run publish-images.yml --repo "$REPO" \
                   || echo "publish-images dispatch failed - self-host images catch up on the next human push."
                 gh workflow run deploy-check.yml --repo "$REPO" \
@@ -243,7 +249,7 @@ jobs:
               curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
                 --data-urlencode "job=seo-tool-validate" \
                 --data-urlencode "fail=tool PR #$n stranded: 3 validations produced no verdict - review it manually" \
-                "${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}/api/cron/deploy-check" || true
+                "https://dispatchseo.com/api/cron/deploy-check" || true
             else
               echo "Dispatching a fresh validation on $branch (approval-gated or crashed run)."
               gh workflow run seo-tool-validate.yml --repo "$REPO" --ref "$branch" -f pr_number="$n" \
@@ -259,17 +265,16 @@ jobs:
         if: success() || failure()
         env:
           SEO_MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
-          URL: ${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           OUTCOME: ${{ job.status }}
         run: |
           if [ "$OUTCOME" = "success" ]; then
             curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
               --data-urlencode "job=seo-auto-merge" --data-urlencode "ok=1" \
-              "$URL/api/cron/deploy-check" || true
+              "https://dispatchseo.com/api/cron/deploy-check" || true
           else
             curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
               --data-urlencode "job=seo-auto-merge" \
               --data-urlencode "fail=workflow failed - $RUN_URL" \
-              "$URL/api/cron/deploy-check" || true
+              "https://dispatchseo.com/api/cron/deploy-check" || true
           fi

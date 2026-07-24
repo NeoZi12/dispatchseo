@@ -112,9 +112,9 @@ jobs:
 
       - name: Set up pnpm
         # No version input on purpose: pnpm/action-setup reads the exact pin
-        # from package.json's packageManager field, so CI always runs the same
-        # pnpm as dev machines. (A version input alongside packageManager
-        # hard-errors on any mismatch - plain string compare, not semver.)
+        # from package.json's packageManager field (pnpm@11.5.2), so CI always
+        # runs the same pnpm as dev machines. (A version input alongside
+        # packageManager hard-errors on any mismatch - plain string compare.)
         uses: pnpm/action-setup@v4
 
       - name: Set up Node
@@ -133,6 +133,10 @@ jobs:
 
       - name: Production build
         run: pnpm build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: "https://placeholder.supabase.co"
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder-anon-key"
+          NEXT_PUBLIC_SITE_URL: "http://localhost:3000"
 
       - name: Start server and wait for it
         run: |
@@ -143,6 +147,10 @@ jobs:
             sleep 2
           done
           echo "server failed to start"; cat /tmp/next-server.log; exit 1
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: "https://placeholder.supabase.co"
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder-anon-key"
+          NEXT_PUBLIC_SITE_URL: "http://localhost:3000"
 
       - name: Install Playwright browser for the MCP
         run: npx -y playwright install --with-deps chromium
@@ -211,19 +219,18 @@ jobs:
         if: needs.validate.result == 'success' || needs.validate.result == 'failure'
         env:
           SEO_MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
-          URL: ${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           VALIDATE_RESULT: ${{ needs.validate.result }}
         run: |
           if [ "$VALIDATE_RESULT" = "success" ]; then
             curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
               --data-urlencode "job=seo-tool-validate" --data-urlencode "ok=1" \
-              "$URL/api/cron/deploy-check" || true
+              "https://dispatchseo.com/api/cron/deploy-check" || true
           else
             curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
               --data-urlencode "job=seo-tool-validate" \
               --data-urlencode "fail=validation workflow failed - $RUN_URL" \
-              "$URL/api/cron/deploy-check" || true
+              "https://dispatchseo.com/api/cron/deploy-check" || true
           fi
 
       - name: Merge on PASS verdict
@@ -238,15 +245,17 @@ jobs:
           # labels the PR but the merge waits for the dashboard's Merge click.
           code=$(curl -s -o /tmp/mode.json -w "%{http_code}" --max-time 30 \
             -H "Authorization: Bearer $SEO_MCP_API_KEY" \
-            ${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}/api/project-mode) || code=unreachable
+            https://dispatchseo.com/api/project-mode) || code=unreachable
           if [ "$code" = "200" ] && [ "$(jq -r '.automations.auto_merge' /tmp/mode.json)" = "false" ]; then
             echo "auto_merge is off on the dashboard - leaving the validated PR for the owner."
             exit 0
           elif [ "$code" = "unreachable" ] || [ "$code" = "000" ] || [ "$code" = "502" ] || [ "$code" = "503" ] || [ "$code" = "504" ]; then
-            # Unreachable backend (e.g. a local self-host dashboard, or a reboot)
-            # must not crash a validated tool PR - leave it for the dashboard /
-            # in-stack builder to merge (matches seo-daily.yml + the template).
-            echo "Backend unreachable - leaving the validated PR for the dashboard to merge."
+            # Local-backend self-host: a GitHub-hosted runner cannot reach a
+            # localhost dashboard to read auto_merge. install.ts keeps this
+            # workflow ENABLED on local backends, so don't crash - the tool is
+            # already built and browser-validated; leave the labeled PR for the
+            # dashboard / in-stack builder to merge (matches seo-daily.yml).
+            echo "Backend unreachable (local self-host?) - leaving the validated PR for the dashboard to merge."
             exit 0
           elif [ "$code" != "200" ] && [ "$code" != "404" ]; then
             echo "::error::project-mode endpoint returned HTTP $code"; exit 1
@@ -265,7 +274,7 @@ jobs:
               curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
                 --data-urlencode "job=seo-tool-validate" \
                 --data-urlencode "fail=validation passed but auto-merge failed (likely a conflict with main) - PR left open for manual merge" \
-                "${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}/api/cron/deploy-check" || true
+                "https://dispatchseo.com/api/cron/deploy-check" || true
               exit 1
             }
             # The squash push above is made with GITHUB_TOKEN, which never

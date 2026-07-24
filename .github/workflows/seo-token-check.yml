@@ -27,6 +27,8 @@ jobs:
         id: liveness
         uses: anthropics/claude-code-action@v1
         with:
+          # Cloud fires this as the DispatchSEO GitHub App (a Bot actor), and the App also authored the workflow commits, so scheduled runs are bot-actored too. Every trigger here needs repo write access, so allowing bots is safe; without this claude-code-action aborts with "non-human actor".
+          allowed_bots: "*"
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: "Reply with exactly: ok"
@@ -40,7 +42,7 @@ jobs:
         run: |
           curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
             --data-urlencode "job=seo-token-check" --data-urlencode "ok=1" \
-            "${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}/api/cron/deploy-check" || true
+            "https://dispatchseo.com/api/cron/deploy-check" || true
 
       # Surface the real API error (revoked? usage limit?) and phone it home.
       # Full transcripts stay hidden - only the final result line is read.
@@ -61,7 +63,7 @@ jobs:
           curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
             --data-urlencode "job=seo-token-check" \
             --data-urlencode "fail=$reason - re-run the setup command to mint a fresh token" \
-            "${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}/api/cron/deploy-check" || true
+            "https://dispatchseo.com/api/cron/deploy-check" || true
 
       # Pipeline staleness: compare this repo's installed pack version stamp
       # against the backend's current one. Stale is not broken - the report
@@ -79,7 +81,7 @@ jobs:
           installed=$(tr -d '[:space:]' < .dispatchseo/pipeline-version)
           code=$(curl -s -o /tmp/mode.json -w "%{http_code}" --max-time 30 \
             -H "Authorization: Bearer $SEO_MCP_API_KEY" \
-            "${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}/api/project-mode")
+            "https://dispatchseo.com/api/project-mode")
           if [ "$code" = "404" ]; then
             echo "Backend has no pipeline_version yet - skipping."
             exit 0
@@ -88,7 +90,7 @@ jobs:
             curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
               --data-urlencode "job=seo-token-check" \
               --data-urlencode "fail=project key rejected by backend (HTTP $code) - re-run the setup command" \
-              "${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}/api/cron/deploy-check" || true
+              "https://dispatchseo.com/api/cron/deploy-check" || true
             exit 1
           fi
           current=$(jq -r '.pipeline_version // empty' /tmp/mode.json)
@@ -97,11 +99,11 @@ jobs:
             echo "Pipeline up to date ($installed)."
             curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
               --data-urlencode "job=seo-pipeline-version" --data-urlencode "ok=1" \
-              "${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}/api/cron/deploy-check" || true
+              "https://dispatchseo.com/api/cron/deploy-check" || true
           else
             echo "::warning::Pipeline update available (installed $installed, current $current). Re-run the setup command from your DispatchSEO dashboard to apply it."
             curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
               --data-urlencode "job=seo-pipeline-version" \
               --data-urlencode "fail=pipeline update available (installed $installed, current $current) - re-run the setup command to apply" \
-              "${{ vars.BACKEND_URL || 'https://dispatchseo.com' }}/api/cron/deploy-check" || true
+              "https://dispatchseo.com/api/cron/deploy-check" || true
           fi
