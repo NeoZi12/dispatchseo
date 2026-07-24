@@ -203,10 +203,32 @@ export async function installPipelineToRepo(project: GhProject): Promise<Install
   const claudeTokenPresent = await hasRepoSecret(project, "CLAUDE_CODE_OAUTH_TOKEN");
   let setupDispatched = false;
   if (claudeTokenPresent && mode !== "pr") {
-    const dispatch = await gh(token, "POST", `/repos/${repo}/dispatches`, {
-      event_type: "seo-setup",
-    });
-    setupDispatched = dispatch.status === 204;
+    // Don't stack a second setup on top of one already running. The wizard
+    // finale re-fires runPipelineInstall on every mount/resume (minutes apart),
+    // and a setup run takes 4-7 min - without this guard 2-3 overlapping
+    // seo-setup runs race: one gets cancelled, secrets get rewritten mid-run,
+    // and the concurrent MCP load has been enough to trip the first research
+    // run's DataForSEO plan gate (empty queue on day one). Skip the dispatch if
+    // GitHub already shows a queued/in-progress seo-setup run; a run outlives
+    // the mount interval, so this catches the repeats. Best-effort: a failed
+    // lookup falls through to dispatching, the pre-existing behavior.
+    const runs = await gh(
+      token,
+      "GET",
+      `/repos/${repo}/actions/workflows/seo-setup.yml/runs?per_page=20`,
+    ).catch(() => null);
+    const workflowRuns = (runs?.json?.workflow_runs ?? []) as Array<{ status?: string }>;
+    const alreadyRunning = workflowRuns.some(
+      (r) => r.status === "in_progress" || r.status === "queued" || r.status === "requested",
+    );
+    if (alreadyRunning) {
+      setupDispatched = true; // already in flight - treat as dispatched, don't stack
+    } else {
+      const dispatch = await gh(token, "POST", `/repos/${repo}/dispatches`, {
+        event_type: "seo-setup",
+      });
+      setupDispatched = dispatch.status === 204;
+    }
   }
 
   return {
