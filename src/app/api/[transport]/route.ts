@@ -2080,17 +2080,38 @@ const mcpHandler = createMcpHandler(
         title: "Get pipeline pack",
         description:
           "The repo-side shim files (GitHub workflows, MCP configs, slash " +
-          "commands) personalized to this project, as { path, content } " +
-          "entries. Called by the 'install' workflow, which fetches this " +
-          "pack, adapts the stack-specific spots to the target repo, and " +
-          "commits it as a PR. The files are a template tuned to the " +
-          "reference stack - always run install's adapt step, never commit " +
-          "blindly.",
-        inputSchema: {},
+          "commands) personalized to this project. Call with NO arguments for " +
+          "the MANIFEST (list of file paths only) - the full pack overflows one " +
+          "response, so content is fetched per file. Then call again with " +
+          "path=<a path from the manifest> to get that one file's " +
+          "{ path, content }, and write each with your file-write tool one at a " +
+          "time (no bulk script). Called by the 'install' workflow, which " +
+          "adapts the stack-specific spots to the target repo and commits a PR " +
+          "- the files are a reference-stack template, never commit blindly.",
+        inputSchema: {
+          path: z.string().optional(),
+        },
       },
-      async () => {
+      async ({ path }) => {
         const p = currentProject();
-        return ok({ project: p.slug, files: await getPipelinePack(p) });
+        const files = await getPipelinePack(p);
+        if (path) {
+          const file = files.find((f) => f.path === path);
+          if (!file)
+            return fail(
+              `no pack file at "${path}" - call get_pipeline_pack with no arguments for the manifest of valid paths`,
+            );
+          return ok({ project: p.slug, file });
+        }
+        // Manifest only. The full pack (~110k chars) overflows a single MCP
+        // response; returning it all forced the agent onto a file dump + a
+        // bulk-extraction script that the permission gate then BLOCKED, stalling
+        // a real install (2026-07-24). Paths only here - content per file.
+        return ok({
+          project: p.slug,
+          files: files.map((f) => ({ path: f.path })),
+          next: "Call get_pipeline_pack again with path=<each path above> to get { path, content }; write each with your file-write tool, one at a time - no bulk script.",
+        });
       },
     );
 

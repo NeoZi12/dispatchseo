@@ -249,9 +249,17 @@ jobs:
           # labels the PR but the merge waits for the dashboard's Merge click.
           code=$(curl -s -o /tmp/mode.json -w "%{http_code}" --max-time 30 \
             -H "Authorization: Bearer $SEO_MCP_API_KEY" \
-            {{BACKEND_URL}}/api/project-mode)
+            {{BACKEND_URL}}/api/project-mode) || code=unreachable
           if [ "$code" = "200" ] && [ "$(jq -r '.automations.auto_merge' /tmp/mode.json)" = "false" ]; then
             echo "auto_merge is off on the dashboard - leaving the validated PR for the owner."
+            exit 0
+          elif [ "$code" = "unreachable" ] || [ "$code" = "000" ] || [ "$code" = "502" ] || [ "$code" = "503" ] || [ "$code" = "504" ]; then
+            # Local-backend self-host: a GitHub-hosted runner cannot reach a
+            # localhost dashboard to read auto_merge. install.ts keeps this
+            # workflow ENABLED on local backends, so don't crash - the tool is
+            # already built and browser-validated; leave the labeled PR for the
+            # dashboard / in-stack builder to merge (matches seo-daily.yml).
+            echo "Backend unreachable (local self-host?) - leaving the validated PR for the dashboard to merge."
             exit 0
           elif [ "$code" != "200" ] && [ "$code" != "404" ]; then
             echo "::error::project-mode endpoint returned HTTP $code"; exit 1

@@ -13,7 +13,7 @@
 // a client. We do NOT proxy or meter BYO DataForSEO here - the crons call it
 // directly, the agent uses DataForSEO's own MCP for ad-hoc research.
 
-import { DEFAULT_PROJECT_SLUG } from "./projects";
+import { DEFAULT_PROJECT_ID } from "./projects";
 import { decryptSecret } from "./crypto";
 import { isCloudMode } from "./cloud";
 import { planGate } from "./billing";
@@ -67,7 +67,14 @@ export async function credsForProject(project: {
     }
   }
   if (
-    project.slug === DEFAULT_PROJECT_SLUG &&
+    // Default project id - and match hasDataforseo() on the id, NOT the slug.
+    // Self-host reuses the default project row under a RENAMED slug, so
+    // `slug === "clockedcode"` never fired on self-host and left env DataForSEO
+    // (DATAFORSEO_LOGIN/PASSWORD, as .env.docker.example documents) silently
+    // dead - rank tracking / keyword ideas / Domain Rating all skipped, and
+    // get_project's dataforseo_repo_mcp (id-based) contradicted its own
+    // dataforseo_connected (slug-based) in one call (2026-07-24).
+    project.id === DEFAULT_PROJECT_ID &&
     process.env.DATAFORSEO_LOGIN &&
     process.env.DATAFORSEO_PASSWORD
   ) {

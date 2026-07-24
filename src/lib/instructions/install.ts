@@ -65,11 +65,17 @@ and slash commands.
 
 ### Part 1 - fetch and write the pack
 
-1. Call the seo-manager MCP tool \`get_pipeline_pack\`. It returns every shim
-   file as { path, content }, already personalized to this project.
-2. Write each file at exactly its returned path (create directories as
-   needed). On an update run (files already exist), overwrite the pack's own
-   files freely - workflows carry no repo-specific truth anymore; everything
+1. Call the seo-manager MCP tool \`get_pipeline_pack\` with NO arguments. It
+   returns a MANIFEST - the list of shim file PATHS only (content omitted,
+   because the whole pack overflows a single response). Then, for EACH path,
+   call \`get_pipeline_pack\` again with that \`path\` - it returns
+   { path, content } for that one file - and write the content at exactly that
+   path with your file-write tool (create directories as needed). Write them
+   ONE AT A TIME with the native file-write tool; do NOT dump them with a bulk
+   extraction script - the permission gate blocks scripts that create many
+   files at once, and a real install stalled on exactly that (2026-07-24).
+2. On an update run (files already exist), overwrite the pack's own files
+   freely - workflows carry no repo-specific truth anymore; everything
    repo-specific lives in \`.dispatchseo/\` files the pack does NOT include
    (conventions.md, publish-paths), and those must be LEFT ALONE. The one
    exception worth a diff-and-ask: a file the owner visibly hand-edited
@@ -364,7 +370,11 @@ with step=\`repo_settings\`.
      final URL. A guide the backend never heard about is invisible on the
      dashboard (2026-07-23 e2e: a scaffold PR bundled a guide, skipped
      both calls, and Guides showed empty while the blog was live).
-   - Dispatch \`gh workflow run seo-weekly-research.yml --repo {{REPO}}\`.
+   - **Hosted backend only** (a public URL GitHub can reach). On a LOCAL
+     backend you ALREADY ended the session above - do NOT run any of the
+     \`gh workflow run\` dispatches below; they target workflows Part 4 just
+     disabled, so GitHub rejects them. Hosted:
+     Dispatch \`gh workflow run seo-weekly-research.yml --repo {{REPO}}\`.
      This first research run fills the suggestions queue immediately -
      tell the owner ideas land on their dashboard in roughly 10-20
      minutes. Pacing does not block it: a fresh project has built nothing
@@ -389,10 +399,13 @@ with step=\`repo_settings\`.
      The known first-run killers are exactly what the preflights call out:
      a broken CLAUDE_CODE_OAUTH_TOKEN secret, and an install step that
      was never proven with the workflow's exact flags (Part 2).
-   If the owner cannot merge the PR in this session, say plainly that
-   nothing runs until it merges, and give them the two dispatch commands
-   above to fire right after they do (running \`/seo-research\` locally
-   works as well).
+   (Hosted backend) If the owner cannot merge the PR in this session, say
+   plainly that nothing runs until it merges, and give them the two dispatch
+   commands above to fire right after they do. On a LOCAL backend there are no
+   dispatch commands to hand over: the in-stack builder runs research on its
+   own once the PR is merged and the Claude token is set - point the owner at
+   the wizard finale's "Turn on automatic builds" step (or \`/seo-research\`
+   locally) instead.
 6. Report: the PR URL, every adaptation made, which secrets were set (names
    only), the canary verdict, whether the first research run was kicked
    off, and the instructions version.

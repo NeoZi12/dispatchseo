@@ -55,14 +55,23 @@ async function cronSecret(): Promise<string | null> {
 async function triggerCron(path: string): Promise<void> {
   const secret = await cronSecret();
   if (!secret) return;
-  const base = await backendBaseUrl();
+  // Self-call our OWN cron route. On the docker stack backendBaseUrl() returns
+  // the owner-facing APP_URL (e.g. http://localhost:4005) - the HOST NAT
+  // mapping, which the app process CANNOT reach from inside its own container
+  // (it listens on 3000). Dial the container-internal address directly there,
+  // so the onboarding "instant first run" (first GSC snapshot / rank check)
+  // actually fires instead of silently connection-refusing and leaving the
+  // dashboard empty until the next scheduled cron (2026-07-24).
+  const base = process.env.POSTGREST_URL ? "http://127.0.0.1:3000" : await backendBaseUrl();
   try {
     await fetch(`${base}${path}`, {
       headers: { Authorization: `Bearer ${secret}` },
       signal: AbortSignal.timeout(55_000),
     });
-  } catch {
-    // Best-effort: the scheduled run covers whatever this one missed.
+  } catch (err) {
+    // Best-effort: the scheduled run covers whatever this one missed - but log
+    // it, so a persistently-failing self-call isn't completely invisible.
+    console.warn(`[onboarding] first-run self-call to ${path} failed:`, err);
   }
 }
 
@@ -130,11 +139,21 @@ export async function GET(req: Request): Promise<Response> {
   // fills itself - no "run /seo-research" for the owner. Needs a repo to
   // dispatch into; debounced through the marker row like the others.
   const suggestionCount = suggestions.count ?? 0;
+  // On a LOCAL docker backend GitHub Actions can't reach us, so seo-weekly-
+  // research is disabled and this repository_dispatch would fire a doomed run
+  // (or silently no-op against a disabled workflow). The in-stack builder
+  // claims the research job on its own poll instead - so skip the dispatch
+  // there. Same guard shape as cron-alerts.ts's IS_DOCKER_STACK localhost check.
+  const localDockerBackend =
+    Boolean(process.env.POSTGREST_URL) &&
+    ((process.env.APP_URL ?? "").includes("localhost") ||
+      (process.env.APP_URL ?? "").includes("127.0.0.1"));
   if (
     project.pipeline_installed_at &&
     project.github_repo &&
     keywordCount === 0 &&
     suggestionCount === 0 &&
+    !localDockerBackend &&
     !recently(`first-run-research--${project.slug}`)
   ) {
     await reportCronRun(`first-run-research--${project.slug}`, { triggered: "seo-research" }, false);
