@@ -27,9 +27,17 @@ export type QueueRow = {
 
 // Approved needs no label (the row being here says it all); the two states
 // that DO carry information get one. Mirrors QueueStatus from the old table.
-function StatusLabel({ status }: { status: string }) {
+function StatusLabel({ status, autoApproved }: { status: string; autoApproved?: boolean }) {
   if (status === "in_progress") return <span className="text-neutral-300">building now</span>;
-  if (status === "pending") return <span className="text-amber-300">your call</span>;
+  if (status === "pending")
+    // Auto mode: the agent already approved and queued the winners, so a
+    // pending row is an EXTRA the owner MAY add but never has to. Show a muted
+    // "optional", not the amber "your call" that reads as a decision they owe.
+    return autoApproved ? (
+      <span className="text-neutral-500">optional</span>
+    ) : (
+      <span className="text-amber-300">your call</span>
+    );
   return <span className="text-neutral-400">queued</span>;
 }
 
@@ -56,7 +64,17 @@ function arrayMove<T>(list: T[], from: number, to: number): T[] {
 
 type Drag = { index: number; overIndex: number; dy: number };
 
-export function DraggableQueue({ kind, rows }: { kind: "guide" | "tool"; rows: QueueRow[] }) {
+export function DraggableQueue({
+  kind,
+  rows,
+  autoApproved = false,
+}: {
+  kind: "guide" | "tool";
+  rows: QueueRow[];
+  // Auto-approval on for this queue's type -> pending rows are optional extras,
+  // not decisions the owner owes (the agent already queued the winners).
+  autoApproved?: boolean;
+}) {
   const byId = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
 
   // Local order wins for the whole session once the owner touches the list -
@@ -279,14 +297,14 @@ export function DraggableQueue({ kind, rows }: { kind: "guide" | "tool"; rows: Q
                 )}
 
                 <div className={cell}>
-                  <StatusLabel status={r.status} />
+                  <StatusLabel status={r.status} autoApproved={autoApproved} />
                 </div>
 
                 {/* A build already running can't be unpicked or moved. */}
                 <div className={`${cell} pr-4 text-right`}>
                   {r.status !== "in_progress" ? (
                     <span className="inline-flex items-center gap-1.5">
-                      {r.status === "pending" ? <QueueApproveButton id={r.id} /> : null}
+                      {r.status === "pending" ? <QueueApproveButton id={r.id} auto={autoApproved} /> : null}
                       {kind === "tool" && movable ? <QueueBuildNowButton id={r.id} /> : null}
                       <QueueRemoveButton
                         id={r.id}

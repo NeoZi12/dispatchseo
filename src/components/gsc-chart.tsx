@@ -154,7 +154,7 @@ export function GscChart({ rows: allRows }: { rows: GscRow[] }) {
         {header}
         <div className="mt-4 flex h-40 items-center justify-center rounded-lg bg-neutral-950/60 text-sm text-neutral-400 sm:h-48">
           {allRows.length < 2
-            ? "Not enough days yet. Search data lands here nightly."
+            ? "No search traffic to chart yet - Google's Search Console reports run about 2-3 days behind, and your pages need to appear in results first. The graph fills in on its own from here; nothing to do."
             : "Not enough days in this window - pick a longer range."}
         </div>
       </section>

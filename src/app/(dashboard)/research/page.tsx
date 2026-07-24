@@ -156,7 +156,7 @@ export default async function ResearchPage() {
               )}
             </EmptyState>
           ) : (
-            <DraggableQueue kind="guide" rows={opportunities.map(toQueueRow)} />
+            <DraggableQueue kind="guide" rows={opportunities.map(toQueueRow)} autoApproved={project.auto_approve} />
           )}
         </section>
 
@@ -167,7 +167,7 @@ export default async function ResearchPage() {
           {tools.length === 0 ? (
             <EmptyState>Queue is empty - the weekly research run adds tool ideas here.</EmptyState>
           ) : (
-            <DraggableQueue kind="tool" rows={tools.map(toQueueRow)} />
+            <DraggableQueue kind="tool" rows={tools.map(toQueueRow)} autoApproved={project.auto_approve_tools} />
           )}
         </section>
       </div>

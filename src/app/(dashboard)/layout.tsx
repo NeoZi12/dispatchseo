@@ -34,17 +34,31 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // reads as "still setting up", not "broken".
   // Top progress banner: during setup (pipeline not installed yet) AND the
   // first-data window after install, while the auto-fired research + rank checks
-  // are still landing. Bounded to a few hours post-install so long-established
-  // projects don't mount a polling banner on every load; the banner itself
-  // hides the moment ideas + a rank check exist.
+  // are still landing. BOTH branches are time-bounded so long-established
+  // projects don't mount a permanent polling banner on every load; the banner
+  // itself also hides the moment ideas + a rank check exist.
+  const POST_INSTALL_WINDOW = 6 * 3_600_000; // first-data window after install
+  const SETUP_WINDOW = 24 * 3_600_000; // an install that hasn't landed in a day isn't "in progress"
   const installedAt = active?.pipeline_installed_at
     ? new Date(active.pipeline_installed_at).getTime()
     : null;
+  // When onboarding actually began: the GitHub App install, else the project's
+  // creation. A legacy/default project (repo connected before pipeline_installed_at
+  // tracking existed, so it stayed null) and a long-abandoned setup both have an
+  // OLD clock here - so the null-installed branch below no longer treats them as
+  // "still setting up" and no longer shows the banner forever.
+  const setupStartedAt = active?.github_app_installed_at
+    ? new Date(active.github_app_installed_at).getTime()
+    : active?.created_at
+      ? new Date(active.created_at).getTime()
+      : null;
   const setupInProgress =
     billing &&
     active != null &&
     Boolean(active.github_repo) &&
-    (installedAt == null || Date.now() - installedAt < 6 * 3_600_000);
+    (installedAt != null
+      ? Date.now() - installedAt < POST_INSTALL_WINDOW
+      : setupStartedAt != null && Date.now() - setupStartedAt < SETUP_WINDOW);
   return (
     <div className="flex min-h-screen bg-neutral-950 text-neutral-100">
       <Sidebar billing={billing} />

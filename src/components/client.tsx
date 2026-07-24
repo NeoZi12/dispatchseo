@@ -154,12 +154,16 @@ export function QueueApproveButton({
   id,
   onApproved,
   onReverted,
+  auto = false,
 }: {
   id: string;
   // Optional hooks so a client parent (DraggableQueue) can flip the row to
   // its queued look instantly and walk it back on the rare failure.
   onApproved?: () => void;
   onReverted?: () => void;
+  // Auto mode: this row is an optional EXTRA, not a decision the owner owes -
+  // frame the action as "Add" rather than "Approve".
+  auto?: boolean;
 }) {
   const [, start] = useTransition();
   const [state, setState] = useState<"idle" | "approved" | "failed">("idle");
@@ -181,10 +185,10 @@ export function QueueApproveButton({
             }
           });
         }}
-        title="Approve - queue it for the builders"
+        title={auto ? "Add this optional idea to the build queue" : "Approve - queue it for the builders"}
         className="rounded-md bg-emerald-500 px-2 py-1 text-xs font-semibold text-neutral-950 transition-colors hover:bg-emerald-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400"
       >
-        Approve
+        {auto ? "Add" : "Approve"}
       </button>
       {state === "failed" ? (
         <span className="whitespace-nowrap text-xs text-red-400">{ERR}</span>
