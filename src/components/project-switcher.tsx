@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { switchProject } from "@/app/actions";
 
@@ -56,6 +57,7 @@ export function ProjectSwitcher({
   projects: SwitcherProject[];
   activeSlug: string;
 }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const ref = useRef<HTMLDivElement>(null);
@@ -120,12 +122,19 @@ export function ProjectSwitcher({
                 onClick={() => {
                   setOpen(false);
                   if (isActive) return;
-                  // No router.refresh() after the action: switchProject's
-                  // revalidatePath already streams the re-rendered page back
-                  // in the same response - a refresh here rendered the whole
-                  // dashboard a second time and doubled the switch latency.
+                  // switchProject writes the dash_project cookie and
+                  // revalidatePath("/", "layout"). That reliably refreshes the
+                  // layout subtree (this switcher's own label) but can leave the
+                  // client Router Cache serving the PAGE segment stale - so the
+                  // header showed the new project while the body still rendered
+                  // the previous one's data. router.refresh() re-fetches the
+                  // current route so layout + page re-render together against
+                  // the new cookie. The extra render is worth never showing a
+                  // mismatched project. The transition stays pending until the
+                  // refresh resolves, so the button's disabled state covers it.
                   start(async () => {
                     await switchProject(p.slug);
+                    router.refresh();
                   });
                 }}
                 className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-neutral-800"

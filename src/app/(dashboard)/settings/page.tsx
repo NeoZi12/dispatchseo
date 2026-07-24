@@ -76,13 +76,20 @@ export default async function SettingsPage() {
       </section>
 
       <section className="space-y-3">
-        <SectionTitle sub="where rank checks and keyword research come from - the onboarding choice, switchable anytime">
+        <SectionTitle
+          sub={
+            isCloudMode()
+              ? "where rank checks and keyword research come from - DataForSEO, included in your plan"
+              : "where rank checks and keyword research come from - the onboarding choice, switchable anytime"
+          }
+        >
           Keyword data source
         </SectionTitle>
         <KeywordSourceSettings
           current={project.keyword_source}
           hasDataforseoCreds={Boolean(project.dataforseo_login && project.dataforseo_password)}
           bundledDataforseo={isCloudMode()}
+          cloud={isCloudMode()}
           hasSerpapiKey={Boolean(project.serpapi_key)}
         />
       </section>

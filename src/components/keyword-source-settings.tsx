@@ -22,6 +22,7 @@ export function KeywordSourceSettings({
   current,
   hasDataforseoCreds,
   bundledDataforseo = false,
+  cloud = false,
   hasSerpapiKey,
 }: {
   current: keyof typeof SOURCES;
@@ -29,6 +30,9 @@ export function KeywordSourceSettings({
   // Cloud bundles DataForSEO, so a tenant can switch straight to it with no BYO
   // account - show the switch button, never the connect form.
   bundledDataforseo?: boolean;
+  // Cloud bundles DataForSEO; the SerpApi (BYO key) and GSC-only downgrades only
+  // make sense self-host and just confuse/worsen results for a paying tenant.
+  cloud?: boolean;
   hasSerpapiKey: boolean;
 }) {
   const canSwitchDataforseo = hasDataforseoCreds || bundledDataforseo;
@@ -81,7 +85,14 @@ export function KeywordSourceSettings({
         </div>
       ) : null}
 
-      {/* SerpApi */}
+      {cloud ? (
+        <p className="py-2.5 text-sm text-neutral-500">
+          DataForSEO is included in your plan - nothing to connect, no keys to manage.
+        </p>
+      ) : null}
+      {!cloud ? (
+        <>
+          {/* SerpApi */}
       <div className={`${rowClass} border-b border-neutral-800`}>
         <span className="text-sm text-neutral-200">
           SerpApi{" "}
@@ -169,6 +180,8 @@ export function KeywordSourceSettings({
           </button>
         )}
       </div>
+        </>
+      ) : null}
     </div>
   );
 }

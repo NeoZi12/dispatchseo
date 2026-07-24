@@ -537,8 +537,52 @@ export function CloudOnboardingWizard(props: {
                         </label>
                       ))}
                     </form>
+                    {/* Only properties already verified in this Google account
+                        show up (we ask for read-only access). If theirs is
+                        missing, the fix is in Search Console, not here. */}
+                    <p className="mt-3 text-[13px] leading-relaxed text-neutral-500">
+                      Don&apos;t see your site? We only list properties already in{" "}
+                      <a
+                        href="https://search.google.com/search-console"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-neutral-300 underline underline-offset-2 hover:text-neutral-100"
+                      >
+                        Search Console
+                      </a>
+                      . Add and verify it there, or{" "}
+                      <a
+                        href="/api/oauth/google/start?returnTo=onboarding"
+                        className="text-neutral-300 underline underline-offset-2 hover:text-neutral-100"
+                      >
+                        reconnect
+                      </a>{" "}
+                      with the Google account that manages it.
+                    </p>
                   </div>
-                ) : null}
+                ) : (
+                  <p className="mt-3.5 text-[13px] leading-relaxed text-neutral-500">
+                    We don&apos;t see any Search Console properties on this Google account. Your site
+                    has to be added and verified in{" "}
+                    <a
+                      href="https://search.google.com/search-console"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-neutral-300 underline underline-offset-2 hover:text-neutral-100"
+                    >
+                      Search Console
+                    </a>{" "}
+                    first (read-only access is all we ask for). Once it&apos;s verified,{" "}
+                    <a
+                      href="/api/oauth/google/start?returnTo=onboarding"
+                      className="text-neutral-300 underline underline-offset-2 hover:text-neutral-100"
+                    >
+                      reconnect
+                    </a>{" "}
+                    - or use the account that manages the site. You can also skip this and connect it
+                    later.
+                  </p>
+                )}
               </>
             ) : (
               <>
