@@ -38,7 +38,16 @@ export async function backendBaseUrl(): Promise<string> {
 // unset-credentials state must configure itself away, not ride along as a
 // maybe-crash in every scheduled agent run.
 export function hasDataforseo(project: Project): boolean {
-  return project.dataforseo_login != null || project.id === DEFAULT_PROJECT_ID;
+  // Require BOTH login and password, matching credsForProject / the
+  // dataforseo_connected signal. `!= null` alone let an empty-string login
+  // (written by the free-mode onboarding path) read as "has DataForSEO",
+  // so a GSC-only project reported dataforseo_repo_mcp: true and the
+  // research instructions handed the agent the DataForSEO path - it then
+  // expected an account that wasn't there and queued nothing (2026-07-24).
+  return (
+    Boolean(project.dataforseo_login && project.dataforseo_password) ||
+    project.id === DEFAULT_PROJECT_ID
+  );
 }
 
 export async function getPipelinePack(project: Project): Promise<PackFile[]> {

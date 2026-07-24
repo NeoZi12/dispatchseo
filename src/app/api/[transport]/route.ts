@@ -1463,9 +1463,21 @@ const mcpHandler = createMcpHandler(
           if (process.env.POSTGREST_URL) {
             const inst = (await instanceSettings()) as unknown as {
               builder_last_seen_at?: string | null;
+              builder_claude_token?: string | null;
             } | null;
             return ok({
               builder_last_seen_at: inst?.builder_last_seen_at ?? null,
+              // Whether the builder's Claude token is CONFIGURED (env or the
+              // wizard-stored value) - true the instant the owner pastes it,
+              // independent of builder_last_seen_at (the heartbeat lags a full
+              // poll, up to ~10 min). The install agent must treat "token
+              // configured" - not "builder polled" - as the signal that the
+              // builder will run research, or it falsely falls back to running
+              // it inline (2026-07-24: the owner pasted the token and the agent
+              // couldn't tell).
+              builder_token_configured: Boolean(
+                process.env.CLAUDE_CODE_OAUTH_TOKEN || inst?.builder_claude_token,
+              ),
               // Parity with Home's builder card and the wizard finale row:
               // true when EITHER build path shows recent life (in-stack
               // builder heartbeat or GitHub Actions builds reporting home).

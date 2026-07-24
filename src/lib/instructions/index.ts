@@ -30,7 +30,7 @@ import { TREND_SCAN, TREND_SCAN_STEPS } from "./trend-scan";
 import { TREND_EXPAND, TREND_EXPAND_STEPS } from "./trend-expand";
 import { GEO_SCAN, GEO_SCAN_STEPS } from "./geo-scan";
 
-export const INSTRUCTIONS_VERSION = "2026-07-24.1";
+export const INSTRUCTIONS_VERSION = "2026-07-24.2";
 
 export const WORKFLOWS = [
   "install",
@@ -133,7 +133,18 @@ export async function renderInstructions(workflow: WorkflowName, project: Projec
       "project's configured provider) and `suggest_keywords` (Google Autocomplete expansion). " +
       "Without a directly-connected DataForSEO account there is no volume/KD data - the quality " +
       "bar's SERP-weakness test and the best-answer test carry the decision instead, and you " +
-      "never invent numbers to fill the gap.";
+      "never invent numbers to fill the gap.\n" +
+      "- FREE / GSC-only fallback (no SERP provider): if `check_serp` also returns nothing - a " +
+      "GSC-only project with no SerpApi/DataForSEO - you have ONLY product knowledge + " +
+      "`suggest_keywords` autocomplete. That is still enough: the volume floor and KD ceiling " +
+      "are DATA-GATES and are simply inapplicable when the data does not exist (never treat " +
+      "'no data' as 'failed the bar'). Derive your best candidates from the product surface and " +
+      "autocomplete, and QUEUE them build-first (`propose_suggestion` then `update_suggestion` " +
+      "approved) with a rationale naming the searcher's intent class and ICP fit - the owner " +
+      "reviews the finished PR. A fresh free-mode site's queue legitimately comes from product " +
+      "knowledge; NEVER report an empty week just because volume/SERP data was unavailable. " +
+      "(Data-backed modes still apply every gate - this fallback is only for the genuinely " +
+      "data-less case.)";
   const raw = `${CORE}\n${BODIES[workflow]}`;
   let markdown = raw
     .replaceAll("{{SITE_NAME}}", project.name)

@@ -340,18 +340,23 @@ with step=\`repo_settings\`.
      reachable from this machine (localhost / 127.x / 0.0.0.0),
      GitHub-hosted runs cannot phone home to it, so skip every dispatch
      below. But do NOT run research inline either: check
-     \`get_cron_health\` - if \`builder_last_seen_at\` is recent (the owner
-     completed the wizard's automatic-builds step), the in-stack builder
-     claims the research job on its next poll and runs it in the
-     background within ~10 minutes. Tell the owner: "your first keyword
-     research starts automatically in the background - ideas appear on
-     the dashboard in about 10-20 minutes", call \`mark_install_step\` with
-     step=\`research\`, and END the session there.
-     Only when \`builder_last_seen_at\` is null/stale does the old
-     fallback apply: run the research workflow YOURSELF in this session
-     (get_instructions workflow=research), then confirm with
-     get_suggestions - and remind the owner to finish the wizard's
-     automatic-builds step so future runs need no terminal.
+     \`get_cron_health\` - if \`builder_token_configured\` is true (the owner
+     pasted their Claude token on the wizard's automatic-builds step), the
+     in-stack builder claims the research job on its next poll and runs it
+     in the background within ~10 minutes. Use \`builder_token_configured\`,
+     NOT \`builder_last_seen_at\`: the heartbeat lags a full poll (up to ~10
+     min) after the token is set, so a freshly-configured builder still
+     reads \`builder_last_seen_at: null\` - keying off the heartbeat makes
+     you wrongly fall back to running research inline (2026-07-24: the owner
+     pasted the token and the agent couldn't tell). Tell the owner: "your
+     first keyword research starts automatically in the background - ideas
+     appear on the dashboard in about 10-20 minutes", call
+     \`mark_install_step\` with step=\`research\`, and END the session there.
+     Only when \`builder_token_configured\` is false (no token pasted and no
+     env override) does the old fallback apply: tell the owner to complete
+     the wizard's automatic-builds step, and if they can't right now, run
+     the research workflow YOURSELF in this session
+     (get_instructions workflow=research) and confirm with get_suggestions.
      **If this session builds ANY content itself** (the fallback, or an
      owner asking for a first guide now): follow the FULL build contract
      from get_instructions workflow=build-guide - PR labeled \`seo\`,
