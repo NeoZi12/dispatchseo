@@ -12,7 +12,8 @@
 
 import type { Project } from "@/lib/projects";
 import { hasDataforseo } from "@/lib/pipeline-pack";
-import { credsForProject } from "@/lib/dataforseo";
+import { isCloudMode } from "@/lib/cloud";
+import { platformDataforseoEnv } from "@/lib/dataforseo-usage";
 import { getPacing, type Pacing } from "@/lib/pacing";
 import {
   normalizeContentPrefs,
@@ -31,7 +32,7 @@ import { TREND_SCAN, TREND_SCAN_STEPS } from "./trend-scan";
 import { TREND_EXPAND, TREND_EXPAND_STEPS } from "./trend-expand";
 import { GEO_SCAN, GEO_SCAN_STEPS } from "./geo-scan";
 
-export const INSTRUCTIONS_VERSION = "2026-07-24.4";
+export const INSTRUCTIONS_VERSION = "2026-07-24.5";
 
 export const WORKFLOWS = [
   "install",
@@ -130,11 +131,20 @@ export async function renderInstructions(workflow: WorkflowName, project: Projec
   // A bundled-plan cloud project has NO DataForSEO server in its own repo, but
   // the backend still has DataForSEO through the platform account - so the
   // seo-manager MCP's `keyword_ideas` tool serves it real volume/KD (metered
-  // against the project's monthly budget). credsForProject applies the plan +
-  // budget gates: a null here means genuinely no data source right now (free /
-  // GSC-only, or budget spent), which drops to the data-less branch.
-  const platformDataforseo = !dataforseoRepoMcp
-    && (await credsForProject(project))?.billedTo === "platform";
+  // against the project's monthly budget).
+  //
+  // This is a CAPABILITY check (stable), deliberately NOT the live
+  // credsForProject spend gate. Keying the note off credsForProject made a
+  // single transient null - a plan/budget DB read blipping, the monthly budget
+  // momentarily spent, or (as seen in testing) platform env still propagating
+  // mid-deploy - silently flip the ENTIRE run to the data-less branch, so the
+  // agent never called keyword_ideas and the queue came back with no
+  // volume/KD. keyword_ideas itself returns empty-with-note at the cap and the
+  // note already covers that fallback, so the instruction should always tell a
+  // bundled project the tool is there. Pure env + mode reads - no DB, nothing
+  // to blip.
+  const platformDataforseo =
+    !dataforseoRepoMcp && isCloudMode() && platformDataforseoEnv() != null;
   const researchSourceNote = dataforseoRepoMcp
     ? "- This project has its own DataForSEO account wired into the DataForSEO MCP - use it " +
       "(volume, KD, keyword ideas, live SERPs, backlinks endpoints)."
