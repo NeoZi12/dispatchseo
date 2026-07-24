@@ -28,10 +28,13 @@ no signup, and no role system. The trust boundaries are:
 - **MCP server** (`/api/mcp`): per-project 192-bit bearer tokens. A token IS
   the tenant - it can only touch its own project's rows.
 - **Crons** (`/api/cron/*`): a shared `CRON_SECRET` bearer token.
-- **Database**: Supabase with RLS enabled and zero policies - only the
-  service-role key (server code) can read or write. The service key must
-  never reach the browser; server-only modules (`src/lib/db.ts` and friends)
-  are kept out of client bundles by design.
+- **Database**: server code holds full read/write and it never reaches the
+  browser - server-only modules (`src/lib/db.ts` and friends) are kept out of
+  client bundles by design. On the **hosted/cloud** deployment the store is
+  Supabase with RLS enabled and zero policies, gated by the service-role key.
+  On a **self-hosted Docker** stack it's the bundled Postgres + PostgREST,
+  reachable only on the stack's internal Docker network (never exposed to the
+  host) - no Supabase and no service-role key involved.
 
 Reports that assume a multi-user model (e.g. "user A can see user B's data"
 within one deployment) are out of scope - there is only one user.
@@ -42,9 +45,10 @@ within one deployment) are out of scope - there is only one user.
   the internet and your dashboard.
 - Never commit `.env.local`; the example file is the only env file that
   belongs in git.
-- Treat `SUPABASE_SERVICE_ROLE_KEY`, `MCP_API_KEY`, per-project MCP tokens,
-  and `CRON_SECRET` as secrets of equal weight - each one is full access to
-  its surface.
+- Treat your secrets as equal-weight full access to their surface. On a
+  **Docker** stack that's `POSTGRES_PASSWORD` (set it before first boot),
+  `MCP_API_KEY` / per-project MCP tokens, and `CRON_SECRET`; a from-source
+  deploy uses `SUPABASE_SERVICE_ROLE_KEY` in place of `POSTGRES_PASSWORD`.
 - Optional but recommended: add a rate-limit rule on `POST /login` in your
   host's firewall (free on Vercel Hobby) as a second layer in front of the
   built-in lockout.

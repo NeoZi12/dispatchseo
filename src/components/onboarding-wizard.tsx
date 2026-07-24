@@ -398,11 +398,13 @@ export function OnboardingWizard({
               Everything works from here - including automatic article builds,
               through the bundled builder: it runs your Claude Code inside
               Docker, so nothing needs to reach this machine from outside. One
-              thing to do for that, once: put your Claude token
-              (<code className="font-mono text-amber-100">claude setup-token</code>) in{" "}
-              <code className="font-mono text-amber-100">.env</code> as{" "}
+              thing to do for that, once: on the last screen of this wizard
+              you&apos;ll paste a Claude token (from{" "}
+              <code className="font-mono text-amber-100">claude setup-token</code>)
+              into a field - no terminal or files to touch. (Prefer the terminal?
+              Set{" "}
               <code className="font-mono text-amber-100">CLAUDE_CODE_OAUTH_TOKEN</code>{" "}
-              - the quick guide (top right) has the steps.
+              in <code className="font-mono text-amber-100">.env</code> instead.)
             </div>
           ) : null}
           <form action={createAction} className="space-y-3 rounded-xl bg-neutral-900 p-4">

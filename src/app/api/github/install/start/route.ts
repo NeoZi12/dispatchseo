@@ -4,6 +4,8 @@ import { getActiveProject } from "@/lib/active-project";
 import { getProjectBySlug } from "@/lib/projects";
 import { assertProjectOwned } from "@/lib/tenant-guard";
 import { installUrl } from "@/lib/github-app";
+import { NextResponse } from "next/server";
+import { isCloudMode } from "@/lib/cloud";
 
 // Kicks off the GitHub App install flow for a project. Same posture as the
 // Google OAuth start route (api/oauth/google/start) - lives under /api/* so
@@ -18,6 +20,10 @@ import { installUrl } from "@/lib/github-app";
 
 export async function GET(req: Request): Promise<Response> {
   await requireDashboard();
+  // GitHub App install is cloud-only (self-host uses the merge token). 404 out
+  // like the other cloud-only API routes - defense in depth; the self-host UI
+  // never links here.
+  if (!isCloudMode()) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   const slug = new URL(req.url).searchParams.get("slug");
   const project = slug ? await getProjectBySlug(slug) : await getActiveProject();

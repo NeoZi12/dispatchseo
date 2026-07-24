@@ -42,9 +42,9 @@ export default async function AiVisibilitySection({ project }: { project: Projec
 
       {!visibility.has_data ? (
         <EmptyState>
-          Nothing recorded yet. Your next daily rank check starts tracking Google&apos;s AI
-          Overviews, and the weekly AI scan asks Claude the questions your customers ask - both
-          land here automatically.
+          Nothing recorded yet. The weekly AI scan asks Claude the questions your customers ask -
+          answers land here automatically. Google&apos;s AI Overviews join them once a SERP provider
+          (DataForSEO or a free SerpApi key) is connected.
         </EmptyState>
       ) : (
         <Link

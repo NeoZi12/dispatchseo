@@ -6,6 +6,7 @@ import { getProjectBySlug } from "@/lib/projects";
 import { assertInstallationClaimable, assertProjectOwned } from "@/lib/tenant-guard";
 import { getInstallation, listInstallationRepos, makeInstallNonce } from "@/lib/github-app";
 import { db } from "@/lib/db";
+import { isCloudMode } from "@/lib/cloud";
 
 // GitHub redirects here after the App install/update flow - this URL is the
 // App's fixed "Setup URL" (set once in the App's own GitHub settings), so it
@@ -27,6 +28,9 @@ import { db } from "@/lib/db";
 
 export async function GET(req: Request): Promise<Response> {
   await requireDashboard();
+  // GitHub App install is cloud-only (self-host uses the merge token). 404 out
+  // like the other cloud-only API routes - defense in depth.
+  if (!isCloudMode()) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   const url = new URL(req.url);
   const installationIdRaw = url.searchParams.get("installation_id");

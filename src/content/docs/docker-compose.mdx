@@ -117,19 +117,25 @@ AI-visibility scan - and on auto-mode projects it merges green guide PRs. It
 only makes outbound connections (to GitHub and Anthropic), which is why a
 localhost install is fully automatic with no tunnel or domain.
 
-Turning it on is one token. All three commands run in the `dispatchseo`
-folder:
+Turning it on is one token, and there are two ways to hand it over.
 
-**a.** Create the token (builds run on your existing Claude
-subscription - DispatchSEO bills nothing):
+**Easiest - paste it on the dashboard.** On the wizard's final screen (or the
+Home "Turn on automatic builds" card any time later), run `claude setup-token`
+on your own computer and paste the `sk-ant-oat...` token it prints into the
+field there. No terminal on the server, no file to edit - the builder picks it
+up within a few minutes, nothing to restart.
+
+**Terminal alternative.** Prefer an env var? In the `dispatchseo` folder:
+
+**a.** Create the token (builds run on your existing Claude subscription -
+DispatchSEO bills nothing):
 
 ```bash
 claude setup-token
 ```
 
-**b.** Save it, with your `sk-ant-oat...` token swapped in. Run this in
-the `dispatchseo` folder - the first part checks you're in the right
-place before writing anything:
+**b.** Save it, with your `sk-ant-oat...` token swapped in (the first part
+checks you're in the right folder before writing anything):
 
 ```bash
 [ -f start.sh ] &&
@@ -143,9 +149,9 @@ place before writing anything:
 docker compose up -d builder && docker compose logs builder --tail 5
 ```
 
-It either starts polling for work, or tells you exactly what it's still
-waiting for. GitHub access reuses the token from the wizard's One-tap
-merge step - nothing to configure twice.
+Either way, the builder either starts polling for work or tells you exactly
+what it's still waiting for, and GitHub access reuses the token from the
+wizard's One-tap merge step - nothing to configure twice.
 
 ## Configuration
 

@@ -62,7 +62,9 @@ export default async function SettingsPage() {
                 ? `connected (${project.dataforseo_login})`
                 : (await credsForProject(project))
                   ? "connected (platform account)"
-                  : "not connected - see the setup card on Home"
+                  : project.keyword_source === "dataforseo"
+                    ? "not connected - see the setup card on Home"
+                    : `not used - this project runs on ${project.keyword_source === "serpapi" ? "a free SerpApi key" : "Search Console only (free)"}`
             }
           />
           <InfoRow

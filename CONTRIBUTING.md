@@ -47,13 +47,15 @@ documentation for humans too). The ones people trip on:
 
 ```bash
 pnpm install
-cp .env.local.example .env.local   # fill it in - see docs/SELF_HOSTING.md
+cp .env.local.example .env.local   # fill it in - see src/content/docs/local-development.mdx
 pnpm dev                            # localhost:3000
 pnpm build                          # the check that must pass
 ```
 
 You'll need your own free Supabase project with the migrations applied
-([docs/SELF_HOSTING.md](docs/SELF_HOSTING.md) walks through it).
+([src/content/docs/local-development.mdx](src/content/docs/local-development.mdx)
+walks through it). To just *run* DispatchSEO instead, the Docker path in
+[docs/SELF_HOSTING.md](docs/SELF_HOSTING.md) is simpler and needs no Supabase.
 
 ## Security issues
 
