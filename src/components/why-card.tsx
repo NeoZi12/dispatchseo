@@ -66,7 +66,7 @@ const POINTS: Array<{ icon: ReactNode; lead: string; body: string }> = [
       </svg>
     ),
     lead: "No scraping.",
-    body: "It works from your repo, so it writes what your product really is - not a homepage-crawl guess.",
+    body: "It reads your actual repo, so what it writes fits your product - not a homepage-crawl guess.",
   },
   {
     icon: (
