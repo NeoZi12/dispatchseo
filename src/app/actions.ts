@@ -1258,6 +1258,19 @@ export async function wizardSetGscProperty(
 export async function attachGithubInstallation(projectSlug: string, installationId: number) {
   await assertAuthed();
   if (!isCloudMode()) throw new Error("Cloud only");
+  // Prove this browser received GitHub's install redirect for this installation
+  // (the callback set a signed nonce cookie). Without it a signed-in attacker
+  // could guess a victim's fresh, enumerable installation_id and bind it to
+  // their own project. Connect-button installs carry signed state and attach in
+  // the callback, never reaching this action.
+  const jar = await cookies();
+  const nonce = jar.get("gh_install_nonce")?.value;
+  const { verifyInstallNonce } = await import("@/lib/github-app");
+  if (!nonce || !(await verifyInstallNonce(nonce, installationId))) {
+    throw new Error(
+      "This GitHub install link isn't valid for your session or has expired. Re-install the app from your dashboard's setup step.",
+    );
+  }
   const project = await getProjectBySlug(projectSlug);
   if (!project) throw new Error("Unknown project");
   await assertProjectOwned(project.id);
@@ -1280,6 +1293,7 @@ export async function attachGithubInstallation(projectSlug: string, installation
   }
   const { error } = await db().from("projects").update(row).eq("id", project.id);
   if (error) throw new Error(error.message);
+  jar.delete("gh_install_nonce"); // single-use
   revalidatePath("/onboarding");
   redirect("/onboarding");
 }

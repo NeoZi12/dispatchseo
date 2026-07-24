@@ -1,5 +1,6 @@
-import { createSign } from "node:crypto";
+import { createSign, createHmac, timingSafeEqual } from "node:crypto";
 import { makeState } from "./gsc-oauth";
+import { authSecret } from "./dashboard-auth";
 
 // GitHub App auth core - JWT signing, installation token exchange, and the
 // install URL the "Connect GitHub" button links to. Plain fetch, no octokit,
@@ -19,6 +20,42 @@ import { makeState } from "./gsc-oauth";
 
 const API = "https://api.github.com";
 const USER_AGENT = "dispatchseo-app";
+
+// ---- install nonce (anti-race for no-state github.com installs) -------------
+// A bare "Install" from github.com/apps/... redirects to our Setup URL with an
+// installation_id but NO signed state, so the callback can't prove who did it.
+// installation_id is a small, enumerable integer, so without more, a signed-in
+// attacker could guess a victim's fresh install and bind it to their OWN
+// project via attachGithubInstallation. The callback drops this HMAC nonce as
+// an httpOnly cookie in the INSTALLER's browser; attach requires it back,
+// proving the same browser received GitHub's redirect for THIS installation.
+// State-carrying installs (our Connect button) never hit this path - they
+// attach in the callback off a signed project slug.
+const INSTALL_NONCE_TTL_MS = 15 * 60 * 1000;
+
+async function installNonceSecret(): Promise<string> {
+  const s = process.env.OAUTH_STATE_SECRET || (await authSecret());
+  if (!s) throw new Error("No signing secret for the GitHub install nonce (set OAUTH_STATE_SECRET).");
+  return s;
+}
+
+export async function makeInstallNonce(installationId: number): Promise<string> {
+  const payload = `${installationId}.${Date.now()}`;
+  const mac = createHmac("sha256", await installNonceSecret()).update(payload).digest("hex");
+  return `${payload}.${mac}`;
+}
+
+export async function verifyInstallNonce(nonce: string, installationId: number): Promise<boolean> {
+  const parts = nonce.split(".");
+  if (parts.length !== 3) return false;
+  const [id, ts, mac] = parts;
+  if (id !== String(installationId)) return false;
+  if (!/^\d+$/.test(ts) || Date.now() - Number(ts) > INSTALL_NONCE_TTL_MS) return false;
+  const expected = createHmac("sha256", await installNonceSecret()).update(`${id}.${ts}`).digest("hex");
+  const a = Buffer.from(mac);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 function base64url(input: string | Buffer): string {
   return (Buffer.isBuffer(input) ? input : Buffer.from(input)).toString("base64url");

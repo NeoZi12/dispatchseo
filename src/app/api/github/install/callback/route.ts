@@ -1,9 +1,10 @@
 import { redirect, unstable_rethrow } from "next/navigation";
+import { NextResponse } from "next/server";
 import { requireDashboard } from "@/lib/auth-gate";
 import { verifyState } from "@/lib/gsc-oauth";
 import { getProjectBySlug } from "@/lib/projects";
 import { assertInstallationClaimable, assertProjectOwned } from "@/lib/tenant-guard";
-import { getInstallation, listInstallationRepos } from "@/lib/github-app";
+import { getInstallation, listInstallationRepos, makeInstallNonce } from "@/lib/github-app";
 import { db } from "@/lib/db";
 
 // GitHub redirects here after the App install/update flow - this URL is the
@@ -83,7 +84,21 @@ export async function GET(req: Request): Promise<Response> {
     // the wrong tenant.
     const installation = await getInstallation(installationId);
     if (!installation) redirect("/onboarding?gh=error&msg=install-not-found");
-    redirect(`/onboarding?gh=pick_project&installation_id=${installationId}`);
+    // No signed state proves WHO installed this. Drop an httpOnly HMAC nonce
+    // tying THIS browser to THIS installation_id; attachGithubInstallation
+    // requires it back, so a signed-in attacker guessing the (enumerable) id
+    // can't bind a victim's fresh install to their own project.
+    const res = NextResponse.redirect(
+      new URL(`/onboarding?gh=pick_project&installation_id=${installationId}`, req.url),
+    );
+    res.cookies.set("gh_install_nonce", await makeInstallNonce(installationId), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: Math.floor((15 * 60 * 1000) / 1000),
+    });
+    return res;
   } catch (e) {
     unstable_rethrow(e); // let the redirect()s above pass through untouched
     console.error(
