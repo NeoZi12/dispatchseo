@@ -138,6 +138,16 @@ function SettingsIcon({ className }: IconProps) {
   );
 }
 
+function LogoutIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <path d="M21 12H9" />
+    </svg>
+  );
+}
+
 type NavLink = {
   href: string;
   label: string;
@@ -232,6 +242,30 @@ function SidebarLink({ link, pathname }: { link: NavLink; pathname: string }) {
   );
 }
 
+// A plain <a>, never a Next <Link>: /logout is a GET route handler that signs
+// the user out, and <Link> would PREFETCH it - logging them out on hover. A
+// full navigation is also what we want here (drops the client router cache
+// after sign-out). No active state - it's an action, not a page.
+function LogoutLink({ compact = false }: { compact?: boolean }) {
+  return compact ? (
+    <a
+      href="/logout"
+      className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm text-neutral-400 transition-colors hover:bg-neutral-900 hover:text-neutral-200"
+    >
+      <LogoutIcon className="h-4 w-4" />
+      Log out
+    </a>
+  ) : (
+    <a
+      href="/logout"
+      className="flex items-center gap-3.5 rounded-lg px-3.5 py-2.5 text-[15px] text-neutral-400 transition-colors hover:bg-neutral-900 hover:text-neutral-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-400"
+    >
+      <LogoutIcon className="h-5 w-5 shrink-0 text-neutral-500" />
+      Log out
+    </a>
+  );
+}
+
 export function Sidebar({ billing = false }: { billing?: boolean }) {
   const pathname = usePathname();
   return (
@@ -269,6 +303,7 @@ export function Sidebar({ billing = false }: { billing?: boolean }) {
       <div className="shrink-0 border-t border-neutral-800/80 px-3 py-3">
         {billing ? <SidebarLink link={BILLING} pathname={pathname} /> : null}
         <SidebarLink link={SETTINGS} pathname={pathname} />
+        <LogoutLink />
       </div>
     </aside>
   );
@@ -298,6 +333,7 @@ export function MobileNav({ billing = false }: { billing?: boolean }) {
           </Link>
         );
       })}
+      <LogoutLink compact />
     </nav>
   );
 }
