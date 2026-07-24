@@ -67,6 +67,11 @@ export type Project = {
   // instance-wide merge token.
   github_installation_id: number | null;
   github_app_installed_at: string | null;
+  // Agent-reported install-step stamps (migration 0036): { step: ISO-8601 },
+  // merged by the mark_install_step MCP tool and read by the onboarding
+  // finale's live checklist + collapse. MUST be in COLS - the read path is the
+  // whole point of the write. NOT NULL DEFAULT '{}', so real rows always have it.
+  install_progress: Record<string, string>;
   created_at: string;
 };
 
@@ -134,6 +139,13 @@ export const DEFAULT_PROJECT_ID = "00000000-0000-4000-8000-000000000001";
 
 // mcp_token deliberately excluded - only fetchProjectToken exposes it.
 const COLS =
+  "id, slug, name, domain, gsc_site_url, github_repo, content_mode, content_path_hint, dataforseo_login, dataforseo_password, keyword_source, serpapi_key, powerups_skipped, location_code, language_code, mode, auto_approve, auto_approve_tools, auto_build_guides, auto_build_tools, auto_merge, last_trend_scan_at, site_launched_at, pipeline_installed_at, content_prefs, gsc_oauth_refresh_token, github_installation_id, github_app_installed_at, install_progress, created_at";
+
+// COLS minus 0036's install_progress, for a DB that hasn't run that migration
+// yet (migrations are applied manually, so code can reach prod first). A
+// distinct tier from COLS_PRE_0028 so a DB that HAS 0028/0034 but not 0036
+// degrades only the finale's install checklist, never github_installation_id.
+const COLS_PRE_0036 =
   "id, slug, name, domain, gsc_site_url, github_repo, content_mode, content_path_hint, dataforseo_login, dataforseo_password, keyword_source, serpapi_key, powerups_skipped, location_code, language_code, mode, auto_approve, auto_approve_tools, auto_build_guides, auto_build_tools, auto_merge, last_trend_scan_at, site_launched_at, pipeline_installed_at, content_prefs, gsc_oauth_refresh_token, github_installation_id, github_app_installed_at, created_at";
 
 // COLS minus 0028's auto_approve_tools, for databases where that migration
@@ -152,8 +164,15 @@ const COLS_PRE_0028 =
 async function selectProjects<T>(
   run: (cols: string) => PromiseLike<{ data: T | null; error: { message: string } | null }>,
 ): Promise<{ data: T | null; error: { message: string } | null }> {
+  const missingCol = (e: { message: string } | null) =>
+    Boolean(e && e.message.includes("does not exist"));
   const first = await run(COLS);
-  if (!first.error || !first.error.message.includes("does not exist")) return first;
+  if (!missingCol(first.error)) return first;
+  // Drop only the newest column (0036) first, so a DB that lags 0036 alone
+  // keeps github_installation_id et al; fall back to pre-0028 only if that
+  // still names a missing column.
+  const second = await run(COLS_PRE_0036);
+  if (!missingCol(second.error)) return second;
   return run(COLS_PRE_0028);
 }
 
@@ -194,6 +213,7 @@ function envFallbackProject(): Project {
     gsc_oauth_refresh_token: null,
     github_installation_id: null,
     github_app_installed_at: null,
+    install_progress: {},
     created_at: new Date(0).toISOString(),
   };
 }
