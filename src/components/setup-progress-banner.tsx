@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 // Cloud-only dashboard banner. The gate (onboarding-gate.ts) already unlocks
 // the dashboard the moment a repo is connected, so a cloud owner can look
@@ -93,12 +94,21 @@ export function SetupProgressBanner({
   return (
     <div className="border-b border-violet-500/25 bg-violet-500/[0.07] px-4 py-2.5 sm:px-6">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-neutral-200">
-        <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-violet-400/40 border-t-violet-300" aria-hidden />
-        <span>
-          <b className="font-semibold text-white">Setting up your site in the background.</b> This
-          runs on GitHub and usually takes 5–15 minutes — feel free to look around; your data fills
-          in automatically once it&apos;s done.
-        </span>
+        {/* The whole strip links back to the setup screen so the owner can watch
+            the live step-by-step checklist ("exactly what's going on") instead
+            of only this one-line summary. Kept as a sibling of the slow-nudge
+            link below to avoid nesting anchors. */}
+        <Link href="/onboarding" className="group flex flex-1 items-center gap-2.5 hover:text-white">
+          <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-violet-400/40 border-t-violet-300" aria-hidden />
+          <span>
+            <b className="font-semibold text-white">Setting up your site in the background.</b> This
+            runs on GitHub and usually takes 5–15 minutes — feel free to look around; your data fills
+            in automatically once it&apos;s done.{" "}
+            <span className="whitespace-nowrap font-medium text-violet-300 underline-offset-2 group-hover:underline">
+              See what&apos;s happening →
+            </span>
+          </span>
+        </Link>
         {slow ? (
           <span className="text-amber-200/90">
             Taking longer than usual —{" "}

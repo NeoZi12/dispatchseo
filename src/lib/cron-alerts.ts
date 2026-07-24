@@ -295,8 +295,31 @@ export async function getCronHealth(projectSlug?: string): Promise<CronHealth[]>
     .order("created_at", { ascending: false })
     .limit(500);
   if (error || !data) return []; // missing table = no alerts, not a crash
+  // cron_runs is keyed by the SLUG-based job name, not project_id, so a deleted-
+  // and-recreated project (or any slug reuse) would otherwise inherit the prior
+  // project's stale history and show a false "job hasn't run since <old date>"
+  // alert. Ignore any of THIS project's rows from before it was created - they
+  // can't belong to it. Instance-wide jobs (owner null) are never filtered.
+  let projectSince = 0;
+  if (projectSlug) {
+    const { data: proj } = await db()
+      .from("projects")
+      .select("created_at")
+      .eq("slug", projectSlug)
+      .maybeSingle();
+    const c = (proj as { created_at?: string } | null)?.created_at;
+    if (c) projectSince = new Date(c).getTime();
+  }
   const latest = new Map<string, (typeof data)[number]>();
   for (const row of data) {
+    const owner = jobProjectSlug(row.job as string);
+    if (
+      projectSlug &&
+      owner === projectSlug &&
+      new Date(row.created_at as string).getTime() < projectSince
+    ) {
+      continue;
+    }
     if (!latest.has(row.job as string)) latest.set(row.job as string, row);
   }
   const health = [...latest.values()]
