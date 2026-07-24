@@ -49,15 +49,21 @@ export async function backendBaseUrl(): Promise<string> {
 // unset-credentials state must configure itself away, not ride along as a
 // maybe-crash in every scheduled agent run.
 export function hasDataforseo(project: Project): boolean {
-  // Require BOTH login and password, matching credsForProject / the
-  // dataforseo_connected signal. `!= null` alone let an empty-string login
-  // (written by the free-mode onboarding path) read as "has DataForSEO",
-  // so a GSC-only project reported dataforseo_repo_mcp: true and the
-  // research instructions handed the agent the DataForSEO path - it then
-  // expected an account that wasn't there and queued nothing (2026-07-24).
-  return (
-    Boolean(project.dataforseo_login && project.dataforseo_password) ||
-    project.id === DEFAULT_PROJECT_ID
+  // Own per-project creds always count - require BOTH login and password
+  // (an empty-string login from the free-mode onboarding path used to read as
+  // "has DataForSEO", queuing nothing - 2026-07-24).
+  if (project.dataforseo_login && project.dataforseo_password) return true;
+  // The default project falls back to env DataForSEO creds - but ONLY when
+  // they actually exist, matching credsForProject. Keying on the default id
+  // ALONE was a trap on self-host: the owner's first site REUSES the default
+  // project row (keeps the id, gets renamed), so every free/GSC-only self-host
+  // install reported dataforseo_repo_mcp: true and the agent was handed a
+  // DataForSEO path it had no account for, then asked for creds that don't
+  // exist (2026-07-24, live install of neozino.dev).
+  return Boolean(
+    project.id === DEFAULT_PROJECT_ID &&
+      process.env.DATAFORSEO_LOGIN &&
+      process.env.DATAFORSEO_PASSWORD,
   );
 }
 
