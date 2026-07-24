@@ -81,7 +81,21 @@ export function ProjectSwitcher({
   const active = projects.find((p) => p.slug === activeSlug) ?? projects[0];
 
   return (
-    <div ref={ref} className="relative flex items-center gap-1.5">
+    <>
+      {/* Fixed top loading bar while a switch is in flight. switchProject +
+          router.refresh() re-render every screen server-side (~2s), during which
+          the page is frozen; this indeterminate sweep is the "loading" signal so
+          the freeze doesn't read as a hang. Sits above the sticky header (z-50). */}
+      {pending ? (
+        <div
+          role="progressbar"
+          aria-label="Switching project"
+          className="pointer-events-none fixed inset-x-0 top-0 z-50 h-0.5 overflow-hidden bg-neutral-800/60"
+        >
+          <div className="dispatch-sweep h-full w-1/3 rounded-r-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)]" />
+        </div>
+      ) : null}
+      <div ref={ref} className="relative flex items-center gap-1.5">
       {/* Separator after the brand - the brand only renders in the topbar on
           mobile (desktop shows it in the sidebar), so hide the slash on md+. */}
       <span aria-hidden="true" className="text-neutral-700 md:hidden">
@@ -96,16 +110,29 @@ export function ProjectSwitcher({
       >
         {active ? <Favicon domain={active.domain} name={active.name} size="sm" /> : null}
         {active?.domain ?? "select project"}
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 16 16"
-          className={`h-3 w-3 text-neutral-600 transition-transform ${open ? "rotate-180" : ""}`}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-        >
-          <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+        {pending ? (
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 16 16"
+            className="dispatch-spin h-3 w-3 text-emerald-400"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
+            <path d="M8 1.5a6.5 6.5 0 1 0 6.5 6.5" strokeLinecap="round" />
+          </svg>
+        ) : (
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 16 16"
+            className={`h-3 w-3 text-neutral-600 transition-transform ${open ? "rotate-180" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
+            <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
       </button>
 
       {open ? (
@@ -173,6 +200,7 @@ export function ProjectSwitcher({
           </Link>
         </div>
       ) : null}
-    </div>
+      </div>
+    </>
   );
 }
