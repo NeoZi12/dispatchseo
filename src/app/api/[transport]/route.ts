@@ -11,7 +11,7 @@ import { getAnalyticsOverview } from "@/lib/analytics-data";
 import { getJourney } from "@/lib/journey";
 import { getWeeklyProgress } from "@/lib/progress";
 import { AUTOMATIONS, gatherEvidence } from "@/lib/automations";
-import { credsForProject } from "@/lib/dataforseo";
+import { credsForProject, keywordIdeas } from "@/lib/dataforseo";
 import { isCloudMode } from "@/lib/cloud";
 import { canMerge, dispatchToolBuild, mergePr, openSeoPrs, verifyPipelinePrereqs } from "@/lib/github";
 import {
@@ -1196,6 +1196,59 @@ const mcpHandler = createMcpHandler(
       },
     );
 
+    server.registerTool(
+      "keyword_ideas",
+      {
+        title: "Keyword ideas with volume & difficulty",
+        description:
+          "Expand seed keywords into related searches WITH real monthly search volume and " +
+          "keyword difficulty (KD), via DataForSEO. Works whenever the project has DataForSEO - " +
+          "its OWN account or the platform's BUNDLED plan (cloud) - so it's how bundled-plan " +
+          "projects (no DataForSEO server in their repo) get the numbers the quality bar gates " +
+          "on. Returns { ideas: [{keyword, volume, kd, cpc}] } sorted by volume, highest first. " +
+          "Use it during research to discover and validate candidates in one call: the returned " +
+          "keywords already carry the volume floor / KD ceiling numbers. Batch multiple seeds per " +
+          "call - it costs one metered DataForSEO call each time, billed to the platform on the " +
+          "bundled plan (counts against the project's monthly budget). Returns an empty ideas " +
+          "list WITH a note (never an error) when the project has no DataForSEO access or the " +
+          "monthly budget is spent - fall back to check_serp + product judgment then.",
+        inputSchema: {
+          seeds: z.array(z.string().min(1)).min(1).max(20),
+          limit: z.number().int().min(1).max(200).optional(),
+        },
+      },
+      async ({ seeds, limit }) => {
+        const p = currentProject();
+        // credsForProject already resolves BYO-vs-platform and enforces the
+        // plan + monthly-budget gates - a null result means "no data source
+        // right now", which the agent handles by falling back, so it's an
+        // empty-with-note success, not a failure.
+        const creds = await credsForProject(p);
+        if (!creds) {
+          return ok({
+            seeds,
+            ideas: [],
+            note: "No DataForSEO access for this project (free/GSC-only mode, or the monthly bundled budget is spent). Use check_serp + product judgment - do not invent numbers.",
+          });
+        }
+        try {
+          const { ideas } = await keywordIdeas(seeds, creds, limit ?? 100);
+          const sorted = ideas
+            .filter((i) => i.keyword)
+            .sort((a, b) => (b.search_volume ?? 0) - (a.search_volume ?? 0))
+            .map((i) => ({
+              keyword: i.keyword,
+              volume: i.search_volume,
+              kd: i.keyword_difficulty,
+              cpc: i.cpc,
+            }));
+          return ok({ seeds, ideas: sorted });
+        } catch (e) {
+          return fail(e instanceof Error ? e.message : String(e));
+        }
+      },
+    );
+
     // ---- site profile (backlink playbook personalization) -----------------
     server.registerTool(
       "get_site_profile",
@@ -1721,7 +1774,8 @@ const mcpHandler = createMcpHandler(
         title: "Get project",
         description:
           "The project this token belongs to and how it's set up: domain, mode " +
-          "(semi/auto), keyword source (dataforseo/serpapi/gsc), whether a SERP " +
+          "(semi/auto) with the effective auto_approve / auto_approve_tools flags, " +
+          "keyword source (dataforseo/serpapi/gsc), whether a SERP " +
           "provider and Search Console are connected, whether THIS repo has its own " +
           "DataForSEO MCP server (dataforseo_repo_mcp - false on the cloud bundled " +
           "plan, see dataforseo_billed_to), the content-pipeline repo, and whether " +
@@ -1738,6 +1792,12 @@ const mcpHandler = createMcpHandler(
           slug: p.slug,
           domain: p.domain,
           mode: p.mode,
+          // Effective approval flags (mode-derived, same source the approval
+          // gate coerces on). auto_approve=true means research guides land
+          // straight in the build queue - the research run must FILL to the
+          // weekly target on these, not leave a pending backlog.
+          auto_approve: effectiveAutomations(p).auto_approve,
+          auto_approve_tools: effectiveAutomations(p).auto_approve_tools,
           keyword_source: p.keyword_source,
           serp_provider_connected: (await serpProviderForProject(p)) != null,
           dataforseo_connected: dfsCreds != null,

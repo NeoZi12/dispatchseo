@@ -12,6 +12,7 @@
 
 import type { Project } from "@/lib/projects";
 import { hasDataforseo } from "@/lib/pipeline-pack";
+import { credsForProject } from "@/lib/dataforseo";
 import { getPacing, type Pacing } from "@/lib/pacing";
 import {
   normalizeContentPrefs,
@@ -30,7 +31,7 @@ import { TREND_SCAN, TREND_SCAN_STEPS } from "./trend-scan";
 import { TREND_EXPAND, TREND_EXPAND_STEPS } from "./trend-expand";
 import { GEO_SCAN, GEO_SCAN_STEPS } from "./geo-scan";
 
-export const INSTRUCTIONS_VERSION = "2026-07-24.2";
+export const INSTRUCTIONS_VERSION = "2026-07-24.3";
 
 export const WORKFLOWS = [
   "install",
@@ -126,9 +127,27 @@ export async function renderInstructions(workflow: WorkflowName, project: Projec
   // DataForSEO-backed data through the seo-manager MCP (check_serp,
   // get_domain_rank) but no repo-side DataForSEO server of its own.
   const dataforseoRepoMcp = hasDataforseo(project);
+  // A bundled-plan cloud project has NO DataForSEO server in its own repo, but
+  // the backend still has DataForSEO through the platform account - so the
+  // seo-manager MCP's `keyword_ideas` tool serves it real volume/KD (metered
+  // against the project's monthly budget). credsForProject applies the plan +
+  // budget gates: a null here means genuinely no data source right now (free /
+  // GSC-only, or budget spent), which drops to the data-less branch.
+  const platformDataforseo = !dataforseoRepoMcp
+    && (await credsForProject(project))?.billedTo === "platform";
   const researchSourceNote = dataforseoRepoMcp
     ? "- This project has its own DataForSEO account wired into the DataForSEO MCP - use it " +
       "(volume, KD, keyword ideas, live SERPs, backlinks endpoints)."
+    : platformDataforseo
+    ? "- This project is on the platform's BUNDLED DataForSEO plan: it has NO DataForSEO server " +
+      "in its own repo, but the seo-manager MCP gives you the data server-side. For volume + KD " +
+      "numbers call the seo-manager MCP's `keyword_ideas` tool (real DataForSEO search volume " +
+      "and keyword difficulty; batch your seeds - each call is metered against the project's " +
+      "monthly budget). Pair it with `check_serp` (live organic results) for the SERP-weakness " +
+      "read, and `suggest_keywords` (free Google Autocomplete) to widen seeds. Pass the volume " +
+      "and kd from `keyword_ideas` straight into `propose_suggestion` so the queue shows real " +
+      "numbers. If `keyword_ideas` returns an empty list with a note (budget spent), fall back " +
+      "to the SERP-weakness + best-answer tests and never invent numbers."
     : "- Use the seo-manager MCP's built-in `check_serp` (live organic results through the " +
       "project's configured provider) and `suggest_keywords` (Google Autocomplete expansion). " +
       "Without a directly-connected DataForSEO account there is no volume/KD data - the quality " +

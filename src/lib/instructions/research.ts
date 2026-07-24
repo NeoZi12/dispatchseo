@@ -90,6 +90,21 @@ which counts (see the queue policies). Count what is already queued first
 (\`get_suggestions\` for approved and pending) and top up the DIFFERENCE -
 never overfill past ~9 approved guides or ~2 queued tools.
 
+**Auto mode fills the tank; semi mode fills the backlog.** Read
+\`get_project\`'s \`auto_approve\`. When it is TRUE (the owner chose Auto -
+hands-off publishing), reaching the weekly target is MANDATORY: after the KD
+ceiling auto-approves what it can, DESCEND THE LADDER BELOW - especially rung 2
+(promote pending-zone survivors) - until **7 guides are actually approved**.
+Do NOT stop at the two or three that cleared the auto-approve zone and leave
+the rest sitting as pending "optional" ideas - on an Auto-mode site that is a
+BUG the owner sees as "why do I still have to add these myself?". The pending
+zone is a holding area for the owner's judgment on SEMI projects only; on Auto
+projects it must be drained toward the target. (Never promote source "manual"
+or owner-rejected ideas - those still wait, both modes.) When \`auto_approve\`
+is FALSE (Semi), the opposite: approve only the confident auto-approve-zone
+winners and leave the rest pending for the owner - the backend coerces your
+extra approvals to pending anyway, so just list them in the run report.
+
 Short of quota? Work down this ladder IN ORDER - each rung costs more than
 the one above it, so exhaust a rung before descending:
 
