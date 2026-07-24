@@ -6,7 +6,7 @@ import { getProjectBySlug } from "@/lib/projects";
 import { getCronHealth, reportCronRun } from "@/lib/cron-alerts";
 import { buildsActive } from "@/lib/builder-status";
 import { backendBaseUrl } from "@/lib/pipeline-pack";
-import { openSeoPrs } from "@/lib/github";
+import { openSeoPrs, dispatchResearch } from "@/lib/github";
 import { ownedProjectIds } from "@/lib/tenant-guard";
 
 // The open install PR, so the wizard can say "your move: merge this" with a
@@ -121,6 +121,24 @@ export async function GET(req: Request): Promise<Response> {
   if (project.gsc_site_url && gscCount === 0 && !recently(`first-run-gsc--${project.slug}`)) {
     await reportCronRun(`first-run-gsc--${project.slug}`, { triggered: "hourly-gsc" }, false);
     after(() => triggerCron("/api/cron/hourly-gsc"));
+  }
+  // First research is the FIRST domino - keywords (and the rank checks that
+  // follow) only exist after it runs. The setup run is meant to kick it off,
+  // but that leans on the agent remembering to; make it deterministic like
+  // ranks/gsc above. Once setup is done and nothing has been researched yet
+  // (no keywords, empty queue), fire the research workflow so the dashboard
+  // fills itself - no "run /seo-research" for the owner. Needs a repo to
+  // dispatch into; debounced through the marker row like the others.
+  const suggestionCount = suggestions.count ?? 0;
+  if (
+    project.pipeline_installed_at &&
+    project.github_repo &&
+    keywordCount === 0 &&
+    suggestionCount === 0 &&
+    !recently(`first-run-research--${project.slug}`)
+  ) {
+    await reportCronRun(`first-run-research--${project.slug}`, { triggered: "seo-research" }, false);
+    after(() => dispatchResearch(project));
   }
 
   // Only look for a PR while the pipeline is still uninstalled - that's the

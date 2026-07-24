@@ -1131,6 +1131,59 @@ export async function connectClaudeToken(
   return { ok: true };
 }
 
+export type ConnectBuilderTokenState = { ok: true } | { error: string } | null;
+
+// Self-host / docker sibling of connectClaudeToken: the owner pastes their
+// `claude setup-token` output on the dashboard's automatic-builds step and it
+// is stored encrypted in instance_settings (0037). /api/builder/jobs hands it
+// to the builder container in its poll feed (builderClaudeToken), so nobody
+// edits .env or hunts for the install folder - the last terminal step of the
+// docker install, gone. Shape-checked only (no local Claude session exists to
+// live-verify against); the builder's first poll proves liveness and the
+// finale's "Automatic builds" row flips green off its heartbeat.
+export async function connectBuilderToken(
+  _prev: ConnectBuilderTokenState,
+  formData: FormData,
+): Promise<ConnectBuilderTokenState> {
+  await assertAuthed();
+  if (isCloudMode()) {
+    return { error: "The hosted version runs builds on GitHub, not a local builder container." };
+  }
+  // Strip ALL whitespace, not just trim: pasted tokens line-wrap and can carry
+  // a real newline mid-token (the known terminal-copy gotcha).
+  const token = String(formData.get("token") ?? "").replace(/\s+/g, "");
+  if (!token) return { error: "Paste the token that `claude setup-token` printed." };
+  if (!token.startsWith("sk-ant-oat") || token.length < 60) {
+    return {
+      error:
+        "That doesn't look like a Claude Code token (they start with sk-ant-oat). Run `claude setup-token` and copy its whole output.",
+    };
+  }
+  const enc = await encryptSecret(token);
+  const { data, error } = await db()
+    .from("instance_settings")
+    .update({ builder_claude_token: enc })
+    .eq("id", true)
+    .select("id");
+  if (error) {
+    return {
+      error: /builder_claude_token|column/i.test(error.message)
+        ? "This install predates migration 0037 - re-run start.sh once to apply it, then try again."
+        : error.message,
+    };
+  }
+  if (!data || data.length === 0) {
+    return {
+      error:
+        "This install is configured through environment variables - set CLAUDE_CODE_OAUTH_TOKEN in your .env instead.",
+    };
+  }
+  bustInstanceCache();
+  revalidatePath("/onboarding");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
 // The cloud finale's install trigger (c5): commits the pipeline pack into
 // the connected repo through the App and fires the seo-setup workflow.
 // Idempotent - c5 re-fires it on every mount/resume and each step tolerates

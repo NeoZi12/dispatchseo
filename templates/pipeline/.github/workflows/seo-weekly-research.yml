@@ -11,6 +11,11 @@ name: SEO weekly research
 on:
   schedule:
     - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  # The backend fires this the first time a freshly-installed project's queue is
+  # still empty (onboarding/status first-run trigger), so the dashboard fills
+  # itself instead of asking the owner to run a command.
+  repository_dispatch:
+    types: [seo-research]
   workflow_dispatch:
 
 concurrency:

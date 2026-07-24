@@ -170,18 +170,34 @@ set_git_identity() { # commit as the GH_TOKEN's real user, cached per token
 }
 
 while :; do
-  if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
-    log "idle - set CLAUDE_CODE_OAUTH_TOKEN in .env (run 'claude setup-token' on your machine, paste the sk-ant-oat... token), then: docker compose up -d builder"
-    sleep 1800; continue
+  # A non-claiming poll FIRST: it carries the tokens (gh + claude) and never
+  # costs a cadence window, so resolving/validating the Claude token here can
+  # never silently claim jobs we then skip for a bad token.
+  probe=$(curl -s --max-time 60 -H "Authorization: Bearer ${CRON_SECRET}" "$APP/api/builder/jobs")
+  if [ -z "$probe" ] || ! echo "$probe" | jq -e . >/dev/null 2>&1; then
+    log "backend not reachable yet - retrying in 60s"
+    sleep 60; continue
   fi
-  case "$CLAUDE_CODE_OAUTH_TOKEN" in
-    *PASTE-YOUR-TOKEN*) log "idle - CLAUDE_CODE_OAUTH_TOKEN is still the wizard's placeholder; edit .env and swap in the real token from 'claude setup-token', then: docker compose up -d builder"
-       sleep 1800; continue ;;
-    sk-ant-oat*) : ;;
-    *) log "idle - CLAUDE_CODE_OAUTH_TOKEN does not look like a Claude Code OAuth token (expected sk-ant-oat...); re-run 'claude setup-token' and paste it without line breaks"
-       sleep 1800; continue ;;
-  esac
 
+  # The Claude Code OAuth token. The container's own env wins (classic
+  # installs that set CLAUDE_CODE_OAUTH_TOKEN in .env); otherwise the
+  # wizard-stored token the backend just handed us - so owners who paste it
+  # on the dashboard's automatic-builds step never touch .env or hunt for the
+  # install folder. Poll every 5 min while unconfigured so a freshly pasted
+  # token goes live quickly, instead of the long idle a settled builder uses.
+  CLAUDE_TOK="${CLAUDE_CODE_OAUTH_TOKEN:-$(echo "$probe" | jq -r '.claude_token // empty')}"
+  case "$CLAUDE_TOK" in
+    "") log "idle - no Claude token yet. Paste it on the dashboard's 'Turn on automatic builds' step (or set CLAUDE_CODE_OAUTH_TOKEN in .env)."
+       sleep 300; continue ;;
+    *PASTE-YOUR-TOKEN*) log "idle - the token is still the placeholder; paste the real sk-ant-oat... token on the dashboard's automatic-builds step."
+       sleep 300; continue ;;
+    sk-ant-oat*) : ;;
+    *) log "idle - that doesn't look like a Claude Code OAuth token (expected sk-ant-oat...); re-run 'claude setup-token' and paste it again."
+       sleep 300; continue ;;
+  esac
+  export CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_TOK"
+
+  # Token good - now claim real work.
   feed=$(curl -s --max-time 60 -H "Authorization: Bearer ${CRON_SECRET}" "$APP/api/builder/jobs?claim=1")
   if [ -z "$feed" ] || ! echo "$feed" | jq -e . >/dev/null 2>&1; then
     log "backend not reachable yet - retrying in 60s"

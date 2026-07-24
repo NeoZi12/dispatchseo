@@ -2,7 +2,7 @@ import { checkCron } from "@/lib/cron-auth";
 import { db } from "@/lib/db";
 import { getCronHealth, reportCronRun } from "@/lib/cron-alerts";
 import { credsForProject } from "@/lib/dataforseo";
-import { mergeToken } from "@/lib/github";
+import { mergeToken, builderClaudeToken } from "@/lib/github";
 import { listProjects, fetchProjectToken, effectiveAutomations } from "@/lib/projects";
 import { isCloudMode } from "@/lib/cloud";
 
@@ -157,6 +157,11 @@ export async function GET(req: Request): Promise<Response> {
   return Response.json({
     poll_seconds: 600,
     gh_token: (await mergeToken()) ?? null,
+    // The wizard-stored Claude token (0037), so the builder needs no .env
+    // edit. The container's own CLAUDE_CODE_OAUTH_TOKEN env still wins in
+    // run.sh; this is the fallback it reaches for when that env is unset.
+    // Always sent (claim or not) so the token resolves before any job runs.
+    claude_token: (await builderClaudeToken()) ?? null,
     jobs,
     merge_sweeps: mergeSweeps,
   });

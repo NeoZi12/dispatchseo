@@ -554,18 +554,24 @@ export default async function Home() {
     pendingSugs.length === 0 && prs.length === 0 && !showBalanceNudge && indexingTasks.length === 0;
   // Every setup card is conditional now (Phase 4 shipped, the "coming"
   // placeholder is gone) - hide the whole section once setup is complete.
+  // CLOUD: the whole "Initial setup" section is self-host framing - it walks a
+  // self-hoster through steps they do by hand. Cloud does all of it for them
+  // (App install, OAuth GSC, bundled DataForSEO, auto-research), and the top
+  // "setting up in the background" banner is the single honest progress
+  // surface, so the section never renders on cloud.
   const hasSetupCards =
-    needsMergeToken ||
-    needsAppReconnect ||
-    needsDataforseo ||
-    needsUsageLimit ||
-    needsFunding ||
-    needsProfile ||
-    needsFirstPage ||
-    needsPipeline ||
-    needsGsc ||
-    needsBuilder ||
-    needsAlertEmail;
+    !isCloudMode() &&
+    (needsMergeToken ||
+      needsAppReconnect ||
+      needsDataforseo ||
+      needsUsageLimit ||
+      needsFunding ||
+      needsProfile ||
+      needsFirstPage ||
+      needsPipeline ||
+      needsGsc ||
+      needsBuilder ||
+      needsAlertEmail);
 
   return (
     <div className="space-y-8">

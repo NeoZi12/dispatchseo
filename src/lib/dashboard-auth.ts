@@ -37,6 +37,10 @@ type InstanceRow = {
   // 0030: encrypted GitHub token behind one-tap merge, same wizard-owned
   // pattern; env GH_MERGE_TOKEN wins over it.
   gh_merge_token?: string | null;
+  // 0037: encrypted Claude Code OAuth token for the in-stack builder, same
+  // wizard-owned pattern; the builder container's own CLAUDE_CODE_OAUTH_TOKEN
+  // env (from .env) wins over it.
+  builder_claude_token?: string | null;
 } | null;
 
 // Every protected page checks the cookie, so the instance row is cached for

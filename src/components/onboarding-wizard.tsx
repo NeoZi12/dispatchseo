@@ -6,6 +6,7 @@ import { mcpAddCommand } from "@/lib/mcp-connect";
 import { FirstRunStatus } from "@/components/first-run-status";
 import {
   chooseGscOnly,
+  connectBuilderToken,
   connectDataforseo,
   connectGithubToken,
   connectGscServiceAccount,
@@ -15,6 +16,7 @@ import {
   skipPowerup,
   wizardCheckGscAccess,
   wizardCreateProject,
+  type ConnectBuilderTokenState,
   type ConnectDataforseoState,
   type ConnectGithubState,
   type ConnectGscState,
@@ -269,6 +271,12 @@ export function OnboardingWizard({
     connectGithubToken,
     null,
   );
+  // Docker automatic-builds: paste the Claude token into the dashboard, stored
+  // encrypted and fed to the builder container - no .env edit, no folder hunt.
+  const [builderState, builderAction, builderPending] = useActionState<
+    ConnectBuilderTokenState,
+    FormData
+  >(connectBuilderToken, null);
   useEffect(() => {
     if (ghState && "ok" in ghState) setScreen("s4b");
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1172,34 +1180,62 @@ export function OnboardingWizard({
           </div>
 
           {isDocker ? (
-            <div className="mt-4 space-y-3">
-              <p className="text-[15px] text-neutral-300">
-                <b className="font-semibold text-neutral-100">3.</b> Turn on automatic builds.
-                One time, two pastes:
-              </p>
-              <p className="text-sm text-neutral-400">
-                <b className="font-medium text-neutral-200">a.</b> On your own computer, run this
-                and copy the <code className="font-mono text-neutral-300">sk-ant-oat...</code>{" "}
-                token it prints (it opens a browser login):
-              </p>
-              <CopyBox text="claude setup-token" />
-              <p className="text-sm text-neutral-400">
-                <b className="font-medium text-neutral-200">b.</b> In the folder DispatchSEO was
-                installed from (on a VPS: over SSH), paste this with your token swapped in:
-              </p>
-              {/* The placeholder must NOT start with sk-ant-oat: the builder
-                  accepts any token matching that prefix, so a verbatim paste
-                  of the old placeholder passed validation and failed only at
-                  build time (2026-07-23 e2e). This shape gets rejected with a
-                  clear log line instead. */}
-              <CopyBox text='[ -f start.sh ] && echo "CLAUDE_CODE_OAUTH_TOKEN=PASTE-YOUR-TOKEN-HERE" >> .env && docker compose up -d builder && docker compose logs builder --tail 5 || echo "Wrong folder - run this inside the dispatchseo folder (on a VPS: ssh in first)"' />
-              <p className="text-sm text-neutral-500">
-                The last command shows the builder waking up - it either starts polling for work
-                or says exactly what it&apos;s still waiting for. That&apos;s your Claude Code
-                running inside Docker, building on schedule, no public URL needed. Until
-                it&apos;s on, nothing builds automatically - everything else still works.
-              </p>
-            </div>
+            builderState && "ok" in builderState ? (
+              <div className="mt-4 rounded-xl border border-emerald-500/25 bg-emerald-500/[0.06] px-4 py-3.5 text-sm text-neutral-300">
+                <b className="font-semibold text-emerald-400">Automatic builds are on.</b> Your
+                token is saved (encrypted). The builder picks it up within a few minutes - the
+                &quot;Automatic builds&quot; row below turns green once it checks in.
+              </div>
+            ) : (
+              <div className="mt-4 space-y-3">
+                <p className="text-[15px] text-neutral-300">
+                  <b className="font-semibold text-neutral-100">3.</b> Turn on automatic builds.
+                  One time:
+                </p>
+                <p className="text-sm text-neutral-400">
+                  <b className="font-medium text-neutral-200">a.</b> On your own computer, run this
+                  and copy the <code className="font-mono text-neutral-300">sk-ant-oat...</code>{" "}
+                  token it prints (it opens a browser login):
+                </p>
+                <CopyBox text="claude setup-token" />
+                <p className="text-sm text-neutral-400">
+                  <b className="font-medium text-neutral-200">b.</b> Paste it here - that&apos;s it,
+                  no terminal or files to touch:
+                </p>
+                <form action={builderAction} className="space-y-2.5">
+                  {builderState && "error" in builderState ? (
+                    <ErrorLine msg={builderState.error} />
+                  ) : null}
+                  <input
+                    name="token"
+                    type="password"
+                    placeholder="sk-ant-oat..."
+                    autoComplete="off"
+                    className={inputClass}
+                  />
+                  <div className="flex items-center justify-between pt-1">
+                    <p className="text-sm text-neutral-500">
+                      Stored encrypted in your own database.
+                    </p>
+                    <button
+                      type="submit"
+                      disabled={builderPending}
+                      className="cursor-pointer rounded-lg bg-violet-500 px-5 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {builderPending ? "Saving..." : "Turn on builds"}
+                    </button>
+                  </div>
+                </form>
+                <p className="text-sm text-neutral-500">
+                  That&apos;s your Claude Code running inside Docker, building on schedule, no
+                  public URL needed. Until it&apos;s on, nothing builds automatically - everything
+                  else still works. (Prefer the terminal? Add{" "}
+                  <code className="font-mono text-neutral-400">CLAUDE_CODE_OAUTH_TOKEN</code> to the
+                  install folder&apos;s <code className="font-mono text-neutral-400">.env</code>{" "}
+                  instead - env always wins.)
+                </p>
+              </div>
+            )
           ) : null}
 
           {isDocker ? (

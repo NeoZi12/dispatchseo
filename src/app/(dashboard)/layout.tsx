@@ -32,8 +32,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // site. Show a top banner in exactly that window - repo connected but the run
   // hasn't stamped pipeline_installed_at yet - so the half-filled dashboard
   // reads as "still setting up", not "broken".
+  // Top progress banner: during setup (pipeline not installed yet) AND the
+  // first-data window after install, while the auto-fired research + rank checks
+  // are still landing. Bounded to a few hours post-install so long-established
+  // projects don't mount a polling banner on every load; the banner itself
+  // hides the moment ideas + a rank check exist.
+  const installedAt = active?.pipeline_installed_at
+    ? new Date(active.pipeline_installed_at).getTime()
+    : null;
   const setupInProgress =
-    billing && active != null && Boolean(active.github_repo) && active.pipeline_installed_at == null;
+    billing &&
+    active != null &&
+    Boolean(active.github_repo) &&
+    (installedAt == null || Date.now() - installedAt < 6 * 3_600_000);
   return (
     <div className="flex min-h-screen bg-neutral-950 text-neutral-100">
       <Sidebar billing={billing} />
@@ -66,6 +77,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             slug={active.slug}
             repo={active.github_repo}
             since={active.github_app_installed_at}
+            installed={active.pipeline_installed_at != null}
           />
         )}
         <main className="min-w-0 flex-1 px-4 py-8 sm:px-6 lg:px-8">{children}</main>

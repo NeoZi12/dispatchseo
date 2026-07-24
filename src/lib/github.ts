@@ -77,6 +77,25 @@ export async function mergeToken(): Promise<string | null> {
   return token;
 }
 
+// The in-stack builder's Claude Code OAuth token (0037), handed to the
+// builder container in its /api/builder/jobs poll feed - the same delivery
+// path mergeToken() above uses for the GitHub token. Env wins (classic
+// installs that set CLAUDE_CODE_OAUTH_TOKEN in .env - though on the app
+// container that env is normally unset; the builder honors its own copy
+// first regardless), otherwise the wizard-stored encrypted value. Not
+// cached: a freshly pasted token must reach the very next poll, and the
+// builder polls only every ~10 minutes, so a DB read here is free.
+export async function builderClaudeToken(): Promise<string | null> {
+  const env = process.env.CLAUDE_CODE_OAUTH_TOKEN;
+  if (env) return env;
+  try {
+    const stored = (await instanceSettings())?.builder_claude_token;
+    return stored ? await decryptSecret(stored) : null;
+  } catch {
+    return null;
+  }
+}
+
 async function headers(ref?: RepoRef): Promise<Record<string, string>> {
   const h: Record<string, string> = {
     Accept: "application/vnd.github+json",
@@ -207,6 +226,19 @@ async function fireDispatch(
   } catch {
     return { ok: false, message: "Could not reach GitHub - try again." };
   }
+}
+
+// First-run research: the backend fires this once, when a freshly-installed
+// project's queue is still empty, so the first keyword ideas (and the rank
+// checks that follow from them) land on their own - no "run /seo-research"
+// command for the owner. Same wake-up-only payload contract as the others.
+export function dispatchResearch(repo: RepoRef) {
+  return fireDispatch(
+    repo,
+    "seo-research",
+    { trigger: "first-run" },
+    "Research requested - first keyword ideas land in the queue in a few minutes.",
+  );
 }
 
 // Stage 1 - the Scan now button wakes the repo's trend-scan workflow, which

@@ -2,6 +2,7 @@ import { requireDashboard } from "@/lib/auth-gate";
 import { db } from "@/lib/db";
 import { requireOnboarded } from "@/lib/onboarding-gate";
 import { getActiveProject } from "@/lib/active-project";
+import { isCloudMode } from "@/lib/cloud";
 import { sortQueue, type Suggestion } from "@/lib/metrics";
 import { AddIdeaCard, RestoreButton } from "@/components/client";
 import { DraggableQueue, type QueueRow } from "@/components/queue-table";
@@ -145,8 +146,14 @@ export default async function ResearchPage() {
           </SectionTitle>
           {opportunities.length === 0 ? (
             <EmptyState>
-              Queue is empty - the Monday research run refills it, or run <Mono>/seo-research</Mono>{" "}
-              in Claude Code.
+              {isCloudMode() ? (
+                "Queue is empty - your keyword research is running and fills this in a few minutes, then automatically every week. Nothing to run yourself."
+              ) : (
+                <>
+                  Queue is empty - the Monday research run refills it, or run{" "}
+                  <Mono>/seo-research</Mono> in Claude Code.
+                </>
+              )}
             </EmptyState>
           ) : (
             <DraggableQueue kind="guide" rows={opportunities.map(toQueueRow)} />
