@@ -18,6 +18,7 @@ import {
   MergeButton,
 } from "@/components/client";
 import { GhTokenConnect } from "@/components/gh-token-connect";
+import { BuilderTokenConnect } from "@/components/builder-token-connect";
 import { IdeaCard } from "@/components/idea-card";
 import { TrafficByPage } from "@/components/seo-cards";
 import { TrendScanButton, TrendScanPoller, TrendScanSweep } from "@/components/trend-scan";
@@ -783,15 +784,16 @@ export default async function Home() {
           {needsBuilder ? (
             <SetupStep
               title="Turn on automatic builds"
-              why="This install runs its own builder - your Claude Code inside Docker, building approved ideas on schedule, no public URL needed. It hasn't checked in yet, so nothing builds automatically until this is done. Two pastes."
+              why="This install runs its own builder - your Claude Code inside Docker, building approved ideas on schedule, no public URL needed. It hasn't checked in yet, so nothing builds automatically until this is done. One paste."
               steps={[
                 "On your own computer, run claude setup-token in a terminal and copy the sk-ant-oat... token it prints (it opens a browser login).",
-                "In the folder DispatchSEO was installed from (on a VPS: over SSH), paste the command below with your token swapped in.",
+                "Paste it in the box below - stored encrypted, no files to touch.",
                 "Within ~10 minutes the builder checks in and this card disappears by itself.",
               ]}
-              command={'[ -f start.sh ] && echo "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat-PASTE-YOUR-TOKEN-HERE" >> .env && docker compose up -d builder || echo "Wrong folder - run this inside the dispatchseo folder (on a VPS: ssh in first)"'}
-              closing="Until then everything else still works - research, approvals, rankings - only automatic building waits."
-            />
+              closing="Until then everything else still works - research, approvals, rankings - only automatic building waits. Prefer the terminal? Add CLAUDE_CODE_OAUTH_TOKEN to the install folder's .env instead - env always wins."
+            >
+              <BuilderTokenConnect />
+            </SetupStep>
           ) : null}
           {needsAlertEmail ? (
             <SetupStep

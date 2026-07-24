@@ -22,8 +22,9 @@ name: dispatchseo
 #   builder   - headless Claude Code executor: polls the app for due content
 #               jobs (daily guide, weekly research, tool builds, geo-scan)
 #               and runs them in-stack, so the pipeline works without any
-#               public URL. Idles politely until CLAUDE_CODE_OAUTH_TOKEN is
-#               set in .env (see .env.docker.example).
+#               public URL. Idles politely until a Claude token exists - paste
+#               it on the dashboard's "Turn on automatic builds" step
+#               (easiest), or set CLAUDE_CODE_OAUTH_TOKEN in .env to override.
 
 services:
   postgres:
