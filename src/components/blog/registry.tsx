@@ -27,6 +27,9 @@ import { WiredLoopFlow } from "./wired-loop-flow";
 import { AlternativesScorecard } from "./alternatives-scorecard";
 import { SerpCompositionGrid } from "./serp-composition-grid";
 import { BacklinkRealityCard } from "./backlink-reality-card";
+import { AiVisibilityLandscapeScorecard } from "./ai-visibility-landscape-scorecard";
+import { CitationCheckChecklist } from "./citation-check-checklist";
+import { AiVisibilityRealityCard } from "./ai-visibility-reality-card";
 import { slugify } from "@/lib/slugify";
 
 // The components every blog MDX file renders with: typographic defaults that
@@ -133,4 +136,7 @@ export const mdxComponents: MDXComponents = {
   AlternativesScorecard,
   SerpCompositionGrid,
   BacklinkRealityCard,
+  AiVisibilityLandscapeScorecard,
+  CitationCheckChecklist,
+  AiVisibilityRealityCard,
 };

@@ -1,0 +1,60 @@
+---
+title: Every AI visibility tracking tool on page 1 costs $99/mo and up - here's the two-tool alternative that doesn't
+description: Profound, Peec AI, and SE Ranking's AI Visibility Tracker all sell AI-citation tracking as its own subscription, checked live against each one's own pricing page. The by-hand method, the two MCP tools that automate it, and this site's own real citation numbers at day 11.
+date: 2026-07-25
+keyword: ai visibility tracking tool
+cover: /blog/covers/ai-visibility-tracking-tool.webp
+---
+
+Type a target query into ChatGPT or ask Google's AI Overview the same thing, and the answer either names your site as a source or it doesn't. Tracking that - across engines, across queries, over time - is what every "AI visibility tracking tool" on page 1 sells as a new subscription: Profound, Peec AI, SE Ranking's AI Visibility Tracker, each with its own login and its own bill. It's also just two more columns on data an SEO backend that already tracks rankings can hold: this guide covers what the dedicated tools actually cost, the by-hand method underneath all of them, and the two MCP tools doing that same job on dispatchseo.com's own bearer token - real citation numbers included.
+
+> **TL;DR** - Profound starts at $99/mo, Peec AI won't publish a number without a signup, and SE Ranking bolts its tracker onto an existing subscription with a 5-checks-a-day free teaser. The job underneath all three: ask your target queries to each AI engine, log whether it cited you, repeat monthly. DispatchSEO does that with `get_ai_visibility` and `record_ai_citations` - two tools on the same backend that already runs rank tracking, no new subscription. Its own numbers at day 11: 0 of 15 Claude answers cite it, 0 of 9 Google AI Overviews do either - the honest cold-start most vendor case studies skip.
+
+## What "AI visibility tracking" actually measures
+
+Three things, distinct from ordinary rank tracking: whether an AI engine answers your target query at all (`has_ai_answer`), whether its answer names your site as a source (`cited`), and - the part every vendor page leads with - which domains it cited instead when it didn't name you. That third number is the useful one. A citation rate alone just tells you the score; the domains AI engines reach for instead tell you what to go build.
+
+## What a dedicated tool costs, checked live
+
+<AiVisibilityLandscapeScorecard />
+
+Profound is the one vendor in this table with a real, public entry price - $99/mo, and that's before Growth at $399/mo for anyone who wants more than the Starter tier's basics. Peec AI and SE Ranking's tracker both work the same underlying job but won't put a number on a page without a signup or an existing subscription first, which is its own answer: the category is priced to be discovered mid-funnel, not compared up front. None of the three folds into a backend that's already tracking your rankings - each one is a fourth or fifth login next to the SEO tools you already run.
+
+## What checking it by hand actually takes
+
+<CitationCheckChecklist />
+
+None of this needs a vendor. It needs discipline about repeating it - which is exactly where a spreadsheet-based version usually dies after the second month, the same failure mode [the free Semrush stack](/blog/semrush-alternative-free) has once you're running seven unconnected tools instead of one.
+
+## The other model: two more tools on the backend you already have
+
+DispatchSEO doesn't sell AI-visibility tracking as a separate product - it's `get_ai_visibility` and `record_ai_citations`, two more tools on [the same MCP server](/blog/claude-code-mcp-server) that already runs SERP rank tracking and Search Console pulls for this site. A geo-scan run asks the target queries to each engine, calls `record_ai_citations` with the engine, the query, whether an answer ran, whether it cited this site, and every source it did cite; `get_ai_visibility` reads that back as a per-engine summary, a trend line, and a gap list of domains getting cited instead. It's [the agent-as-driver pattern](/blog/ai-seo-agent) applied to one more data feed: no new dashboard, no new login, the same suggestions queue an approved guide already flows through.
+
+## This site's own numbers, unvarnished
+
+<AiVisibilityRealityCard />
+
+Zero-for-fifteen and zero-for-nine look bad next to a vendor case study, and that's the honest number rather than a cherrypicked one. `has_ai_answer` came back true on almost every checked query, so the engines are answering fine - dispatchseo.com just isn't old enough or linked enough yet to be a source any of them reach for. The gap-domain list is the part that isn't vanity: youtube.com, github.com, reddit.com, and medium.com are what these exact queries cite instead, which is a shortlist of where a real presence might move the number, not just a score to feel bad about.
+
+## Honest limits: when a dedicated tool is the smarter buy
+
+None of this argues a platform like Profound is wrong for what it's built for. A team tracking AI visibility for a dozen client brands, or one that needs a shareable dashboard a non-technical stakeholder can open without touching a bearer token, gets real value from a product built around exactly that job - the same trade [self-hosting generally makes](/blog/self-hosted-ai) between owning the code and being handed a finished UI. And a site with zero rank-tracking infrastructure already running gets nothing from folding citation tracking into a backend it doesn't have; the fold-in only pays off once the rest of the pipeline already exists.
+
+## FAQ
+
+**Is AI visibility tracking the same thing as SEO rank tracking?**
+Related but not the same measurement. Rank tracking checks where a page sits in Google's organic results; AI visibility tracking checks whether an AI engine's generated answer names your site as a source at all - a page can rank and still never get cited, or vice versa.
+
+**Do I need a paid tool to check this at all?**
+No - asking your target queries to each engine by hand and logging the answer works, it just doesn't scale past a handful of queries checked once. The checklist above is the full by-hand method; a tool (dedicated or folded-in) mainly buys you repeatability.
+
+**Why does DispatchSEO show 0% citations - does that mean it doesn't work?**
+It means the domain is 11 days old. `has_ai_answer` is true on nearly every checked query, so the pipeline itself is working; a brand-new site with no backlink history isn't a source any AI engine has reason to reach for yet, independent of what wrote its content.
+
+**What's the gap-domain list actually for?**
+It's the domains an AI engine cited on queries where this site wasn't cited - youtube.com, github.com, reddit.com, and medium.com currently, for these target queries. It's a targeting list, not a vanity metric: it says where a citable presence might actually move the number.
+
+**Can I track AI visibility without also tracking search rankings?**
+Yes, nothing requires both - but if a backend is already checking rankings and Search Console daily, adding two more MCP tools to the same token is a smaller lift than standing up a fifth login for a job that's conceptually adjacent to what it already tracks.
+
+A $99/mo tool and a free-with-discipline spreadsheet measure the same three things: does the engine answer, does it cite you, who does it cite instead. What actually changes the number is neither - it's building something worth citing, and then having somewhere durable to notice when an engine starts doing it.
