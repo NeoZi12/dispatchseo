@@ -30,6 +30,9 @@ import { BacklinkRealityCard } from "./backlink-reality-card";
 import { AiVisibilityLandscapeScorecard } from "./ai-visibility-landscape-scorecard";
 import { CitationCheckChecklist } from "./citation-check-checklist";
 import { AiVisibilityRealityCard } from "./ai-visibility-reality-card";
+import { SubagentShapeCompareTable } from "./subagent-shape-compare-table";
+import { ClaimAndBuildFlow } from "./claim-and-build-flow";
+import { PipelineClaimFactRow } from "./pipeline-claim-fact-row";
 import { slugify } from "@/lib/slugify";
 
 // The components every blog MDX file renders with: typographic defaults that
@@ -139,4 +142,7 @@ export const mdxComponents: MDXComponents = {
   AiVisibilityLandscapeScorecard,
   CitationCheckChecklist,
   AiVisibilityRealityCard,
+  SubagentShapeCompareTable,
+  ClaimAndBuildFlow,
+  PipelineClaimFactRow,
 };

@@ -1,0 +1,98 @@
+---
+title: Claude Code subagents in a real production pipeline, not a toy example
+description: What most "Claude Code subagent" guides skip - the shape that reads a real queue, claims its own work, and ships a PR unattended. Shown with this guide's own claim-and-build run, real timestamps included.
+date: 2026-07-26
+keyword: claude code subagent
+cover: /blog/covers/claude-code-subagents.webp
+---
+
+A Claude Code subagent, by design, forgets everything the moment it returns a summary to whoever delegated to it - unless its definition sets one specific field almost no tutorial mentions. Nearly everything ranking for this term covers the disposable kind well: what a subagent is, the frontmatter, when Claude delegates automatically. This guide covers the field that makes a subagent *not* disposable, and separately, the adjacent problem most of that same content quietly assumes away: what has to be true of the *session* invoking any of this when nobody's there to watch it run - shown with the exact claim-then-build sequence, and real numbers, from the run that wrote this page.
+
+> **TL;DR** - A Claude Code subagent is a Markdown file with YAML frontmatter (`name` and `description` required; `tools`, `model`, `permissionMode`, and more optional) stored in `.claude/agents/` (one project) or `~/.claude/agents/` (every project on your machine). By default it's stateless: spun up, does one task, returns a summary, gone. Setting `memory: project` (or `user`/`local`) changes that - it gets a real directory on disk that survives across separate sessions, the one built-in mechanism for a subagent to actually learn instead of starting blank every time. Separately, a subagent is not the same thing as the *session* that invokes it: dispatchseo.com's own daily guide builder is a full session, not a subagent, run headless and unattended - and it solves its own version of the memory problem by claiming a suggestion (`update_suggestion(status: "in_progress")`) before drafting a word, so a second cold start can't double-build it. This exact guide waited about 5.9 days in that queue before this run picked it up.
+
+## What a Claude Code subagent actually is
+
+A subagent is a Markdown file with YAML frontmatter, living in `.claude/agents/` (checked into the repo, scoped to that project) or `~/.claude/agents/` (available in every project on your machine, never committed). Only `name` and `description` are required; the rest - `tools`, `disallowedTools`, `model`, `permissionMode`, `maxTurns`, `mcpServers`, `hooks`, `memory`, `isolation`, `background` - narrow what it can touch and how it runs. Claude Code's own docs cover every field in full: nobody needs a second, worse copy of that table here, so [read it straight from the source](https://code.claude.com/docs/en/sub-agents) if you're picking fields.
+
+What matters for everything below: Claude reads each subagent's `description` and delegates to it automatically when a task matches, the subagent works in its own context window and returns only a summary, and as of Claude Code v2.1.198 subagents run in the background by default. One more distinction the primer glosses over and this guide doesn't: a subagent is scoped to a single session. Running many independent Claude Code sessions in parallel, or on a schedule, is a separate thing - the docs call that background agents, not subagents. Conflating the two is the single most common inaccuracy in subagent write-ups, this one included if it weren't said plainly here.
+
+## Where nearly every subagent guide stops
+
+Anthropic's own course teaches the definition and the frontmatter well; a widely-starred GitHub list catalogs prebuilt subagent configs by role; a Reddit thread and a handful of blog posts trade usage patterns and "best practices." All of it is real and useful, and none of it mentions the one frontmatter field that changes what a subagent fundamentally is: whether it remembers anything at all.
+
+By default, a subagent is stateless on purpose - every one of those page-1 write-ups assumes exactly this and never questions it. Spin it up, it does its bounded task in its own context, it returns a summary, and the directory it worked in remembers nothing about the subagent having existed. Ask the same subagent to do the same kind of task tomorrow and it starts exactly as blank as it did today.
+
+## The field that makes a subagent not disposable
+
+Claude Code's `memory` frontmatter field gives a subagent a real, persistent directory that survives across separate sessions: `user` at `~/.claude/agent-memory/<name>/` for knowledge that should apply to every project, `project` at `.claude/agent-memory/<name>/` for knowledge specific to one repo and shareable through version control, or `local` at `.claude/agent-memory-local/<name>/` for the same thing kept out of git. Set it, and the subagent's system prompt is extended with instructions to read and curate a `MEMORY.md` in that directory - up to its first 200 lines or 25KB - and Read/Write/Edit are enabled automatically so it can. Ask it explicitly to check its memory before starting and to update it when it's done, and a code-reviewer subagent genuinely accumulates the patterns and conventions it keeps re-discovering instead of re-deriving them from zero every time you invoke it.
+
+That's the real "demo vs. production" line for a subagent specifically, and it costs one line of frontmatter, not a queue or a backend. It's also not the whole story, because a subagent - stateful or not - only ever runs inside some session, and that session has its own separate question to answer: does it *run* at all when nobody's there to invoke it?
+
+## The other axis: a session nobody is watching
+
+A subagent with `memory: project` still needs something to delegate to it. If that only ever happens when a human is typing into Claude Code, the subagent's memory is a nice-to-have, not a requirement - the human is a perfectly good fallback memory. The requirement shows up the moment the *session* itself runs unattended: a cron job, a scheduled CI workflow, [dispatchseo.com's own daily guide builder](/blog/claude-code-github-actions), none of which are subagents, all of which are full Claude Code sessions that wake up cold with no thread and no human to ask.
+
+That session-level amnesia is a different problem from a stateless subagent, and it needs a different fix: not `memory:` frontmatter, but state that lives entirely outside Claude Code - a database, a queue, [an MCP server built for exactly this](/blog/mcp-server-examples) - that the session reads before it starts and writes before it stops.
+
+<SubagentShapeCompareTable />
+
+## How this pipeline actually claims its own work
+
+<ClaimAndBuildFlow />
+
+Step three is the one a one-off session never needs and an unattended one can't skip. Without it, two cold starts on the same morning - a retry, a manually re-triggered workflow, an overlapping schedule - would both read the same "approved" queue item and both build it, and the first sign of trouble would be two open PRs for the same guide. Marking the suggestion `in_progress` before drafting a single sentence is the whole fix: the next run's `get_suggestions` call simply won't return an item already claimed. It's the same shape as [per-project bearer tokens on this site's own MCP server](/blog/claude-code-mcp-server) - state that has to survive between calls that don't share a process, done with the smallest write that actually works.
+
+## This guide's own build, as the numbers
+
+<PipelineClaimFactRow />
+
+Those aren't illustrative. They're what this exact session's own MCP calls returned, trimmed to the fields that matter:
+
+```jsonc
+// get_suggestions(status: "approved", type: "guide") - this run, real response
+{
+  "id": "bf5700fc-29c3-4f61-84b2-4c8ae53c1f15",
+  "title": "Claude Code subagents in a real production pipeline (not a toy example)",
+  "status": "approved",
+  "created_at": "2026-07-20T09:24:00.250087+00:00"
+}
+
+// update_suggestion(id, status: "in_progress") - this run, real response
+{
+  "id": "bf5700fc-29c3-4f61-84b2-4c8ae53c1f15",
+  "status": "in_progress",
+  "started_at": "2026-07-26T07:33:37.094+00:00"
+}
+```
+
+`created_at` to `started_at` on that one row is the whole idempotency story made concrete: this suggestion sat approved for just under six days - other approved items and the site's own one-guide-per-day pace both ahead of it in line - and nothing about that wait corrupted it, duplicated it, or lost it. It was still exactly where the queue left it the moment this run asked.
+
+## What breaks first when a session runs unattended
+
+- **Idempotency.** A human re-running a task just means asking again. An unattended session needs an explicit claim step, or "ran twice" becomes "shipped twice."
+- **Auth.** An interactive session inherits whatever's already logged in. A session acting on someone else's data - a customer's project, a tenant's queue - needs its own credential scoped to exactly that data, not a shared one that happens to work.
+- **Failure visibility.** A human watching a conversation notices immediately when something's wrong. An unattended run has to fail loud on purpose (a red CI check, a reverted claim) or a broken credential produces a "successful" run that quietly built nothing.
+- **Verification.** A human reads the output before trusting it. An unattended pipeline needs something else doing that job - a merge gate, a test suite, a sameness check - because there's no guarantee a human reads any given run's output before the next one starts.
+
+## When the simple, stateless shape is exactly what you want
+
+None of the above is a reason to over-engineer a one-off. Set `memory` on a subagent only when you'll actually invoke it enough times, across enough sessions, for the accumulated notes to pay for the extra moving part - a subagent you use once a month gains nothing from a `MEMORY.md` it never gets asked to consult. The same goes one level up: if the task is genuinely "fix this failing test" or "review this diff" and a human kicks it off every time, a plain subagent with no queue and no scheduled trigger is the right amount of machinery. Reach for a stateful subagent, or a fully unattended session, only when there's an actual recurring job on the other end; without that, everything above is solving a problem you don't have yet.
+
+## FAQ
+
+**Is a Claude Code subagent the same thing as a scheduled or background agent?**
+No. A subagent is scoped to a single session - Claude delegates to it, it works in its own context, it returns a summary, all inside one conversation. Running many independent sessions in parallel or on a schedule is a different, related feature Claude Code calls background agents.
+
+**How does a subagent remember anything between separate sessions?**
+Only if its definition sets the `memory` field (`user`, `project`, or `local`). That gives it a real directory - `.claude/agent-memory/<name>/` for `project` scope - plus a `MEMORY.md` it's instructed to read and curate. Without `memory` set, a subagent starts blank every single time, by design.
+
+**Do I need an MCP server to make an unattended session production-ready?**
+Not necessarily an MCP server specifically, but you need *some* durable state the session reads before starting and writes before finishing - a database, a committed queue file, anything that outlives one run. MCP is simply the mechanism this pipeline already uses for that.
+
+**How does this pipeline avoid building the same guide twice across separate runs?**
+By claiming the work explicitly before starting it - here, an `update_suggestion(status: "in_progress")` call - so the next run's read of the queue no longer returns that item. Nothing about Claude Code itself handles this; it has to be built into whatever state store the runs share.
+
+**Where do Claude Code subagent files actually live?**
+`.claude/agents/` for a project-scoped subagent (commit it, share it with your team), or `~/.claude/agents/` for one available in every project on your machine.
+
+A subagent's statelessness is a design choice, not a limitation to work around by default - most tasks genuinely are one-off, and `memory` exists for the minority that aren't. The session invoking it is a separate question entirely, and the one this site's own pipeline answers the same way every morning: nothing about Claude Code remembers yesterday's run, so something outside it has to.
