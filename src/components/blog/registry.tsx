@@ -33,6 +33,9 @@ import { AiVisibilityRealityCard } from "./ai-visibility-reality-card";
 import { SubagentShapeCompareTable } from "./subagent-shape-compare-table";
 import { ClaimAndBuildFlow } from "./claim-and-build-flow";
 import { PipelineClaimFactRow } from "./pipeline-claim-fact-row";
+import { MemoryScopeTable } from "./memory-scope-table";
+import { MemoryMechanismGrid } from "./memory-mechanism-grid";
+import { RepoMemoryFactRow } from "./repo-memory-fact-row";
 import { slugify } from "@/lib/slugify";
 
 // The components every blog MDX file renders with: typographic defaults that
@@ -145,4 +148,7 @@ export const mdxComponents: MDXComponents = {
   SubagentShapeCompareTable,
   ClaimAndBuildFlow,
   PipelineClaimFactRow,
+  MemoryScopeTable,
+  MemoryMechanismGrid,
+  RepoMemoryFactRow,
 };
