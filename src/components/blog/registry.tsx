@@ -36,6 +36,9 @@ import { PipelineClaimFactRow } from "./pipeline-claim-fact-row";
 import { MemoryScopeTable } from "./memory-scope-table";
 import { MemoryMechanismGrid } from "./memory-mechanism-grid";
 import { RepoMemoryFactRow } from "./repo-memory-fact-row";
+import { AutomationFitCompareTable } from "./automation-fit-compare-table";
+import { HeadlessRunFactRow } from "./headless-run-fact-row";
+import { AutomationPricingScorecard } from "./automation-pricing-scorecard";
 import { slugify } from "@/lib/slugify";
 
 // The components every blog MDX file renders with: typographic defaults that
@@ -151,4 +154,7 @@ export const mdxComponents: MDXComponents = {
   MemoryScopeTable,
   MemoryMechanismGrid,
   RepoMemoryFactRow,
+  AutomationFitCompareTable,
+  HeadlessRunFactRow,
+  AutomationPricingScorecard,
 };
