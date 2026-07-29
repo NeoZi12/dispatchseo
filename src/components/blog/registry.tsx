@@ -39,6 +39,9 @@ import { RepoMemoryFactRow } from "./repo-memory-fact-row";
 import { AutomationFitCompareTable } from "./automation-fit-compare-table";
 import { HeadlessRunFactRow } from "./headless-run-fact-row";
 import { AutomationPricingScorecard } from "./automation-pricing-scorecard";
+import { HeadlessFlagGrid } from "./headless-flag-grid";
+import { PrintModeEnvelopeFactRow } from "./print-mode-envelope-fact-row";
+import { ClassifyOutcomeBranches } from "./classify-outcome-branches";
 import { slugify } from "@/lib/slugify";
 
 // The components every blog MDX file renders with: typographic defaults that
@@ -157,4 +160,7 @@ export const mdxComponents: MDXComponents = {
   AutomationFitCompareTable,
   HeadlessRunFactRow,
   AutomationPricingScorecard,
+  HeadlessFlagGrid,
+  PrintModeEnvelopeFactRow,
+  ClassifyOutcomeBranches,
 };
