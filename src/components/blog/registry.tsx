@@ -42,6 +42,9 @@ import { AutomationPricingScorecard } from "./automation-pricing-scorecard";
 import { HeadlessFlagGrid } from "./headless-flag-grid";
 import { PrintModeEnvelopeFactRow } from "./print-mode-envelope-fact-row";
 import { ClassifyOutcomeBranches } from "./classify-outcome-branches";
+import { SerpTrackingCostScorecard } from "./serp-tracking-cost-scorecard";
+import { SelfHostPipelineFlow } from "./self-host-pipeline-flow";
+import { DiyWinsChecklist } from "./diy-wins-checklist";
 import {
   Callout,
   CardGrid,
@@ -186,4 +189,7 @@ export const mdxComponents: MDXComponents = {
   HeadlessFlagGrid,
   PrintModeEnvelopeFactRow,
   ClassifyOutcomeBranches,
+  SerpTrackingCostScorecard,
+  SelfHostPipelineFlow,
+  DiyWinsChecklist,
 };

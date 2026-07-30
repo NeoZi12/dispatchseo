@@ -28,7 +28,7 @@ None of this needs a vendor. It needs discipline about repeating it - which is e
 
 ## The other model: two more tools on the backend you already have
 
-DispatchSEO doesn't sell AI-visibility tracking as a separate product - it's `get_ai_visibility` and `record_ai_citations`, two more tools on [the same MCP server](/blog/claude-code-mcp-server) that already runs SERP rank tracking and Search Console pulls for this site. A geo-scan run asks the target queries to each engine, calls `record_ai_citations` with the engine, the query, whether an answer ran, whether it cited this site, and every source it did cite; `get_ai_visibility` reads that back as a per-engine summary, a trend line, and a gap list of domains getting cited instead. It's [the agent-as-driver pattern](/blog/ai-seo-agent) applied to one more data feed: no new dashboard, no new login, the same suggestions queue an approved guide already flows through.
+DispatchSEO doesn't sell AI-visibility tracking as a separate product - it's `get_ai_visibility` and `record_ai_citations`, two more tools on [the same MCP server](/blog/claude-code-mcp-server) that already runs [SERP rank tracking](/blog/serp-tracking-api) and Search Console pulls for this site. A geo-scan run asks the target queries to each engine, calls `record_ai_citations` with the engine, the query, whether an answer ran, whether it cited this site, and every source it did cite; `get_ai_visibility` reads that back as a per-engine summary, a trend line, and a gap list of domains getting cited instead. It's [the agent-as-driver pattern](/blog/ai-seo-agent) applied to one more data feed: no new dashboard, no new login, the same suggestions queue an approved guide already flows through.
 
 ## This site's own numbers, unvarnished
 
