@@ -45,6 +45,10 @@ import { ClassifyOutcomeBranches } from "./classify-outcome-branches";
 import { SerpTrackingCostScorecard } from "./serp-tracking-cost-scorecard";
 import { SelfHostPipelineFlow } from "./self-host-pipeline-flow";
 import { DiyWinsChecklist } from "./diy-wins-checklist";
+import { McpCategoryGrid } from "./mcp-category-grid";
+import { McpCategoryCompareTable } from "./mcp-category-compare-table";
+import { McpToolMixScorecard } from "./mcp-tool-mix-scorecard";
+import { McpPickChecklist } from "./mcp-pick-checklist";
 import {
   Callout,
   CardGrid,
@@ -192,4 +196,8 @@ export const mdxComponents: MDXComponents = {
   SerpTrackingCostScorecard,
   SelfHostPipelineFlow,
   DiyWinsChecklist,
+  McpCategoryGrid,
+  McpCategoryCompareTable,
+  McpToolMixScorecard,
+  McpPickChecklist,
 };

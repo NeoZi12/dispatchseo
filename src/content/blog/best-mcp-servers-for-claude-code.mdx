@@ -1,0 +1,98 @@
+---
+title: "Best MCP servers for Claude Code: grouped by what they touch, not what they're about"
+description: Context7, Playwright MCP, GitHub MCP, and this site's own 58-tool server, sorted by whether they fetch, act, or remember - the axis every ranked list skips - with real setup commands pulled from each project's current docs.
+date: 2026-07-31
+keyword: best mcp servers for claude code
+cover: /blog/covers/best-mcp-servers-for-claude-code.webp
+---
+
+Every "best MCP servers for Claude Code" list on page 1 sorts by product category - docs here, browser tools there, dev-ops in its own section - and every one of them skips the question that actually matters: what happens the moment Claude calls the thing. Split the field by that instead and three behaviors fall out cleanly: fetching information with no side effects (a docs server like Context7), taking real actions that change something (a browser via Playwright MCP, a repo via GitHub MCP), and remembering state across sessions that don't share a process (a domain server, the kind this site runs on itself). Pick the behavior first and the specific server gets a lot easier to pick.
+
+> **TL;DR** - Four servers, four behaviors: Context7 fetches current library docs and touches nothing (`npx ctx7 setup --claude`, two tools total). Playwright MCP drives a real browser off accessibility-tree snapshots instead of screenshots (65+ tools, no vision model needed) - though its own maintainers now say CLI-based Skills beat MCP for high-throughput coding agents, which is worth knowing before reaching for it by default. GitHub MCP is one remote endpoint (`api.githubcopilot.com/mcp/`) with OAuth login and a `GITHUB_TOOLSETS` env var to scope what loads. And a state server - this site's own included - never fetches or clicks anything; it just remembers. Grepping this project's own route file for this guide found 58 registered tools, and only 3 of them (`check_serp`, `suggest_keywords`, `keyword_ideas`) ever make an outbound call - the other 55 read or write nothing but this project's own Supabase rows. Ask what a server DOES before asking what category it's filed under, and most "which one is best" arguments dissolve into "best for which of the three jobs."
+
+## The four things you're actually choosing between
+
+<McpCategoryGrid />
+
+Two servers filed under the same category on a typical roundup - say, "dev tools" - can sit on opposite sides of this split: one only reads, the other pushes commits. That gap is what actually matters once Claude is driving, because a fetch-only server is safe to over-approve and a side-effect server isn't.
+
+## Research and context servers: fetch, never touch
+
+[Context7](https://github.com/upstash/context7) exists to stop Claude from generating against a stale mental model of a library's API. Run `npx ctx7 setup --claude` and it handles OAuth, mints an API key, and installs the matching skill in one pass; the server itself is small on purpose, exposing `resolve-library-id` and `query-docs` and nothing else. For a manual add instead of the setup script:
+
+```bash
+claude mcp add --transport http context7 https://mcp.context7.com/mcp \
+  --header "Authorization: Bearer <your-context7-key>"
+```
+
+Nothing here writes anything or clicks anything - the entire risk surface of a research server is "it returns outdated or irrelevant docs," never "it did something you didn't want."
+
+## Action servers, browser: Playwright MCP
+
+[Playwright MCP](https://github.com/microsoft/playwright-mcp) drives a real browser, but not the way most people picture browser automation working: it reads the page's accessibility tree instead of taking screenshots, so there's no vision model in the loop and no image tokens to burn. That's also why its tool count runs high - 65+ tools covering navigation, network mocking, storage, and DevTools, because a structured-data approach can expose far more surface than "click this pixel."
+
+```json
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@latest"]
+    }
+  }
+}
+```
+
+One honest caveat before reaching for it by default: the project's own docs now say modern coding agents increasingly favor CLI-based workflows exposed as Skills over MCP, because a CLI invocation is more token-efficient than a full MCP round trip. Their read is that MCP still earns its place in a specialized, stateful agentic loop - not that browser automation over MCP is wrong, just that it's not automatically the cheapest way to give an agent a browser.
+
+## Action servers, your repo: GitHub MCP
+
+GitHub's own [MCP server](https://github.com/github/github-mcp-server) is the one most "best MCP servers" lists put first, and for good reason: issues, pull requests, Actions runs, code search, and security alerts all become tool calls. The remote option needs no token at all - it authenticates over OAuth in the browser on first use:
+
+```bash
+claude mcp add --transport http github https://api.githubcopilot.com/mcp/
+```
+
+For a self-hosted instance instead, `GITHUB_PERSONAL_ACCESS_TOKEN` and Docker (`ghcr.io/github/github-mcp-server`) replace the OAuth flow, and `GITHUB_TOOLSETS="repos,issues,pull_requests,actions"` decides which of the toolsets actually register - useful the moment "everything GitHub can do" is more surface than one project needs approved.
+
+## State: the servers that remember you
+
+Every server above forgets the instant the call returns. A state server is the opposite by design - its only job is to still know something the next time it's asked, and the ranked lists on page 1 skip it entirely: not one names a real example. This site runs one on itself: a suggestions queue, tracked keywords, published pages, and GSC stats, gated behind one bearer token per project.
+
+<McpToolMixScorecard />
+
+That split is the whole argument for treating "state" as its own category instead of folding it into "dev tools": 55 of 58 tools here touch only this project's own database, and the 3 that reach outside are marked exactly that in their own descriptions, not left for Claude to guess at. The mechanics of connecting a server shaped like this - the config JSON, the scopes, what a headless CI run needs that an interactive session doesn't - are already covered in [how Claude Code connects to a stateful server](/blog/claude-code-mcp-server); this guide is about deciding to add one, not the plumbing once you have.
+
+## How the four actually compare
+
+<McpCategoryCompareTable />
+
+Read the "remembers" column carefully: GitHub obviously has state - issues, PRs, a full history - but that state lives on GitHub's own servers, not inside the MCP server sitting in front of it. The MCP layer itself is stateless either way. The only row where the server holds its own state is the last one, and that's the actual dividing line, not the topic each server happens to cover.
+
+## Which one to add for what you're building
+
+<McpPickChecklist />
+
+Most setups end up wanting at least one from each row, not one winner overall - a coding agent that only fetches docs can't ship anything, and one that only takes actions has no memory of what it already tried. The "best" server is the one that answers the question you're actually asking Claude to solve this session, not the one topping a generic ranking.
+
+## When this framework doesn't matter
+
+If you're adding exactly one server to try MCP out for the first time, this split doesn't change what to reach for: pick whichever solves today's immediate annoyance, research or action, and worry about the category theory once you're choosing between three or four servers that all sort of overlap. The split earns its keep specifically at the point where a roundup's flat list of ten servers stops being useful and you need a reason to say no to eight of them.
+
+## FAQ
+
+**What's the single best MCP server to start with in Claude Code?**
+There's no universal one - it depends which of the three jobs is missing. A developer working against unfamiliar library APIs gets the most from Context7; one driving a real product through a UI gets the most from Playwright MCP; one who already lives in GitHub issues and PRs gets the most from GitHub's own server.
+
+**Do I need a database-backed MCP server, or is that overkill?**
+Only once something needs to survive between separate sessions or callers - a queue a cron job reads tomorrow, a history table, anything an interactive chat would otherwise have to re-derive from scratch every time. A one-off task never needs it.
+
+**Is Playwright MCP still worth using if CLI Skills are more token-efficient?**
+Yes, for the case it's built for: an agentic loop that needs to hold browser state - open tabs, a logged-in session, DOM structure - across many tool calls in one task. A single one-off browser action is where the CLI/Skills path its own maintainers point to wins instead.
+
+**How does GitHub MCP's remote server handle authentication?**
+OAuth in the browser on first use, with credentials held in memory only - no personal access token to create or store. Self-hosting the server via Docker is the fallback that does need a PAT, set as `GITHUB_PERSONAL_ACCESS_TOKEN`.
+
+**Can one MCP server do more than one of these three jobs?**
+Nothing stops a server author from mixing fetch, action, and state in one implementation, and plenty do. The split in this guide is about behavior per tool call, not a rule that a server must pick one lane - it's what to check before trusting any given tool call's blast radius.
+
+Sort a roundup by product category and you get a shopping list. Sort it by what happens when Claude actually calls the tool, and you get a way to decide what belongs in your own config - which is the harder, more useful question underneath "best."
