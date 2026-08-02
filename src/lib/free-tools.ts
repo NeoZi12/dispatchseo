@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import { InternalLinkingTool } from "@/components/free-tools/internal-linking-tool";
+import { FaqSchemaGenerator } from "@/components/free-tools/faq-schema-generator";
 
 // Registry for the free, public interactive tools at /free-tools/<slug>.
 // One entry per tool - everything the index card and the detail page's
@@ -76,6 +77,51 @@ export const FREE_TOOLS: ToolEntry[] = [
       },
     ],
     Widget: InternalLinkingTool,
+  },
+  {
+    slug: "faq-schema-generator",
+    title: "FAQ schema generator",
+    h1: "FAQ schema generator",
+    valueLine:
+      "Type your questions and answers, get back valid FAQPage JSON-LD as you go - plus an honest read on what it will and won't do for you in Google right now.",
+    metaDescription:
+      "Free FAQ schema generator: type Q&A pairs and get spec-correct FAQPage JSON-LD, validated for duplicates and stray HTML, with a straight answer on Google's 2026 rich-result eligibility rules.",
+    description: [
+      "Type a question and its answer into a row and this tool builds the matching FAQPage JSON-LD as you go - no submit button, the script tag at the bottom just stays current. Add as many rows as you need; each one is checked on its own for the things that actually break FAQ markup - an empty field, a question repeated word-for-word further up the list, stray HTML tags left in from a copy-paste, or an answer so short it isn't really answering anything. A row with a problem stays out of the generated JSON-LD until you fix it, but it never blocks the rows that are fine.",
+      "One thing most FAQ generators still won't tell you: Google restricted the FAQ rich result to \"well-known, authoritative government and health websites\" in August 2023, then pulled it from Search entirely for everyone else on May 7, 2026. If your site isn't in one of those two categories, this markup isn't going to grow your listing in Google the way it used to. It's still legitimate structured data - FAQPage JSON-LD is a standard way to hand any crawler (Bing, an AI answer engine, your own site's tooling) a clean question-and-answer pairing instead of loose HTML - it just isn't a Google rich-snippet play anymore, and this tool says so up front instead of quietly assuming otherwise.",
+      "Nothing you type is uploaded anywhere - the whole thing runs in your browser tab, the same as this site's " +
+        "[internal linking tool](/free-tools/internal-linking-tool). Copy the finished script tag into your page's head and you're done.",
+      "This is one small, hand-run piece of what a full " +
+        "[automated SEO agent](/blog/ai-seo-agent) does on a schedule - deciding what markup a page needs and shipping it as part of the build, not as a separate manual step.",
+    ],
+    faq: [
+      {
+        question: "Does FAQ schema still help me rank in Google?",
+        answer:
+          "Not the way it used to. Google restricted the FAQ rich result to well-known government and health sites in August 2023, then removed the feature from Search entirely for everyone else starting May 7, 2026. Adding this markup today won't grow your listing with an expandable Q&A block in Google - that visual result is gone for almost everyone. It can still help other places that read structured data, like Bing or an AI answer engine summarizing your page.",
+      },
+      {
+        question: "Then why generate it at all?",
+        answer:
+          "Because FAQPage JSON-LD is still a standard, machine-readable way to say \"this text is a question, this text is its answer\" - useful for any crawler that isn't Google's rich-result system, and for keeping your own FAQ content in one clean structured block instead of scattered across ad hoc headings and paragraphs. Just don't build it expecting a Google rich snippet.",
+      },
+      {
+        question: "Why did it exclude one of my questions?",
+        answer:
+          "Each row is checked for the things that break FAQ markup: an empty question or answer, an answer under 10 characters (too thin to be a real answer), HTML tags left over from a paste, or a question that's a word-for-word repeat of one already in your list. A flagged row is listed with the specific problem and left out of the generated JSON-LD until you fix it - it never blocks the rows that are already fine.",
+      },
+      {
+        question: "Does the marked-up text need to match what's visible on my page?",
+        answer:
+          "Yes - that's one of Google's general structured data rules, not specific to FAQs: don't mark up content that isn't actually shown to readers. Paste the same question and answer text you display on the page, not a rewritten or padded version, and you'll be fine regardless of which rich-result policy is in effect at the time.",
+      },
+      {
+        question: "Can I use this for more than one FAQ block on a site?",
+        answer:
+          "Yes - run it again for each page's set of questions and paste the resulting script tag into that page's head. There's no limit on how many questions one script tag can hold, but keeping each block scoped to the FAQ actually visible on that page is what the content-matching rule above is asking for.",
+      },
+    ],
+    Widget: FaqSchemaGenerator,
   },
 ];
 
