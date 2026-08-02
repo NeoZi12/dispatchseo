@@ -49,6 +49,9 @@ import { McpCategoryGrid } from "./mcp-category-grid";
 import { McpCategoryCompareTable } from "./mcp-category-compare-table";
 import { McpToolMixScorecard } from "./mcp-tool-mix-scorecard";
 import { McpPickChecklist } from "./mcp-pick-checklist";
+import { AiCitationFreshnessFactRow } from "./ai-citation-freshness-fact-row";
+import { TrendToGuideTimelineFlow } from "./trend-to-guide-timeline-flow";
+import { RefreshVsFrontloadSplit } from "./refresh-vs-frontload-split";
 import {
   Callout,
   CardGrid,
@@ -200,4 +203,7 @@ export const mdxComponents: MDXComponents = {
   McpCategoryCompareTable,
   McpToolMixScorecard,
   McpPickChecklist,
+  AiCitationFreshnessFactRow,
+  TrendToGuideTimelineFlow,
+  RefreshVsFrontloadSplit,
 };
