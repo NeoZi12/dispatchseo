@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 import { InternalLinkingTool } from "@/components/free-tools/internal-linking-tool";
 import { FaqSchemaGenerator } from "@/components/free-tools/faq-schema-generator";
+import { KeywordCannibalizationChecker } from "@/components/free-tools/keyword-cannibalization-checker";
 
 // Registry for the free, public interactive tools at /free-tools/<slug>.
 // One entry per tool - everything the index card and the detail page's
@@ -122,6 +123,54 @@ export const FREE_TOOLS: ToolEntry[] = [
       },
     ],
     Widget: FaqSchemaGenerator,
+  },
+  {
+    slug: "keyword-cannibalization-checker",
+    title: "Keyword cannibalization checker",
+    h1: "Keyword cannibalization checker",
+    valueLine:
+      "Paste in the title and target keyword for a few pages and see exactly which pairs are fighting for the same search - plus which one to keep as the canonical page.",
+    metaDescription:
+      "Free keyword cannibalization checker: paste in each page's title and target keyword and see which pairs compete for the same search, with a canonical pick - no Search Console connection required, computed entirely in your browser.",
+    description: [
+      "Paste in the title and target keyword for two or more pages and this tool checks each pair for two different kinds of conflict: an exact match, where two pages are literally targeting the same keyword word for word, and a partial one, where the titles and keywords share enough of the same terms that they're probably still fighting for the same search. \"Best running shoes for flat feet\" and \"top running shoes for flat feet\" would flag as a direct conflict once filler words are stripped - both reduce to the same core terms - while that page and \"running shoe buying guide for beginners\" would only flag if the shared terms clear a real overlap threshold, not just because both happen to mention running shoes.",
+      "When it finds a conflict, it also tells you which page to keep. That call comes from a real, computed signal - how much of each page's own target keyword already shows up in its own title - not a guess at which one ranks better, since this tool has no access to your rankings or Search Console data. The page whose title is more tightly written for its keyword gets recommended as canonical; the other gets a merge-or-redirect suggestion, with the exact overlapping terms shown so you can see why.",
+      "That's a deliberate scope limit, not a missing feature: Sitechecker's version needs your Search Console connected, and the Rows and Ivanhoe templates need you to wire up your own spreadsheet first. This one works from the page facts you already have, which means it works before a page is even published - Search Console can't show a conflict for a URL that doesn't exist yet. Once you've cleared out the conflicts, [DispatchSEO's internal linking tool](/free-tools/internal-linking-tool) is the natural next step for wiring the pages that are left into each other properly.",
+      "Nothing you paste is uploaded anywhere - the whole comparison runs in your browser tab. This is the same check DispatchSEO's own pipeline runs before it ever proposes a new page: the suggestion queue is checked against everything already published, so it can't queue two guides for the same keyword in the first place. See how that fits into a fully " +
+        "[automated SEO agent](/blog/ai-seo-agent) if you'd rather this run itself on a schedule instead of pasting pages in by hand.",
+    ],
+    faq: [
+      {
+        question: "How does it decide two pages are competing for the same keyword?",
+        answer:
+          "It strips filler words from each page's title and target keyword, then compares the two sets of remaining terms. If a pair reduces to the exact same terms, that's flagged as direct cannibalization. If they only partially overlap, it's scored against a threshold and flagged as a possible overlap only when the shared terms make up a large enough share of what's left - a single shared word like \"guide\" or \"seo\" isn't enough on its own.",
+      },
+      {
+        question: "Do I need to connect Google Search Console?",
+        answer:
+          "No. Search Console-based cannibalization checkers compare which URLs actually get impressions for the same query, which means they can only see a conflict after both pages are live and indexed. This tool compares what you tell it you're targeting, so it works before a page is even published - useful for catching the problem during planning instead of after Google has already split the ranking signal between two URLs.",
+      },
+      {
+        question: "Which page does it tell me to keep?",
+        answer:
+          "Whichever page's title already matches more of its own target keyword's words - a real, computed comparison, not a guess at which one ranks better, since it has no access to your rankings. If neither title is closely aligned with its keyword, it says so honestly instead of picking one arbitrarily, and suggests keeping whichever page currently ranks or has more backlinks.",
+      },
+      {
+        question: "What's the difference between \"direct cannibalization\" and \"possible overlap\"?",
+        answer:
+          "Direct cannibalization means two pages reduce to the exact same target keyword once filler words are stripped - they're built to answer the identical search. Possible overlap means the titles and keywords share enough terms to likely compete without being identical - two pages that both target something about \"email deliverability\" but with different modifiers, for example. Both are worth fixing; direct conflicts are worth fixing first.",
+      },
+      {
+        question: "Is my data uploaded anywhere?",
+        answer: "No. Nothing you paste in leaves your browser tab - there's no server call involved in the comparison.",
+      },
+      {
+        question: "Can I use this for pages that aren't published yet?",
+        answer:
+          "Yes - that's actually the main use case. Paste in the title and target keyword you're planning for a new page alongside your existing pages, and you'll catch a conflict before you publish instead of after Search Console shows you two URLs splitting the same query's traffic.",
+      },
+    ],
+    Widget: KeywordCannibalizationChecker,
   },
 ];
 
