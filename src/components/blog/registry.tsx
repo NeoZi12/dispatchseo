@@ -52,6 +52,9 @@ import { McpPickChecklist } from "./mcp-pick-checklist";
 import { AiCitationFreshnessFactRow } from "./ai-citation-freshness-fact-row";
 import { TrendToGuideTimelineFlow } from "./trend-to-guide-timeline-flow";
 import { RefreshVsFrontloadSplit } from "./refresh-vs-frontload-split";
+import { FreeToolJobGrid } from "./free-tool-job-grid";
+import { FreeToolMemoryCompareTable } from "./free-tool-memory-compare-table";
+import { PileVsSystemChecklist } from "./pile-vs-system-checklist";
 import {
   Callout,
   CardGrid,
@@ -209,4 +212,7 @@ export const mdxComponents: MDXComponents = {
   AiCitationFreshnessFactRow,
   TrendToGuideTimelineFlow,
   RefreshVsFrontloadSplit,
+  FreeToolJobGrid,
+  FreeToolMemoryCompareTable,
+  PileVsSystemChecklist,
 };
