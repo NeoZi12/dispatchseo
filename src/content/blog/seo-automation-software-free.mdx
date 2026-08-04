@@ -1,0 +1,64 @@
+---
+title: "SEO automation software, free: what you get before you ever pay for a seat"
+description: Most "SEO automation software, free" results gate the real automation behind a paid tier. What genuinely ships free in a self-hosted, agent-driven setup - verified against this project's own repo, not a pitch.
+date: 2026-08-04
+keyword: seo automation software free
+cover: /blog/covers/seo-automation-software-free.webp
+---
+
+Type "seo automation software, free" into Google and by the third click something breaks: free means a capped trial, a tool that only watches your rankings instead of shipping anything, or a bundle of individual calculators built to sell a paid platform. Nothing on today's page 1 is free software that runs the whole job - research, drafting, shipping - without asking for a card first. This guide covers what "free" is actually doing on that page 1, then goes deep on the one model that runs the whole job for $0 in software cost: self-hosted, agent-driven, checked against this project's own repo instead of a pitch.
+
+> **TL;DR** - Page 1 for "seo automation software, free" today splits into listicles (4 of 7 organic results) and single-vendor product pages (3 of 7) - roundups and read-side tools, none of them an end-to-end pipeline you run for nothing. DispatchSEO's free tier isn't a capped trial: self-hosted, it's the whole product - 61 registered MCP tools, 7 cron endpoints, and 51 schema migrations, all running before a single paid API key gets involved. What genuinely costs nothing: rank checks on a free-tier SERP API, Google Search Console sync, and the content pipeline itself (it runs on the Claude Code or Codex subscription you already pay for). What costs money: keyword volume and difficulty data, metered per call to your own DataForSEO account - not marked up, not bundled into a seat.
+
+## "Free" on page 1 means a trial with a clock on it
+
+Seven of today's ten results are organic (positions 1, 3, and 4 are an ad and a video/PAA block, not omissions), and they split cleanly into two camps. Four are listicles - marketermilk, wpseoai, cmswire, eesel.ai - rounding up other people's software rather than being software themselves. The other three are single-vendor pages, and their own titles say what they do: nytroseo sells "automated software," seocrawl.ai's own headline is "Monitor, Track & Report" - the read side of automation, not the build-and-ship side - and seoreviewtools bundles individual free calculators as a lead-in to its paid platform.
+
+<AutomationSerpFieldGrid />
+
+None of the ten names an end-to-end pipeline that's actually free. That's not a knock on any of them - a listicle's job is to round up, a monitoring tool's job is to monitor - it's just the shape of "free" on this query right now: free to look, free to be told what's wrong, and a card number away from free to fix.
+
+## The other model: no seat, so nothing to unlock
+
+The alternative isn't a better free tier of the same kind of product - it's a different shape entirely. An agent CLI you already run for coding does the reasoning (research, drafting, judgment calls), and the backend underneath is reduced to state: a suggestions queue, tracked keywords, rank history, nothing that thinks on its own. [That architecture is covered in depth elsewhere](/blog/ai-seo-agent); what matters here is what it costs, because "self-hosted" and "free" aren't the same promise, and conflating them is exactly the gap the page above leaves open. Self-hosted only means you run the infrastructure. Whether it's free depends on what that infrastructure actually bills for - which is the next question, answered honestly instead of assumed.
+
+## What's actually free to run, and what still costs money
+
+There's no seat to buy in this model, so there's nothing to "unlock" by upgrading - but that doesn't make every piece free. Some of it runs on infrastructure that's free by default, and one piece is metered no matter what.
+
+<FreeVsPaidStackTable />
+
+The split isn't arbitrary: Google gives away Search Console access to your own verified property because it costs Google nothing incremental to answer a query about a site it already indexed. A SERP-tracking API costs someone compute per call regardless of who's asking, so a free tier is a real allowance, not a loophole - SerpApi's is 250 searches a month. Keyword volume and difficulty data works the same way on a bigger scale, which is why it's the one line item that stays metered to your own account rather than folded into "free."
+
+## What ships today, verified against the repo - not a pitch
+
+"Free and full-featured" is an easy claim to make and a common one to fake with a curated screenshot. So instead of describing what the pipeline can do, here's what running three commands against this repo - the one that built this guide - actually returned this session:
+
+<RepoAutomationFactRow />
+
+That's a real MCP server surface (keyword research, suggestion queue, rank tracking, GSC stats, backlink prospects, site config - 61 tools deep), a cron layer split across two schedulers specifically to fit Vercel's free Hobby tier's cron limits, and a schema that's grown through 51 additive migrations without ever needing downtime. None of it sits behind a paid tier - it's what "self-hosted" is buying, counted rather than asserted.
+
+## Who this fits, and who should just pay for a seat
+
+This fits you if you already run an agent CLI (Claude Code or Codex) for other work, already hold your own Vercel, Supabase, and GitHub accounts, and would rather SEO be one more scheduled job those accounts run than a new subscription and a new login. The [free tooling landscape](/blog/best-free-seo-tools) still has a real gap even inside this model - keyword volume and difficulty are the one thing that stays metered, and there's no support contract behind a 2am cron failure; you're reading the logs yourself, or asking the agent to. If you just want one free, no-login answer right now rather than a pipeline to run, this site's own [internal linking tool](/free-tools/internal-linking-tool) is the same "no seat, no gate" idea shrunk to a single job.
+
+It's the wrong fit if you need a polished multi-user dashboard for a non-technical team, an SLA, or someone else's phone number to call when something breaks - a hosted SaaS platform is the honest answer in every one of those cases, trial-gated free tier and all. If you're the one person keeping one site's SEO moving and you'd rather point an agent at a queue than a vendor's editor, DispatchSEO runs that model end to end, and this project's own repo - counted above, not described - is what it looks like running.
+
+## FAQ
+
+**Is DispatchSEO's free tier actually free, or a limited trial like the rest of page 1?**
+Self-hosted, it's the whole product with no feature gate - not a trial with an expiration date, because there's no seat or subscription tier to expire out of. What isn't free is DataForSEO usage, which is metered per call regardless of which mode you run.
+
+**What exactly costs money if I self-host this?**
+Only keyword volume and keyword difficulty data, billed by DataForSEO directly to your own account per call. Rank checks, Search Console sync, and the content pipeline itself don't touch that meter.
+
+**Do I need a DataForSEO account to use any of this?**
+No - a project without DataForSEO credentials still runs rank tracking (on a free-tier SERP API) and the GSC-driven side of the pipeline; volume and difficulty numbers just aren't available until you add a key.
+
+**Can I run this without paying for Claude Code or Codex separately?**
+No - the content pipeline's reasoning runs inside whichever agent CLI subscription you already have. There's no bundled AI-writing fee on top of it, but the agent itself isn't included.
+
+**How is this different from the "free SEO automation software" already on page 1?**
+Every current result either rounds up other vendors' tools or sells its own product with a paid tier one click past the free one. This model has no paid tier to click into - the ceiling on the free version and the ceiling on the only version are the same ceiling.
+
+Free, on today's page 1, means free to look and free to be told what's wrong. The other model skips the paid tier entirely, because there isn't one - and the only honest way to back that up is to count what actually runs, which is what this guide just did.

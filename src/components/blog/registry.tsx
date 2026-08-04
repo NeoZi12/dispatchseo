@@ -55,6 +55,9 @@ import { RefreshVsFrontloadSplit } from "./refresh-vs-frontload-split";
 import { FreeToolJobGrid } from "./free-tool-job-grid";
 import { FreeToolMemoryCompareTable } from "./free-tool-memory-compare-table";
 import { PileVsSystemChecklist } from "./pile-vs-system-checklist";
+import { AutomationSerpFieldGrid } from "./automation-serp-field-grid";
+import { FreeVsPaidStackTable } from "./free-vs-paid-stack-table";
+import { RepoAutomationFactRow } from "./repo-automation-fact-row";
 import {
   Callout,
   CardGrid,
@@ -215,4 +218,7 @@ export const mdxComponents: MDXComponents = {
   FreeToolJobGrid,
   FreeToolMemoryCompareTable,
   PileVsSystemChecklist,
+  AutomationSerpFieldGrid,
+  FreeVsPaidStackTable,
+  RepoAutomationFactRow,
 };
