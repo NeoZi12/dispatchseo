@@ -58,6 +58,9 @@ import { PileVsSystemChecklist } from "./pile-vs-system-checklist";
 import { AutomationSerpFieldGrid } from "./automation-serp-field-grid";
 import { FreeVsPaidStackTable } from "./free-vs-paid-stack-table";
 import { RepoAutomationFactRow } from "./repo-automation-fact-row";
+import { SerpBuyingLensRow } from "./serp-buying-lens-row";
+import { FounderWorkflowSplit } from "./founder-workflow-split";
+import { FounderCostScorecard } from "./founder-cost-scorecard";
 import {
   Callout,
   CardGrid,
@@ -221,4 +224,7 @@ export const mdxComponents: MDXComponents = {
   AutomationSerpFieldGrid,
   FreeVsPaidStackTable,
   RepoAutomationFactRow,
+  SerpBuyingLensRow,
+  FounderWorkflowSplit,
+  FounderCostScorecard,
 };
