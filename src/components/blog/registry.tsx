@@ -61,6 +61,9 @@ import { RepoAutomationFactRow } from "./repo-automation-fact-row";
 import { SerpBuyingLensRow } from "./serp-buying-lens-row";
 import { FounderWorkflowSplit } from "./founder-workflow-split";
 import { FounderCostScorecard } from "./founder-cost-scorecard";
+import { ShipVsScoreFlow } from "./ship-vs-score-flow";
+import { SurferAltCompareTable } from "./surfer-alt-compare-table";
+import { NoEditorPipelineFactRow } from "./no-editor-pipeline-fact-row";
 import {
   Callout,
   CardGrid,
@@ -227,4 +230,7 @@ export const mdxComponents: MDXComponents = {
   SerpBuyingLensRow,
   FounderWorkflowSplit,
   FounderCostScorecard,
+  ShipVsScoreFlow,
+  SurferAltCompareTable,
+  NoEditorPipelineFactRow,
 };
