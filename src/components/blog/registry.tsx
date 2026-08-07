@@ -64,6 +64,9 @@ import { FounderCostScorecard } from "./founder-cost-scorecard";
 import { ShipVsScoreFlow } from "./ship-vs-score-flow";
 import { SurferAltCompareTable } from "./surfer-alt-compare-table";
 import { NoEditorPipelineFactRow } from "./no-editor-pipeline-fact-row";
+import { ClearscopeModuleGrid } from "./clearscope-module-grid";
+import { ScoreDraftTrackCompareTable } from "./score-draft-track-compare-table";
+import { AiCitationTrackFactRow } from "./ai-citation-track-fact-row";
 import {
   Callout,
   CardGrid,
@@ -233,4 +236,7 @@ export const mdxComponents: MDXComponents = {
   ShipVsScoreFlow,
   SurferAltCompareTable,
   NoEditorPipelineFactRow,
+  ClearscopeModuleGrid,
+  ScoreDraftTrackCompareTable,
+  AiCitationTrackFactRow,
 };
