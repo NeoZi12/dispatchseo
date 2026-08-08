@@ -1,0 +1,68 @@
+---
+title: How to rank in ChatGPT - and how to tell if it actually worked
+description: The tactics that repeat across page 1 for "how to rank in ChatGPT," plus the step every one of those pages skips - measuring whether they worked. Includes 23 real days of this project's own citation numbers.
+date: 2026-08-08
+keyword: how to rank in chatgpt
+cover: /blog/covers/how-to-rank-in-chatgpt.webp
+---
+
+Ranking in ChatGPT means one thing: the model names your site as a source when it answers a query, not a position in a list you can screenshot. Page 1 for "how to rank in ChatGPT" is a stack of checklists - structure your content, get cited, stay current - and every one of them stops at the checklist. None pairs the advice with a way to check whether following it actually moved anything.
+
+> **TL;DR** - The tactics that repeat across page 1: answer-first structure, standalone paragraphs, visible authority signals, demonstrable freshness, and FAQ schema. None of those pages tell you how to verify it worked. DispatchSEO tracks that as a metric (`get_ai_visibility`, `record_ai_citations`) the same way it tracks Google rank - and its own numbers, 23 days and 21 guides into doing exactly what the checklist says, are 0 citations across ChatGPT, Claude, and Google AI Overview. The checklist isn't wrong; it just isn't sufficient on its own, and nothing on page 1 says so.
+
+## What "ranking in ChatGPT" actually means
+
+There's no ranked list to climb. Ask ChatGPT a question and it generates one answer, optionally naming a handful of sources - being "ranked" is being one of those names, or not. That's a binary per query, not a position: a site can be the only source cited on one query and absent on the next, with no in-between to track the way a #4-to-#2 move works in Google. The metric that actually applies is a citation rate across a set of real target queries, checked across engines, over time - closer to brand-mention tracking than to rank tracking, even though the tactics that improve it overlap with ordinary SEO.
+
+## The tactics practitioners already agree on
+
+Reading the live page 1 for this exact query - a Reddit thread, a LinkedIn cheat sheet, and write-ups from Power Digital and Neil Patel among them - the advice converges on the same handful of moves, worded differently everywhere but not actually in dispute:
+
+<ChatgptRankTacticsChecklist />
+
+None of this is exotic. It's largely classic on-page SEO discipline, aimed at a reader that quotes a chunk instead of ranking a page. The gap isn't in the list - it's in what happens after you've done it.
+
+## Why none of them tell you it worked
+
+Every page on page 1 ends at the checklist. None of them says: now go check whether an AI engine actually started citing you, and here's how. That's not a small omission - a tactic you can't verify is a tactic you're taking on faith, and "be more citable" is vague enough that almost any change can be argued to satisfy it after the fact.
+
+Checking it by hand is simple in principle: pick real target queries, ask each one to ChatGPT, Claude, Perplexity, and Gemini separately, and note which sources each answer names. The part that actually breaks it is repetition - a spreadsheet-based version of this reliably stops after the second month. [DispatchSEO's own AI-visibility tracking](/blog/ai-visibility-tracking-tool) covers the by-hand method and the tool landscape in more depth; the short version is that `get_ai_visibility` and `record_ai_citations` do the same job as a $99/mo-and-up dedicated tracker, as two more calls on a backend already checking Google rank daily.
+
+## Twenty-three days in, measured instead of assumed
+
+This site is the test case, not a hypothetical one. It's followed the checklist above on every guide it's published so far - answer-first openings, structured H2s, cited sources, FAQ sections, [content kept demonstrably current](/blog/content-freshness-seo) - and here's what that actually produced against the same metric the checklist claims to move:
+
+<ChecklistFollowedZeroCitedFactRow />
+
+Zero for zero across three engines isn't a verdict on the tactics - `has_ai_answer` came back true on nearly every checked query, so the engines are answering fine, just not from this domain yet. It's the honest gap the checklist leaves out: doing everything on the list is necessary and, this early, still not sufficient. A citable domain still has to accumulate the backlinks, mentions, and age that make a model reach for it as a source at all, and no amount of better-structured FAQ sections shortcuts that part.
+
+## Old SEO fundamentals vs what's genuinely new
+
+Some of what page 1 recommends is just SEO with a new name on it. Some of it is a real, separate skill:
+
+<ClassicVsAiTacticsSplit />
+
+Confusing the two is most of what makes the checklist advice feel thin - it presents "answer-first structure" and "get backlinks" as the same kind of move, when one is a formatting choice you make once per page and the other is compounding work with no shortcut.
+
+## When the checklist isn't the bottleneck
+
+None of this argues the tactics don't matter - skipping them makes citation strictly less likely. But a site with strong domain authority and a page that already ranks on Google can be citable within weeks of applying them; a brand-new domain with no backlink history is working against a cold-start problem the checklist was never going to solve, however well-structured the page is. If the numbers stay flat past a couple months of consistent publishing and the tactics genuinely applied, the bottleneck has probably moved from "how the page is written" to "whether anything else links to it" - a different, slower problem.
+
+## FAQ
+
+**How long does it take to start getting cited in ChatGPT after applying these tactics?**
+There's no fixed number - this project is 23 days in with zero citations despite applying every tactic above on 21 guides, and that's consistent with a cold-start problem rather than a tactics problem. A site with existing domain authority and backlinks typically sees citations faster, sometimes within weeks.
+
+**Is FAQ schema markup actually required, or just FAQ content on the page?**
+Visible FAQ content on the page is the part that gets cited; schema markup is a structured-data layer some tools use to generate that markup automatically, like [DispatchSEO's own FAQ schema generator](/free-tools/faq-schema-generator). Neither substitutes for the other - the model reads the rendered page, not the raw JSON-LD.
+
+**Does ranking well on Google help with ChatGPT citations?**
+It correlates but isn't the same measurement - a page can rank #1 on Google and never get cited by an AI engine, or the reverse. Domain authority and backlinks that help Google rankings also tend to make a source more citable to a model, but the two are tracked separately and can diverge.
+
+**What's the actual difference between "getting cited" and "ranking" that this guide keeps making?**
+Ranking is a position in a list of results a user scrolls through. Citation is a binary per query - named as a source in one generated answer, or not - with no ordered list underneath it. The tactics that help both overlap heavily; the way you'd measure success doesn't.
+
+**Do I need a paid tool to check whether my tactics are working?**
+No - asking your target queries to each engine by hand and logging the answer works, it just rarely survives past the first couple of checks without something automating the repeat. [The full breakdown of the by-hand method and what a dedicated tracker costs](/blog/ai-visibility-tracking-tool) covers both options.
+
+The checklist advice on page 1 isn't wrong, and this guide doesn't argue for a different one - it argues for closing the loop the existing advice leaves open. Apply the tactics, then track the same metric they're supposed to move, the same way you'd track a keyword's position after changing a title tag. DispatchSEO does that as two more calls on the backend already watching Google rank; a spreadsheet checked monthly does the same job for free, as long as it actually gets checked monthly.

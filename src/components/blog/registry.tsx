@@ -67,6 +67,9 @@ import { NoEditorPipelineFactRow } from "./no-editor-pipeline-fact-row";
 import { ClearscopeModuleGrid } from "./clearscope-module-grid";
 import { ScoreDraftTrackCompareTable } from "./score-draft-track-compare-table";
 import { AiCitationTrackFactRow } from "./ai-citation-track-fact-row";
+import { ChatgptRankTacticsChecklist } from "./chatgpt-rank-tactics-checklist";
+import { ChecklistFollowedZeroCitedFactRow } from "./checklist-followed-zero-cited-fact-row";
+import { ClassicVsAiTacticsSplit } from "./classic-vs-ai-tactics-split";
 import {
   Callout,
   CardGrid,
@@ -239,4 +242,7 @@ export const mdxComponents: MDXComponents = {
   ClearscopeModuleGrid,
   ScoreDraftTrackCompareTable,
   AiCitationTrackFactRow,
+  ChatgptRankTacticsChecklist,
+  ChecklistFollowedZeroCitedFactRow,
+  ClassicVsAiTacticsSplit,
 };
