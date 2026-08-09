@@ -1,0 +1,63 @@
+---
+title: Moz alternative - the rank-tracking and content half, without the audit suite
+description: Moz Pro bundles rank tracking, a crawl-scale site audit, and a proprietary Domain Authority score into one subscription. Here's what Moz actually bundles, the half DispatchSEO covers self-hosted, the half it deliberately doesn't, and this project's own numbers, pulled live.
+date: 2026-08-09
+keyword: moz alternative
+cover: /blog/covers/moz-alternative.webp
+---
+
+Moz Pro bundles four separate jobs into one login: a keyword rank tracker, a crawl-scale site audit, a proprietary Domain Authority (DA) score, and Link Explorer for backlink research. DispatchSEO covers the first slice - automated rank tracking wired to Google Search Console and a content pipeline that ships pages instead of just scoring them - self-hosted, with no crawl audit and no DA-style number of its own. If a technical crawl or an authority metric is the reason you're shopping for a Moz replacement, this isn't it. If rank tracking plus a pipeline that actually publishes is the job, keep reading.
+
+> **TL;DR** - Moz Pro is one subscription across four jobs: Rank Tracker, Site Crawl, Domain Authority, and Link Explorer. DispatchSEO replaces exactly one of those - rank tracking, joined to Search Console and a suggestions queue that ships real pages - and doesn't attempt the other three: no crawl audit, no DA-equivalent score, no crawl-scale backlink index. This project's own snapshot, pulled live while writing this: DR-equivalent 0, 2 referring domains, 59 backlinks, on a 24-day-old domain - the honest state of the half an audit suite would report on, and the reason this guide doesn't pretend to replace it.
+
+## What Moz Pro actually bundles - and why "alternative" depends on which module you mean
+
+Most "Moz alternative" roundups review the login, not the five jobs sitting behind it. Split apart, they're not one product:
+
+<MozModuleCoverageGrid />
+
+Domain Authority is worth pausing on specifically, because listicles tend to treat it as a settled fact instead of what it is: Moz's own 1-100 score, built from Moz's own link index, using a method Moz doesn't fully publish. Google has said directly that DA isn't a ranking factor - it's one vendor's opinion of a site's link profile, useful for comparing sites inside Moz's own index, not a number search engines consult. Two of the five modules above land inside what a self-hosted, agent-driven backend can honestly do today. The other three need infrastructure - a page-by-page crawler, a purpose-built scoring algorithm, a web-scale link index - that a single project's own research account was never going to replicate, which is why the next two sections split them apart instead of blurring them into one pitch.
+
+## The half DispatchSEO covers: rank tracking, Search Console, and a pipeline that ships
+
+[DispatchSEO](/blog/self-hosted-ai) runs the Rank Tracker and Keyword Explorer jobs as one loop instead of two logins: `track_keywords` adds a term, a nightly cron checks its live position, `get_rankings` reads the history back, and `get_site_stats` joins hourly Search Console pulls to the same project. None of that is a mockup - here's the actual chain, with one tracked keyword's real position history standing in for the screenshot a vendor page would use:
+
+<RankTrackingPipelineFlow />
+
+That five-check history for "claude code github actions" - 61, 61, 66, 63, 62, then dropped - is exactly the kind of noisy, unglamorous data a rank tracker actually produces day to day, not the steady upward line a pricing page shows. The part Moz's Rank Tracker doesn't do is what happens after: the suggestions queue turns a tracked gap into a drafted guide, a PR an owner reviews and merges - the same build-vs-buy question [this project's own SERP tracking guide](/blog/serp-tracking-api) covers from the infrastructure side. The same MCP surface ships one-off, no-login tools too - [a keyword cannibalization checker](/free-tools/keyword-cannibalization-checker) runs the same pipeline in miniature.
+
+## The half it doesn't: site-crawl audits and a Domain Authority score
+
+Moz's Site Crawl walks every page on a connected site looking for broken links, missing metadata, duplicate content, and crawl-budget waste - a genuinely different job from rank tracking, and not one this pipeline performs. Search Console surfaces some of the same symptoms (indexing errors, coverage drops) as a side effect of already being connected, but that's incidental reporting, not a scheduled technical crawl; nothing here replaces walking the DOM of every page on a site looking for issues.
+
+Domain Authority is the other honest gap, and rather than invent a look-alike number, here's what this project's own account actually returns for the same kind of question DA tries to answer:
+
+<DomainRankSnapshotCard />
+
+That number comes from the same DataForSEO account already behind this site's rank and backlink data - it is not a DA-equivalent DispatchSEO computes, and it is not on Moz's scale. Both are real, and neither is something Google itself publishes. A site shopping for an authority score specifically - to compare its own link profile against competitors', or to hand a number to a client - needs Moz's own index for that, not a rank tracker wearing Domain Authority's job.
+
+## Who still needs Moz's full suite, and who just needs the rank-and-content half
+
+Stay on Moz Pro (or move to a full-suite competitor) if a scheduled technical crawl and a portable authority score for client reporting are load-bearing - nothing self-hosted here replaces a purpose-built crawler or a link index built over years of continuous fetching, this project's own included. It's also the wrong trade if you don't already run an agent CLI day to day: standing one up just to dodge a Moz seat costs more setup time than it saves. Where the actual job is narrower - track rankings, watch Search Console, and keep a content pipeline moving without a person doing the research-to-PR handoff by hand - the rank-and-content half is the whole job, and paying for a bundled crawl-and-authority suite to get it is buying three products to use one.
+
+## FAQ
+
+**What does Moz Pro actually include?**
+Five distinct tools behind one login: Rank Tracker, Site Crawl (technical audits), Domain Authority, Link Explorer, and Keyword Explorer. Most "alternative" reviews cover the price of the bundle, not which of the five a buyer actually needs.
+
+**Is Domain Authority a Google ranking factor?**
+No. It's Moz's own proprietary 1-100 score built from Moz's link index; Google doesn't use it and has said publicly it isn't a ranking signal. Treat it as one vendor's opinion of link quality, not a metric search engines consult.
+
+**Does DispatchSEO compute its own authority score?**
+No, and this guide doesn't pretend otherwise. It reports DataForSEO's own domain-rank metric from the same account already behind this project's rank data - a different number, a different index, not a DA-equivalent.
+
+**Can DispatchSEO run a technical site crawl like Moz's Site Crawl?**
+No. Search Console surfaces indexing and coverage issues as a side effect of being connected, but nothing here walks every page on a site looking for broken links or metadata problems the way a dedicated crawler does.
+
+**Does this replace Moz's Link Explorer?**
+Only for a project's own connected account, and only at that account's scale - not a crawl-scale index of the open web. Checking a competitor's backlink profile still needs a tool built for that job.
+
+**Is there a free way to try the rank-and-content half before self-hosting it?**
+The [free Semrush-alternative stack](/blog/semrush-alternative-free) covers the same rank-tracking and Search Console jobs with Google's own free tools, tab-switching included, for anyone not ready to run an agent-driven backend yet.
+
+Moz Pro answers a wider question than most people typing "Moz alternative" are actually asking. The bundle is real and the four jobs inside it are genuinely different products; the honest move is picking which one you need instead of buying a login for all four to get one. Where that one job is rank tracking plus a pipeline that ships, an agent already doing other work in a repo can run that loop itself, with no seat to buy at all - and where it isn't, the full suite above is priced for exactly what it does.

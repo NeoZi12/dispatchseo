@@ -70,6 +70,9 @@ import { AiCitationTrackFactRow } from "./ai-citation-track-fact-row";
 import { ChatgptRankTacticsChecklist } from "./chatgpt-rank-tactics-checklist";
 import { ChecklistFollowedZeroCitedFactRow } from "./checklist-followed-zero-cited-fact-row";
 import { ClassicVsAiTacticsSplit } from "./classic-vs-ai-tactics-split";
+import { MozModuleCoverageGrid } from "./moz-module-coverage-grid";
+import { DomainRankSnapshotCard } from "./domain-rank-snapshot-card";
+import { RankTrackingPipelineFlow } from "./rank-tracking-pipeline-flow";
 import {
   Callout,
   CardGrid,
@@ -245,4 +248,7 @@ export const mdxComponents: MDXComponents = {
   ChatgptRankTacticsChecklist,
   ChecklistFollowedZeroCitedFactRow,
   ClassicVsAiTacticsSplit,
+  MozModuleCoverageGrid,
+  DomainRankSnapshotCard,
+  RankTrackingPipelineFlow,
 };
