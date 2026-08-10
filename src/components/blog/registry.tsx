@@ -73,6 +73,9 @@ import { ClassicVsAiTacticsSplit } from "./classic-vs-ai-tactics-split";
 import { MozModuleCoverageGrid } from "./moz-module-coverage-grid";
 import { DomainRankSnapshotCard } from "./domain-rank-snapshot-card";
 import { RankTrackingPipelineFlow } from "./rank-tracking-pipeline-flow";
+import { MangoolsToolMapTable } from "./mangools-tool-map-table";
+import { OwnAccountLiveSnapshotRow } from "./own-account-live-snapshot-row";
+import { OpenTabVsCronSplit } from "./open-tab-vs-cron-split";
 import {
   Callout,
   CardGrid,
@@ -251,4 +254,7 @@ export const mdxComponents: MDXComponents = {
   MozModuleCoverageGrid,
   DomainRankSnapshotCard,
   RankTrackingPipelineFlow,
+  MangoolsToolMapTable,
+  OwnAccountLiveSnapshotRow,
+  OpenTabVsCronSplit,
 };
