@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import { InternalLinkingTool } from "@/components/free-tools/internal-linking-tool";
 import { FaqSchemaGenerator } from "@/components/free-tools/faq-schema-generator";
 import { KeywordCannibalizationChecker } from "@/components/free-tools/keyword-cannibalization-checker";
+import { KeywordClusteringTool } from "@/components/free-tools/keyword-clustering-tool";
 
 // Registry for the free, public interactive tools at /free-tools/<slug>.
 // One entry per tool - everything the index card and the detail page's
@@ -171,6 +172,54 @@ export const FREE_TOOLS: ToolEntry[] = [
       },
     ],
     Widget: KeywordCannibalizationChecker,
+  },
+  {
+    slug: "keyword-clustering-tool",
+    title: "Keyword clustering tool",
+    h1: "Keyword clustering tool",
+    valueLine:
+      "Paste in a keyword list and see which ones should share one page, which need their own sections, and which are safe to build standalone - grouped by real word overlap, not a guess.",
+    metaDescription:
+      "Free keyword clustering tool: paste in your keyword list and get grouped clusters with a one-page-or-many verdict for each, computed entirely in your browser. No signup, no API calls.",
+    description: [
+      "Paste in a list of keywords, one per line, and this tool groups the ones that share real overlap - not just a common word, but enough shared terms that they're probably fighting for the same search. \"Best running shoes for flat feet\" and \"top running shoes for flat feet\" cluster as a same-page match: strip the filler words and they reduce to the identical set of terms, so building two pages for them just splits your own ranking signal. Paste those two lines in and that's exactly the verdict you'll get.",
+      "Some clusters are a softer call. \"Email deliverability tips\" and \"improve email deliverability rate\" share enough terms to belong on one page, but they're distinct enough to earn their own section rather than getting merged into one sentence - the tool labels that case \"one page, multiple sections\" instead of forcing it into the same bucket as a near-duplicate pair. A keyword with no real overlap to anything else you pasted comes back standalone: safe to build its own page.",
+      "This is the same judgment call DispatchSEO's own research workflow makes before it ever queues a page suggestion - it won't propose two guides for keywords that should really be one. Once you've grouped your list, [the keyword cannibalization checker](/free-tools/keyword-cannibalization-checker) is the natural next step if you've already got titles drafted and want to confirm two pages that already exist aren't competing. See how both fit into a fully " +
+        "[automated SEO agent](/blog/ai-seo-agent) if you'd rather this run itself against your whole keyword list on a schedule.",
+      "Nothing you paste is uploaded anywhere - the grouping runs entirely in your browser tab, so it works on any keyword list from any source, not just ones a connected tool can see.",
+    ],
+    faq: [
+      {
+        question: "How does it decide which keywords belong together?",
+        answer:
+          "It strips filler words from each keyword, then compares what's left as single words and two-word phrases. Two keywords join the same cluster once they share enough of those terms - a single coincidental word like \"seo\" or \"best\" isn't enough on its own, but a real chunk of shared vocabulary is.",
+      },
+      {
+        question: "Why does it say \"one page, multiple sections\" instead of just merging or splitting?",
+        answer:
+          "Because not every cluster is a near-duplicate. When the shared overlap is high, the keywords are close enough to be the same search asked two ways, and one page should answer both. When the overlap is real but partial, they're related enough to live on the same page while still being distinct enough to deserve their own heading rather than getting flattened into one sentence.",
+      },
+      {
+        question: "Do I need to give it a URL or connect Search Console?",
+        answer:
+          "No. You paste in the keywords themselves - there's no crawling and no account to connect. That also means it works on keyword ideas you haven't built pages for yet, which a tool that reads live rankings can't do.",
+      },
+      {
+        question: "Is my keyword list uploaded anywhere?",
+        answer: "No. Nothing you paste in leaves your browser tab - there's no server call involved in the clustering.",
+      },
+      {
+        question: "How many keywords can I paste in at once?",
+        answer:
+          "Up to 300 unique keywords in one pass. Paste more than that and the tool clusters the first 300 and tells you plainly that the rest were left out, rather than silently dropping them.",
+      },
+      {
+        question: "Does this replace the keyword cannibalization checker?",
+        answer:
+          "They answer different moments of the same question. This tool groups a raw keyword list before you've written anything, so you know how many pages to actually build. The cannibalization checker compares titles and target keywords for pages you've already planned or published, to catch a conflict that slipped through.",
+      },
+    ],
+    Widget: KeywordClusteringTool,
   },
 ];
 
