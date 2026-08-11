@@ -76,6 +76,9 @@ import { RankTrackingPipelineFlow } from "./rank-tracking-pipeline-flow";
 import { MangoolsToolMapTable } from "./mangools-tool-map-table";
 import { OwnAccountLiveSnapshotRow } from "./own-account-live-snapshot-row";
 import { OpenTabVsCronSplit } from "./open-tab-vs-cron-split";
+import { GscMcpFieldGrid } from "./gsc-mcp-field-grid";
+import { ReportingVsLoopFlow } from "./reporting-vs-loop-flow";
+import { OwnSearchConsoleFeedCard } from "./own-search-console-feed-card";
 import {
   Callout,
   CardGrid,
@@ -257,4 +260,7 @@ export const mdxComponents: MDXComponents = {
   MangoolsToolMapTable,
   OwnAccountLiveSnapshotRow,
   OpenTabVsCronSplit,
+  GscMcpFieldGrid,
+  ReportingVsLoopFlow,
+  OwnSearchConsoleFeedCard,
 };
