@@ -3,6 +3,7 @@ import { InternalLinkingTool } from "@/components/free-tools/internal-linking-to
 import { FaqSchemaGenerator } from "@/components/free-tools/faq-schema-generator";
 import { KeywordCannibalizationChecker } from "@/components/free-tools/keyword-cannibalization-checker";
 import { KeywordClusteringTool } from "@/components/free-tools/keyword-clustering-tool";
+import { TitleLengthChecker } from "@/components/free-tools/title-length-checker";
 
 // Registry for the free, public interactive tools at /free-tools/<slug>.
 // One entry per tool - everything the index card and the detail page's
@@ -220,6 +221,50 @@ export const FREE_TOOLS: ToolEntry[] = [
       },
     ],
     Widget: KeywordClusteringTool,
+  },
+  {
+    slug: "seo-title-length-checker",
+    title: "SEO title length checker",
+    h1: "SEO title length checker",
+    valueLine:
+      "Type your title and meta description and see, in real pixels, exactly where Google is likely to cut them off - plus a live preview of the result.",
+    metaDescription:
+      "Free SEO title length checker: live pixel width and character count for your title and meta description, with a Google-style snippet preview, computed entirely in your browser.",
+    description: [
+      "Type a page title and this tool measures its actual rendered pixel width, not just the character count - the same way a browser would draw it. That distinction matters more than most title checkers let on: a title full of narrow letters like \"i\" and \"l\" can run well past 60 characters and still fit fine, while one full of wide capitals can get cut off at 50. Google's own documentation is upfront that it doesn't publish a fixed cutoff - titles and descriptions are \"truncated as needed, typically to fit the device width\" - so a flat character limit was always an approximation. This tool uses the practical numbers the SEO industry has actually measured instead: titles tend to hold up to about 550 pixels (roughly 50-60 characters), and Google's observed average snippet length before truncation kicks in is about 146 characters on desktop and 136 on mobile.",
+      "As you type, the title and description each get a live verdict - safe, cutting it close, or likely to get cut off - and the preview below truncates the same way Google would, with a real ellipsis at the real cutoff point, not just a warning label. Switch between the desktop and mobile tabs and the preview card actually changes width, so you can see how the same title wraps differently depending on where someone's reading it.",
+      "Nothing you type is uploaded anywhere - the whole thing runs in your browser tab, the same as this site's " +
+        "[FAQ schema generator](/free-tools/faq-schema-generator). Once your title and description both come back safe, [the keyword cannibalization checker](/free-tools/keyword-cannibalization-checker) is a good next stop if you're publishing more than one page around the same topic.",
+      "This is the same check DispatchSEO's own pipeline runs on every title and description before it proposes a new page - a page that gets truncated in the search result is a page that loses clicks it already earned by ranking. See how that fits into a fully " +
+        "[automated SEO agent](/blog/ai-seo-agent) if you'd rather this run itself on every page your site publishes.",
+    ],
+    faq: [
+      {
+        question: "Does Google actually have a fixed title length limit?",
+        answer:
+          "No - and this tool doesn't pretend otherwise. Google's own documentation says titles and descriptions are truncated \"as needed, typically to fit the device width,\" with no published character or pixel number. What this tool checks you against instead is the practical figures the SEO industry has measured over time: titles tend to hold up to around 550 pixels before truncation starts, which usually works out to 50-60 characters depending on which letters you use.",
+      },
+      {
+        question: "Why does it measure pixels instead of just counting characters?",
+        answer:
+          "Because Google renders your title, it doesn't count it. \"Slim Fit Jeans\" and \"Wide Winter Coats\" are both 15 characters, but the second one is noticeably wider on screen - wide capital letters and \"W\"s and \"M\"s take up more room than narrow ones like \"i\" and \"l\". This tool measures the actual rendered width in your browser, the same way a character-count-only checker can't.",
+      },
+      {
+        question: "Why do desktop and mobile show different description limits?",
+        answer:
+          "Because they behave differently in practice, even though Google doesn't publish separate numbers for each. The 146-character and 136-character figures this tool checks against are Semrush's own observed averages for snippet length before truncation on desktop versus mobile - directional, not guaranteed, which is why the preview card itself also changes width when you switch tabs so you can see the actual wrapping.",
+      },
+      {
+        question: "Is my title or description uploaded anywhere?",
+        answer: "No. Nothing you type leaves your browser tab - the pixel measurement and the preview are both computed locally.",
+      },
+      {
+        question: "My title looks fine here but got cut off in an actual Google search - why?",
+        answer:
+          "Because this tool checks you against practical, measured averages, not a guarantee - Google's own stance is that truncation depends on the specific device width someone is searching from, which varies. Treat a \"safe\" verdict here as a strong likelihood, not a promise, and lean toward the shorter end of the range if a title is genuinely borderline.",
+      },
+    ],
+    Widget: TitleLengthChecker,
   },
 ];
 
