@@ -79,6 +79,9 @@ import { OpenTabVsCronSplit } from "./open-tab-vs-cron-split";
 import { GscMcpFieldGrid } from "./gsc-mcp-field-grid";
 import { ReportingVsLoopFlow } from "./reporting-vs-loop-flow";
 import { OwnSearchConsoleFeedCard } from "./own-search-console-feed-card";
+import { ToolCategorySerpGrid } from "./tool-category-serp-grid";
+import { AutomationCoverageTable } from "./automation-coverage-table";
+import { LoopTimelineFactRow } from "./loop-timeline-fact-row";
 import {
   Callout,
   CardGrid,
@@ -263,4 +266,7 @@ export const mdxComponents: MDXComponents = {
   GscMcpFieldGrid,
   ReportingVsLoopFlow,
   OwnSearchConsoleFeedCard,
+  ToolCategorySerpGrid,
+  AutomationCoverageTable,
+  LoopTimelineFactRow,
 };
