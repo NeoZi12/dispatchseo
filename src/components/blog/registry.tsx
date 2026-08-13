@@ -82,6 +82,9 @@ import { OwnSearchConsoleFeedCard } from "./own-search-console-feed-card";
 import { ToolCategorySerpGrid } from "./tool-category-serp-grid";
 import { AutomationCoverageTable } from "./automation-coverage-table";
 import { LoopTimelineFactRow } from "./loop-timeline-fact-row";
+import { MajesticSerpCategoryGrid } from "./majestic-serp-category-grid";
+import { BacklinkToPlanFlow } from "./backlink-to-plan-flow";
+import { OwnLinkSignalCard } from "./own-link-signal-card";
 import {
   Callout,
   CardGrid,
@@ -269,4 +272,7 @@ export const mdxComponents: MDXComponents = {
   ToolCategorySerpGrid,
   AutomationCoverageTable,
   LoopTimelineFactRow,
+  MajesticSerpCategoryGrid,
+  BacklinkToPlanFlow,
+  OwnLinkSignalCard,
 };
