@@ -87,7 +87,7 @@ concurrency:
 
 `workflow_dispatch` sits next to the cron trigger so a run can be forced by hand for testing without waiting for 05:00 UTC - useful, and also why "scheduled" and "autonomous" aren't quite the same word: this pattern is defined by running without a human driving each turn, not by only ever running on a timer. The MCP server on the other end of that `get_suggestions` call is the multi-tenant kind covered in [MCP server examples](/blog/mcp-server-examples), not a single-tenant demo - which is exactly why it can hold a queue across runs that don't share a process, a database connection, or even a day.
 
-Pacing matters here too, and the numbers are real rather than illustrative: dispatchseo.com is five days old, and its own age-based pacing caps a domain this young at five guides a week - not an arbitrary number, but a deliberate brake against the exact profile (a brand-new domain publishing on no limit) that search engines discount as scaled content. Two of this week's five slots were already spent before this run started.
+Pacing matters here too, and the numbers are real rather than illustrative: dispatchseo.com is five days old, and its own age-based pacing caps a domain this young at five guides a week - not an arbitrary number, but a deliberate brake against the exact profile (a brand-new domain publishing on no limit) that search engines discount as [scaled content](/blog/programmatic-seo-tools). Two of this week's five slots were already spent before this run started.
 
 ## Four guardrails an unattended run needs
 

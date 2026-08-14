@@ -85,6 +85,9 @@ import { LoopTimelineFactRow } from "./loop-timeline-fact-row";
 import { MajesticSerpCategoryGrid } from "./majestic-serp-category-grid";
 import { BacklinkToPlanFlow } from "./backlink-to-plan-flow";
 import { OwnLinkSignalCard } from "./own-link-signal-card";
+import { ScaleVsJudgmentCompareTable } from "./scale-vs-judgment-compare-table";
+import { JudgmentModelPaceFactRow } from "./judgment-model-pace-fact-row";
+import { ScaleVsJudgmentFitSplit } from "./scale-vs-judgment-fit-split";
 import {
   Callout,
   CardGrid,
@@ -275,4 +278,7 @@ export const mdxComponents: MDXComponents = {
   MajesticSerpCategoryGrid,
   BacklinkToPlanFlow,
   OwnLinkSignalCard,
+  ScaleVsJudgmentCompareTable,
+  JudgmentModelPaceFactRow,
+  ScaleVsJudgmentFitSplit,
 };
