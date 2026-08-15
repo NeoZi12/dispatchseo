@@ -88,6 +88,9 @@ import { OwnLinkSignalCard } from "./own-link-signal-card";
 import { ScaleVsJudgmentCompareTable } from "./scale-vs-judgment-compare-table";
 import { JudgmentModelPaceFactRow } from "./judgment-model-pace-fact-row";
 import { ScaleVsJudgmentFitSplit } from "./scale-vs-judgment-fit-split";
+import { SeedCloudSampleGrid } from "./seed-cloud-sample-grid";
+import { AtpJobCoverageChecklist } from "./atp-job-coverage-checklist";
+import { OwnPipelineStatCard } from "./own-pipeline-stat-card";
 import {
   Callout,
   CardGrid,
@@ -281,4 +284,7 @@ export const mdxComponents: MDXComponents = {
   ScaleVsJudgmentCompareTable,
   JudgmentModelPaceFactRow,
   ScaleVsJudgmentFitSplit,
+  SeedCloudSampleGrid,
+  AtpJobCoverageChecklist,
+  OwnPipelineStatCard,
 };
