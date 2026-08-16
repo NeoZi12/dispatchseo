@@ -91,6 +91,9 @@ import { ScaleVsJudgmentFitSplit } from "./scale-vs-judgment-fit-split";
 import { SeedCloudSampleGrid } from "./seed-cloud-sample-grid";
 import { AtpJobCoverageChecklist } from "./atp-job-coverage-checklist";
 import { OwnPipelineStatCard } from "./own-pipeline-stat-card";
+import { SerpstatModuleGrid } from "./serpstat-module-grid";
+import { SerpstatDecideShipSplit } from "./serpstat-decide-ship-split";
+import { SerpstatLoopStatCard } from "./serpstat-loop-stat-card";
 import {
   Callout,
   CardGrid,
@@ -287,4 +290,7 @@ export const mdxComponents: MDXComponents = {
   SeedCloudSampleGrid,
   AtpJobCoverageChecklist,
   OwnPipelineStatCard,
+  SerpstatModuleGrid,
+  SerpstatDecideShipSplit,
+  SerpstatLoopStatCard,
 };
