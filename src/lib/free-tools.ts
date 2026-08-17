@@ -4,6 +4,7 @@ import { FaqSchemaGenerator } from "@/components/free-tools/faq-schema-generator
 import { KeywordCannibalizationChecker } from "@/components/free-tools/keyword-cannibalization-checker";
 import { KeywordClusteringTool } from "@/components/free-tools/keyword-clustering-tool";
 import { TitleLengthChecker } from "@/components/free-tools/title-length-checker";
+import { UrlSlugGenerator } from "@/components/free-tools/url-slug-generator";
 
 // Registry for the free, public interactive tools at /free-tools/<slug>.
 // One entry per tool - everything the index card and the detail page's
@@ -265,6 +266,50 @@ export const FREE_TOOLS: ToolEntry[] = [
       },
     ],
     Widget: TitleLengthChecker,
+  },
+  {
+    slug: "url-slug-generator",
+    title: "URL slug generator",
+    h1: "URL slug generator",
+    valueLine:
+      "Type a page title and get a clean, hyphenated slug back as you type - accented letters handled, filler words optionally dropped, checked against a length guideline so it never gets awkward in a search result.",
+    metaDescription:
+      "Free URL slug generator: type a title and get a clean, SEO-friendly slug live as you type, with accented-character handling, optional filler-word stripping, and a length check - computed entirely in your browser.",
+    description: [
+      "Type a title and this tool turns it into a slug as you go: lowercased, spaces and punctuation collapsed into single hyphens, and accented letters converted to their plain equivalents so \"Café Marketing Guide\" becomes \"cafe-marketing-guide\" instead of breaking or getting silently dropped. Turn on the filler-word toggle and it also drops short connector words like \"a\", \"the\", \"of\", and \"and\" - \"The Guide to SEO Automation\" becomes \"guide-seo-automation\" instead of carrying three words that don't change what the page is about.",
+      "Every slug is checked against a 60-character guideline as you type, with a running character count next to a plain safe-or-long verdict. That number isn't arbitrary: a long slug makes the full URL harder to read in a search result or a shared link, and it's the same rough ceiling this site's own title length checker uses for the visible part of a listing. If your title runs long, the count tells you before you've committed a filename to it.",
+      "Nothing you type is uploaded anywhere - the whole transform runs in your browser tab, the same as this site's " +
+        "[SEO title length checker](/free-tools/seo-title-length-checker). Once your slug and title both check out, that's the other half of what shows up in a search result for a new page.",
+      "This is the exact naming decision DispatchSEO's own pipeline makes for every guide it publishes - the slug it picks becomes the file name and the URL in one step, without a human typing it by hand. See how that fits into a fully " +
+        "[automated SEO agent](/blog/ai-seo-agent) if you'd rather this run itself for every page your site ships.",
+    ],
+    faq: [
+      {
+        question: "How does it handle accented or non-English letters?",
+        answer:
+          "It converts accented Latin letters to their plain equivalents - \"café\" becomes \"cafe\", \"Zürich\" becomes \"zurich\" - using the same Unicode normalization every modern browser supports, not a hand-picked list of substitutions. Scripts that don't reduce to Latin letters or digits at all (Chinese, Arabic, Cyrillic) can leave nothing usable behind; the tool says so plainly instead of quietly outputting an empty slug.",
+      },
+      {
+        question: "What counts as a \"filler word\" it strips?",
+        answer:
+          "A short, fixed list of connector words - articles like \"a\" and \"the\", conjunctions like \"and\" and \"or\", and a handful of prepositions like \"of\" and \"for\" - that add length to a URL without changing what a reader thinks the page is about. It's a narrower list than what a full-text tool like the internal linking tool filters, because a slug only has a handful of words to work with in the first place. If stripping them would empty the slug entirely - a title that's only filler words - it keeps the original words instead.",
+      },
+      {
+        question: "Why 60 characters specifically?",
+        answer:
+          "It's a practical target, not a hard platform limit - no search engine publishes an official slug-length cutoff. 60 characters is roughly where a URL starts crowding a search result or looking unwieldy pasted into a link, the same rough ceiling this site's title length checker uses for the visible part of a listing. Go over it and the slug still works; it's a nudge to trim, not a wall.",
+      },
+      {
+        question: "Is my title uploaded anywhere?",
+        answer: "No. Nothing you type leaves your browser tab - the whole transform is computed locally.",
+      },
+      {
+        question: "Does it collapse repeated hyphens or trim stray punctuation?",
+        answer:
+          "Yes. Any run of spaces, punctuation, or symbols - including a title that already has hyphens in it - collapses into a single hyphen, and nothing but lowercase letters, digits, and hyphens survives into the final slug.",
+      },
+    ],
+    Widget: UrlSlugGenerator,
   },
 ];
 
