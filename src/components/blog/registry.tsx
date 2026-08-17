@@ -94,6 +94,9 @@ import { OwnPipelineStatCard } from "./own-pipeline-stat-card";
 import { SerpstatModuleGrid } from "./serpstat-module-grid";
 import { SerpstatDecideShipSplit } from "./serpstat-decide-ship-split";
 import { SerpstatLoopStatCard } from "./serpstat-loop-stat-card";
+import { AccurankerTierCostTable } from "./accuranker-tier-cost-table";
+import { RankCheckForkFlow } from "./rank-check-fork-flow";
+import { TrackingCadenceFactRow } from "./tracking-cadence-fact-row";
 import {
   Callout,
   CardGrid,
@@ -293,4 +296,7 @@ export const mdxComponents: MDXComponents = {
   SerpstatModuleGrid,
   SerpstatDecideShipSplit,
   SerpstatLoopStatCard,
+  AccurankerTierCostTable,
+  RankCheckForkFlow,
+  TrackingCadenceFactRow,
 };
