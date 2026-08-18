@@ -97,6 +97,9 @@ import { SerpstatLoopStatCard } from "./serpstat-loop-stat-card";
 import { AccurankerTierCostTable } from "./accuranker-tier-cost-table";
 import { RankCheckForkFlow } from "./rank-check-fork-flow";
 import { TrackingCadenceFactRow } from "./tracking-cadence-fact-row";
+import { ClusterFieldCompareTable } from "./cluster-field-compare-table";
+import { ClusterToPageFlow } from "./cluster-to-page-flow";
+import { ClusterRunOutputCard } from "./cluster-run-output-card";
 import {
   Callout,
   CardGrid,
@@ -299,4 +302,7 @@ export const mdxComponents: MDXComponents = {
   AccurankerTierCostTable,
   RankCheckForkFlow,
   TrackingCadenceFactRow,
+  ClusterFieldCompareTable,
+  ClusterToPageFlow,
+  ClusterRunOutputCard,
 };
