@@ -100,6 +100,9 @@ import { TrackingCadenceFactRow } from "./tracking-cadence-fact-row";
 import { ClusterFieldCompareTable } from "./cluster-field-compare-table";
 import { ClusterToPageFlow } from "./cluster-to-page-flow";
 import { ClusterRunOutputCard } from "./cluster-run-output-card";
+import { LtpSerpFieldGrid } from "./ltp-serp-field-grid";
+import { KdWinnabilityScorecard } from "./kd-winnability-scorecard";
+import { LtpJobCoverageChecklist } from "./ltp-job-coverage-checklist";
 import {
   Callout,
   CardGrid,
@@ -305,4 +308,7 @@ export const mdxComponents: MDXComponents = {
   ClusterFieldCompareTable,
   ClusterToPageFlow,
   ClusterRunOutputCard,
+  LtpSerpFieldGrid,
+  KdWinnabilityScorecard,
+  LtpJobCoverageChecklist,
 };
