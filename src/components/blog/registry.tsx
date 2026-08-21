@@ -106,6 +106,9 @@ import { LtpJobCoverageChecklist } from "./ltp-job-coverage-checklist";
 import { UbersuggestSerpFieldTable } from "./ubersuggest-serp-field-table";
 import { KdGapFactRow } from "./kd-gap-fact-row";
 import { ListVsLoopFlow } from "./list-vs-loop-flow";
+import { OutrankPricingTiersTable } from "./outrank-pricing-tiers-table";
+import { ContentEngineForkSplit } from "./content-engine-fork-split";
+import { OutrankQueuePaceFactRow } from "./outrank-queue-pace-fact-row";
 import {
   Callout,
   CardGrid,
@@ -317,4 +320,7 @@ export const mdxComponents: MDXComponents = {
   UbersuggestSerpFieldTable,
   KdGapFactRow,
   ListVsLoopFlow,
+  OutrankPricingTiersTable,
+  ContentEngineForkSplit,
+  OutrankQueuePaceFactRow,
 };

@@ -1,0 +1,67 @@
+---
+title: "Outrank alternative: the open-source, self-hosted version of the same idea"
+description: Outrank auto-publishes SEO content as a $99/mo SaaS with a backlink exchange bolted on. DispatchSEO runs the same research-to-published-page job through your own coding agent, landing as a PR you review instead of an auto-publish.
+date: 2026-08-21
+keyword: outrank alternative
+cover: /blog/covers/outrank-alternative.webp
+---
+
+DispatchSEO's own readme calls it "an open-source alternative to SEObot and Outrank" - so if you searched outrank alternative, the honest answer is sitting in this project's own positioning, not in a listicle. Outrank is a hosted SaaS that researches, drafts, and auto-publishes 30 to 90 SEO articles a month starting at $99/mo, plus AI images and a backlink-exchange network, verified live on outrank.so's own pricing page. DispatchSEO runs the same underlying job - research a gap, draft it, publish it, keep tracking it - through your own coding agent instead of Outrank's, and lands as a pull request in your own repo instead of an auto-published page inside Outrank's system.
+
+> **TL;DR** - Outrank is a $99/mo all-in-one SaaS: automated keyword research, AI-drafted articles auto-published through WordPress/Webflow/Shopify/Notion and other integrations, AI images, and a backlink-exchange network, with add-ons up to $259/mo for 90 articles a month. DispatchSEO does the same research-to-published-page job, but through the coding agent you already run (Claude Code, Codex, or Cursor), and it stops one step earlier - at a pull request with a deploy preview, not an auto-publish. Self-hosted it's $0 software; hosted, it's convenience pricing on top of the same idea. Neither model is strictly better: Outrank buys packaged breadth (150+ languages, a built backlink marketplace, human editors on request); DispatchSEO buys a review gate and no vendor lock-in.
+
+## What $99 a month actually buys on Outrank
+
+Outrank's pitch is "Grow Organic Traffic on Auto-Pilot": it explores your niche and competitors to build a 30-day content plan, then produces SEO-optimized articles from that plan every day, in 150+ languages, with AI-generated images auto-inserted as both in-body visuals and featured images. A chat interface lets you brainstorm keywords and pull live search data, and the platform flags underperforming published articles for a rewrite. Publishing goes out through direct integrations - WordPress, Webflow, Shopify, Framer, Wix, Notion, Ghost, WordPress.com, or a custom webhook - with nothing sitting between "article generated" and "article live."
+
+<OutrankPricingTiersTable />
+
+The All-in-One plan is $99/mo (or $999/year, saving $189) for 30 articles a month, automated keyword research, backlink exchange access, AI images, unlimited users, and every publishing integration. Volume add-ons stack on top: $85/mo more for 60 articles, $160/mo more for 90. Past that, Outrank sells a menu of extras - a $1,399/mo human-curated editing pass, $199/mo or $899/mo backlink-credit tiers, a $199/mo weekly auto-built interactive tool, a $49/mo premium image model, and a $500 one-time directory-submission service - plus 10-20% volume discounts for agencies running multiple sites.
+
+## The readme's other half: your agent, not a subscription
+
+The other side of that comparison is DispatchSEO's actual shape: one backend that exposes an MCP server, and your own [coding agent](/blog/ai-seo-agent) is what drives it - researching keywords, drafting guides, watching rankings and Search Console, all through tool calls the agent makes inside a session it's already running. Nothing here is a black-box model writing about your product with no context on your codebase or your voice; it's the same agent that already knows your repo, pointed at your marketing site instead of your app. The backend itself is [self-hosted](/blog/self-hosted-ai) - a single Vercel deployment plus Supabase, $0 in software cost - or run hosted for convenience if standing up your own instance isn't the point.
+
+## The publish moment, forked two ways
+
+Both engines start from the same job - find a gap, draft a page, get it live, watch whether it ranks - and the fork happens at the exact moment a draft is finished.
+
+<ContentEngineForkSplit />
+
+Outrank's chain doesn't pause there: the article goes straight out through whichever integration you connected, live on your site with no gate in between. DispatchSEO's chain adds one more step on purpose - the draft becomes a pull request with a deploy preview, and nothing merges until a person looks at it. That gate is also where the thin-content and live-SERP checks this exact guide went through happen: a draft that can't beat what's already on page 1 gets held back instead of shipped, which auto-publish has no equivalent step for.
+
+## The unglamorous numbers this run can actually show
+
+Every guide this project ships gets checked against its own real state instead of a projected pitch - this page's numbers, pulled by the same run that wrote it, are no exception.
+
+<OutrankQueuePaceFactRow />
+
+"Outrank alternative" was added to this project's own keyword tracker the day this idea was approved, before a word of this draft existed - its first check landed outside the top 100, which is simply where any page starts before it's had time to earn a position. The guide cadence is capped at one a day on purpose: seven shipped in the last seven days, each one a reviewed PR, never an auto-publish batch. And the Search Console feed for the whole domain, 28 days in: 9,559 impressions against 4 clicks - small numbers a 35-day-old domain would show no matter which engine wrote the pages.
+
+## When Outrank is still the smarter pick
+
+Outrank's packaged breadth is real and DispatchSEO doesn't try to match all of it. If you want content in 150+ languages out of the box, a built backlink-exchange marketplace instead of finding link partners yourself, or a $1,399/mo human-editor pass so nobody on your team ever opens a diff, Outrank has already built that and DispatchSEO hasn't. It also fits teams with no repo and no interest in one - "review a pull request" is a feature if you already work that way, and friction if you don't. DispatchSEO's honest tradeoff runs the other direction: it needs its own DataForSEO account and a coding agent already working inside your repo, and self-hosting means you're the one keeping the Vercel deployment alive, not a vendor's support line.
+
+Outrank and DispatchSEO are chasing the same reader - someone who wants SEO content to happen without doing the research and drafting by hand - through genuinely different models, not a cheaper knockoff of the same one. Auto-publish buys speed and packaged breadth; a PR buys a review gate and a repo you own outright. Which one's right depends on whether "nothing ships without you looking at it first" sounds like a feature or a chore.
+
+## FAQ
+
+**What does Outrank cost?**
+$99/mo (or $999/year) for the All-in-One plan: 30 articles a month, automated keyword research, backlink exchange access, AI images, unlimited users, and every publishing integration, verified live on outrank.so/pricing. Volume add-ons run $85/mo more for 60 articles a month or $160/mo more for 90.
+
+**Does DispatchSEO auto-publish content the way Outrank does?**
+No, and this guide doesn't pretend otherwise. Outrank pushes a finished article straight through a connected integration with no gate. DispatchSEO stops at a pull request with a deploy preview - a person merges it, every time.
+
+**Does DispatchSEO have anything like Outrank's backlink exchange?**
+Not a marketplace of partner sites trading links automatically. DispatchSEO tracks backlink prospects for its own outreach queue, which is a narrower job than an automated exchange network - if a built-in link marketplace is what you're after, Outrank's is already running.
+
+**Which coding agents does DispatchSEO work with?**
+Claude Code, Codex, and Cursor are all first-class - whichever one already runs in your repo drives the MCP tools this project exposes.
+
+**Is DispatchSEO actually free, unlike Outrank's $99/mo floor?**
+The software is $0 self-hosted - the real costs are the DataForSEO account behind keyword research and rank tracking (billed to whoever runs the project) and the coding-agent subscription you're probably already paying for. A hosted option exists for convenience if standing up your own instance isn't the point.
+
+**Does this exact page rank for "outrank alternative" yet?**
+Not yet, and this guide says so plainly rather than skip past it: the keyword was added to this project's own tracker the day the idea was approved, and its first check came back outside the top 100 - the ordinary state of anything this new.
+
+Neither product is chasing the same buyer with a different sticker price - one is a subscription you configure and let run, the other is a workflow bolted onto an agent you already trust with your code. If you've read this far weighing the two, that choice is probably already made; the free clustering pass in [DispatchSEO's own keyword tool](/free-tools/keyword-clustering-tool) is a no-signup way to see the research half of that workflow before deciding.
