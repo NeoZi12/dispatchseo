@@ -109,6 +109,9 @@ import { ListVsLoopFlow } from "./list-vs-loop-flow";
 import { OutrankPricingTiersTable } from "./outrank-pricing-tiers-table";
 import { ContentEngineForkSplit } from "./content-engine-fork-split";
 import { OutrankQueuePaceFactRow } from "./outrank-queue-pace-fact-row";
+import { FraseTierCapScorecard } from "./frase-tier-cap-scorecard";
+import { PostPublishMonitorForkFlow } from "./post-publish-monitor-fork-flow";
+import { GuideShipCadenceTimeline } from "./guide-ship-cadence-timeline";
 import {
   Callout,
   CardGrid,
@@ -323,4 +326,7 @@ export const mdxComponents: MDXComponents = {
   OutrankPricingTiersTable,
   ContentEngineForkSplit,
   OutrankQueuePaceFactRow,
+  FraseTierCapScorecard,
+  PostPublishMonitorForkFlow,
+  GuideShipCadenceTimeline,
 };

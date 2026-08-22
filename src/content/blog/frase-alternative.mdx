@@ -1,0 +1,62 @@
+---
+title: "Frase alternative: Content Guard caps how many pages it watches - this doesn't"
+description: Frase's own pricing page, checked live, shows Content Guard - its ranking-decay monitor - only watches 10, 75, or 300 pages depending which of four tiers you pay for. What a nightly rank and Search Console cron tracks instead, with no per-page cap.
+date: 2026-08-22
+keyword: frase alternative
+cover: /blog/covers/frase-alternative.webp
+---
+
+The honest answer to "frase alternative" depends on what you actually want replaced. Frase's own pricing page, checked live while writing this, shows every paid tier now drafts and auto-publishes content on its own - the gap that mattered a year ago already closed, and [this site said so when the same question came up for Surfer](/blog/surfer-seo-alternative). What none of today's page 1 "frase alternative" roundups mention is the cap sitting underneath that: Content Guard, the module that watches a published page for ranking decay, only watches 10, 75, or 300 pages depending which of the four tiers you're paying for. DispatchSEO's nightly rank and Search Console tracking has no page limit tied to a price tier - every page this pipeline ships gets watched, for as long as the project exists.
+
+> **TL;DR** - Frase's four tiers run $39 to $299/mo (Starter through Scale, Enterprise custom), and Content Guard - its post-publish ranking-decay monitor - caps out at 10, 75, or 300 pages depending which one you're on. Auto-publish itself isn't the gap anymore; [this site already covered that Frase ships pages with no review step](/blog/surfer-seo-alternative). The part still missing from every roundup: what happens to a page after it ships. DispatchSEO's nightly rank cron and hourly Search Console snapshot run against every page a project has published, no cap, queryable as MCP state instead of a dashboard alert. Real numbers pulled live while writing this: dispatchseo.com itself has shipped 7 guides in the last 7 days, a day apart on average. The honest tradeoff: no live editor screen, no shared workspace for a team of writers - this is a repo and a pull request, not a seat.
+
+## What four tiers actually cap, read live off Frase's own pricing page
+
+<FraseTierCapScorecard />
+
+Starter runs $39/mo billed yearly ($49 month-to-month) for one seat, one site, 10 articles a month, and a Content Guard limit of 10 monitored pages. Professional jumps to $103/mo ($129 month-to-month) for three seats, five sites, 40 articles, and 75 monitored pages, adding a content calendar and internal-linking suggestions. Scale is $239/mo ($299 month-to-month): five seats, up to ten domains, 100 articles, 300 monitored pages, client-ready reports, and "omni-channel atomization" for repurposing a piece across formats. Enterprise drops the numbers entirely for custom seats and domains, white-labeling, SSO/SAML, and a dedicated account manager with an SLA. FraseCMS, its own hosting option, has a free tier capped at 100,000 page views a month, with add-ons from $19 to $99/mo for a custom domain or more traffic.
+
+## The part every "frase alternative" listicle skips: a monitoring cap by price
+
+Page 1 for this exact query - rankability.com, orchly.ai, machined.ai, airops.com, cited.so, contentharmony.com, a Reddit thread, keywordinsights.ai, seoptimer.com - covers Frase as a research-and-drafting tool, the same framing that was accurate before Frase added auto-publish and before Content Guard existed. None of them dig into what Content Guard actually limits. It's a real feature: Frase periodically re-checks a monitored page's ranking and traffic and flags decay before you'd notice it by accident. But it only checks the pages your tier bought a slot for. A Scale subscriber publishing page 301 gets no alert if that page starts sliding - not because the feature failed, because the plan stopped counting.
+
+That's a different failure mode than "no publishing at all," which is the version of this comparison [this site already made against Surfer's shortlist](/blog/surfer-seo-alternative), Frase included. The gap worth writing about now isn't the publish moment. It's everything after.
+
+## The same after-publish loop, minus the page limit
+
+<PostPublishMonitorForkFlow />
+
+Both paths start at the same place - a page goes live, whether that's Frase's auto-publish writing straight to a CMS or a DispatchSEO pull request getting merged. From there they diverge. Content Guard checks its capped list on a schedule and raises an alert in the Frase dashboard when something on that list moves. The rank and GSC crons here run against whatever `get_pages` already knows about - every logged page, not a subset sized to a subscription - and the numbers land as MCP state: `get_rankings` for the position history, `get_site_stats` for the Search Console side, and [`get_ai_visibility`](/blog/ai-visibility-tracking-tool) for whether AI answer engines are citing the page at all. Nobody has to open a dashboard to find out; an agent (or a person) can just ask.
+
+## This project's own ship log, not a claim
+
+<GuideShipCadenceTimeline />
+
+Content Guard only has something to watch once a page exists. The other half of "frase alternative" is whether pages keep showing up at all without a person doing the brief-to-draft step by hand. Pulled live from this project's own suggestion queue and page log while writing this: dispatchseo.com has shipped a new guide roughly once every 24 hours for the last week and a half, gaps ranging 21.7 to 27.5 hours across the last ten. That's a self-imposed ceiling, not a performance limit - the pace gate caps it at one a day on purpose, the same discipline that keeps a corpus from reading as scaled-content abuse. The number that matters isn't speed; it's that the queue doesn't stall waiting on someone to sit down and write.
+
+## Where Frase's seats and shared editor still win
+
+None of this makes Frase's editor pointless. If a team of writers is drafting content regardless and what they need is a shared workspace where everyone sees the same brief, the same term-coverage score, and the same Content Guard alerts update as they work, that's a real job - the one all four tiers are priced and seated for, dedicated account manager included at the top. DispatchSEO has no equivalent screen. There's no seat to invite a co-writer into, no live score to watch move while drafting - the review surface is a pull request diff, and after that, whatever the crons report back. [Clearscope and NeuronWriter compete in the same shared-editor category](/blog/clearscope-alternative) if the actual want is a scoring tool a human writer opens by hand, not a tool that writes and ships the page itself.
+
+## The honest limit: no live editor here, at any tier
+
+Stay on Frase - or add it on top of whatever's already publishing your content - if a person needs to see a term-coverage score move in real time while drafting, if multiple writers need to share one workspace, or if FraseCMS's hosting is genuinely simpler than a git-based publish path for a non-technical team. If the question is narrower than any of that - whether a page about to get written already overlaps one from last year - [a free keyword clustering tool](/free-tools/keyword-clustering-tool) answers it without a subscription to either system. Move to a research-to-PR pipeline if what you actually want replaced is the writing and the after-publish watching both, with no per-page cap attached to the price.
+
+## FAQ
+
+**Does Frase still just hand back a brief, or does it publish now?**
+It publishes. Every paid tier, checked live on Frase's pricing page, includes AI drafting and auto-publish to WordPress, Webflow, Sanity, Wix, or its own FraseCMS. The remaining gap is a review step - no diff, no pull request, no approval gate between the draft and the live page.
+
+**What is Content Guard, and what does it actually monitor?**
+Frase's post-publish ranking-decay monitor. It re-checks a fixed number of pages per tier - 10 on Starter, 75 on Professional, 300 on Scale - and alerts you if one of them starts losing ranking or traffic. Pages beyond that count aren't watched.
+
+**Does DispatchSEO have a page cap on rank tracking?**
+No. The nightly rank cron and hourly Search Console snapshot run against every page a project has logged, independent of how many pages exist. It isn't tiered by a subscription level.
+
+**How fast does DispatchSEO actually ship new pages?**
+Pulled live from this project's own page log while writing this piece: 7 guides in the last 7 days, with gaps between consecutive publishes ranging 21.7 to 27.5 hours - a self-imposed one-a-day pace, not a technical ceiling.
+
+**Is Frase worth keeping if I already have a content pipeline?**
+Possibly, for the shared-editor part - a team of writers wanting one workspace with a live term-coverage score and Content Guard alerts is a real, different job than research-to-published-page automation. It doesn't do the writing or the shipping for you if the goal is removing that step entirely.
+
+Every name on today's page 1 for "frase alternative" still frames Frase as a research-and-brief tool, missing that it already ships pages and now watches a slice of them for decay. The part worth knowing before picking anything is the size of that slice - and whether the tool watching your pages stops counting at some number tied to what you're paying.
