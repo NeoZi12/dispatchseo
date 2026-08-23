@@ -112,6 +112,9 @@ import { OutrankQueuePaceFactRow } from "./outrank-queue-pace-fact-row";
 import { FraseTierCapScorecard } from "./frase-tier-cap-scorecard";
 import { PostPublishMonitorForkFlow } from "./post-publish-monitor-fork-flow";
 import { GuideShipCadenceTimeline } from "./guide-ship-cadence-timeline";
+import { MarketmuseTierFeatureTable } from "./marketmuse-tier-feature-table";
+import { BriefToBlankPageForkFlow } from "./brief-to-blank-page-fork-flow";
+import { MarketmuseCitationGapFactRow } from "./marketmuse-citation-gap-fact-row";
 import {
   Callout,
   CardGrid,
@@ -329,4 +332,7 @@ export const mdxComponents: MDXComponents = {
   FraseTierCapScorecard,
   PostPublishMonitorForkFlow,
   GuideShipCadenceTimeline,
+  MarketmuseTierFeatureTable,
+  BriefToBlankPageForkFlow,
+  MarketmuseCitationGapFactRow,
 };
