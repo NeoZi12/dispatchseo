@@ -5,6 +5,7 @@ import { KeywordCannibalizationChecker } from "@/components/free-tools/keyword-c
 import { KeywordClusteringTool } from "@/components/free-tools/keyword-clustering-tool";
 import { TitleLengthChecker } from "@/components/free-tools/title-length-checker";
 import { UrlSlugGenerator } from "@/components/free-tools/url-slug-generator";
+import { H1TagChecker } from "@/components/free-tools/h1-tag-checker";
 
 // Registry for the free, public interactive tools at /free-tools/<slug>.
 // One entry per tool - everything the index card and the detail page's
@@ -310,6 +311,55 @@ export const FREE_TOOLS: ToolEntry[] = [
       },
     ],
     Widget: UrlSlugGenerator,
+  },
+  {
+    slug: "h1-tag-checker",
+    title: "H1 tag checker",
+    h1: "H1 tag checker",
+    valueLine:
+      "Paste your page's HTML and see exactly what's wrong with its H1 tags - missing, doubled up, or not matching what you're trying to rank for - with a fix for each, not just a red X.",
+    metaDescription:
+      "Free H1 tag checker: paste your page's HTML and get an honest audit of its H1s - count, length, and how well they match your target keyword - computed entirely in your browser.",
+    description: [
+      "Paste your page's HTML in and this tool parses out every <h1> tag on it - not by guessing from plain text, but by actually parsing the markup, so a stray H1 tucked inside a hidden menu or a component you forgot about still gets caught. Paste a page with zero H1s and it says so plainly with a fix; paste one with three and it tells you exactly how many, quotes each one back to you, and explains what to do about it - rather than just a red X.",
+      "That second case is where most H1 checkers get it wrong: they treat more than one H1 as an automatic error. Google's own SEO starter guide says the opposite - heading order and count don't affect ranking, and there's \"no magical, ideal amount of headings a given page should have.\" This tool still flags multiple H1s, because one clear heading is genuinely easier for a reader (or a screen reader) to follow, but it says so as a heads-up, not a fabricated penalty.",
+      "Give it a target keyword and it also checks how well each H1 matches - not a simple exact-string test, but the same kind of stopword-filtered term-overlap scoring [the keyword cannibalization checker](/free-tools/keyword-cannibalization-checker) uses: it strips filler words from your keyword, then checks which of the remaining words actually show up in the H1. Target \"best running shoes for flat feet\" against an H1 of \"Our Running Shoe Guide\" and it'll tell you \"running\" matched but \"shoes,\" \"flat,\" and \"feet\" didn't - specific enough to act on, not just a pass or fail.",
+      "Nothing you paste is uploaded anywhere - the whole thing runs in your browser tab, the same as this site's [SEO title length checker](/free-tools/seo-title-length-checker), the natural next stop for auditing the other half of what shows up in a search result. This is the same on-page check DispatchSEO's own pipeline runs before it ever proposes a new page - see how that fits into a fully " +
+        "[automated SEO agent](/blog/ai-seo-agent) if you'd rather this run itself on a schedule instead of pasting HTML in by hand.",
+    ],
+    faq: [
+      {
+        question: "Does having more than one H1 actually hurt my SEO?",
+        answer:
+          "No, not directly - Google's own SEO starter guide is explicit that heading order and count don't affect ranking, and that there's no ideal number of headings a page should have. This tool still flags multiple H1s as a heads-up, not an error, because one clear heading is still easier for a reader or a screen reader to follow - not because Google penalizes the extra tags.",
+      },
+      {
+        question: "How does it decide whether my H1 matches my target keyword?",
+        answer:
+          "It strips filler words like \"the\" and \"for\" from your keyword, then checks which of the remaining significant words show up verbatim in the H1 text - the same kind of term-overlap scoring the site's other analyzers use, not a simple exact-string comparison. A partial match still counts for something; it tells you exactly which words are missing so you know what to add.",
+      },
+      {
+        question: "Why did it say my HTML \"doesn't look like HTML\"?",
+        answer:
+          "Because parsing it turned up zero actual elements, which usually means plain text got pasted instead of markup. Paste your page's real HTML source - right-click and choose View Page Source, or copy the markup from your browser's dev tools - rather than just the visible heading text, and it'll parse correctly.",
+      },
+      {
+        question: "Is my HTML uploaded anywhere?",
+        answer:
+          "No. Parsing the HTML and scoring the keyword match both run in your browser tab using the browser's own HTML parser. Nothing you paste is sent to a server.",
+      },
+      {
+        question: "Why 15-70 characters for H1 length?",
+        answer:
+          "It's a practical convention, not a platform rule - Google doesn't publish an H1 length limit any more than it publishes one for title tags. Under about 15 characters an H1 usually reads as too generic to say what the page is about; over about 70 it gets hard to scan at a glance. Go outside that range and the tool still works - it's a nudge, not a wall.",
+      },
+      {
+        question: "Can I check a page that isn't live yet?",
+        answer:
+          "Yes - that's actually the main use case. Since you paste in the HTML directly instead of giving it a URL to crawl, it works on a draft, a staged build, or anything still behind a login, which a URL-based checker can't reach.",
+      },
+    ],
+    Widget: H1TagChecker,
   },
 ];
 
