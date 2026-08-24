@@ -115,6 +115,9 @@ import { GuideShipCadenceTimeline } from "./guide-ship-cadence-timeline";
 import { MarketmuseTierFeatureTable } from "./marketmuse-tier-feature-table";
 import { BriefToBlankPageForkFlow } from "./brief-to-blank-page-fork-flow";
 import { MarketmuseCitationGapFactRow } from "./marketmuse-citation-gap-fact-row";
+import { WincherModuleContentGrid } from "./wincher-module-content-grid";
+import { WincherOwnTrackingFactRow } from "./wincher-own-tracking-fact-row";
+import { WincherTierKeywordTable } from "./wincher-tier-keyword-table";
 import {
   Callout,
   CardGrid,
@@ -335,4 +338,7 @@ export const mdxComponents: MDXComponents = {
   MarketmuseTierFeatureTable,
   BriefToBlankPageForkFlow,
   MarketmuseCitationGapFactRow,
+  WincherModuleContentGrid,
+  WincherOwnTrackingFactRow,
+  WincherTierKeywordTable,
 };
