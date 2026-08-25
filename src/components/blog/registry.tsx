@@ -118,6 +118,9 @@ import { MarketmuseCitationGapFactRow } from "./marketmuse-citation-gap-fact-row
 import { WincherModuleContentGrid } from "./wincher-module-content-grid";
 import { WincherOwnTrackingFactRow } from "./wincher-own-tracking-fact-row";
 import { WincherTierKeywordTable } from "./wincher-tier-keyword-table";
+import { HookEventCategoryGrid } from "./hook-event-category-grid";
+import { HookDecisionFlow } from "./hook-decision-flow";
+import { HookGitTestTable } from "./hook-git-test-table";
 import {
   Callout,
   CardGrid,
@@ -341,4 +344,7 @@ export const mdxComponents: MDXComponents = {
   WincherModuleContentGrid,
   WincherOwnTrackingFactRow,
   WincherTierKeywordTable,
+  HookEventCategoryGrid,
+  HookDecisionFlow,
+  HookGitTestTable,
 };
