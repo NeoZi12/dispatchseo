@@ -121,6 +121,9 @@ import { WincherTierKeywordTable } from "./wincher-tier-keyword-table";
 import { HookEventCategoryGrid } from "./hook-event-category-grid";
 import { HookDecisionFlow } from "./hook-decision-flow";
 import { HookGitTestTable } from "./hook-git-test-table";
+import { RateLimitTypeGrid } from "./rate-limit-type-grid";
+import { InteractiveVsHeadlessLimitSplit } from "./interactive-vs-headless-limit-split";
+import { QuotaBackoffTimeline } from "./quota-backoff-timeline";
 import {
   Callout,
   CardGrid,
@@ -347,4 +350,7 @@ export const mdxComponents: MDXComponents = {
   HookEventCategoryGrid,
   HookDecisionFlow,
   HookGitTestTable,
+  RateLimitTypeGrid,
+  InteractiveVsHeadlessLimitSplit,
+  QuotaBackoffTimeline,
 };
