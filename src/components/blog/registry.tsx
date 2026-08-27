@@ -124,6 +124,9 @@ import { HookGitTestTable } from "./hook-git-test-table";
 import { RateLimitTypeGrid } from "./rate-limit-type-grid";
 import { InteractiveVsHeadlessLimitSplit } from "./interactive-vs-headless-limit-split";
 import { QuotaBackoffTimeline } from "./quota-backoff-timeline";
+import { RoutineVsCronTable } from "./routine-vs-cron-table";
+import { DispatchseoScheduleFactRow } from "./dispatchseo-schedule-fact-row";
+import { RoutineOrCronChecklist } from "./routine-or-cron-checklist";
 import {
   Callout,
   CardGrid,
@@ -353,4 +356,7 @@ export const mdxComponents: MDXComponents = {
   RateLimitTypeGrid,
   InteractiveVsHeadlessLimitSplit,
   QuotaBackoffTimeline,
+  RoutineVsCronTable,
+  DispatchseoScheduleFactRow,
+  RoutineOrCronChecklist,
 };

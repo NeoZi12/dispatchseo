@@ -1,0 +1,58 @@
+---
+title: "Claude Code routines vs. a real cron job: what's actually different"
+description: What a Claude Code routine actually is, the four things a real cron job (Vercel, GitHub Actions) still does that a routine doesn't yet, and DispatchSEO's own twelve-trigger schedule as the worked example.
+date: 2026-08-27
+keyword: claude code routines
+cover: /blog/covers/claude-code-routines-vs-cron.webp
+---
+
+Claude Code routines are Anthropic's own scheduler: a saved prompt plus one or more repositories and connectors that Anthropic's cloud runs on a timer, an API call, or a GitHub event, with no server or workflow file of your own to write. A real cron job - Vercel's `crons` field, a GitHub Actions `schedule:` trigger - is infrastructure you own outright: no daily run cap, no minimum interval, and it can retry a failure or write to a state store of its own, none of which a routine currently does. The gap shows up the moment a schedule needs to fire more than a couple dozen times a day or remember anything between runs, and DispatchSEO's own scheduler already does both.
+
+> **TL;DR** - A routine (research preview) is a saved Claude Code cloud session with a Scheduled, API, or GitHub trigger, created at claude.ai/code/routines or with `/schedule`. It needs a claude.ai Pro/Max/Team/Enterprise seat, can't schedule tighter than once an hour, and caps out at 5-25 runs a day by plan. A real cron job has none of those ceilings, can retry itself and persist state anywhere you point it, and runs on pure metered API billing with no claude.ai account at all - the trade is that you own and operate the infrastructure yourself. DispatchSEO runs twelve separate scheduled triggers across Vercel and GitHub Actions, one of them firing every 10 minutes - a shape no combination of routines could currently hold.
+
+## The three ways a routine starts, and where it actually runs
+
+A routine is a saved configuration, not a background process you manage: a prompt, the repositories Claude works in, an environment, and a set of MCP connectors, packaged once at [claude.ai/code/routines](https://claude.ai/code/routines) or from the CLI with `/schedule`. It runs as a full Claude Code cloud session - on Anthropic's own infrastructure, or on your organization's self-hosted environment if one is routed there - so nothing depends on a laptop staying open. Each routine can carry one or more of three trigger types: **Scheduled** (a recurring cadence, or a single one-off run at a future timestamp), **API** (a POST to a per-routine `/fire` endpoint with a bearer token), and **GitHub** (a pull request or release event on a connected repo, with filters on author, branch, labels, and draft/merged state). A routine runs autonomously once triggered - no permission-mode picker, no approval prompts mid-run - so what it can reach is entirely a function of the repositories, the environment's network access, and the connectors you scoped it to.
+
+That autonomy comes with an access requirement that decides whether any of this even applies to you: routines belong to an individual claude.ai account, on Pro, Max, Team, or Enterprise, with Claude Code on the web enabled. A Console API key, an Anthropic profile, or a cloud-provider login (Bedrock, Google Cloud's Agent Platform, Microsoft Foundry) can't create or run one at all - `/schedule` replies that a claude.ai subscription login is required. A pipeline billed purely through `ANTHROPIC_API_KEY`, the way a lot of CI-driven Claude Code automation is set up, has to reach for something else entirely.
+
+## Four things a routine can't do yet that a cron job already does
+
+<RoutineVsCronTable />
+
+The minimum-interval and daily-cap rows are the two that bite first. A schedule trigger can't be set tighter than once an hour - current docs are explicit that a custom cron expression asking for more frequent runs gets rejected outright - and every account has a hard ceiling on routine runs per day regardless of interval: 5 on Pro, 15 on Max, 25 on Team and Enterprise. One-off runs are exempt from that cap, but a recurring job isn't. Retries and memory are the two structural gaps rather than numeric ones: nothing in the current docs describes a routine retrying its own failed run, and a routine's only memory between runs is whatever a connector reads fresh each time - there's no persisted queue or database a routine owns the way a cron job's backing store is entirely yours to design. GitHub-triggered routines add one more limit if that's the trigger in play: webhook events are subject to per-routine and per-account hourly caps during the research preview, and anything past the limit is dropped, not queued.
+
+## DispatchSEO's own schedule: twelve triggers a routine's cap couldn't hold
+
+<DispatchseoScheduleFactRow />
+
+This isn't an illustrative number - it's what actually runs this site. One Vercel cron (`daily-ranks`, 04:00 UTC) plus eleven GitHub Actions workflows carrying their own `schedule:` trigger cover everything from an hourly Search Console pull to a weekly research scan, each offset a few minutes from the top of the hour so they don't compete with each other for the same window. The tightest of the twelve, `jobs.yml`, drains a background work queue every 10 minutes because two of the jobs behind it are user-visible waits - a site crawl someone is actively watching finish, a scheduled article that has to go out at the time it was scheduled for, not at the next hour boundary. Ten minutes is already below a routine's one-hour floor, and 144 runs a day from that one workflow alone clears even the highest published routine ceiling nearly six times over - and it's one of twelve schedules this project runs, not the only one.
+
+One more piece has no routine equivalent at all: `seo-dispatch.yml` runs every three hours not to do the work itself, but to check the dashboard's own state and fire a `repository_dispatch` the moment a build is actually due - so the heavier builder wakes up close to when its work becomes ready, not just whenever its own clock next ticks. A routine's GitHub trigger reacts to a PR or release event on a connected repo; it has no hook for "my own backend decided something is due," because that state lives in this project's database, not in GitHub.
+
+## So which one should actually run your pipeline
+
+<RoutineOrCronChecklist />
+
+Any one of those five conditions is enough to reach for a real cron job instead of a routine today - and DispatchSEO's own schedule matches four of the five, which is the practical reason it runs on GitHub Actions and Vercel rather than routines. None of this makes a routine the wrong tool in general: a nightly backlog triage, a weekly docs-drift scan, a routine that reacts to every PR opened against one repo are all shapes routines are built for, and they cost nothing to set up - no workflow YAML, no secret to rotate, no runner to keep patched. The trade is real in both directions: a routine is less to build and operate; a cron job is less to be capped by.
+
+And sometimes neither belongs in the picture. A task that only ever runs once - clean up this one feature flag, summarize yesterday's PRs a single time - doesn't need a recurring schedule at all; a one-off routine run or a plain `/schedule tomorrow at 9am, ...` covers it without building anything durable. Reach for a schedule, of either kind, only once the job is genuinely going to repeat.
+
+## FAQ
+
+**Can a routine call my own backend the way a cron job can?**
+Yes, through its connectors - any MCP server on your claude.ai account, including a self-hosted one declared in a committed `.mcp.json`, is reachable from a routine the same way it is from [an interactive Claude Code session](/blog/claude-code-mcp-server). What a routine still can't do is trigger itself from your backend's own state the way [a dispatch-style GitHub Actions cron](/blog/claude-code-github-actions) can - only a Scheduled, API, or GitHub-event trigger starts one.
+
+**Does upgrading to a higher Claude plan raise the routine run cap?**
+Yes - the published ceiling scales with plan: 5 runs/day on Pro, 15 on Max, 25 on Team and Enterprise. It doesn't change the 1-hour minimum interval, which is a floor on cadence, not a seat-based allowance.
+
+**Can I run a routine on metered API billing instead of a subscription?**
+No - routines require a claude.ai account on Pro, Max, Team, or Enterprise with Claude Code on the web enabled. A Console API key, a cloud-provider login, or `ANTHROPIC_API_KEY`-only billing (the model [a headless CI run](/blog/claude-code-headless-mode) commonly uses) can't create or fire one.
+
+**Do routine runs retry automatically if the task fails partway through?**
+Current docs don't describe one - a routine's run either completes or it doesn't, and a green status in the run list only means the session started and exited without an infrastructure error, not that the task itself succeeded. A cron job gets whatever retry logic you write into it, the same way this project classifies a genuine failure differently from a deferral.
+
+**Is a GitHub-triggered routine the same as `claude-code-action` on a `schedule:` trigger?**
+No - a GitHub-triggered routine reacts to a PR or release event on a repo connected to your claude.ai account, entirely outside GitHub Actions. `claude-code-action` on a cron `schedule:` is a workflow you own, running on GitHub's own runners with GitHub's own retry and concurrency controls available to write against.
+
+A routine is real infrastructure Anthropic now runs for you, and for a job that fits inside an hourly cadence and a few dozen runs a day, it's less to build than a workflow file and a state store. Past that line - tighter ticks, real memory, a retry policy you actually control - the job still needs a cron job of its own, the same way this one does, twelve times over.
