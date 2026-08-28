@@ -1,0 +1,95 @@
+---
+title: "Claude Code's /loop command: what an autonomous loop actually does when nobody's watching"
+description: What /loop actually runs between iterations - fixed vs Claude-picked intervals, loop.md, the ScheduleWakeup mechanics behind self-pacing, and where it stops.
+date: 2026-08-28
+keyword: claude code loop
+cover: /blog/covers/claude-code-loop.webp
+---
+
+Type `/loop 5m check the deploy` into a running Claude Code session and it keeps re-running that prompt on a timer until you stop it or the session closes. Drop the interval and the mechanism changes shape: Claude picks its own wait between one minute and one hour after each iteration, based on what it just observed, and prints the delay and the reason before it goes quiet again. Both are the same skill - the difference between "check the deploy every 5 minutes, forever" and "check the deploy, then decide for yourself how long to wait" comes down to one thing: whether you gave it an interval.
+
+> **TL;DR** - `/loop [interval] [prompt]` re-runs a prompt while a Claude Code session stays open. Give it both and it runs on a fixed, cron-converted schedule. Give it a prompt with no interval and Claude self-paces: it picks a 1-to-60-minute wait each iteration and calls the `ScheduleWakeup` tool to either reschedule, stop outright, or - if it does neither - fall back to one ~20-minute check before the loop ends. Give it nothing at all and a built-in maintenance prompt runs instead, or your own `.claude/loop.md` if one exists. It's local and session-scoped: closing the terminal stops it, and even a healthy fixed loop expires after 7 days - so a task that has to survive without a machine or a session open belongs to a [routine](/blog/claude-code-routines-vs-cron) or a scheduled GitHub Actions workflow instead.
+
+## /loop in three shapes, and what each one actually runs
+
+<LoopInvocationGrid />
+
+Both the interval and the prompt are independently optional, and it's the combination that decides which of the three you get - not a separate flag or mode switch. `/loop` is a bundled skill (alias `/proactive`), so it can also take another skill as its prompt, for example `/loop 20m /review-pr 1234`, to re-run that skill's own logic each iteration. Not everything reaches Claude as something it executes, though: built-in commands like `/permissions` or `/model`, skills marked `disable-model-invocation: true` (the bundled `/verify` skill included), and anything withheld by a `skillOverrides` setting or a `Skill` deny rule all arrive as plain text on the next iteration instead of running - the same permission surface that governs every other tool call applies here too.
+
+## Set a fixed interval, and how Claude turns it into a cron job
+
+Give `/loop` a number and Claude converts it to a cron expression, schedules the job, and confirms the cadence and a job ID:
+
+```text
+/loop 5m check if the deployment finished and tell me what happened
+```
+
+The interval can lead as a bare token (`30m`) or trail as a clause (`every 2 hours`) - supported units are `s`, `m`, `h`, and `d`. Two rounding rules matter more than they look: seconds round up to the nearest minute because cron itself only has minute-level granularity, and an interval that doesn't map to a clean cron step - `7m`, `90m` - gets rounded to the nearest one that does, with Claude stating exactly what it picked rather than silently substituting it. A loop scheduled this way keeps running until you cancel it or 7 days pass, whichever comes first.
+
+## Skip the interval, and Claude picks the wait itself
+
+<LoopWakeupFlow />
+
+This is the shape most write-ups skip past with "Claude picks a delay" and leave it there. The tool underneath that decision is `ScheduleWakeup`, and its own guidance splits the choice into three rough regimes: a short wait while actively polling something that's about to change (a build finishing, a deploy rolling out), a longer fallback while something else is the primary wake signal, and a default of roughly 20-30 minutes for an idle tick with no specific signal to watch - all clamped to the 1-to-60-minute range the public docs describe. Nothing here polls in the traditional sense, either: when a dynamic loop's job is watching a running process, Claude may reach for the `Monitor` tool instead, which streams a background script's output back line by line rather than re-running the whole prompt on a timer - often both cheaper and faster to react than a fixed re-poll. A self-paced loop shows up in your scheduled task list like any other, so you can list or cancel it the same way; the jitter rules that spread out fixed-interval tasks don't apply to it, but the 7-day expiry still does.
+
+One environment note worth knowing before it surprises you: on Amazon Bedrock, Claude Platform on AWS, Google Cloud's Agent Platform, and Microsoft Foundry, a prompt with no interval runs on a fixed 10-minute schedule instead of a Claude-chosen one, and a bare `/loop` with no prompt prints the usage message instead of running the maintenance prompt or reading `loop.md`. Same command, different behavior, depending on what's authenticating it.
+
+## The built-in maintenance prompt, and swapping it with loop.md
+
+Omit the prompt too and Claude works through a fixed routine each iteration, in order: continue any unfinished work from the conversation, tend the current branch's pull request (review comments, failed CI, merge conflicts), then run a cleanup pass - a bug hunt, a simplification pass - only once nothing else is pending. It won't start a new initiative outside that scope, and an irreversible action like pushing or deleting only goes ahead if the transcript already authorized it.
+
+A `.claude/loop.md` file replaces that default with your own instructions - one default prompt for a bare `/loop`, not a list of separate tasks, and ignored the moment you supply a prompt on the command line yourself. Claude checks the project-level path first, then the user-level one:
+
+| Path | Scope |
+|---|---|
+| `.claude/loop.md` | Project-level - takes precedence when both exist |
+| `~/.claude/loop.md` | User-level - applies wherever the project doesn't define its own |
+
+It's plain markdown, written as if you were typing the prompt directly, and content past 25,000 bytes gets truncated:
+
+```markdown title=".claude/loop.md"
+Check the `release/next` PR. If CI is red, pull the failing job log,
+diagnose, and push a minimal fix. If new review comments have arrived,
+address each one and resolve the thread. If everything is green and
+quiet, say so in one line.
+```
+
+Edits take effect on the very next iteration, so the instructions can be refined mid-run without restarting the loop.
+
+## Stopping a loop, expiry, and what survives a restart
+
+A self-paced loop waiting between iterations stops the moment you press `Esc` - it clears the pending wakeup outright, the same effect as Claude calling `ScheduleWakeup` with `stop: true` on its own once it decides the task is done. A fixed-interval loop doesn't respond to `Esc` the same way; cancel it by asking Claude directly ("cancel the deploy check job") or by name through the underlying `CronDelete` tool, and it otherwise keeps firing until you do that or 7 days elapse, whichever comes first.
+
+Closing the terminal or letting the session exit stops every scheduled task in it, fixed or self-paced - there's no catch-up for a fire that was missed while the process wasn't running, it just doesn't happen. Two things do carry a loop across a break: backgrounding the session keeps it running with no terminal attached, and resuming with `claude --resume` or `--continue` restores any recurring task that hasn't expired and any one-shot reminder whose time hasn't passed - starting a brand-new conversation instead clears all of it.
+
+## Where /loop fits next to routines, desktop tasks, and this project's own crons
+
+<SchedulingSurfaceTable />
+
+The open-session row is the one that actually decides it: `/loop` is the only one of the three that stops existing the moment nobody's terminal is holding it open. That's exactly why none of DispatchSEO's own automation reaches for it - the schedule behind this site is [twelve GitHub Actions and Vercel cron triggers](/blog/claude-code-github-actions), not a laptop staying open, because the daily build has to run whether or not anyone's watching a terminal that night. `/loop` earns its place somewhere upstream of that: babysitting a PR while you're still at the keyboard, polling a deploy you're actively waiting on, a maintenance pass you want running in the background of today's session specifically - work that's supposed to stop when you do, not outlive you.
+
+## When not to reach for /loop
+
+Session-scoped scheduling only fires while Claude Code is running and idle between turns - a scheduled prompt waits for the current turn to finish rather than interrupting it, and if the process isn't running when a fire was due, it never catches up. A fresh conversation clears every task that session was holding, recurring or one-shot. None of that is a bug; it's the tradeoff for needing no server, no secret, and no separate account to use at all. The moment a job genuinely has to survive a closed laptop, a crashed session, or more than 7 days, it's not a `/loop` job anymore - it's a [routine](/blog/claude-code-routines-vs-cron), a desktop scheduled task, or [a cron-triggered GitHub Actions run](/blog/claude-code-github-actions), the same shape [headless `-p` automation](/blog/claude-code-headless-mode) already reaches for when nobody's session is open to begin with.
+
+## FAQ
+
+**Does a `/loop` keep running if I close my laptop?**
+No - it needs both the machine on and the session open. Backgrounding the session lets it keep running without a terminal attached, but the machine itself still has to stay on; closing it or letting the session exit stops every task inside it.
+
+**What's the difference between `/loop` and `/goal`?**
+`/loop` re-runs a prompt on an interval, fixed or Claude-chosen. `/goal` isn't interval-based at all - it keeps working turn after turn toward a condition you define, stopping only once the goal is achieved or a maximum turn count is hit.
+
+**Can more than one `/loop` run at once?**
+Yes - a session can hold up to 50 scheduled tasks at a time, fixed and self-paced mixed together, each with its own 8-character ID you can list or cancel by asking Claude directly.
+
+**What happens if the interval I give doesn't map to a clean cron step?**
+It's rounded to the nearest interval that does - `7m` or `90m` won't run at exactly that cadence - and Claude states what it actually picked instead of substituting it silently.
+
+**Is `/loop` available the same way on Bedrock, Google Cloud, or Microsoft Foundry?**
+Not identically - a prompt with no interval runs on a fixed 10-minute schedule instead of a self-paced one, and a bare `/loop` with no prompt prints the usage message rather than running the maintenance prompt or reading `loop.md`.
+
+**Does running a loop cost meaningfully more than a one-off prompt?**
+Only if the interval is tighter than the thing it's watching actually changes - Anthropic's own guidance is to match the cadence to that rate and to pilot a new loop briefly before leaving it running unattended for real.
+
+A `/loop` is the shortest path from "I want this checked repeatedly" to something actually re-running, precisely because it asks nothing of you beyond a running session - no server, no state store, no account beyond the one already open. That's also its entire ceiling: the moment the job needs to outlive the session that started it, the mechanism that made it easy is the same one that stops it cold.

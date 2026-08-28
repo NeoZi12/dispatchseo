@@ -127,6 +127,9 @@ import { QuotaBackoffTimeline } from "./quota-backoff-timeline";
 import { RoutineVsCronTable } from "./routine-vs-cron-table";
 import { DispatchseoScheduleFactRow } from "./dispatchseo-schedule-fact-row";
 import { RoutineOrCronChecklist } from "./routine-or-cron-checklist";
+import { LoopInvocationGrid } from "./loop-invocation-grid";
+import { LoopWakeupFlow } from "./loop-wakeup-flow";
+import { SchedulingSurfaceTable } from "./scheduling-surface-table";
 import {
   Callout,
   CardGrid,
@@ -359,4 +362,7 @@ export const mdxComponents: MDXComponents = {
   RoutineVsCronTable,
   DispatchseoScheduleFactRow,
   RoutineOrCronChecklist,
+  LoopInvocationGrid,
+  LoopWakeupFlow,
+  SchedulingSurfaceTable,
 };
