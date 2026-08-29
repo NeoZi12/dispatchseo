@@ -1,0 +1,79 @@
+---
+title: "Claude Code sandbox mode: what it actually stops an unattended agent from doing"
+description: What the built-in Bash sandbox walls off (and what it doesn't touch at all), checked against Claude Code's current docs and tested on the runner that builds this site's own guides - which can't even start it.
+date: 2026-08-29
+keyword: claude code sandbox
+cover: /blog/covers/claude-code-sandbox.webp
+---
+
+Claude Code's sandbox mode restricts what a Bash command can read, write, and reach on the network once it's running - nothing more. It does not restrict the Edit or Write tools, MCP servers, or hooks, all of which keep running straight on the host unless you wrap the whole process in a separate sandbox runtime. And even for the commands it does cover, the default read policy still lets a sandboxed command open `~/.aws/credentials` and `~/.ssh/` - the docs are explicit that you have to deny those paths yourself.
+
+> **TL;DR** - `/sandbox` turns on OS-level isolation for Bash commands only: Seatbelt on macOS, bubblewrap on Linux and WSL2. By default it can write to the working directory, `--add-dir` paths, and the session temp dir, and can read almost anything on disk including credential files unless you add `sandbox.credentials` or `denyRead` entries. Network access goes through a proxy that pre-allows nothing until a domain is approved once. A fixed list of config-loading paths - `.claude/settings*`, `.mcp.json`, shell startup files, `.git/hooks` - stays denied no matter what `allowWrite` says. Read/Edit/Write tools, MCP servers, and hooks are outside the boundary entirely; only the separate `@anthropic-ai/sandbox-runtime` package wraps the full process. Tested on this repo's own GitHub Actions runner: neither `bubblewrap` nor `socat` is installed, and Ubuntu 24.04's AppArmor policy blocks bubblewrap's user namespaces by default - so the sandbox can't even start here without extra setup, which is exactly why this project's own unattended safety net is a PR-and-CI gate instead.
+
+## Turning it on, and the two modes it runs in
+
+Run `/sandbox` inside a session and it opens a panel with a Mode tab, an Overrides tab, and a Config tab (plus a Dependencies tab on Linux if a package is missing). Mode picks between **auto-allow**, where sandboxed commands run without a prompt and only a command that can't be sandboxed - one needing a domain you haven't approved, say - falls through to the normal permission flow, and **regular permissions**, where every Bash command still stops for approval even though it's running inside the boundary. Selecting a mode writes it to `.claude/settings.local.json` for that project; setting `sandbox.enabled: true` in `~/.claude/settings.json` turns it on everywhere.
+
+Auto-allow doesn't override everything. Deny rules still apply, `rm`/`rmdir` against a critical path still prompts, and a content-scoped ask rule like `Bash(git push *)` still forces a stop even for a sandboxed command. When a command fails specifically because the sandbox blocked it - a path or host it doesn't have access to - Claude Code appends the exact violation to the error, and Claude may retry the same command with a `dangerouslyDisableSandbox` parameter that runs it unsandboxed instead, going through the regular permission flow from there. Setting `allowUnsandboxedCommands: false` (the panel calls this **Strict sandbox mode**) removes that retry path entirely: a command either runs sandboxed or it doesn't run.
+
+## Filesystem and network: what's walled off by default
+
+Two independent layers, and the docs are explicit that both matter:
+
+<SandboxBoundarySplit />
+
+**Filesystem.** Write access defaults to the working directory, anything added with `--add-dir`, and the session temp directory - trying to write `~/.bashrc` or a system binary in `/bin/` fails. Read access is the opposite default: the whole computer, minus a short deny list, which means a sandboxed command can still open your AWS credentials file or SSH keys unless you explicitly add them to `sandbox.credentials.files` or `filesystem.denyRead`. That's not a bug the docs are hiding - it's stated directly, because the sandbox's filesystem layer was built around write containment first, and read protection for secrets is something you opt into on top of it.
+
+**Network.** A proxy sits outside the sandbox and pre-allows nothing. The first Bash command that needs a new domain triggers a prompt (or the auto-mode classifier, if that's on); approving it allows the host for the rest of the session, and "yes, don't ask again" writes a `WebFetch(domain:...)` rule that persists across sessions. `sandbox.network.allowedDomains` pre-approves domains up front so a scripted run never hits that prompt at all, and `strictAllowlist` flips a miss from "ask" to "deny" outright - the setting a headless pipeline actually wants, since there's nobody to answer the prompt.
+
+## The paths nothing can unlock, even with allowWrite
+
+Inside whatever directory a sandboxed command can otherwise write to, Claude Code still refuses writes to the specific files it loads its own configuration and code from: the `.claude` settings files, `.claude/skills`, `.claude/agents`, `.claude/commands`, `.claude/hooks`, `.mcp.json`, shell startup files like `.bashrc`, and `hooks`/`config` inside `.git`. The reasoning in the docs is direct - a command that could edit those files could grant itself wider permissions or plant a hook that then runs unsandboxed the next session, which would make the whole boundary pointless. There's no `allowWrite` entry or `Edit` permission rule that reopens one of these; the only way to lift the block is `sandbox.filesystem.disabled`, which turns off filesystem isolation entirely, network layer included in scope but not in protection. Run `/sandbox` and open the Config tab to see the resolved list for your own machine, under "Denied within allowed."
+
+## Tested: the runner that builds this site's own guides can't start the sandbox at all
+
+Rather than describe the Linux setup requirements secondhand, this build checked them against the exact GitHub Actions runner it's running on right now:
+
+<SandboxRunnerDependencyFactRow />
+
+Claude Code's own docs list `bubblewrap` and `socat` as required packages for the Bash sandbox on Linux and WSL2, and separately warn that Ubuntu 24.04's default AppArmor policy blocks bubblewrap from creating the user namespaces it needs unless you add a profile granting it that capability. This runner - a standard `ubuntu-latest`-class GitHub Actions image - has neither package installed and carries exactly that AppArmor restriction. If this project's own daily guide-builder tried to turn on `/sandbox` today, it would land on the Dependencies tab and stop, not the Mode tab. That's not a criticism of the sandbox; it's just the honest state of a stock CI image, and it's the reason [DispatchSEO's own builder](/blog/claude-code-github-actions) doesn't lean on it - see the comparison below.
+
+## What the sandbox was never built to stop
+
+A few limits worth knowing before treating this as a hard security boundary, straight from the docs' own limitations section:
+
+- **It doesn't inspect encrypted traffic.** The built-in proxy makes its allow/deny decision from the requested hostname, not the contents of the connection, so a compromised process can attempt domain fronting or similar tricks against a broadly-allowed domain like `github.com`. The optional `network.tlsTerminate` setting exists for credential masking, not general content filtering.
+- **Environment variables pass through by default.** A sandboxed Bash command inherits the parent process's environment, credentials included, unless you deny or mask specific variables under `sandbox.credentials`.
+- **It's Bash-only, full stop.** Read, Edit, and Write tools use the ordinary permission system, not the sandbox; MCP servers and hooks are separate processes that run on the host with no isolation at all unless the entire session runs inside the `@anthropic-ai/sandbox-runtime` package (a beta, at the time this was checked) or a container/VM.
+- **Turning off filesystem isolation to widen access is a real foot-gun.** With `filesystem.disabled` set, a sandboxed command that's still auto-allowed can write files - a shell startup script, something on `$PATH` - that a later command then runs unsandboxed, letting one session quietly widen its own access for the next one.
+
+None of that makes the sandbox useless - it does exactly what it says for the one thing it covers. It just isn't the whole boundary, which is the mistake worth naming plainly rather than discovering mid-incident.
+
+## Sandbox, permission prompts, and a CI gate - three boundaries, not one
+
+<AgentBoundaryCompareTable />
+
+The docs' own advice for `--dangerously-skip-permissions` makes the layering explicit: that flag removes the permission-prompt boundary entirely, so it should only run inside something that provides an isolation boundary of its own - a container, a VM, or the sandbox runtime - because the Bash-only sandbox alone isn't sufficient once nothing is left to ask before a file tool, an MCP call, or a hook runs.
+
+This project's own daily guide-builder skips the sandbox question by never needing an isolation boundary around the *agent* at all. It runs headless in GitHub Actions with [`--permission-mode bypassPermissions`](/blog/claude-code-headless-mode), but the safety property isn't "what can this process touch on the runner" - the runner is disposable and holds nothing sensitive beyond its own job. It's "can anything this process does reach production without a second, independent check": every write lands as a PR, never a push to `main`, and [a set of hooks and CI checks](/blog/claude-code-hooks) has to pass green before `seo-auto-merge.yml` merges it. A compromised or simply wrong command inside that run can make a bad commit; it can't make a bad commit that ships, because the gate that stops it sits in GitHub's infrastructure, entirely outside the agent's own process - the same shape as the sandbox's OS-level enforcement, just moved up to the repository instead of the filesystem.
+
+Reach for the Bash sandbox when the risk is a single session on a machine that also holds things you care about - your dotfiles, your SSH keys, a browser profile - and you want fewer permission prompts without opening every path on disk. Reach for a container, VM, or the sandbox runtime when the whole process needs to be inside a boundary, not just its Bash calls - running with `--dangerously-skip-permissions`, or against a repository you don't fully trust. Reach for a PR-and-CI gate, sandbox or not, the moment the run is scheduled and nobody's watching it happen in real time, because that's the layer that catches what got past everything upstream of it.
+
+## FAQ
+
+**Does the sandbox work on native Windows?**
+No. It supports macOS, Linux, and WSL2 only; on a native Windows host, run Claude Code inside a WSL2 distribution instead.
+
+**If a sandboxed command needs a new file path, does it just fail?**
+It fails with the specific path or host it was denied, appended to the command's error output, so Claude can see exactly what was blocked. From there it can retry the same command unsandboxed via `dangerouslyDisableSandbox` (unless `allowUnsandboxedCommands` is set to `false`), which routes through the normal permission flow instead.
+
+**Is `/sandbox` the same thing as a permission mode?**
+No. Permission modes decide whether a tool call runs and whether you're asked first; the sandbox decides what a Bash command can reach once it's already running. Auto-allow mode inside the sandbox and Claude Code's separate auto mode (the classifier that replaces manual prompts) work independently and can be combined.
+
+**Does enabling the sandbox protect credentials in environment variables automatically?**
+No - sandboxed commands inherit the parent process's environment by default, secrets included. `sandbox.credentials.envVars` with `mode: "deny"` unsets a variable before a sandboxed command runs, or `mode: "mask"` swaps in a placeholder that only becomes real on requests to hosts you list, so a tool that needs the credential to authenticate still works without a sandboxed command ever seeing the real value.
+
+**Can I require the sandbox for every developer on a team?**
+Yes, through managed settings (an MDM-delivered file or Claude.ai's server-managed settings) rather than each person's local config - set `sandbox.enabled: true` alongside `failIfUnavailable: true` so Claude Code refuses to start rather than silently falling back to unsandboxed when a dependency is missing, which is exactly the state this guide found on its own CI runner.
+
+What the sandbox actually buys you is narrow and real: fewer permission prompts for the commands it can cover, and an OS-level wall around what those commands touch. What it was never going to buy you is a reason to stop caring about everything running outside that one boundary - the file tools, the MCP servers, the hooks, and, for anything that ships without a human reading the diff first, whatever check runs after the agent's own process is done.

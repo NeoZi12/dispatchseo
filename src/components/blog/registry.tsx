@@ -130,6 +130,9 @@ import { RoutineOrCronChecklist } from "./routine-or-cron-checklist";
 import { LoopInvocationGrid } from "./loop-invocation-grid";
 import { LoopWakeupFlow } from "./loop-wakeup-flow";
 import { SchedulingSurfaceTable } from "./scheduling-surface-table";
+import { SandboxBoundarySplit } from "./sandbox-boundary-split";
+import { SandboxRunnerDependencyFactRow } from "./sandbox-runner-dependency-fact-row";
+import { AgentBoundaryCompareTable } from "./agent-boundary-compare-table";
 import {
   Callout,
   CardGrid,
@@ -365,4 +368,7 @@ export const mdxComponents: MDXComponents = {
   LoopInvocationGrid,
   LoopWakeupFlow,
   SchedulingSurfaceTable,
+  SandboxBoundarySplit,
+  SandboxRunnerDependencyFactRow,
+  AgentBoundaryCompareTable,
 };
