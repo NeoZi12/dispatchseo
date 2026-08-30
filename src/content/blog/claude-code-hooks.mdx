@@ -183,6 +183,6 @@ An unhandled crash or a timeout is a non-blocking error for most events: the act
 Hooks fire for subagent tool calls too. `SubagentStart` and `SubagentStop` exist specifically to hook into a [subagent's](/blog/claude-code-subagents) own lifecycle, separate from the tool-level events it also triggers.
 
 **Is a hook the same thing as a permission rule?**
-No - permission rules (in `permissions.allow` / `permissions.deny`) are static policy Claude Code checks before a `PreToolUse` hook even runs, while a hook can inspect the actual command and decide dynamically. A hook denying something can't be bypassed by a looser permission mode, but a hook allowing something never overrides a permission rule that says deny.
+No - permission rules (in `permissions.allow` / `permissions.deny`) are static policy Claude Code checks before a `PreToolUse` hook even runs, while a hook can inspect the actual command and decide dynamically. A hook denying something can't be bypassed by a looser [permission mode](/blog/claude-code-plan-mode), but a hook allowing something never overrides a permission rule that says deny.
 
 Between the event table, the exit-code and JSON paths, and a hook that's actually been run against real input rather than described secondhand, that covers what it takes to turn "the agent should behave" into something that's actually enforced - the rest is picking which of the 31 events matches the one moment in your own pipeline that can't be left to chance.
