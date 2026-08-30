@@ -133,6 +133,9 @@ import { SchedulingSurfaceTable } from "./scheduling-surface-table";
 import { SandboxBoundarySplit } from "./sandbox-boundary-split";
 import { SandboxRunnerDependencyFactRow } from "./sandbox-runner-dependency-fact-row";
 import { AgentBoundaryCompareTable } from "./agent-boundary-compare-table";
+import { PlanModeCycleFlow } from "./plan-mode-cycle-flow";
+import { PlanSemiModeCompareTable } from "./plan-semi-mode-compare-table";
+import { ReviewGateFitChecklist } from "./review-gate-fit-checklist";
 import {
   Callout,
   CardGrid,
@@ -371,4 +374,7 @@ export const mdxComponents: MDXComponents = {
   SandboxBoundarySplit,
   SandboxRunnerDependencyFactRow,
   AgentBoundaryCompareTable,
+  PlanModeCycleFlow,
+  PlanSemiModeCompareTable,
+  ReviewGateFitChecklist,
 };
