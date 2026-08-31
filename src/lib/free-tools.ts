@@ -6,6 +6,7 @@ import { KeywordClusteringTool } from "@/components/free-tools/keyword-clusterin
 import { TitleLengthChecker } from "@/components/free-tools/title-length-checker";
 import { UrlSlugGenerator } from "@/components/free-tools/url-slug-generator";
 import { H1TagChecker } from "@/components/free-tools/h1-tag-checker";
+import { OgTagChecker } from "@/components/free-tools/og-tag-checker";
 
 // Registry for the free, public interactive tools at /free-tools/<slug>.
 // One entry per tool - everything the index card and the detail page's
@@ -360,6 +361,55 @@ export const FREE_TOOLS: ToolEntry[] = [
       },
     ],
     Widget: H1TagChecker,
+  },
+  {
+    slug: "open-graph-tag-checker",
+    title: "Open Graph tag checker",
+    h1: "Open Graph tag checker",
+    valueLine:
+      "Paste your page's HTML and see exactly how it'll unfurl on Facebook, Slack, and X - built from the real og:image URL your browser actually loads, not just whether the tag exists.",
+    metaDescription:
+      "Free Open Graph tag checker: paste your page's HTML and get an audit against ogp.me's required tags and Facebook's image guidelines, plus a live Facebook/Slack and X preview built from the real og:image - computed entirely in your browser.",
+    description: [
+      "Paste your page's HTML and this tool pulls out every og: and twitter: meta tag it can find, then checks them against the Open Graph protocol's own spec: og:title, og:type, og:image, and og:url are the four properties ogp.me actually requires, and missing any one of them is why a shared link sometimes shows up as a bare line of text with no preview. It also catches the bug that trips up most hand-written tags - a relative og:image path like \"/cover.png\" works fine in a browser, but the crawlers that build link previews have no page to resolve it against, so it just fails silently.",
+      "Then it goes a step further than reading the tag: it actually loads the image your og:image URL points to, right there in your browser, and reports the real dimensions it gets back - not just what an og:image:width tag claims. That's how it catches a URL that 404s, or a file that technically loads but comes in at 300x200 when Facebook's own guidelines call for 1200x630 at a 1.91:1 ratio to avoid getting cropped in Feed.",
+      "The preview below is built from that same resolved data, and it's not one static mockup - toggle between a Facebook/Slack-style large-image card and an X summary card, since twitter:title, twitter:description, and twitter:image all quietly fall back to your og: tags when they're missing, but twitter:card itself doesn't have an Open Graph equivalent - leave it out and X may skip the rich card entirely even though every og: tag is perfect. If anything required is missing, a \"Copy missing tags as HTML\" button hands you a ready-to-paste block instead of just a list of complaints.",
+      "Nothing you paste is uploaded anywhere - the HTML parsing and tag audit run entirely in your browser tab, the same as [the H1 tag checker](/free-tools/h1-tag-checker). This is the same pre-publish check DispatchSEO's own pipeline runs on every guide and tool before it opens the PR - see how that fits into a fully " +
+        "[automated SEO agent](/blog/ai-seo-agent) if you'd rather this run itself on every page your site ships.",
+    ],
+    faq: [
+      {
+        question: "Which Open Graph tags are actually required?",
+        answer:
+          "Four, per the Open Graph protocol's own spec at ogp.me: og:title, og:type, og:image, and og:url. og:description and og:site_name are recommended, not required, but every platform that renders a real preview card uses them when they're there - skip them and most fall back to whatever text happens to be first on the page.",
+      },
+      {
+        question: "Why does it say my og:image URL is broken when the tag is there?",
+        answer:
+          "Two different checks catch two different problems. The first is static: og:image has to be an absolute https://... URL, because the crawler building a link preview has no page context to resolve a relative path against, unlike your browser. The second is live: this tool actually loads the URL as an image and reports whether it resolves and at what real size - so a link that 404s, or a redirect that points somewhere unexpected, gets caught even though the tag text looks fine.",
+      },
+      {
+        question: "Do I need to connect a live URL for this to work?",
+        answer:
+          "No - you paste in the HTML directly. That's deliberate: a tool running in your browser can't reliably fetch another page's HTML (browsers block that for almost any site that isn't the one you're on), so pasting is what works reliably, and it means you can check a page that's still on localhost, in staging, or behind a login, before it's ever public.",
+      },
+      {
+        question: "Why does the X preview sometimes look different from the Facebook one?",
+        answer:
+          "Because they resolve differently. Facebook only ever reads og: tags. X reads twitter: tags first and falls back to the matching og: tag when one's missing - except for twitter:card, which has no Open Graph equivalent at all, so its absence is the one gap your og: tags can't paper over. The toggle renders both resolutions from your actual pasted tags so you can see exactly where they diverge.",
+      },
+      {
+        question: "Is my HTML uploaded anywhere?",
+        answer:
+          "The HTML parsing and tag audit never leave your browser tab. The one exception is the preview image itself: your browser does make a normal, direct request to load whatever URL your og:image points to, the same request any platform's crawler would make to build the same preview - that's what lets this tool confirm the image actually resolves instead of just trusting the tag.",
+      },
+      {
+        question: "What's a good target size for og:image?",
+        answer:
+          "Facebook's own sharing guidelines recommend 1200x630 at roughly a 1.91:1 aspect ratio so the full image shows in Feed without cropping, with 200x200 as an absolute floor below which some platforms won't render it at all. This tool checks your image against both numbers using the real, loaded dimensions - not just whatever an og:image:width tag claims.",
+      },
+    ],
+    Widget: OgTagChecker,
   },
 ];
 
