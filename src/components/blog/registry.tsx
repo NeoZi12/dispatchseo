@@ -136,6 +136,9 @@ import { AgentBoundaryCompareTable } from "./agent-boundary-compare-table";
 import { PlanModeCycleFlow } from "./plan-mode-cycle-flow";
 import { PlanSemiModeCompareTable } from "./plan-semi-mode-compare-table";
 import { ReviewGateFitChecklist } from "./review-gate-fit-checklist";
+import { CheckpointAutoTrackFactRow } from "./checkpoint-auto-track-fact-row";
+import { CheckpointBlindSpotGrid } from "./checkpoint-blind-spot-grid";
+import { CiCheckpointFlagCard } from "./ci-checkpoint-flag-card";
 import {
   Callout,
   CardGrid,
@@ -377,4 +380,7 @@ export const mdxComponents: MDXComponents = {
   PlanModeCycleFlow,
   PlanSemiModeCompareTable,
   ReviewGateFitChecklist,
+  CheckpointAutoTrackFactRow,
+  CheckpointBlindSpotGrid,
+  CiCheckpointFlagCard,
 };
