@@ -92,4 +92,4 @@ The interactive `Esc Esc` and `/rewind` menu isn't - there's no terminal for a h
 **Do checkpoints replace committing to git?**
 No, and the docs say so directly - checkpoints are for quick, session-level recovery, not permanent version history. Anything you want to survive past the session, or collaborate on, still needs a commit.
 
-None of this changes how this project's own daily builder runs: it never touches `/rewind`, because a pull request that has to pass CI before it merges is the same safety property, applied one layer up, to a process that has no one at the keyboard to press `Esc` twice in the first place.
+None of this changes how this project's own daily builder runs: it never touches `/rewind`, because a pull request that has to pass CI before it merges is the same safety property, applied one layer up, to a process that has [no one at the keyboard](/blog/claude-code-statusline) to press `Esc` twice in the first place.
