@@ -139,6 +139,9 @@ import { ReviewGateFitChecklist } from "./review-gate-fit-checklist";
 import { CheckpointAutoTrackFactRow } from "./checkpoint-auto-track-fact-row";
 import { CheckpointBlindSpotGrid } from "./checkpoint-blind-spot-grid";
 import { CiCheckpointFlagCard } from "./ci-checkpoint-flag-card";
+import { StatuslineBlindSpotGrid } from "./statusline-blind-spot-grid";
+import { StatuslineTestedRunStats } from "./statusline-tested-run-stats";
+import { StatuslineRedrawTriggerFlow } from "./statusline-redraw-trigger-flow";
 import {
   Callout,
   CardGrid,
@@ -383,4 +386,7 @@ export const mdxComponents: MDXComponents = {
   CheckpointAutoTrackFactRow,
   CheckpointBlindSpotGrid,
   CiCheckpointFlagCard,
+  StatuslineBlindSpotGrid,
+  StatuslineTestedRunStats,
+  StatuslineRedrawTriggerFlow,
 };
