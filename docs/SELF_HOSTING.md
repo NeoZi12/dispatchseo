@@ -42,6 +42,10 @@ automatic HTTPS - this block is the plain version that works anywhere.)
   installs everything (Docker included), then one DNS record + one .env
   line puts the dashboard on your subdomain with automatic HTTPS. This is
   the path we recommend once you're past trying it out.
+- **[Install on Coolify](https://dispatchseo.com/docs/coolify)** - already
+  running Coolify? Deploy the ready-made template
+  (`docker/coolify/docker-compose.yml`) from its UI: generated secrets,
+  your domain with HTTPS, no SSH.
 - **[The setup wizard, step by step](https://dispatchseo.com/docs/setup-wizard)** -
   what each screen asks for and why: your site, the Search Console service
   account, keyword data (free mode vs DataForSEO), publish mode, one-tap

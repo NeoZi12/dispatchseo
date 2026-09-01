@@ -47,6 +47,7 @@ export const DOCS_NAV: { section: string; items: DocsNavItem[] }[] = [
     items: [
       { slug: "docker-compose", title: "Your own computer" },
       { slug: "vps", title: "A VPS or server" },
+      { slug: "coolify", title: "A Coolify server" },
       { slug: "local-development", title: "From source (contributors)" },
     ],
   },
