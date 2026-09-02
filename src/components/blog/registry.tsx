@@ -142,6 +142,9 @@ import { CiCheckpointFlagCard } from "./ci-checkpoint-flag-card";
 import { StatuslineBlindSpotGrid } from "./statusline-blind-spot-grid";
 import { StatuslineTestedRunStats } from "./statusline-tested-run-stats";
 import { StatuslineRedrawTriggerFlow } from "./statusline-redraw-trigger-flow";
+import { CommandVsSkillHookTable } from "./command-vs-skill-hook-table";
+import { ThinShimPlaybookFlow } from "./thin-shim-playbook-flow";
+import { ReusableCommandChecklist } from "./reusable-command-checklist";
 import {
   Callout,
   CardGrid,
@@ -389,4 +392,7 @@ export const mdxComponents: MDXComponents = {
   StatuslineBlindSpotGrid,
   StatuslineTestedRunStats,
   StatuslineRedrawTriggerFlow,
+  CommandVsSkillHookTable,
+  ThinShimPlaybookFlow,
+  ReusableCommandChecklist,
 };

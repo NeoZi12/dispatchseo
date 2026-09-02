@@ -12,7 +12,7 @@ Claude Code checkpoints save a snapshot of every file its Write, Edit, and Noteb
 
 ## What actually gets checkpointed, and when
 
-Every user prompt starts a new checkpoint. Before that turn's edits land, Claude Code snapshots the files its own editing tools are about to touch, then keeps going - it does not ask, and there's no toggle for "checkpoint this turn but not that one." The tracking is automatic and per-session: checkpoints are saved with the conversation itself, so `/rewind` still works after you resume a session later, not just inside the run where the changes happened.
+Every user prompt starts a new checkpoint. Before that turn's edits land, Claude Code snapshots the files its own editing tools are about to touch, then keeps going - it does not ask, and there's no toggle for "checkpoint this turn but not that one." The tracking is automatic and per-session: checkpoints are saved with the conversation itself, so [`/rewind`](/blog/claude-code-slash-commands) still works after you resume a session later, not just inside the run where the changes happened.
 
 <CheckpointAutoTrackFactRow />
 
