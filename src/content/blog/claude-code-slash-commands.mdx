@@ -35,7 +35,7 @@ A command file's frontmatter is optional - only `description` is worth adding by
 - **`description`** - what it does; also what Claude reads to decide when to auto-invoke it.
 - **`argument-hint`** - shown in autocomplete, e.g. `[issue-number]`.
 - **`disable-model-invocation: true`** - only you can run it, never Claude. This is the flag that turns a skill into what most people mean by "a command": something with side effects you want to trigger on purpose, like a deploy.
-- **`allowed-tools`** - tools Claude can use without a permission prompt for the turn that invokes this file.
+- **`allowed-tools`** - tools Claude can use without a [permission prompt](/blog/claude-code-bypass-permissions) for the turn that invokes this file.
 - **`model`** - override the active model just for this command's turn.
 - **`context: fork`** - run the command in an isolated subagent instead of your current conversation.
 
