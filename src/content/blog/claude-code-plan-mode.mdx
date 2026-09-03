@@ -49,7 +49,7 @@ Both mechanics exist for the same reason a [PreToolUse hook](/blog/claude-code-h
 **Does plan mode stop Claude from running any commands at all?**
 No. Read-only exploration - reading files, running commands like `git log` or `ls` - runs freely. What's blocked is edits, plus shell commands outside the built-in read-only set, which either go to the auto-mode classifier or prompt you, depending on your settings.
 
-**Is plan mode the same thing as `--dangerously-skip-permissions`, just inverted?**
+**Is plan mode the same thing as [`--dangerously-skip-permissions`](/blog/claude-code-bypass-permissions), just inverted?**
 No - they're opposite ends of the same axis, not mirrors. Skip-permissions removes the approval step entirely, including in a plan-mode session running with bypass permissions available. Plan mode adds one specific approval step (the plan itself) on top of whatever permission mode you'd otherwise be in.
 
 **Can I actually change what a plan says before approving it?**

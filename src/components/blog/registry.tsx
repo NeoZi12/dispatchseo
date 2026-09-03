@@ -145,6 +145,9 @@ import { StatuslineRedrawTriggerFlow } from "./statusline-redraw-trigger-flow";
 import { CommandVsSkillHookTable } from "./command-vs-skill-hook-table";
 import { ThinShimPlaybookFlow } from "./thin-shim-playbook-flow";
 import { ReusableCommandChecklist } from "./reusable-command-checklist";
+import { BypassPermissionModeSplit } from "./bypass-permission-mode-split";
+import { BypassRunnerFactRow } from "./bypass-runner-fact-row";
+import { BypassDecisionChecklist } from "./bypass-decision-checklist";
 import {
   Callout,
   CardGrid,
@@ -395,4 +398,7 @@ export const mdxComponents: MDXComponents = {
   CommandVsSkillHookTable,
   ThinShimPlaybookFlow,
   ReusableCommandChecklist,
+  BypassPermissionModeSplit,
+  BypassRunnerFactRow,
+  BypassDecisionChecklist,
 };
