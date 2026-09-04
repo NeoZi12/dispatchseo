@@ -12,7 +12,7 @@ Type `/deploy` in Claude Code and nothing "executes" the way a shell command exe
 
 ## What actually happens when you type a slash command
 
-Claude Code ships over 100 built-in commands - `/help`, `/model`, `/compact`, `/context`, `/permissions` and the rest - each backed by logic compiled into the CLI. You can't open one and read its source; typing it runs a fixed routine.
+Claude Code ships over 100 built-in commands - `/help`, `/model`, `/compact`, `/context`, [`/permissions`](/blog/claude-code-permissions) and the rest - each backed by logic compiled into the CLI. You can't open one and read its source; typing it runs a fixed routine.
 
 A custom command is the opposite: a plain markdown file. Type `/summarize-changes` and Claude Code reads that file off disk, substitutes any placeholders (below), and inserts the result into the conversation as though you'd typed it yourself. Nothing about that requires special support from the model, which is why a two-line markdown file can add a new command in about the time it takes to save one.
 
