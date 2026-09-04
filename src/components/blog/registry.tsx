@@ -148,6 +148,9 @@ import { ReusableCommandChecklist } from "./reusable-command-checklist";
 import { BypassPermissionModeSplit } from "./bypass-permission-mode-split";
 import { BypassRunnerFactRow } from "./bypass-runner-fact-row";
 import { BypassDecisionChecklist } from "./bypass-decision-checklist";
+import { PermissionModeSpectrum } from "./permission-mode-spectrum";
+import { RulePrecedenceFlow } from "./rule-precedence-flow";
+import { CiPermissionFactRow } from "./ci-permission-fact-row";
 import {
   Callout,
   CardGrid,
@@ -401,4 +404,7 @@ export const mdxComponents: MDXComponents = {
   BypassPermissionModeSplit,
   BypassRunnerFactRow,
   BypassDecisionChecklist,
+  PermissionModeSpectrum,
+  RulePrecedenceFlow,
+  CiPermissionFactRow,
 };
