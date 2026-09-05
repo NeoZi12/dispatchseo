@@ -151,6 +151,9 @@ import { BypassDecisionChecklist } from "./bypass-decision-checklist";
 import { PermissionModeSpectrum } from "./permission-mode-spectrum";
 import { RulePrecedenceFlow } from "./rule-precedence-flow";
 import { CiPermissionFactRow } from "./ci-permission-fact-row";
+import { WorktreeCollisionSplit } from "./worktree-collision-split";
+import { WorktreeEnforcementGrid } from "./worktree-enforcement-grid";
+import { WorktreeDemoFactRow } from "./worktree-demo-fact-row";
 import {
   Callout,
   CardGrid,
@@ -407,4 +410,7 @@ export const mdxComponents: MDXComponents = {
   PermissionModeSpectrum,
   RulePrecedenceFlow,
   CiPermissionFactRow,
+  WorktreeCollisionSplit,
+  WorktreeEnforcementGrid,
+  WorktreeDemoFactRow,
 };
