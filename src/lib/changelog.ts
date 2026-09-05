@@ -75,6 +75,17 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "improved",
     text:
+      "Fewer banners, especially on self-host. The \"DispatchSEO has been updated\" bar no longer " +
+      "runs under the topbar on every screen - the dispatcher mentions a release once, on Home. " +
+      "\"Pipeline update available\" can be hidden until the next pack ships instead of sitting " +
+      "there until you re-run setup. A tool PR the validator gave up on is now a quiet " +
+      "\"needs your review\" line rather than a red failure that also paints the dispatcher's " +
+      "mood. And weekly research and the GEO scan stop showing as overdue on docker installs " +
+      "where the in-stack builder took those jobs over from the GitHub workflows.",
+  },
+  {
+    kind: "improved",
+    text:
       "GitHub stops emailing you \"Run failed\" for the SEO workflows. A failed run still " +
       "shows up on your dashboard and in the run log - that has always been the real alerting " +
       "surface - but the scheduled workflows in your repo now finish green as far as GitHub " +

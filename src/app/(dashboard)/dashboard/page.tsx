@@ -29,7 +29,13 @@ import { EmptyState, GscChart, Mono, ProgressMeter, SectionTitle } from "@/compo
 import { GlanceSection } from "@/components/glance-stats";
 import { FREE_BACKLINKS, PAID_BACKLINKS } from "@/lib/playbook-data";
 import { getActivityReport, type ActivityLine } from "@/lib/activity";
-import { getCronHealth, criticalCronIssues, looksLikeQuotaFailure } from "@/lib/cron-alerts";
+import {
+  getCronHealth,
+  criticalCronIssues,
+  isManualReviewNotice,
+  looksLikeQuotaFailure,
+} from "@/lib/cron-alerts";
+import { PipelineUpdateNotice } from "@/components/pipeline-update-notice";
 import { queueHealth } from "@/lib/jobs";
 import { buildCronFixPrompt, buildPipelineUpdatePrompt } from "@/lib/cron-fix-prompt";
 import { isLive } from "@/lib/page-liveness";
@@ -455,6 +461,20 @@ export default async function Home() {
   const quotaWaits = jobIssues.filter(
     (h) => !h.update_available && !h.ok && !h.stale && looksLikeQuotaFailure(h.errors),
   );
+  // "Needs a human" outcomes - a tool PR the validator gave up on, a green PR
+  // auto-merge couldn't land. A to-do for the owner, not a failing job: one
+  // quiet line with a way out, never the red panel (see isManualReviewNotice).
+  const manualReviews = jobIssues.filter(
+    (h) => !h.update_available && !h.ok && !h.stale && isManualReviewNotice(h.job, h.errors),
+  );
+  // The pack version the update notice is about, from the report's own text
+  // ("installed abc, current def"): the snooze key, so a dismissed notice
+  // comes back once per new pack and not on every load.
+  const packVersionPending =
+    updateNotices
+      .flatMap((h) => h.errors)
+      .map((e) => /current ([0-9a-f]+)/i.exec(e)?.[1])
+      .find(Boolean) ?? "unknown";
   // The red panel is reserved for CRITICAL issues: failures that persisted
   // across runs, missed a whole schedule window, or belong to an urgent class
   // (broken deploy, dead credentials, empty balance). A single flaky run stays
@@ -1048,27 +1068,53 @@ export default async function Home() {
             </p>
           </div>
         ) : null}
+        {manualReviews.length > 0 ? (
+          // A whisper in the article-queue grammar above: something is waiting
+          // on a look from the owner, nothing is broken, nothing will retry.
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-neutral-500">
+            <span className="min-w-0">
+              Needs your review:{" "}
+              {manualReviews.map((h, i) => (
+                <span key={h.job}>
+                  {i > 0 ? "; " : null}
+                  <span className="text-neutral-400">{h.errors[0] ?? h.job}</span>
+                </span>
+              ))}
+              {project.github_repo ? (
+                <>
+                  {" "}
+                  -{" "}
+                  <a
+                    href={`https://github.com/${project.github_repo}/pulls`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-neutral-400 underline decoration-dotted underline-offset-2 transition-colors hover:text-neutral-200"
+                  >
+                    open the repo&apos;s pull requests
+                  </a>
+                </>
+              ) : null}
+            </span>
+            {manualReviews.map((h) => (
+              <CronFixedButton key={h.job} job={h.job} label="mark handled" tone="sky" />
+            ))}
+          </div>
+        ) : null}
         {updateNotices.length > 0 ? (
           // Deliberately a whisper, not a box: an update waiting is the NORMAL
           // state of every self-host install the morning after any backend
           // release, and it used to arrive as one more colored banner on all
           // of them at once. Publishing continues on the current version
-          // either way, so this earns one line of small print and two quiet
-          // actions - paste the update prompt into the coding agent, or mark
-          // it applied.
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-neutral-500">
-            <span className="min-w-0">
-              Pipeline update available for{" "}
-              <span className="break-words font-mono text-neutral-400">
-                {project.github_repo ?? "your site repo"}
-              </span>{" "}
-              - publishing continues on the current version; apply it whenever convenient.
-            </span>
-            <CopyButton text={buildPipelineUpdatePrompt(project)} label="Copy update prompt" subtle />
-            {updateNotices.map((h) => (
-              <CronFixedButton key={h.job} job={h.job} label="mark applied" tone="sky" />
-            ))}
-          </div>
+          // either way, so this earns one line of small print and three quiet
+          // actions - paste the update prompt into the coding agent, mark it
+          // applied, or hide it until the next pack ships (the component
+          // remembers the pack version it was hidden at).
+          <PipelineUpdateNotice
+            repo={project.github_repo}
+            packVersion={packVersionPending}
+            prompt={buildPipelineUpdatePrompt(project)}
+            jobs={updateNotices.map((h) => h.job)}
+          />
         ) : null}
       </div>
 

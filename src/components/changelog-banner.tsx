@@ -1,13 +1,17 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { anchorFor } from "@/lib/changelog";
 
-// The release heads-up: one quiet line under the topbar saying DispatchSEO
-// itself got an update, linking straight to that release on /changelog.
-// Deliberately understated - neutral, not the violet the setup banner owns,
-// because this is news, not work waiting on the owner.
+// The release heads-up: one quiet line inside the dispatcher's briefing card
+// on Home saying DispatchSEO itself got an update, linking straight to that
+// release on /changelog. Deliberately understated - neutral, not the violet
+// the setup banner owns, because this is news, not work waiting on the owner.
+//
+// This used to have a second shape, a full-width bar under the topbar on every
+// other screen. Retired: it was one more banner on every install the morning
+// after a release, saying what Home already said. Home is the one place now.
 //
 // The link opens in a NEW TAB: reading the changelog is a detour, not a
 // destination, so the owner closes the tab and is back where they were with
@@ -18,33 +22,11 @@ import { anchorFor } from "@/lib/changelog";
 // page is navigating or closing, which a server action inside a transition is
 // not guaranteed to survive. Once recorded, it stays gone until the NEXT
 // release. Following the link counts as dismissing: you've seen it.
-
-// Two shapes, one dismissal mechanism. "bar" is the original full-width row
-// under the topbar, and stays the right answer on every screen except Home.
-// "inline" is the same news folded into the dispatcher's briefing card, where
-// the agent reports its own upgrade in the same voice it reports everything
-// else - a separate bar from the building management above a card where the
-// agent is talking is one notice too many, and the wrong messenger.
-export function ChangelogBanner({
-  version,
-  summary,
-  variant = "bar",
-}: {
-  version: string;
-  summary: string;
-  variant?: "bar" | "inline";
-}) {
+export function ChangelogBanner({ version, summary }: { version: string; summary: string }) {
   const [hidden, setHidden] = useState(false);
   const router = useRouter();
-  // The layout mounts the bar on every screen; Home mounts the inline copy
-  // inside the briefing. Without this the two would stack on Home, saying the
-  // same thing twice a few pixels apart. Decided here rather than in the
-  // layout because the layout is a server component with no route to test -
-  // and this component is already a client one for its dismissal.
-  const pathname = usePathname();
 
   if (hidden) return null;
-  if (variant === "bar" && pathname === "/dashboard") return null;
 
   function dismiss() {
     setHidden(true);
@@ -64,16 +46,8 @@ export function ChangelogBanner({
   }
 
   return (
-    <div
-      className={
-        variant === "inline"
-          ? ""
-          : "border-b border-neutral-800/80 bg-neutral-900/40 px-4 py-2 sm:px-6"
-      }
-    >
-      <div
-        className={`flex items-center gap-3 text-sm${variant === "inline" ? "" : " mx-auto max-w-6xl"}`}
-      >
+    <div>
+      <div className="flex items-center gap-3 text-sm">
         <a
           href={`/changelog#${anchorFor(version)}`}
           target="_blank"
@@ -86,14 +60,11 @@ export function ChangelogBanner({
             aria-hidden
           />
           <span className="min-w-0 truncate">
-            {/* Inline, the dispatcher has already said it got an upgrade in
-                its own words - repeating "DispatchSEO has been updated" a line
+            {/* The dispatcher has already said it got an upgrade in its own
+                words a line above - repeating "DispatchSEO has been updated"
                 under that would be the announcement twice, once in each
                 voice. The summary and the way out are the only parts this row
                 still owes. */}
-            {variant === "inline" ? null : (
-              <b className="font-medium text-neutral-200">DispatchSEO has been updated.</b>
-            )}{" "}
             <span className="text-neutral-500">{summary}</span>
           </span>
           <span className="shrink-0 whitespace-nowrap font-medium text-neutral-300 underline-offset-2 group-hover:underline">

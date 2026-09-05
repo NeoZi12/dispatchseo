@@ -526,16 +526,12 @@ export function DispatcherBriefing({
 
           {/* Product news, delivered by the same voice as everything else on
               this card. It used to arrive as a separate grey bar under the
-              topbar - the right shape everywhere except here, where an agent
-              is mid-sentence about the site. The bar still owns every other
-              screen (see the pathname guard in ChangelogBanner); this is the
-              Home copy, and it keeps the bar's own dismissal so "seen" still
-              means seen. */}
+              topbar on every screen - retired, this is the one place a release
+              is announced now, and dismissing here still records "seen". */}
           {briefing.release ? (
             <div className="mt-6 space-y-1.5 border-t border-neutral-800/70 pt-4">
               <p className="text-sm text-neutral-300">{briefing.release.line}</p>
               <ChangelogBanner
-                variant="inline"
                 version={briefing.release.version}
                 summary={briefing.release.summary}
               />

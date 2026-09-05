@@ -231,6 +231,22 @@ export function looksLikeQuotaFailure(errors: readonly string[] | null | undefin
 const URGENT_FAILURE =
   /secret|credential|token|api.?key|unauthorized|forbidden|revoked|permission|\b401\b|\b403\b|payment|billing|balance|oauth_org_not_allowed|disabled claude subscription|gave up after \d+ attempts/i;
 
+// A run that ended with "this needs a human" is a to-do, not a breakage: the
+// tool validator giving up on a PR after three verdict-less runs, or a green
+// PR that auto-merge couldn't land. The workflow has one channel (ok/fail) so
+// it reports through fail=, but nothing is broken and nothing will heal by
+// retrying - the owner reviews the PR when they get to it. Red-boxing it put
+// "one of my background jobs is failing" on the dispatcher for a week over a
+// single PR waiting on a look (usagecut, 2026-09-05). Home shows these as a
+// quiet review line instead; get_cron_health keeps the full row.
+const MANUAL_REVIEW =
+  /stranded|review it manually|left open for manual merge|merge or validate .* manually/i;
+
+export function isManualReviewNotice(job: string, errors: readonly string[]): boolean {
+  if (baseJobName(job) === "deploy-check") return false;
+  return errors.length > 0 && errors.every((e) => MANUAL_REVIEW.test(e));
+}
+
 export function isUrgentCronFailure(job: string, errors: string[]): boolean {
   if (baseJobName(job) === "deploy-check") return true;
   return errors.some((e) => URGENT_FAILURE.test(e));
@@ -245,7 +261,7 @@ export function isUrgentCronFailure(job: string, errors: string[]): boolean {
 //     definition, whatever the error text said;
 //   - repeated: failed on at least two consecutive real runs;
 //   - urgent: see isUrgentCronFailure - first occurrence is already the alarm.
-// Quota waits and pipeline-update notices are excluded because they have their
+// Quota waits, pipeline-update notices and "needs a manual review" outcomes are excluded because they have their
 // own calmer surfaces on Home. Everything filtered out here stays visible in
 // get_cron_health: the agent-facing view keeps full fidelity, and this filter
 // is presentation policy, not truth.
@@ -254,6 +270,7 @@ export function criticalCronIssues(health: CronHealth[]): CronHealth[] {
     if (h.ok && !h.stale) return false;
     if (h.update_available) return false;
     if (!h.ok && !h.stale && looksLikeQuotaFailure(h.errors)) return false;
+    if (!h.ok && !h.stale && isManualReviewNotice(h.job, h.errors)) return false;
     if (h.stale) return true;
     return h.repeat_failure || isUrgentCronFailure(h.job, h.errors);
   });
@@ -610,7 +627,7 @@ export async function reportCronRun(
     // works) but never email - "a newer pack exists" is not worth waking the
     // owner, and it would fire for EVERY connected repo of EVERY user on the
     // morning after any backend deploy that touches the pack.
-    if (hadError && !isPipelineUpdateNotice(job, errors)) {
+    if (hadError && !isPipelineUpdateNotice(job, errors) && !isManualReviewNotice(job, errors)) {
       // One grace run before the first email, same policy as the Home banner
       // (criticalCronIssues): the run still logs as failed and get_cron_health
       // shows it immediately, but the email only goes out if the previous real
@@ -958,6 +975,15 @@ const TWIN_RAIL: Record<string, string> = {
   "seo-tools": "builder-build-tool",
   "builder-build-guide": "seo-daily",
   "builder-build-tool": "seo-tools",
+  // Research and the GEO scan run on the same two rails. Without these pairs a
+  // docker install whose in-stack builder took over research showed
+  // "seo-weekly-research is overdue" in red from the day the workflow last
+  // ran, while builder-research shipped fresh keywords every week
+  // (seo-weekly-research--usagecut, 2026-09-05).
+  "seo-weekly-research": "builder-research",
+  "seo-geo-scan": "builder-geo-scan",
+  "builder-research": "seo-weekly-research",
+  "builder-geo-scan": "seo-geo-scan",
 };
 
 function unstaleTwinRailBuilders(health: CronHealth[]): CronHealth[] {

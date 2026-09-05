@@ -1,8 +1,6 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { MobileNav, PageTitle, Sidebar } from "@/components/nav";
-import { ChangelogBanner } from "@/components/changelog-banner";
-import { CHANGELOG_COOKIE, unseenRelease } from "@/lib/changelog";
 import { DispatchMark } from "@/components/logo";
 import { ProjectSwitcher } from "@/components/project-switcher";
 import { ModeSwitch } from "@/components/mode-switch";
@@ -107,10 +105,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
     (installedAt != null
       ? Date.now() - installedAt < POST_INSTALL_WINDOW
       : setupStartedAt != null && Date.now() - setupStartedAt < SETUP_WINDOW);
-  // "DispatchSEO has been updated" - the newest release this browser hasn't
-  // acknowledged yet. Silent for projects created after it shipped (nothing is
-  // "new" to an owner who never saw the old version).
-  const release = unseenRelease(jar.get(CHANGELOG_COOKIE)?.value, active?.created_at);
+  // No release bar here any more. "DispatchSEO has been updated" used to run
+  // under the topbar on every screen until dismissed, on top of whatever Home
+  // was already saying - one more banner on every install the morning after a
+  // release. It now lives in one place: the dispatcher's briefing on Home
+  // (briefing.release), where the agent reports its own upgrade in its own
+  // voice, with the same dismissal. The /changelog page is always a click away.
   // One-shot, set by a project delete whose repo teardown only partly landed.
   // Outranks both banners below: it's the only one reporting something the
   // owner may still need to go switch off.
@@ -198,10 +198,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
             installed={active.pipeline_installed_at != null}
             cloud={billing}
           />
-        ) : release ? (
-          // Only when setup ISN'T running: two stacked banners is one too many,
-          // and mid-setup the owner has something better to watch.
-          <ChangelogBanner version={release.version} summary={release.summary} />
         ) : null}
         <main className="min-w-0 flex-1 px-4 py-8 sm:px-6 lg:px-8">{children}</main>
       </div>
