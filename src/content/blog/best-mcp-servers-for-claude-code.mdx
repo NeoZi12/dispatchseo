@@ -18,7 +18,7 @@ Two servers filed under the same category on a typical roundup - say, "dev tools
 
 ## Research and context servers: fetch, never touch
 
-[Context7](https://github.com/upstash/context7) exists to stop Claude from generating against a stale mental model of a library's API. Run `npx ctx7 setup --claude` and it handles OAuth, mints an API key, and installs the matching skill in one pass; the server itself is small on purpose, exposing `resolve-library-id` and `query-docs` and nothing else. For a manual add instead of the setup script:
+[Context7](https://github.com/upstash/context7) exists to stop Claude from generating against a stale mental model of a library's API. Run `npx ctx7 setup --claude` and it handles OAuth, mints an API key, and installs [the matching skill](/blog/claude-code-agents-vs-skills) in one pass; the server itself is small on purpose, exposing `resolve-library-id` and `query-docs` and nothing else. For a manual add instead of the setup script:
 
 ```bash
 claude mcp add --transport http context7 https://mcp.context7.com/mcp \

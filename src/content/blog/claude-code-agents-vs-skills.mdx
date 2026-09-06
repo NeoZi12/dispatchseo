@@ -1,0 +1,76 @@
+---
+title: "Claude Code agents vs skills: two different ways to make an unattended run reliable"
+description: What actually separates a Claude Code skill from a subagent - where each one's output lands, what it costs to have installed, and when to reach for which - grounded in this project's own checked-in pipeline.
+date: 2026-09-06
+keyword: claude code agents vs skills
+cover: /blog/covers/claude-code-agents-vs-skills.webp
+---
+
+A skill and a subagent solve completely different problems, and the fastest way to tell them apart has nothing to do with what either one is *for*: it's where the words they produce end up. A skill's instructions load straight into your current conversation - same context window, same thread, same history. A subagent's entire run happens somewhere else, in a context window Claude never lets you see, and all that ever comes back is a summary. Reach for the wrong one and you either bloat your main thread with a giant procedure it didn't need to hold, or lose the reasoning you actually wanted to keep.
+
+> **TL;DR** - A skill (`SKILL.md`, or the older `.claude/commands/<name>.md`) is a reusable procedure that runs *inside* your current conversation - Claude loads its instructions into the same context window you're already in. A subagent (`.claude/agents/<name>.md`, or Claude Code's built-in Explore/Plan/general-purpose agents that need no file at all) runs in its *own* isolated context window and returns only a summary. Reach for a skill when you want Claude to follow a versioned procedure without losing the thread; reach for a subagent when you want work done somewhere else so it doesn't crowd the conversation you're actually having. As of the current docs, a subagent's `skills:` frontmatter field lets you preload a skill into it at startup - the two aren't rivals, they compose.
+
+## Skill, subagent, slash command - the three things "agent" gets used for
+
+Three separate mechanisms answer to "Claude Code agent" in casual use, and only one of them is isolated by design:
+
+- A **skill** is a directory (or a single file) with a `SKILL.md` at its root: required `name` and `description` frontmatter, an instructions body, and optional bundled scripts or reference files. Claude reads its description at startup and decides on its own when a request matches it.
+- A **subagent** is a separate delegate with its own system prompt, its own tool restrictions, and its own context window. Some are files you author (`.claude/agents/<name>.md`); Explore, Plan, and general-purpose ship built in and need no file at all.
+- A **slash command** is what you type to trigger something on purpose - `/deploy`, `/seo-build`. [Custom commands and skills are the same mechanism now](/blog/claude-code-slash-commands): a `.claude/commands/deploy.md` file and a `.claude/skills/deploy/SKILL.md` skill both create `/deploy`. What most people mean by "command" is really "a skill with `disable-model-invocation: true`" - one only you can trigger, never Claude on its own.
+
+This guide is about the first two. The command distinction is already covered in full at the link above - repeating its frontmatter table here would just be restating it.
+
+## The one difference that decides which you reach for
+
+<SkillAgentTokenCostTable />
+
+A skill's instructions become part of the conversation you're already having - if you ask a follow-up question five turns later, Claude still remembers exactly what the skill told it to do, because that text never left the thread. [A subagent forgets by design](/blog/claude-code-subagents): it does its work in a window you can't see, hands back a summary, and by default the reasoning that produced that summary is gone the moment it returns. That's not a limitation someone forgot to fix - it's the entire point of the isolation. A subagent exists specifically to keep verbose exploration, a large diff, or a long tool-output stream from eating your main conversation's context budget. A skill exists to make a procedure Claude already has real information about - because it's sitting right there in the same thread - repeatable without you retyping it.
+
+Cost follows the same split. Per the current agent-skills docs, a skill's metadata sits resident in the system prompt the moment it's installed - roughly 100 tokens each, whether you ever use it or not - and its full instructions load only once a request matches, under 5,000 tokens per the docs' own ceiling. A subagent costs nothing at rest: no metadata, no system-prompt entry, nothing loaded until Claude actually delegates to it. That's a real tradeoff, not a free win for subagents - a skill's small resident cost is what makes Claude reach for it *without being asked*, while a subagent (custom or built-in) only ever runs because something explicitly decided to delegate to it.
+
+<SkillLoadingStagesFlow />
+
+## They compose now: a subagent that preloads a skill
+
+The two mechanisms used to be presented as alternatives - pick the isolated worker or the in-thread procedure. The current sub-agents docs add a field that erases that line: a subagent's frontmatter can carry `skills: [pattern-guide, best-practices]`, and Claude preloads that skill's instructions into the subagent's own isolated context the moment it spawns. A code-review subagent that never leaves its sandbox can still start every run already knowing your team's specific review checklist, because the checklist is a skill and the subagent's frontmatter just asked for it by name. The moment a subagent definition lists a `skills:` field, isolation and reusability stop being an either/or - it gets both.
+
+## This repo's own architecture, checked live
+
+<RepoSkillsVsAgentsFactRow />
+
+DispatchSEO's own pipeline is a clean instance of the split, and it's a real one, not a staged example: `.claude/commands/seo-build.md`, `seo-research.md`, `seo-build-tool.md`, `seo-report.md`, `seo-backlinks.md`, and `seo-setup.md` are six checked-in skills, each a versioned procedure this repo's owner (or a scheduled workflow) triggers by name. Every one of them stays in the calling session's own thread - when this exact run typed `/seo-build`, its four-line body loaded straight into this conversation, and everything since has been one continuous thread with the same history, the same context, from the first MCP call to this sentence. There is no `.claude/agents/` directory in this repo at all - zero custom subagents defined, ever, in a project that has shipped dozens of guides. That's not an oversight: nothing about this pipeline's daily build needs isolated, parallel delegation badly enough to justify authoring and maintaining a subagent file, and Claude Code's built-in Explore and general-purpose agents are sitting there ready for the day something does, with no file to write first.
+
+## A decision checklist: skill, subagent, or neither
+
+- **You want Claude to follow the same procedure every time, without retyping it, and you want the reasoning to stay visible in this conversation** - write a skill. This is the daily-build case above: a versioned playbook triggered by name.
+- **You want a large, noisy job (a broad codebase search, a long build log, a multi-file diff) done without it filling up the conversation you're actually having** - delegate to a subagent, built-in if the task is generic (Explore for search, general-purpose for a bounded multi-step job) or custom if it needs its own restricted toolset or a preloaded skill.
+- **You want both** - a custom subagent whose frontmatter lists `skills:` gets an isolated window that still starts with your team's specific procedure already loaded.
+- **You want a rule that fires whether or not anyone remembers to ask for it** - neither of these is the right primitive. That's [a hook's job](/blog/claude-code-hooks): something that runs on an event, with no model judgment and no typing involved.
+- **The task is genuinely one-off, and a human is driving** - reaching for either is over-engineering. Just ask Claude directly; a skill or a subagent earns its keep only once you'd otherwise repeat the same instructions or the same delegation more than a couple of times.
+
+## The failure mode: one prompt trying to be all three
+
+The version of this that goes wrong isn't picking the wrong one of the two - it's refusing to pick, and cramming procedure, delegation, and a fixed trigger into a single giant system prompt instead. That shape shows up as a skill whose `SKILL.md` tries to also behave like a subagent (spelling out "and now go explore the codebase in isolation" in prose that Claude can't actually enforce as isolation, because a skill has no separate context to isolate into), or as a subagent definition padded with a `disable-model-invocation`-style trigger condition that belongs on a command instead. Each primitive does one job because Claude Code drew the boundary at the isolation line, not because of a naming convention - working against that boundary in one file doesn't combine the benefits, it just produces a file that's hard to reason about and doesn't reliably do either job.
+
+## When the distinction genuinely doesn't matter
+
+None of the above is a reason to formalize a task that doesn't need it. If you're doing something once, in a conversation you're watching, typing the instructions directly is simpler than authoring either a skill or a subagent for it - both primitives pay for themselves only across repetition, not on the first use. And if your "subagent" need is really just "keep this search out of my context," the built-in Explore agent already does that with zero setup; writing a custom one for a job the built-in already covers is choosing maintenance you don't need.
+
+## FAQ
+
+**Is a Claude Code skill the same thing as a slash command?**
+Functionally, yes, as of the current docs - a `.claude/commands/deploy.md` file and a `.claude/skills/deploy/SKILL.md` skill both create `/deploy` and behave identically. What people usually mean by "command" specifically is a skill with `disable-model-invocation: true` set, so only a person can trigger it, never Claude on its own.
+
+**Does a subagent need a file to exist?**
+No. Explore, Plan, and general-purpose ship built into Claude Code and spawn on request with zero configuration. Only a *custom* subagent - one with its own system prompt, tool restrictions, or preloaded skills - needs a file in `.claude/agents/`.
+
+**Can a subagent use a skill?**
+Yes, as of the current sub-agents docs: a subagent's frontmatter can carry a `skills:` field naming which skills to preload into its isolated context at startup, combining a subagent's isolation with a skill's reusable procedure in one definition.
+
+**What actually happens to a subagent's reasoning after it finishes?**
+By default, nothing survives - it returns a summary to whatever delegated to it, and the context window it worked in is gone. [Setting `memory` in its frontmatter](/blog/claude-code-subagents) gives it a persistent directory that survives across separate runs, which is a different mechanism from `skills:` entirely.
+
+**Does a skill run with the same tool access as my main conversation?**
+Yes - a skill's instructions execute in your current session, so they carry whatever tools and permissions that session already has. A subagent can be handed a narrower tool set of its own, which is one more reason to reach for it when you want a task boxed in, not just moved out of view.
+
+Both mechanisms exist because Claude Code drew a real line between "stays in this thread" and "runs somewhere isolated," and the moment a task actually needs both, the current docs let one definition ask for the other by name instead of forcing a choice.
