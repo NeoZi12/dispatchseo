@@ -67,7 +67,7 @@ That's the whole mechanism in four commands: a second checkout appears, an edit 
 config/secrets.json
 ```
 
-Claude Code copies anything that matches a pattern there into every worktree it creates with git, whether that's a `--worktree` session, an isolated subagent, or a parallel session from the desktop app. Tracked files are never touched by it, so there's no risk of duplicating something git already manages. A `.worktreeinclude` file doesn't do anything for a worktree you create yourself with plain `git worktree add` unless you copy the files into it the same way.
+Claude Code copies anything that matches a pattern there into every worktree it creates with git, whether that's a `--worktree` session, [an isolated subagent](/blog/claude-code-agents-vs-skills), or a parallel session from the desktop app. Tracked files are never touched by it, so there's no risk of duplicating something git already manages. A `.worktreeinclude` file doesn't do anything for a worktree you create yourself with plain `git worktree add` unless you copy the files into it the same way.
 
 ## Cleanup - the part every tutorial skips
 

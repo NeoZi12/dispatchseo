@@ -154,6 +154,9 @@ import { CiPermissionFactRow } from "./ci-permission-fact-row";
 import { WorktreeCollisionSplit } from "./worktree-collision-split";
 import { WorktreeEnforcementGrid } from "./worktree-enforcement-grid";
 import { WorktreeDemoFactRow } from "./worktree-demo-fact-row";
+import { SkillAgentTokenCostTable } from "./skill-agent-token-cost-table";
+import { SkillLoadingStagesFlow } from "./skill-loading-stages-flow";
+import { RepoSkillsVsAgentsFactRow } from "./repo-skills-vs-agents-fact-row";
 import {
   Callout,
   CardGrid,
@@ -413,4 +416,7 @@ export const mdxComponents: MDXComponents = {
   WorktreeCollisionSplit,
   WorktreeEnforcementGrid,
   WorktreeDemoFactRow,
+  SkillAgentTokenCostTable,
+  SkillLoadingStagesFlow,
+  RepoSkillsVsAgentsFactRow,
 };
