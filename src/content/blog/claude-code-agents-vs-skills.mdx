@@ -14,7 +14,7 @@ A skill and a subagent solve completely different problems, and the fastest way 
 
 Three separate mechanisms answer to "Claude Code agent" in casual use, and only one of them is isolated by design:
 
-- A **skill** is a directory (or a single file) with a `SKILL.md` at its root: required `name` and `description` frontmatter, an instructions body, and optional bundled scripts or reference files. Claude reads its description at startup and decides on its own when a request matches it.
+- A **skill** is a directory (or a single file) with [a `SKILL.md` at its root](/blog/how-to-add-skills-to-claude-code): required `name` and `description` frontmatter, an instructions body, and optional bundled scripts or reference files. Claude reads its description at startup and decides on its own when a request matches it.
 - A **subagent** is a separate delegate with its own system prompt, its own tool restrictions, and its own context window. Some are files you author (`.claude/agents/<name>.md`); Explore, Plan, and general-purpose ship built in and need no file at all.
 - A **slash command** is what you type to trigger something on purpose - `/deploy`, `/seo-build`. [Custom commands and skills are the same mechanism now](/blog/claude-code-slash-commands): a `.claude/commands/deploy.md` file and a `.claude/skills/deploy/SKILL.md` skill both create `/deploy`. What most people mean by "command" is really "a skill with `disable-model-invocation: true`" - one only you can trigger, never Claude on its own.
 

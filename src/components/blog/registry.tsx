@@ -157,6 +157,9 @@ import { WorktreeDemoFactRow } from "./worktree-demo-fact-row";
 import { SkillAgentTokenCostTable } from "./skill-agent-token-cost-table";
 import { SkillLoadingStagesFlow } from "./skill-loading-stages-flow";
 import { RepoSkillsVsAgentsFactRow } from "./repo-skills-vs-agents-fact-row";
+import { SkillScopeSplit } from "./skill-scope-split";
+import { SkillFrontmatterFieldTable } from "./skill-frontmatter-field-table";
+import { SkillValidateTestedFactRow } from "./skill-validate-tested-fact-row";
 import {
   Callout,
   CardGrid,
@@ -419,4 +422,7 @@ export const mdxComponents: MDXComponents = {
   SkillAgentTokenCostTable,
   SkillLoadingStagesFlow,
   RepoSkillsVsAgentsFactRow,
+  SkillScopeSplit,
+  SkillFrontmatterFieldTable,
+  SkillValidateTestedFactRow,
 };

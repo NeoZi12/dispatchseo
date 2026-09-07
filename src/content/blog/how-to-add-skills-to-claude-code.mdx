@@ -1,0 +1,117 @@
+---
+title: "How to add skills to Claude Code (and when a skill beats a slash command)"
+description: Where a SKILL.md actually goes, the frontmatter field that decides if Claude ever uses it, and what `claude plugin validate` does and doesn't catch - tested against this repo's own shipped skills.
+date: 2026-09-07
+keyword: how to add skills to claude code
+cover: /blog/covers/how-to-add-skills-to-claude-code.webp
+---
+
+Adding a skill to Claude Code is writing one `SKILL.md` file into one of two directories - the mkdir and the file are the easy part. The part that decides whether the skill ever actually fires is the `description` field inside it: Claude reads every installed skill's description at the start of a session and only loads the rest of the file when a request matches it, so a vague description is a skill that sits there installed and never once gets used.
+
+> **TL;DR** - Create `~/.claude/skills/<name>/SKILL.md` for a skill you want in every project, or `.claude/skills/<name>/SKILL.md` for one scoped to this repo. Both need only a `description` field and a markdown body to work - `name` and everything else is optional. Claude reads the description to decide when to load the skill automatically; type `/<name>` to run it on purpose regardless. A same-named personal skill overrides a project one, not the other way around. `claude plugin validate` can check the result, but - tested below - only if you wrap it in a plugin manifest, and even then it doesn't catch a missing description or a bogus tool name.
+
+## Where a skill lives, and which one wins
+
+<SkillScopeSplit />
+
+Both directories work identically once Claude finds the file - the only real difference is who else sees it. A personal skill lives outside any repo, so it follows you between projects; a project skill is committed alongside the code, so a teammate gets it the moment they clone. Per the current docs' own priority table, personal beats project on a name collision - if you have `~/.claude/skills/deploy/SKILL.md` on your machine and someone commits `.claude/skills/deploy/SKILL.md` to a repo you're working in, your personal one is what actually runs. That is easy to miss, because the project file is sitting right there in the repo looking like it should win.
+
+## Writing one from scratch
+
+<Steps>
+<Step title="Pick a scope and make the directory">
+
+```bash
+mkdir -p ~/.claude/skills/my-skill    # personal
+mkdir -p .claude/skills/my-skill      # project
+```
+
+The directory name is the command name - `/my-skill` comes from the folder, not from anything you write inside it.
+
+</Step>
+<Step title="Write the frontmatter and the body">
+
+```markdown
+---
+description: Fill an existing PDF form's fields from a JSON payload. Use when the user asks to fill out, populate, or complete a PDF form.
+---
+
+# PDF form fill
+
+1. Read the PDF's field names with `pdftk <file> dump_data_fields`.
+2. Map each field to the matching key in the JSON payload.
+3. Fill with `pdftk <file> fill_form <data.fdf> output <out.pdf>`.
+```
+
+`description` is the only field Claude actually reads to decide when to auto-load the skill - it's matched against your request the moment you type it, combined with the optional `when_to_use` field and truncated at 1,536 characters. Everything after the frontmatter is plain instructions; the table below covers the fields worth knowing beyond `description`.
+
+<SkillFrontmatterFieldTable />
+
+</Step>
+<Step title="Confirm Claude actually loads it">
+
+Start a fresh session in the right directory and run `/skills` to confirm the new one is listed, then either type `/my-skill` to invoke it directly or describe the task in a sentence that matches your `description` and watch Claude pick it up on its own. If it doesn't fire unprompted, the description is the first thing to rewrite - not the body.
+
+</Step>
+</Steps>
+
+## Installing a skill someone else built
+
+A skill someone shares with you is just a directory - there's no registry lookup or install command required to use one. Copy it (or `git clone` the repo it lives in) into `~/.claude/skills/<name>/` or `.claude/skills/<name>/` and it's live next session, same as one you wrote yourself. The one thing worth reading before you copy it in: `allowed-tools` in a shared skill's frontmatter pre-approves specific tools for the turn that invokes it, with no permission prompt - know what a skill can run before you drop it into a directory Claude will load automatically.
+
+For skills packaged as plugins, `/plugin marketplace add <repo>` followed by `/plugin install <skill>@<marketplace>` does the same job through Claude Code's own installer instead of a manual copy.
+
+## A real skill, not the docs' toy example
+
+This repo (`dispatchseo`, the npm package behind this project's own agent-driven pipeline) ships two working `SKILL.md` files as part of that package - not `.claude/skills/` files active in this exact repo's own session, but the actual skill payload other people's Claude Code sessions install when they run `npm install -g dispatchseo` and copy the skill in. Genuine frontmatter, not a stripped-down demo:
+
+```yaml
+---
+name: dispatchseo
+description: Run SEO for a website through DispatchSEO - research keywords, queue and approve content ideas, build guides and interactive tools into pull requests, track rankings and Search Console stats, and find backlink prospects. Use when the user asks about their site's SEO, content pipeline, rankings, or DispatchSEO project.
+homepage: https://dispatchseo.com
+allowed-tools: Bash(dispatchseo:*)
+metadata: {"openclaw":{"emoji":"🔎","requires":{"bins":["dispatchseo"],"env":["DISPATCHSEO_TOKEN"]}}}
+---
+```
+
+`homepage` and `metadata` are worth noticing precisely because Claude Code does nothing with them - `homepage` is accepted per the Agent Skills spec and just stored, and `metadata` is a free-form map this project's own tooling (`openclaw`, unrelated to Claude Code) reads for its own purposes. A frontmatter field existing doesn't mean Claude Code acts on it; skills are a shared spec with several consumers, not a Claude-only format.
+
+This repo's own live session, meanwhile, doesn't use `.claude/skills/` at all - its daily build runs through six `.claude/commands/*.md` files instead, [covered in full in this repo's own agents-vs-skills breakdown](/blog/claude-code-agents-vs-skills). Both are real, in the same repo, doing different jobs: one is a skill this project ships for others to install, the other is the skill-equivalent commands this project runs on itself.
+
+## What `claude plugin validate` actually catches (tested)
+
+<SkillValidateTestedFactRow />
+
+Tested against `claude` 2.1.263: pointing `validate` straight at a folder of `SKILL.md` files - no plugin wrapper - fails immediately with "No manifest found," even though that exact folder works fine as a real `.claude/skills/` directory. Wrapping it in a two-line `.claude-plugin/plugin.json` makes `validate` pass, `--strict` included. What it does NOT do, tested the same way: a skill with no `description` field at all and a skill whose `allowed-tools` names a tool that doesn't exist both passed clean under `--strict`. The command checks that a plugin manifest is well-formed - it is not a content linter for whether your `SKILL.md` will actually do anything useful. `/skill-doctor` (v2.1.252+) is the closer fit for "is this skill pulling its weight," reporting usage and token cost per skill instead of manifest shape.
+
+## Skill or slash command?
+
+Short version, [covered in full here](/blog/claude-code-slash-commands): as of the current docs a `.claude/commands/deploy.md` file and a `.claude/skills/deploy/SKILL.md` skill both create `/deploy` and behave the same way once invoked - when both exist with the same name, the skill wins. What actually separates the two mental categories is `disable-model-invocation`: leave it unset (or `false`) and Claude can load the skill on its own whenever the description matches; set it to `true` and only a person typing `/name` can trigger it - that's what most people actually mean by "command." [Whether to reach for a skill at all versus a subagent](/blog/claude-code-agents-vs-skills) is a separate decision covered there.
+
+## Common mistakes that keep a skill from firing
+
+- **A description that states the topic instead of the trigger.** `"PDF tools"` tells Claude nothing about when to reach for it; `"Fill an existing PDF form's fields from a JSON payload. Use when the user asks to fill out, populate, or complete a PDF form"` gives it a request pattern to match against.
+- **Assuming the project copy wins.** It doesn't - a personal skill with the same directory name overrides a project one, silently. If a shared skill in a repo never seems to run, check `~/.claude/skills/` for a same-named folder first.
+- **Treating `allowed-tools` as documentation instead of a grant.** It's a real permission bypass for that turn, not a comment describing what the skill does - read it before copying in a skill you didn't write.
+- **Skipping `/skills` after installing.** A typo in the directory structure (a `SKILL.md` one level too deep, or missing entirely) fails silently - the skill just never shows up, with no error to point at.
+
+## When you don't need a skill at all
+
+A skill earns its resident context cost - roughly 100 tokens per description, sitting in every session's system prompt whether you use it or not - by being repeated. A procedure you're running once, right now, in a conversation you're watching, is simpler as a direct instruction than as a file you have to author, name correctly, and get the description right on. Write the skill once you'd otherwise be retyping (or re-explaining) the same steps a second time.
+
+## FAQ
+
+**Does a skill need a `name` field to work?**
+No. For a personal or project skill, the command name comes from the directory (`~/.claude/skills/my-skill/` gives you `/my-skill` regardless of what `name` says inside the file). `name` only controls the final segment of the command for a plugin-packaged skill.
+
+**What's the actual difference between `.claude/commands/` and `.claude/skills/`?**
+Functionally none once loaded - both create a `/name` command with the same frontmatter support. The skills directory adds features commands don't get: a whole directory for bundled scripts and reference files, the `paths` field for auto-loading by file type, and `context: fork` to run the skill in an isolated subagent. When a command and a skill share a name, the skill takes precedence.
+
+**Can I stop Claude from auto-loading a skill and still run it myself?**
+Yes - `disable-model-invocation: true` removes the skill's description from Claude's context entirely, so it can never be triggered automatically, while `/name` still runs it on demand. That's the right setting for anything with a side effect you want to type on purpose - a deploy, a commit, a merge.
+
+**Does `claude plugin validate` need my skill to be a full plugin?**
+Functionally, yes, tested above: it looks for `.claude-plugin/plugin.json` or `marketplace.json` and fails without one, even against a directory that works perfectly as a plain `.claude/skills/` folder. For a skill you're not packaging as a plugin, `/skills` and actually invoking it are the real check, not `validate`.
+
+A skill is one file and one directory choice - the frontmatter table and the tested `validate` behavior above are what the official docs don't spell out, and both are the difference between a skill that's installed and one Claude actually reaches for.
