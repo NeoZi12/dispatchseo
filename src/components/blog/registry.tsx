@@ -160,6 +160,9 @@ import { RepoSkillsVsAgentsFactRow } from "./repo-skills-vs-agents-fact-row";
 import { SkillScopeSplit } from "./skill-scope-split";
 import { SkillFrontmatterFieldTable } from "./skill-frontmatter-field-table";
 import { SkillValidateTestedFactRow } from "./skill-validate-tested-fact-row";
+import { EngineCitationMarkerGrid } from "./engine-citation-marker-grid";
+import { RealVsHallucinatedCitationSplit } from "./real-vs-hallucinated-citation-split";
+import { GeoScanCitationCallCard } from "./geo-scan-citation-call-card";
 import {
   Callout,
   CardGrid,
@@ -425,4 +428,7 @@ export const mdxComponents: MDXComponents = {
   SkillScopeSplit,
   SkillFrontmatterFieldTable,
   SkillValidateTestedFactRow,
+  EngineCitationMarkerGrid,
+  RealVsHallucinatedCitationSplit,
+  GeoScanCitationCallCard,
 };
