@@ -1,0 +1,120 @@
+---
+title: Install on Coolify
+description: Deploy the whole stack from Coolify's UI - a ready-made compose template, auto-generated secrets, and your domain with HTTPS, no SSH required.
+---
+
+[Coolify](https://coolify.io) is an open-source, self-hostable platform that
+deploys apps from a Git repo through a web UI. If your server already runs
+it, this is the easiest install: DispatchSEO ships a ready-made template at
+`docker/coolify/docker-compose.yml`, Coolify generates the secrets, and its
+proxy puts the dashboard on your domain with HTTPS. No SSH, no `.env`.
+
+If you don't run Coolify, don't install it just for this - [the VPS
+guide](/docs/vps) gets you the same stack with one command.
+
+<Steps>
+
+<Step title="Create the resource">
+
+In Coolify, open a project and **Add New Resource → Public Repository**.
+Fill it in like this:
+
+<Fields>
+  <Field name="Repository URL">`https://github.com/NeoZi12/dispatchseo`</Field>
+  <Field name="Branch">`main`</Field>
+  <Field name="Build Pack">**Docker Compose**</Field>
+  <Field name="Base Directory">`/` (the default)</Field>
+  <Field name="Docker Compose Location">`/docker/coolify/docker-compose.yml`</Field>
+</Fields>
+
+That last field is the one to get right: it points Coolify at the
+Coolify-specific template instead of the root compose file, which is written
+for machines where Docker is all there is.
+
+Continue, and Coolify parses the file and shows the stack: `postgres`,
+`migrate`, `postgrest`, `app`, `cron`, and `builder`.
+
+</Step>
+
+<Step title="Turn on Preserve Repository During Deployment">
+
+Before deploying, open the resource's **Configuration → General** and enable
+**Preserve Repository During Deployment**.
+
+The database schema and the cron schedule are files the stack reads out of
+the repo at deploy time. Without this setting, Coolify deploys from a
+directory where those files don't exist and mounts empty folders in their
+place - the database never gets its tables and nothing works. With it,
+everything mounts from the checked-out repo, same as a manual install.
+
+</Step>
+
+<Step title="Deploy">
+
+Hit **Deploy**. Coolify pulls the prebuilt images (nothing is compiled on
+your server), generates the internal secrets - the Postgres password and the
+cron token are magic `SERVICE_PASSWORD_*` variables, created once and stable
+across every future redeploy - and the `migrate` one-shot installs the
+schema.
+
+There is nothing to fill in by hand: the **Environment Variables** tab lists
+optional overrides (`DASHBOARD_PASSWORD`, Search Console JSON, DataForSEO
+keys, ...), but every one of them is collected by the setup wizard in the
+browser, which stores them in the database. Leave them empty.
+
+One thing that looks wrong but isn't: once the deploy settles, the
+`migrate` service shows as **Exited**. It's a one-shot - it installs the
+schema and quits, on purpose, on every deploy.
+
+When the deploy finishes, the `app` service has a generated URL under your
+Coolify wildcard domain - click it and the dashboard loads over HTTPS.
+
+</Step>
+
+<Step title="Put it on your own subdomain">
+
+The generated URL works, but you'll want a real address. Two small steps:
+
+1. In your DNS, add an **A record** for `dispatch.your-domain.com` pointing
+   at the Coolify server's IP (the same record shape as in
+   [the VPS guide](/docs/vps), which walks it click by click).
+2. In the resource's settings, change the `app` service's domain to
+   `https://dispatch.your-domain.com` and **redeploy**.
+
+Coolify's proxy fetches the certificate, and the redeploy is what tells
+DispatchSEO its own address (`APP_URL` follows the domain automatically) -
+so the links the wizard generates carry your real domain.
+
+</Step>
+
+<Step title="Walk the setup wizard">
+
+Open the dashboard, choose a password, and the setup wizard takes it from
+there - your site, Search Console, keyword data, publish mode, and your
+coding agent. Every screen is covered in
+[The setup wizard, step by step](/docs/setup-wizard).
+
+One note for the wizard's last screen, same as any server install: **the
+builder token is created on your own computer** (`claude setup-token` opens
+a browser login), then pasted on the dashboard's "Turn on automatic builds"
+step. Nothing goes into Coolify's env for that - the token is stored
+encrypted in your database and the in-stack builder picks it up.
+
+</Step>
+
+</Steps>
+
+<Callout type="warning" title="Where your data lives">
+Everything is in two named Docker volumes on the Coolify server -
+`dispatch-pgdata` is the database. They survive redeploys, restarts, and
+image upgrades, but Coolify's **Delete Resource** deletes the volumes with
+the stack. Before deleting or moving anything, take a backup:
+[Upgrading and backups](/docs/upgrading) has the one-line `pg_dump`.
+</Callout>
+
+## Upgrading
+
+Hit **Redeploy**. Coolify pulls the newer images and the current repo, and
+the `migrate` service re-applies the schema on boot - it's idempotent, so an
+upgrade is the same act as a deploy. Coolify's auto-update webhooks work
+too, if you'd rather track `main` automatically.
