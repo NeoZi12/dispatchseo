@@ -1,0 +1,68 @@
+---
+title: "SE Ranking alternative: it added an MCP server too - here's what that does and doesn't change"
+description: SE Ranking's own homepage now advertises an MCP integration for querying its dashboard through Claude - the same protocol DispatchSEO runs on entirely. Current pricing verified live, what the MCP surface actually lets an agent do, and this project's own numbers pulled while writing this.
+date: 2026-09-09
+keyword: se ranking alternative
+cover: /blog/covers/se-ranking-alternative.webp
+---
+
+SE Ranking's own homepage now advertises an MCP integration - "query data through AI assistants like Claude" - so the dashboard every "SE Ranking alternative" roundup describes as something you click through has quietly started speaking the same protocol [DispatchSEO](/blog/self-hosted-ai) is built entirely out of. The honest difference isn't whether an agent can talk to either product now - both can. It's what happens after the agent gets an answer: SE Ranking's MCP surface hands back a number for a person to act on, and DispatchSEO's agent takes the next step itself, researching, drafting, and opening the pull request that ships the page. If reading SE Ranking's dashboard through Claude instead of a browser tab is the whole ask, SE Ranking's own MCP server already covers it. The rest of this guide is about the other job: having the agent act on what it finds, not just report it back.
+
+> **TL;DR** - SE Ranking is a $103-129/mo all-in-one SEO dashboard (rank tracking, keyword research, site audit, backlinks, AI-visibility tracking, content tools), and it added its own MCP server so an AI assistant can query that dashboard - not act on it. DispatchSEO runs a narrower slice of the same job - keyword research, rank tracking, AI-citation tracking - as an agent-driven pipeline that researches, drafts, and opens a merge-ready pull request, with no dashboard tab and no per-seat price. This project's own numbers, pulled live while writing this: DR 7, a 0% AI-citation rate across ChatGPT, Claude, and Google AI Overview, and 6 clicks against 5,149 impressions over the last 28 days.
+
+## What SE Ranking actually bundles, and what the tiers cost
+
+SE Ranking's own site lists the current lineup as a rank tracker, a keyword research tool built on a 5.5-billion-keyword database, an on-page SEO checker, a site-wide website audit, competitor analysis, a backlink checker, an AI Search Toolkit that tracks brand presence across ChatGPT, Gemini, and Perplexity, a Google AI Overviews tracker, a content marketing tool, an AI writer, and a local marketing module - plus agency add-ons like white-label reporting and a lead generator. That's eleven-plus modules behind one login, which is the honest reason the pricing scales by project and seat count rather than by feature:
+
+<SeRankingPricingTierTable />
+
+Core is the entry point for a single site or a small handful of them; Growth exists mostly to raise the keyword-check volume and add two more manager seats. Neither tier caps which modules you can open - the AI Search Toolkit and the API both ride as separate add-ons regardless of which base plan you're on, which is easy to miss until the invoice adds a second and third line item to what looked like one price.
+
+## The line on SE Ranking's own homepage that changes the comparison: it has an MCP server too
+
+Most current "SE Ranking alternative" posts still frame the comparison as dashboard-versus-no-dashboard, because that was true until recently. It isn't anymore: SE Ranking's product page now lists an MCP integration alongside its GA4, Google Search Console, and Zapier connections, described as letting an AI assistant query the platform's data directly. That's the same transport DispatchSEO's [MCP server](/blog/claude-code-mcp-server) runs on - a coding agent can now ask either product a question in plain language instead of opening a dashboard tab to look it up.
+
+## What an agent can do through that MCP server, and what it still can't
+
+Having the same transport doesn't mean the same job is on the other end of it. SE Ranking's MCP surface sits in front of an existing dashboard built for a person to read; DispatchSEO's MCP server sits in front of a pipeline built for an agent to run:
+
+<McpQueryVsPublishSplit />
+
+Ask SE Ranking's MCP server where a keyword ranks today and it hands back the same number the dashboard would show. Ask it to turn a ranking gap into a published page, and that step doesn't exist on the MCP surface at all - drafting and publishing content still routes through SE Ranking's separate, paid Content Editor, opened by hand. DispatchSEO's `keyword_ideas`, `propose_suggestion`, and the guide-build pipeline behind them close that same gap without a second tool to open.
+
+## DispatchSEO's own loop, run against this exact keyword while writing it
+
+The clearest way to show what "agent-driven" actually produces is this project's own numbers instead of a vendor mockup - the same signals `get_domain_rank`, `get_ai_visibility`, and `get_rankings` would separately require opening a dashboard to check:
+
+<SeRankingOwnAccountFactRow />
+
+A DR of 7 and a 0% citation rate don't make a case for anything - they're just where a two-month-old domain actually sits, checked the same way every tracked keyword on this project gets checked. "se ranking alternative" itself joined that tracker the day this idea cleared the [research pipeline](/blog/ai-seo-agent)'s auto-approve check, and the nightly cron came back with the same answer every week since: nothing to rank, because the page didn't exist. That's the gap this guide closes - the research pass that flagged the keyword as winnable is the same one that queued, drafted, and shipped what you're reading now.
+
+## Where SE Ranking's dashboard still wins
+
+SE Ranking earns its price for what it actually is: a crawl-scale site audit, a backlink index, a local-marketing module, and a white-label reporting layer a team can hand a client, none of which DispatchSEO tries to replace. A multi-person agency that needs several analysts looking at the same projects, running a technical crawl across hundreds of pages, or generating branded PDF reports for clients is better served by a shared login built for exactly that than by a repo and an agent. The 14-day free trial exists for precisely that kind of hands-on evaluation before committing to a seat.
+
+Running DispatchSEO costs two things SE Ranking's price tag already bundles away: a DataForSEO account you set up and pay for yourself, and a coding agent you're already running (or would need to start running) in a repo. Standing both of those up purely to dodge a $103/mo seat is a worse trade than just paying for Core. Where the math flips is if the agent subscription is already a sunk cost for other work - at that point, pointing it at this project's research and tracking jobs is close to free, and adding a third or fourth site to watch doesn't add a third or fourth SE Ranking seat's worth of bill.
+
+## Who should actually pick which
+
+A shared dashboard a non-technical teammate or client can log into directly, a site audit run at crawl scale, or a white-label report with someone else's logo on it - none of that is a job a repo and an agent can pick up, so SE Ranking is the right call whenever one of those is actually on the list. [DispatchSEO](/blog/self-hosted-ai) fits the other list: a single site's own keywords tracked, its [AI-citation rate](/blog/ai-visibility-tracking-tool) watched alongside Search Console, and a content queue that turns what those trackers find into shipped pages instead of a report someone reads and files away. Clustering the keywords behind either list still tends to happen by hand somewhere in the process - [the free keyword clustering tool](/free-tools/keyword-clustering-tool) runs that one step in the browser no matter which platform ends up tracking the rest.
+
+## FAQ
+
+**Does SE Ranking's MCP integration replace a dashboard login entirely?**
+No. It's a query layer on top of the existing dashboard - useful for asking an AI assistant a quick question about your data, but drafting, publishing, and most configuration still happen in SE Ranking's own interface.
+
+**Is DispatchSEO cheaper than SE Ranking?**
+There's no line-item seat cost, but a DataForSEO account (billed per call, to the project owner) and a coding-agent subscription both have to exist first. Someone paying for neither of those already will find SE Ranking's $103-129/mo entry tier the more predictable number to budget against.
+
+**Can DispatchSEO do a site-wide technical audit like SE Ranking's Website Audit module?**
+No. DispatchSEO tracks rankings, Search Console performance, and AI-citation rate - it has no crawler and no page-by-page technical audit. For that job, SE Ranking's audit module (or a dedicated crawler) is the right tool.
+
+**Does DispatchSEO replace SE Ranking's AI Search Toolkit?**
+For this project's own domain, yes - `get_ai_visibility` tracks citation rate across ChatGPT, Claude, and Google AI Overview on a weekly sweep. It only watches the site it's running for, not arbitrary competitor brands the way SE Ranking's toolkit is built to.
+
+**What if I don't have a coding agent set up yet?**
+Then SE Ranking is the faster path today - its dashboard works the moment you log in. DispatchSEO's MCP tools and crons need a repo and an agent CLI already wired up underneath them, so getting that scaffolding in place comes before any of the rank tracking or content pipeline described here.
+
+Both products now let an agent ask a question over MCP - that part of the comparison is basically settled. What's left is a genuinely different bet: pay a seat price for a dashboard built to be read by a person and increasingly queried by an assistant, or point an agent you're already running at a narrower job and let it finish what it finds. Neither bet is wrong; they're just answers to different questions about who's supposed to act on the data once it comes back.

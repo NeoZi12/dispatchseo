@@ -74,6 +74,9 @@ import { MozModuleCoverageGrid } from "./moz-module-coverage-grid";
 import { DomainRankSnapshotCard } from "./domain-rank-snapshot-card";
 import { RankTrackingPipelineFlow } from "./rank-tracking-pipeline-flow";
 import { MangoolsToolMapTable } from "./mangools-tool-map-table";
+import { SeRankingPricingTierTable } from "./se-ranking-pricing-tier-table";
+import { McpQueryVsPublishSplit } from "./mcp-query-vs-publish-split";
+import { SeRankingOwnAccountFactRow } from "./se-ranking-own-account-fact-row";
 import { OwnAccountLiveSnapshotRow } from "./own-account-live-snapshot-row";
 import { OpenTabVsCronSplit } from "./open-tab-vs-cron-split";
 import { GscMcpFieldGrid } from "./gsc-mcp-field-grid";
@@ -431,4 +434,7 @@ export const mdxComponents: MDXComponents = {
   EngineCitationMarkerGrid,
   RealVsHallucinatedCitationSplit,
   GeoScanCitationCallCard,
+  SeRankingPricingTierTable,
+  McpQueryVsPublishSplit,
+  SeRankingOwnAccountFactRow,
 };
