@@ -77,6 +77,9 @@ import { MangoolsToolMapTable } from "./mangools-tool-map-table";
 import { SeRankingPricingTierTable } from "./se-ranking-pricing-tier-table";
 import { McpQueryVsPublishSplit } from "./mcp-query-vs-publish-split";
 import { SeRankingOwnAccountFactRow } from "./se-ranking-own-account-fact-row";
+import { AutomationTierLadderFlow } from "./automation-tier-ladder-flow";
+import { VendorAutomationQuoteTable } from "./vendor-automation-quote-table";
+import { AiToolTierOwnNumbersRow } from "./ai-tool-tier-own-numbers-row";
 import { OwnAccountLiveSnapshotRow } from "./own-account-live-snapshot-row";
 import { OpenTabVsCronSplit } from "./open-tab-vs-cron-split";
 import { GscMcpFieldGrid } from "./gsc-mcp-field-grid";
@@ -437,4 +440,7 @@ export const mdxComponents: MDXComponents = {
   SeRankingPricingTierTable,
   McpQueryVsPublishSplit,
   SeRankingOwnAccountFactRow,
+  AutomationTierLadderFlow,
+  VendorAutomationQuoteTable,
+  AiToolTierOwnNumbersRow,
 };
