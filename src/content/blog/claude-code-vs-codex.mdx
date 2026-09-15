@@ -1,0 +1,79 @@
+---
+title: "Claude Code vs Codex: which one survives running unattended"
+description: Both ship a real non-interactive mode, and both turn out to sandbox it with the same OS primitive - Seatbelt on macOS, bubblewrap on Linux. Checked against each vendor's current docs, with a real claude -p run's exit code and JSON fields from this exact sandbox.
+date: 2026-09-15
+keyword: claude code vs codex
+cover: /blog/covers/claude-code-vs-codex.webp
+---
+
+Claude Code and OpenAI's Codex CLI both ship a real non-interactive mode built for a script to call with nobody watching, and it turns out both lean on the exact same class of OS-level sandbox to make that safe - Seatbelt on macOS, bubblewrap on Linux and WSL2, for both tools. That shared foundation means the interesting difference isn't which one is safer to leave alone; it's which one fails more legibly, resumes more cleanly after getting cut off mid-run, and costs less once a cron job - not a person - is the one invoking it every day.
+
+> **TL;DR** - Claude Code's Bash sandbox and Codex's `--sandbox` flag both resolve to Seatbelt on macOS and bubblewrap on Linux/WSL2, a fact neither vendor's marketing leads with. For a run nobody can answer, Claude Code's own docs point at `--bare -p --permission-mode auto --permission-prompts none`; Codex's docs say to pair `codex exec --sandbox workspace-write` with `--ask-for-approval never`. A real `claude -p "pong" --output-format json` run from the sandbox that built this page came back with exit code 1 and `is_error: true` in agreement - and a `subtype` field that misleadingly reads `"success"` on that same failed run, which is the kind of gotcha a CI script only learns about by reading the actual JSON, not the marketing page. Both tools support resuming a session a scheduled run cut off (`--resume`/`--continue` vs `codex exec resume`). Entry pricing is identical - $20/mo bundles Codex CLI into ChatGPT Plus the same way it bundles Claude Code into Claude Pro - and both jump to a $100+/mo tier once daily automated use outgrows the entry plan. DispatchSEO's own daily builder stays on Claude Code, for the same reason the [Cursor comparison](/blog/claude-code-vs-cursor) on this site landed the same way: it's the tool the rest of the pipeline already runs on, not a capability gap.
+
+## The bar this comparison has to clear
+
+Every result on page 1 for "claude code vs codex" right now is a personal testing writeup, a Reddit thread, or a benchmark critique - useful for "which one writes better code," useless for "which one keeps working when nobody's there to restart it." That's the same gap [this site's Cursor comparison](/blog/claude-code-vs-cursor) found four keywords ago, and the evaluation lens carries over unchanged: not which tool feels better in an editor, but what happens the moment a script - a cron job, a GitHub Actions run, the daily guide-builder that wrote this exact page - is the one invoking it with nobody watching. Four things actually matter at that point: whether the sandbox holds without a human approving each step, whether a failure comes back in a shape a script can gate on, whether a session that gets cut off mid-task can pick back up, and what it costs to run once a day instead of once in a while.
+
+## Both sandboxes turn out to be the same technology
+
+This is the part neither vendor's docs frame as a comparison point, because from inside either product it looks like a first-party feature, not a borrowed one. Claude Code's Bash sandbox - the thing that lets it run most shell commands without stopping to ask - is built into the CLI and runs on macOS, Linux, and WSL2: on macOS it uses the built-in Seatbelt framework with nothing to install, and on Linux and WSL2 it relies on bubblewrap plus an optional seccomp filter. [The full mechanics are covered here](/blog/claude-code-sandbox), including what happens when those Linux packages are missing.
+
+Codex's `--sandbox` (`-s`) flag - `read-only`, `workspace-write`, or `danger-full-access` - looks like an unrelated design from the outside, but its docs describe the identical split: Seatbelt on macOS, bubblewrap on Linux and WSL2, and a native sandbox on Windows outside WSL2. Two products built by two different labs landed on the same two kernel-level primitives, which says more about what a real OS sandbox for an autonomous shell agent actually requires than either README does on its own.
+
+<UnattendedExecutionPipelineFlow />
+
+## Telling each one what it's allowed to do with nobody watching
+
+Where they diverge is exposure, not mechanism. Claude Code layers a permission mode - `manual` (the default for `-p`), `auto`, `acceptEdits`, `dontAsk`, `bypassPermissions` - on top of the sandbox, and for a run nobody can answer its docs are explicit: pass `--permission-prompts none` so anything that would have paused for a human is denied instead of hung, paired with `--permission-mode auto` (a classifier reviews most actions) or `dontAsk` (deny everything that would otherwise prompt - "useful for locked-down CI runs," in the docs' own words). Add `--bare` and the run also skips hooks, skills, MCP servers, `CLAUDE.md`, and auto memory for the same result on every machine - documented as the mode that becomes `-p`'s default in a future release.
+
+Codex folds the same decision into one flag: `--ask-for-approval` (`-a`) takes `on-request` (pause for a person - the wrong choice when there isn't one) or `never` (skip the prompt entirely), and OpenAI's own docs recommend pairing it with the sandbox directly for CI: "for non-interactive runs, use `codex exec --sandbox workspace-write`." Both vendors also document a full bypass for an already-isolated runner - `--dangerously-skip-permissions` on one side, `--dangerously-bypass-approvals-and-sandbox` (`--yolo`) on the other - and both docs use almost the same word for it: dangerous, and only inside a sandbox with no other tenant's data on it.
+
+<UnattendedFlagCompareTable />
+
+## A live run from the machine that wrote this page
+
+Rather than take either vendor's word for what the failure actually looks like, this guide ran one. This build is Claude Code itself, so the honest test to run is Claude Code's own - benchmarking Codex from inside a Claude Code session would mean describing a tool it never executed as if it had, which is worse than not testing at all. The Codex commands throughout this guide are checked against OpenAI's current CLI reference and its official [`codex-action`](https://github.com/openai/codex-action) GitHub Action, presented as documented, not run.
+
+<LiveEnvelopeReadoutCard />
+
+The command was `claude -p "pong" --output-format json`, executed in a CI sandbox with no stored Claude credentials - an honest failure, not a scripted one. `is_error` and the exit code agree, which is the whole point of gating a script on either one. `subtype` reading `"success"` on that same run is the field a script should never trust for pass/fail - it tracks whether the turn ran to completion, not whether the result was good, and the two only look identical until a run like this one comes along.
+
+## Picking back up after a scheduled run gets cut off
+
+A cron job or a rate-limited API call doesn't always get to finish in one shot, so what happens next matters as much as what happens during. Claude Code resumes a specific session with `--resume <session-id>` (captured from a prior run's JSON `session_id` field) or continues the most recent one with `--continue`; a `SIGTERM` sent mid-run exits with code 143, leaves the interrupted turn unfinished and unresumed at that point, then picks the turn back up the next time the session is resumed. Codex documents the same shape through its own subcommand: `codex exec resume [SESSION_ID] [PROMPT]` continues a prior run instead of starting cold. Neither tool treats a scheduled run as disposable if it gets cut off partway through - both expect to be resumed, not just retried from scratch.
+
+## Twenty dollars gets you in; the ceiling is where they diverge
+
+Claude Pro is $20/mo billed monthly ($17/mo billed annually) and, per Anthropic's own pricing page, "Claude Code is included in all paid plans - it shares the same usage limits as the rest of your plan, so your work in the terminal and your chats draw from one pool." Claude Max starts at $100/mo for 5x or 20x more usage, the tier built for a session that runs most of the day. ChatGPT Plus is the same $20/mo and bundles Codex CLI the same way; ChatGPT Pro starts "from $100/mo" for a higher ceiling, and ChatGPT Business runs $20/user/mo billed annually ($25/user/mo billed monthly). Anyone who'd rather meter spend per invocation instead of drawing from a shared plan pool can authenticate Codex with an API key instead - OpenAI's pricing page is explicit that this route "pays for Codex usage based on API pricing," billed separately from any ChatGPT plan.
+
+The headline numbers land in the same place on both sides. What diverges is the shape of the ceiling once a job runs daily, not the entry price either vendor advertises.
+
+## The verdict for a script running at 4am
+
+Neither tool fails the bar this comparison set out with - same sandbox primitive, an explicit deny-and-don't-wait flag for a run nobody can answer, a legible pass/fail signal, and a documented way to resume a cut-off session. The honest tiebreaker isn't a missing feature, it's which one you're already driving the rest of your automation through: switching CLIs just for the scheduled half of a pipeline means maintaining two auth models and two MCP configs for the same job. This project's own daily builder - the one that wrote this page - runs on Claude Code, for the same reason its Cursor comparison gave: it's the tool the maintainer already runs everything else through. A team already living in ChatGPT's ecosystem, with Codex already wired into its CI via `openai/codex-action`, would reasonably land on the opposite answer, for the same non-technical reason.
+
+## Where this comparison stops mattering
+
+If nothing you build ever runs without a person watching it, skip all of the above and pick whichever one you'd rather pair-program with - the sandbox, the approval flags, and the resume behavior only start earning their keep the moment a script, not a person, is the one invoking the tool. And if your pipeline is a single once-a-week job instead of a daily one, the cost ceiling this guide spent a section on won't be the thing that decides it either; either plan's $20/mo entry tier covers that volume with room to spare.
+
+## FAQ
+
+**Are Claude Code's and Codex's sandboxes really the same technology?**
+On macOS and Linux/WSL2, yes - both use Seatbelt on macOS and bubblewrap on Linux and WSL2, per each vendor's own current docs. What differs is how each tool exposes that boundary: Claude Code as a toggleable Bash-tool feature, Codex as an explicit `--sandbox` flag on every invocation.
+
+**What does Claude Code's `--bare` flag actually skip?**
+Hooks, skills, MCP servers, `CLAUDE.md`, and auto memory - everything a teammate's machine or a project's `.mcp.json` might otherwise load, so a CI run gets the same result regardless of which machine runs it. Anthropic's docs call it the recommended mode for scripted calls and say it will become `-p`'s default in a future release.
+
+**Is `--dangerously-bypass-approvals-and-sandbox` the same as Claude Code's `--dangerously-skip-permissions`?**
+Functionally, yes - both remove every guardrail the tool would otherwise enforce, and both vendors' docs say to use them only inside a runner that's already isolated, never on a machine with other tenants' data on it.
+
+**Can I run Codex CLI without paying separately for API tokens?**
+Yes, if you authenticate with a ChatGPT account instead of an API key - Codex CLI is included at no extra charge in the Plus, Pro, Business, and Enterprise plans. An API key bills Codex usage at standard API rates instead, which some teams prefer for per-invocation metering.
+
+**What happens if a `claude -p` run gets killed by SIGTERM mid-task?**
+It exits with code 143, the in-progress turn is left unfinished and unresumed at that instant, and `SessionEnd` hooks still run before the process exits. Resuming that session afterward picks the interrupted turn back up rather than starting over.
+
+**Does Codex CLI support MCP servers the same way Claude Code does?**
+Both support MCP, through different surfaces: Claude Code loads servers via `--mcp-config` (locked to only those with `--strict-mcp-config`), while Codex manages them through `codex mcp add`/`list`/`remove`/`login`/`logout`/`get` subcommands.
+
+This guide is one more page DispatchSEO's own unattended Claude Code pipeline shipped on its own - checked against both vendors' current docs and one real run, not a benchmark of a tool this session never executed.
