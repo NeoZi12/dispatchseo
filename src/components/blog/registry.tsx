@@ -169,6 +169,9 @@ import { SkillValidateTestedFactRow } from "./skill-validate-tested-fact-row";
 import { EngineCitationMarkerGrid } from "./engine-citation-marker-grid";
 import { RealVsHallucinatedCitationSplit } from "./real-vs-hallucinated-citation-split";
 import { GeoScanCitationCallCard } from "./geo-scan-citation-call-card";
+import { UnattendedExecutionPipelineFlow } from "./unattended-execution-pipeline-flow";
+import { UnattendedFlagCompareTable } from "./unattended-flag-compare-table";
+import { LiveEnvelopeReadoutCard } from "./live-envelope-readout-card";
 import {
   Callout,
   CardGrid,
@@ -443,4 +446,7 @@ export const mdxComponents: MDXComponents = {
   AutomationTierLadderFlow,
   VendorAutomationQuoteTable,
   AiToolTierOwnNumbersRow,
+  UnattendedExecutionPipelineFlow,
+  UnattendedFlagCompareTable,
+  LiveEnvelopeReadoutCard,
 };
