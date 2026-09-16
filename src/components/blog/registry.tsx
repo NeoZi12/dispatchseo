@@ -172,6 +172,9 @@ import { GeoScanCitationCallCard } from "./geo-scan-citation-call-card";
 import { UnattendedExecutionPipelineFlow } from "./unattended-execution-pipeline-flow";
 import { UnattendedFlagCompareTable } from "./unattended-flag-compare-table";
 import { LiveEnvelopeReadoutCard } from "./live-envelope-readout-card";
+import { DiySeoChecklistGrid } from "./diy-seo-checklist-grid";
+import { OwnSiteTechnicalAuditRow } from "./own-site-technical-audit-row";
+import { OnceVsRecurringSeoSplit } from "./once-vs-recurring-seo-split";
 import {
   Callout,
   CardGrid,
@@ -449,4 +452,7 @@ export const mdxComponents: MDXComponents = {
   UnattendedExecutionPipelineFlow,
   UnattendedFlagCompareTable,
   LiveEnvelopeReadoutCard,
+  DiySeoChecklistGrid,
+  OwnSiteTechnicalAuditRow,
+  OnceVsRecurringSeoSplit,
 };
