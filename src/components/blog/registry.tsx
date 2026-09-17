@@ -175,6 +175,9 @@ import { LiveEnvelopeReadoutCard } from "./live-envelope-readout-card";
 import { DiySeoChecklistGrid } from "./diy-seo-checklist-grid";
 import { OwnSiteTechnicalAuditRow } from "./own-site-technical-audit-row";
 import { OnceVsRecurringSeoSplit } from "./once-vs-recurring-seo-split";
+import { SoloSeoDriftTimelineFlow } from "./solo-seo-drift-timeline-flow";
+import { AutomateFirstOrderFlow } from "./automate-first-order-flow";
+import { SerpAnswererFactRow } from "./serp-answerer-fact-row";
 import {
   Callout,
   CardGrid,
@@ -455,4 +458,7 @@ export const mdxComponents: MDXComponents = {
   DiySeoChecklistGrid,
   OwnSiteTechnicalAuditRow,
   OnceVsRecurringSeoSplit,
+  SoloSeoDriftTimelineFlow,
+  AutomateFirstOrderFlow,
+  SerpAnswererFactRow,
 };
