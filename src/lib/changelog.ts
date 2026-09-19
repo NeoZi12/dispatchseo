@@ -73,6 +73,14 @@ export type ChangelogEntry = {
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
+    kind: "new",
+    text:
+      "Run Coolify on your server? DispatchSEO now deploys straight from its UI: point a " +
+      "resource at the repo's new docker/coolify/docker-compose.yml template and Coolify " +
+      "generates the secrets and puts the dashboard on your domain with HTTPS - no SSH, no " +
+      ".env file. The docs' new \"A Coolify server\" page walks it click by click.",
+  },
+  {
     kind: "improved",
     text:
       "Fewer banners, especially on self-host. The \"DispatchSEO has been updated\" bar no longer " +
