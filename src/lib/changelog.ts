@@ -81,6 +81,14 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
       "field and the GitHub token step for a Connect WordPress screen. No GitHub account needed.",
   },
   {
+    kind: "fixed",
+    text:
+      "A builder waiting behind one of your unmerged pull requests no longer shows up as a red " +
+      "\"background job is stuck\" alarm. It is now a quiet \"needs your review\" line on Home " +
+      "that names the real cause - the open PR - because merging or closing it is the only fix, " +
+      "and nothing was ever broken.",
+  },
+  {
     kind: "improved",
     text:
       "Fewer banners, especially on self-host. The \"DispatchSEO has been updated\" bar no longer " +
