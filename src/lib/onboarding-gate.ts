@@ -49,17 +49,30 @@ export const hasConfiguredProject = cache(async (): Promise<boolean> => {
     );
   }
   try {
-    const { data, error } = await db()
+    // A WordPress project has no repo and so never gets a pipeline install to
+    // stamp pipeline_installed_at - its "setup is done" is the finale stamp
+    // finishWizard writes, the same rule the cloud branch above applies to c5.
+    // publish_target is a later column (0055) than the rest, so a database
+    // without it retries on the original three rather than failing open.
+    type Row = {
+      github_repo: string | null;
+      pipeline_installed_at: string | null;
+      onboarding_screen: string | null;
+      publish_target?: string | null;
+    };
+    const full = await db()
       .from("projects")
-      .select("github_repo, pipeline_installed_at, onboarding_screen");
+      .select("github_repo, pipeline_installed_at, onboarding_screen, publish_target");
+    const { data, error } = full.error
+      ? await db().from("projects").select("github_repo, pipeline_installed_at, onboarding_screen")
+      : full;
     if (!error && data) {
-      return (data as Array<{
-        github_repo: string | null;
-        pipeline_installed_at: string | null;
-        onboarding_screen: string | null;
-      }>).some(
+      return (data as unknown as Row[]).some(
         (p) =>
           p.pipeline_installed_at != null ||
+          // (setWizardScreen refuses to move a finished WordPress project off
+          // s5, so this stamp is as monotonic as pipeline_installed_at.)
+          (p.publish_target === "wordpress" && p.onboarding_screen === "s5") ||
           (Boolean(p.github_repo) && p.onboarding_screen == null),
       );
     }
@@ -67,7 +80,7 @@ export const hasConfiguredProject = cache(async (): Promise<boolean> => {
     // fall through to the tolerant path
   }
   const all = await listProjects();
-  return all.some((p) => Boolean(p.github_repo));
+  return all.some((p) => Boolean(p.github_repo) || p.publish_target === "wordpress");
 });
 
 // Call after the page's auth check. Pages, not layout, because the

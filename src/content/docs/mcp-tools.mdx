@@ -1303,7 +1303,10 @@ platform's own instance-wide crons too. Takes no parameters. Each entry
 carries ok/failed, error strings, and whether the job is stale. An empty
 result means no job has ever logged a run; an entry with
 `update_available:true` isn't a failure, just an installed pipeline pack
-a version behind. `repeat_failure:true` means the same job also failed
+a version behind. `blocked_on_review:true` isn't a failure either: the
+builder has waited a full schedule window behind an unmerged guide/tool
+PR, and only the owner merging or closing that PR (or `merge_pr`) lets
+it run again. `repeat_failure:true` means the same job also failed
 the real run before this one. The owner's dashboard and the alert emails
 only surface failures that are repeated, stale, or urgent (a broken
 deploy, dead credentials, an empty balance) - a one-off failed run shows

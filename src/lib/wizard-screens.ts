@@ -3,6 +3,9 @@
 // "use client" modules on purpose: value exports from client modules arrive
 // in server components as client references, not real values (the
 // `.includes is not a function` crash of 2026-07-21).
+// s_gh and s_wp are alternatives for the same step (connect where articles
+// get published): a GitHub project pastes a token, a WordPress project
+// connects its site (the self-host twin of c1w). Only one is ever walked.
 export const SELF_HOST_WIZARD_SCREENS = [
   "s0",
   "s1",
@@ -12,6 +15,7 @@ export const SELF_HOST_WIZARD_SCREENS = [
   "s3",
   "s3m",
   "s_gh",
+  "s_wp",
   "s4b",
   "s5",
 ] as const;

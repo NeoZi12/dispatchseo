@@ -199,6 +199,13 @@ export type CronHealth = {
   // "mark as fixed" rows are invisible to this scan on purpose: declaring a
   // job fixed without fixing it must not reset its persistence.
   repeat_failure: boolean;
+  // The job is not running because the OWNER'S open PR is in its way (the
+  // builders refuse to start while a guide/tool PR sits unmerged), and that
+  // has lasted a full staleness window. A to-do, not a stuck job: Home shows
+  // it on the quiet "needs your review" line and `stale` stays false, so it
+  // never reaches the red panel. Optional - only getCronHealth's main map
+  // ever sets it.
+  blocked_on_review?: boolean;
 };
 
 // A quota failure is "come back later", not a broken job: the agent account it
@@ -245,6 +252,20 @@ const MANUAL_REVIEW =
 export function isManualReviewNotice(job: string, errors: readonly string[]): boolean {
   if (baseJobName(job) === "deploy-check") return false;
   return errors.length > 0 && errors.every((e) => MANUAL_REVIEW.test(e));
+}
+
+// The deferral reason the build workflows report when their guard finds an
+// unmerged guide/tool PR ("a tool PR is already open and unmerged"). Retrying
+// cannot cure it and no agent can fix it - only the owner merging or closing
+// that PR does - so a builder deferring on it for weeks is the same "needs a
+// human" to-do as a stranded PR, not the "job is stuck" the staleness clock
+// would otherwise call it (seo-tools--clockedcode, 2026-09-20: one PR the
+// validator rejected on 2026-08-10 blocked every tool build for six weeks and
+// surfaced only as a red "hasn't run since").
+const OPEN_PR_DEFERRAL = /\bPR is already open\b/i;
+
+function isOpenPrDeferral(reasons: readonly string[]): boolean {
+  return reasons.some((e) => OPEN_PR_DEFERRAL.test(e));
 }
 
 export function isUrgentCronFailure(job: string, errors: string[]): boolean {
@@ -620,7 +641,16 @@ export async function reportCronRun(
       return;
     }
 
-    const errors = hadError ? collectErrors(result) : [];
+    // A deferral's reason rides on its claim row. It used to be dropped here,
+    // which left getCronHealth unable to tell "blocked on the owner's open PR"
+    // from "the agent dies instantly every run" - both were just a claim.
+    // Harmless to every reader: a claim row is ok=true, and errors are only
+    // ever read off failed rows (or off this exact case, isOpenPrDeferral).
+    const errors = hadError
+      ? collectErrors(result)
+      : claimedOnly && typeof result.reason === "string"
+        ? [result.reason]
+        : [];
     let emailedAt: string | null = null;
 
     // Update notices log as failed rows (so they surface and mark_cron_fixed
@@ -911,6 +941,24 @@ export async function getCronHealth(projectSlug?: string): Promise<CronHealth[]>
       const okRow = claimed
         ? (data.find((r) => (r.job as string) === job && !r.claimed_only) ?? null)
         : row;
+      // Overdue, but only because the owner's open PR is in the way: a review
+      // to-do, not a stale job (see isOpenPrDeferral).
+      const blockedOnReview = claimed && ageHours > staleLimit && isOpenPrDeferral(errors);
+      if (blockedOnReview && (okRow == null || okRow.ok)) {
+        return {
+          job,
+          ok: true,
+          stale: false,
+          last_run_at: row.created_at as string,
+          errors: [
+            `${errors[0]} - new ${baseJobName(job).includes("tool") ? "tool" : "guide"} builds wait until it is merged or closed`,
+          ],
+          update_available: false,
+          claimed_only: true,
+          repeat_failure: false,
+          blocked_on_review: true,
+        };
+      }
       return {
         job,
         // No real row anywhere in the window: nothing has ever finished, so

@@ -80,11 +80,17 @@ on the hosted version.
 
 ## Step 1 - Add your site
 
-Name, domain, and GitHub repo of **your website** - the site you want
-Google traffic for, not the machine DispatchSEO runs on. The repo is the
-`owner/repo` part of its GitHub URL. Then one question: does your site have
-a blog? "Not sure" is a valid answer - Claude checks the repo and decides
-during setup.
+Name and domain of **your website** - the site you want Google traffic
+for, not the machine DispatchSEO runs on. Then one question that decides
+the rest of the form: **where do finished articles get published?**
+
+- **A GitHub repo** - your site is built from code. A field appears for the
+  repo, which is the `owner/repo` part of its GitHub URL, followed by one
+  more question: does your site have a blog? "Not sure" is a valid answer -
+  Claude checks the repo and decides during setup.
+- **WordPress** - WordPress you host yourself (not wordpress.com). That's
+  the whole answer: no repo field, no GitHub account needed. You connect the
+  site itself on step 6.
 
 ## Step 2 - Connect Google Search Console
 
@@ -155,6 +161,9 @@ final answer.
 
 ## Step 6 - Connect GitHub
 
+This is step 6 if you picked **a GitHub repo** on step 1. WordPress sites
+get [Connect WordPress](#step-6-connect-wordpress) here instead.
+
 Claude ships pages as GitHub pull requests, and this step gives DispatchSEO a
 GitHub token so it can work with them. The wizard links you to a pre-filled
 GitHub page, you press Generate, paste the token, and it's verified against
@@ -181,6 +190,24 @@ actually remember, or choose **No expiration** and treat the token like the
 password it is. When it does expire, nothing breaks loudly - you just come
 back to this step and paste a new one.
 
+## Step 6 - Connect WordPress
+
+This is step 6 if you picked **WordPress** on step 1. Three fields: your
+site's address, the username you log in to WordPress with, and an
+**application password**. That last one is not your login password - it's
+a separate one WordPress makes for you: in your WordPress admin open
+**Users**, then **Profile**, scroll to **Application Passwords**, type
+`DispatchSEO` as the name and press **Add New Application Password**. Copy
+what it shows and paste it into the wizard.
+
+The wizard checks it against your site on the spot and tells you what's
+wrong if anything is - most often that the user is a Subscriber and needs
+to be an Editor or Administrator to publish. Nothing gets installed on
+your site, and the password is stored encrypted in your own database.
+
+You can skip this and connect later from **Settings**. Until you do,
+finished articles wait on the **Drafts** screen rather than getting lost.
+
 ## Step 7 - The honest timeline
 
 A month-by-month picture of what SEO actually looks like, so a quiet first
@@ -188,7 +215,24 @@ month reads as "on schedule" instead of "broken". Just read it.
 
 ## The finish line: two pastes
 
-The last screen gives you two things to copy:
+**WordPress sites** get a shorter version of this screen, because there's
+no repo to install anything into:
+
+1. **A terminal command** that connects your coding agent to this project.
+   Make an empty folder for your SEO work and run it there - the connection
+   belongs to that folder, so always open your agent in it.
+2. **A chat message** to paste into the agent. It learns your site and
+   fills your queue with article ideas.
+3. **A second chat message** for whenever you want an article written:
+   approve ideas on the Queue screen, paste it, and the finished article is
+   checked, formatted and posted to your WordPress.
+
+Only your coding agent needs to be installed for these - not the GitHub
+CLI. One difference to know about: a WordPress site has no automatic
+overnight builds. Articles get written when you ask your agent for one, so
+the Docker "automatic builds" item below doesn't appear.
+
+The rest of this section is the **GitHub repo** version. The last screen gives you two things to copy:
 
 1. **A terminal command** that connects your coding agent to this project.
    Run it inside your site's repo folder.

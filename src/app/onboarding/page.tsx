@@ -51,7 +51,13 @@ async function buildResume(): Promise<WizardResume | null> {
   // start-at-step-1, not an error (and getActiveProject would redirect
   // right back here, looping).
   const project = await getActiveProjectOrNull();
-  if (!project?.github_repo) return null;
+  if (!project) return null;
+  // A WordPress project has no repo by design, so "no repo" only means
+  // "nothing to resume" for a GitHub one. Returning null here for WordPress
+  // restarted the wizard at step 1, where re-submitting the same domain
+  // answers "a project for that domain already exists" - a loop with no exit.
+  const wordpress = publishTarget(project) === "wordpress";
+  if (!project.github_repo && !wordpress) return null;
   const mcpToken = await fetchProjectToken(project.id);
   if (!mcpToken) return null;
   // Tolerant read: pre-0030 databases lack the column; resume is a nicety.
@@ -66,13 +72,30 @@ async function buildResume(): Promise<WizardResume | null> {
   } catch {
     savedScreen = null;
   }
-  const screen =
+  let screen =
     savedScreen && (SELF_HOST_WIZARD_SCREENS as readonly string[]).includes(savedScreen)
       ? (savedScreen as WizardResume["screen"])
       : "s5";
+  // Never resume INTO step 1 - the project exists; land on the next step.
+  if (screen === "s0") screen = "s1";
+  // s_gh and s_wp are the two branches' versions of one step. A screen saved
+  // from the other branch (the target was changed from Settings mid-wizard) is
+  // corrected to this branch's - same correction buildCloudResume makes for
+  // c1/c1w.
+  if (screen === "s_gh" && wordpress) screen = "s_wp";
+  if (screen === "s_wp" && !wordpress) screen = "s_gh";
+  const wp = connectionSummary(project);
   return {
-    // Never resume INTO step 1 - the project exists; land on the next step.
-    screen: screen === "s0" ? "s1" : screen,
+    screen,
+    publishTarget: wordpress ? "wordpress" : "github",
+    wp: {
+      connected: wp.connected,
+      url: wp.url,
+      username: wp.username,
+      seoPlugin: wp.seo_plugin,
+      canPublish: Boolean(wp.capabilities?.publish_posts),
+      canUploadMedia: Boolean(wp.capabilities?.upload_files),
+    },
     created: {
       slug: project.slug,
       name: project.name,

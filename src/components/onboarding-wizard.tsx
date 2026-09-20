@@ -9,6 +9,7 @@ import { ShellCommandTabs } from "./shell-command-tabs";
 import { PixelDispatcher } from "./pixel-dispatcher";
 import { FirstRunStatus } from "@/components/first-run-status";
 import { BuilderTokenConnect } from "@/components/builder-token-connect";
+import { WordPressConnect, type WordPressStatus } from "@/components/wordpress-connect";
 import {
   chooseGscOnly,
   connectBuilderToken,
@@ -16,6 +17,7 @@ import {
   connectGithubToken,
   connectGscServiceAccount,
   connectSerpapi,
+  finishWizard,
   setAgent,
   setProjectMode,
   setWizardScreen,
@@ -27,7 +29,7 @@ import {
   type ConnectGithubState,
   type ConnectGscState,
   type ConnectSerpapiState,
-  type WizardCreateState,
+  type CloudWizardCreateState,
 } from "@/app/actions";
 import type { GscAccessProbe } from "@/lib/gsc";
 import type { SelfHostWizardScreen as WizardScreen } from "@/lib/wizard-screens";
@@ -57,6 +59,7 @@ const RAIL: Record<Screen, number> = {
   s3: 3,
   s3m: 4,
   s_gh: 5,
+  s_wp: 5,
   s4b: 6,
   s5: 7,
 };
@@ -72,6 +75,7 @@ const META: Record<Exclude<Screen, "s5">, { name: string; time: string }> = {
   s3: { name: "Coding agent", time: "one choice" },
   s3m: { name: "Publish mode", time: "one choice" },
   s_gh: { name: "Connect GitHub", time: "about 2 minutes" },
+  s_wp: { name: "Connect WordPress", time: "about 2 minutes" },
   s4b: { name: "What happens next", time: "just read" },
 };
 
@@ -90,6 +94,17 @@ const META: Record<Exclude<Screen, "s5">, { name: string; time: string }> = {
 // Windows e2e died on exactly that.
 function installCommand(slug: string): string {
   return `Call the ${mcpServerName(slug)} MCP tool get_instructions with workflow install and follow it exactly.`;
+}
+
+// The WordPress branch's two pastes. No install exists there - a pipeline is
+// GitHub workflows committed into a repo, and this site has none - so the agent
+// is pointed at the repo-less workflows instead (the same two the cloud
+// wizard's no-repo finale hands out). Server named exactly, same reason as above.
+function setupChatCommand(slug: string): string {
+  return `Call the ${mcpServerName(slug)} MCP tool get_instructions with workflow setup-chat and follow it exactly.`;
+}
+function writeGuideCommand(slug: string): string {
+  return `Call the ${mcpServerName(slug)} MCP tool get_instructions with workflow write-guide-chat and write my next approved article.`;
 }
 
 // The honest SEO timeline, month by month - the same stage copy the Home
@@ -153,6 +168,10 @@ export type WizardResume = {
   choice: "paid" | "free" | null;
   serpConnected: boolean;
   agent: AgentId;
+  // Where finished articles go. Decides step 6 (s_gh or s_wp) and which
+  // finale renders; "github" for every project created before the choice.
+  publishTarget: "github" | "wordpress";
+  wp: WordPressStatus;
 };
 
 // The one-line "who pays" subtitle under each agent's name on the picker.
@@ -342,6 +361,27 @@ export function OnboardingWizard({
     mcpToken: string;
   } | null>(resume?.created ?? null);
   const [choice, setChoice] = useState<"paid" | "free" | null>(resume?.choice ?? null);
+  // GitHub or WordPress - asked on step 1, fixed once the project exists. The
+  // two differ in exactly three places: step 1's fields, step 6 (token vs
+  // WordPress password), and the finale (a pipeline install vs two chat
+  // pastes, since a site with no repo has nowhere to install workflows).
+  const [publish, setPublish] = useState<"github" | "wordpress">(
+    resume?.publishTarget ?? "github",
+  );
+  const wordpress = publish === "wordpress";
+  // Same split as the cloud wizard's c1w: `status` stays the server's answer
+  // (so the form keeps showing its own success line, which knows the details),
+  // and the in-page flag only enables Continue without a reload.
+  const [wpJustConnected, setWpJustConnected] = useState(false);
+  const wpConnected = (resume?.wp.connected ?? false) || wpJustConnected;
+  const wpStatus: WordPressStatus = resume?.wp ?? {
+    connected: false,
+    url: null,
+    username: null,
+    seoPlugin: null,
+    canPublish: false,
+    canUploadMedia: false,
+  };
   const [serpConnected, setSerpConnected] = useState(resume?.serpConnected ?? false);
   // The coding agent, picked on the agent step and echoed on the finale.
   // Persisted the moment it is made (fire-and-forget), same as the cloud
@@ -404,7 +444,10 @@ export function OnboardingWizard({
   const isLocalInstance = /^https?:\/\/(localhost|127\.|0\.0\.0\.0)/.test(origin);
 
   // Step 1: create the project.
-  const [createState, createAction, createPending] = useActionState<WizardCreateState, FormData>(
+  const [createState, createAction, createPending] = useActionState<
+    CloudWizardCreateState,
+    FormData
+  >(
     wizardCreateProject,
     null,
   );
@@ -416,6 +459,7 @@ export function OnboardingWizard({
         domain: createState.domain,
         mcpToken: createState.mcpToken,
       });
+      setPublish(createState.publishTarget === "wordpress" ? "wordpress" : "github");
       setScreen("s1");
     }
   }, [createState]);
@@ -460,7 +504,7 @@ export function OnboardingWizard({
   function confirmMode() {
     startMode(async () => {
       await setProjectMode(modeChoice, created?.slug ?? "");
-      setScreen("s_gh");
+      setScreen(wordpress ? "s_wp" : "s_gh");
     });
   }
 
@@ -484,7 +528,9 @@ export function OnboardingWizard({
     buildsActive: boolean;
   } | null>(null);
   useEffect(() => {
-    if (screen !== "s5" || !created) return;
+    // Not on the WordPress finale: both things this poll feeds (the install
+    // collapse, the builder state) are switched off there.
+    if (screen !== "s5" || !created || wordpress) return;
     let stopped = false;
     const slug = created.slug;
     async function poll() {
@@ -517,8 +563,23 @@ export function OnboardingWizard({
       stopped = true;
       clearInterval(id);
     };
-  }, [screen, created]);
-  const agentWorking = finaleStatus?.agentWorking ?? false;
+  }, [screen, created, wordpress]);
+  // Install progress only exists on the GitHub branch - the WordPress finale
+  // never collapses into "your agent is working", there is no install to watch.
+  const agentWorking = !wordpress && (finaleStatus?.agentWorking ?? false);
+  // The WordPress finale's dashboard unlock. A GitHub project unlocks when the
+  // agent's install stamps pipeline_installed_at; a WordPress project has no
+  // install, so reaching this screen IS being set up - stamped server-side and
+  // awaited, because setScreen's own write is fire-and-forget and losing it
+  // would bounce this owner back here from every dashboard page.
+  const [finishError, setFinishError] = useState<string | null>(null);
+  useEffect(() => {
+    if (screen !== "s5" || !wordpress || !created?.slug) return;
+    void finishWizard(created.slug).then(
+      (r) => setFinishError("error" in r ? r.error : null),
+      () => setFinishError("Could not finish setup - reload this page to retry."),
+    );
+  }, [screen, wordpress, created?.slug]);
   const buildsOn = Boolean(finaleStatus?.buildsActive) || Boolean(builderState && "ok" in builderState);
   useEffect(() => {
     if (ghState && "ok" in ghState) setScreen("s4b");
@@ -625,6 +686,45 @@ export function OnboardingWizard({
                 where DispatchSEO is hosted.
               </span>
             </label>
+            {/* Asked before the repo field because it decides whether there IS
+                one. The old form had only the repo field, required, so a
+                WordPress owner - whom the README and the install guide both
+                invite - could not get past this screen at all. */}
+            <div className="space-y-1.5">
+              <span className="block text-base font-medium text-neutral-200">
+                Where do finished articles get published?
+              </span>
+              <div className="grid grid-cols-2 gap-1.5">
+                {(
+                  [
+                    { v: "github", label: "A GitHub repo" },
+                    { v: "wordpress", label: "WordPress" },
+                  ] as const
+                ).map((o) => (
+                  <button
+                    key={o.v}
+                    type="button"
+                    aria-pressed={publish === o.v}
+                    onClick={() => setPublish(o.v)}
+                    className={`cursor-pointer rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                      publish === o.v
+                        ? "border-violet-500 bg-[#191521] text-neutral-100"
+                        : "border-neutral-700 text-neutral-400 hover:border-neutral-500"
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-sm text-neutral-500">
+                {wordpress
+                  ? "WordPress you host yourself (not wordpress.com). Articles post straight into it - you connect it on step 6 with a password WordPress makes for you. No GitHub needed."
+                  : "Your site is built from code in a GitHub repo. Articles arrive there as pull requests you review."}
+              </p>
+            </div>
+            <input type="hidden" name="publish_target" value={publish} />
+            {wordpress ? null : (
+            <>
             <label className="block space-y-1.5">
               <span className="text-base font-medium text-neutral-200">Your site&apos;s GitHub repo</span>
               <input name="repo" required placeholder="owner/repo" autoComplete="off" className={inputClass} />
@@ -688,7 +788,11 @@ export function OnboardingWizard({
                     : "Claude checks the repo during setup and decides."}
               </p>
             </div>
-            <input type="hidden" name="content_mode" value={contentMode} />
+            </>
+            )}
+            {/* "detect" for WordPress: the blog question is about a repo's
+                content folder, and WordPress always has a posts section. */}
+            <input type="hidden" name="content_mode" value={wordpress ? "detect" : contentMode} />
             {/* Publishing stays human-approved by default; Settings can flip it later. */}
             <input type="hidden" name="mode" value="semi" />
             <div className="flex justify-end pt-1">
@@ -1130,8 +1234,8 @@ export function OnboardingWizard({
                 disclosure (owner call, 2026-08-02). Still changeable on the
                 finale - this is a default, not a commitment. */}
             <p className="mb-1 text-base font-medium text-neutral-200">
-              Both do the same job - research, writing, pull requests. The difference is who
-              bills you.
+              Both do the same job - research, writing,{" "}
+              {wordpress ? "publishing" : "pull requests"}. The difference is who bills you.
             </p>
             <p className="mb-2.5 text-sm text-neutral-400">
               Nothing is billed by DispatchSEO either way.
@@ -1140,9 +1244,9 @@ export function OnboardingWizard({
             <p className="mt-3 text-sm text-neutral-400">
               That&apos;s the whole step. The last screen gives you two pastes, already adapted
               to {agent.displayName} - they connect it to this project and set everything up,
-              checking each value as it goes. Your agent researches keywords, writes the
-              guides, and opens the pull requests; this dashboard is where you watch and
-              approve.
+              checking each value as it goes. Your agent researches keywords and writes the
+              guides{wordpress ? "" : ", and opens the pull requests"}; this dashboard is where
+              you watch and approve.
             </p>
           </div>
           <div className="mt-5 flex items-center justify-between">
@@ -1199,7 +1303,8 @@ export function OnboardingWizard({
               <h3 className="text-[15px] font-semibold">Semi-automatic</h3>
               <p className="mt-1 text-sm text-neutral-400">
                 Claude researches and builds on its own, but nothing goes live without you. You
-                approve the ideas and click Merge on finished pages, right from the dashboard.
+                approve the ideas and {wordpress ? "approve each finished article" : "click Merge on finished pages"},
+                right from the dashboard.
               </p>
               <p className="mt-2 text-sm text-neutral-400">
                 A few minutes of your attention a week.
@@ -1374,6 +1479,64 @@ export function OnboardingWizard({
         </section>
       ) : null}
 
+      {/* ============ STEP 6 (WordPress) · Connect WordPress ============ */}
+      {screen === "s_wp" ? (
+        <section>
+          <StepIcon>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4 w-4" aria-hidden>
+              <circle cx="12" cy="12" r="10" />
+              <path d="M5 9h14" strokeLinecap="round" />
+              <path d="m8.5 9 3 8 3-8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </StepIcon>
+          <h2 className="text-2xl font-semibold tracking-tight">Connect your WordPress site</h2>
+          <p className="mb-2.5 text-base text-neutral-400">
+            Finished articles post straight into your WordPress - no plugin, nothing to
+            install. You need the username you log in with and an application password, which
+            WordPress makes for you in about a minute.
+          </p>
+          <StepHelp href="/docs/setup-wizard#step-6-connect-wordpress" label="Walk me through this" />
+          <div className="rounded-xl bg-neutral-900 p-4">
+            {/* The same component Settings and the cloud wizard render, so the
+                instructions and the live capability check exist in one place. */}
+            <WordPressConnect
+              status={wpStatus}
+              slug={created?.slug}
+              onConnected={() => setWpJustConnected(true)}
+            />
+          </div>
+          <div className="mt-5 flex items-center justify-between gap-4">
+            <button
+              type="button"
+              onClick={() => setScreen("s3m")}
+              className="cursor-pointer text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300"
+            >
+              ← Back
+            </button>
+            <div className="flex items-center gap-2.5">
+              {/* Skippable, same as the GitHub token: someone without their
+                  WordPress password to hand must not be trapped here, and the
+                  drafts wait rather than vanish. */}
+              <button
+                type="button"
+                onClick={() => setScreen("s4b")}
+                className="cursor-pointer px-2 text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300"
+              >
+                Skip - I&apos;ll connect it from Settings
+              </button>
+              <button
+                type="button"
+                disabled={!wpConnected}
+                onClick={() => setScreen("s4b")}
+                className="cursor-pointer rounded-lg bg-violet-500 px-5 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       {/* ============ STEP 7 · What happens next ============ */}
       {screen === "s4b" ? (
         <section>
@@ -1409,7 +1572,7 @@ export function OnboardingWizard({
           <div className="mt-5 flex items-center justify-between">
             <button
               type="button"
-              onClick={() => setScreen("s_gh")}
+              onClick={() => setScreen(wordpress ? "s_wp" : "s_gh")}
               className="cursor-pointer text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300"
             >
               ← Back
@@ -1443,7 +1606,9 @@ export function OnboardingWizard({
               never sit above a command someone still has to run. */}
           {agentWorking ? null : (
             <p className="mb-2.5 text-base text-neutral-400">
-              Two pastes and your coding agent takes care of the rest.
+              {wordpress
+                ? "Your site is set up. Nothing installs itself here - the work starts when you ask your coding agent for it, and the pastes are right below."
+                : "Two pastes and your coding agent takes care of the rest."}
             </p>
           )}
 
@@ -1451,7 +1616,106 @@ export function OnboardingWizard({
               one - so it lands under whichever of the two intros rendered. */}
           <StepHelp href={agent.installDocsPath} label="Walk me through these two pastes" />
 
-          {agentWorking ? (
+          {wordpress ? (
+            <>
+              {finishError ? <ErrorLine msg={finishError} /> : null}
+              <div className="mb-5 space-y-2">
+                <p className="text-sm font-medium text-neutral-200">Your coding agent</p>
+                <AgentPicker value={agentChoice} onPick={pickAgent} saving={agentSaving} />
+              </div>
+
+              <PrereqCallout
+                title="One thing on your computer first"
+                body={
+                  <>
+                    This needs{" "}
+                    <b className="font-medium text-neutral-200">{agent.displayName}</b> installed.
+                    Don&apos;t have it yet? The guide installs it, start to finish, in about 5
+                    minutes.
+                  </>
+                }
+                href={agent.installDocsPath}
+                cta={`Install ${agent.displayName}`}
+              />
+
+              <div className="mt-5 space-y-2">
+                <p className="text-lg font-semibold tracking-tight text-neutral-100">
+                  1. Paste this in a terminal
+                </p>
+                <p className="text-sm text-neutral-400">
+                  Connects {agent.displayName} to this project. Make an empty folder for your SEO
+                  work and run it there - the connection belongs to the folder it is run in, so
+                  always open {agent.displayName} in that same folder.
+                </p>
+                {/* mcpAdd*, not connect.*: the full connect command also
+                    pre-grants the GitHub CLI, which this branch never uses. */}
+                {agent.connect.mcpAddBash("_", "_", "_") ===
+                agent.connect.mcpAddPowershell("_", "_", "_") ? (
+                  <CopyBox
+                    text={created ? agent.connect.mcpAddBash(created.slug, origin, created.mcpToken) : ""}
+                  />
+                ) : (
+                  <ShellCommandTabs
+                    bash={created ? agent.connect.mcpAddBash(created.slug, origin, created.mcpToken) : ""}
+                    powershell={
+                      created
+                        ? agent.connect.mcpAddPowershell(created.slug, origin, created.mcpToken)
+                        : ""
+                    }
+                  />
+                )}
+                <p className="text-[13px] text-neutral-500">
+                  <b className="font-semibold text-neutral-300">
+                    Restart {agent.displayName} after pasting this.
+                  </b>{" "}
+                  Connections load only at startup, so a session that was already open
+                  can&apos;t see the one you just added.
+                </p>
+              </div>
+
+              <div className="mt-5 space-y-2">
+                <p className="text-lg font-semibold tracking-tight text-neutral-100">
+                  2. Paste this into {agent.displayName}
+                </p>
+                <p className="text-sm text-neutral-400">
+                  Open {agent.displayName} in that folder (type{" "}
+                  <b className="font-medium text-neutral-100">{agent.cli}</b> in the terminal)
+                  and paste. It learns your site and fills your queue with article ideas:
+                </p>
+                <CopyBox emphasis text={created ? setupChatCommand(created.slug) : ""} />
+              </div>
+
+              <div className="mt-5 space-y-2">
+                <p className="text-lg font-semibold tracking-tight text-neutral-100">
+                  3. Whenever you want an article written
+                </p>
+                <p className="text-sm text-neutral-400">
+                  Approve ideas on the Queue screen first, then paste this. The finished article
+                  is checked, formatted and posted to your WordPress from here:
+                </p>
+                <CopyBox text={created ? writeGuideCommand(created.slug) : ""} />
+              </div>
+
+              {/* Said here rather than left to be discovered: an article that
+                  finishes with nowhere to go is the most confusing outcome
+                  this product has. */}
+              {wpConnected ? null : (
+                <p className="mt-4 rounded-lg border border-amber-500/25 bg-amber-500/[0.07] px-3.5 py-3 text-sm text-amber-100/90">
+                  WordPress isn&apos;t connected yet - finished articles will wait on the Drafts
+                  screen until you connect it from Settings.
+                </p>
+              )}
+
+              <div className="mt-4 flex justify-center">
+                <a
+                  href="/dashboard"
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-900 px-5 py-2.5 text-sm font-semibold text-neutral-100 transition-colors hover:border-violet-500/50 hover:bg-neutral-800"
+                >
+                  Explore your dashboard →
+                </a>
+              </div>
+            </>
+          ) : agentWorking ? (
             // Steps 1 & 2 already did their job - tuck them into a one-click
             // details so a dropped session can still recover the commands.
             <details className="group rounded-xl bg-neutral-900 px-4 py-3">
@@ -1589,7 +1853,10 @@ export function OnboardingWizard({
             </>
           )}
 
-          {isDocker ? (
+          {/* The bundled builder clones a repo and opens PRs - its job feed skips a
+              project without one, so offering "automatic builds" here would
+              take a token for something that never runs. */}
+          {isDocker && !wordpress ? (
             buildsOn ? (
               <div className="mt-4 rounded-xl border border-emerald-500/25 bg-emerald-500/[0.06] px-4 py-3.5 text-sm text-neutral-300">
                 <b className="font-semibold text-emerald-400">Automatic builds are on.</b> Your
@@ -1678,7 +1945,14 @@ export function OnboardingWizard({
                     Console + Google autocomplete
                   </>
                 ),
-                contentMode === "create" ? (
+                wordpress ? (
+                  <>
+                    <b className="font-medium text-neutral-200">Publishing:</b>{" "}
+                    {wpConnected
+                      ? "articles post straight into your WordPress"
+                      : "WordPress, not connected yet - articles wait on Drafts"}
+                  </>
+                ) : contentMode === "create" ? (
                   <>
                     <b className="font-medium text-neutral-200">Content home:</b> Claude adds a blog
                     section to your repo in its first setup PR
@@ -1694,10 +1968,17 @@ export function OnboardingWizard({
                     where content lives during setup
                   </>
                 ),
-                <>
-                  <b className="font-medium text-neutral-200">Claude Code</b> connects with the
-                  setup command above - one paste does connection, secrets, and the pipeline
-                </>,
+                wordpress ? (
+                  <>
+                    <b className="font-medium text-neutral-200">{agent.displayName}</b> connects
+                    with the command above and works whenever you ask it to
+                  </>
+                ) : (
+                  <>
+                    <b className="font-medium text-neutral-200">Claude Code</b> connects with the
+                    setup command above - one paste does connection, secrets, and the pipeline
+                  </>
+                ),
                 modeChoice === "auto" ? (
                   <>
                     <b className="font-medium text-neutral-200">Publish mode:</b> Automatic, pages
@@ -1706,7 +1987,7 @@ export function OnboardingWizard({
                 ) : (
                   <>
                     <b className="font-medium text-neutral-200">Publish mode:</b> Semi-automatic,
-                    you approve ideas and merges
+                    you approve ideas and {wordpress ? "finished articles" : "merges"}
                   </>
                 ),
               ].map((item, i) => (
@@ -1729,7 +2010,8 @@ export function OnboardingWizard({
               ))}
             </ul>
           </details>
-          {created ? <FirstRunStatus slug={created.slug} /> : null}
+          {/* The install checklist - nothing to tick off without an install. */}
+          {created && !wordpress ? <FirstRunStatus slug={created.slug} /> : null}
 
           {agentWorking ? (
             <div className="mt-5 rounded-xl border border-violet-500/30 bg-violet-500/[0.07] px-5 py-5">

@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { isCloudMode } from "./cloud";
 import { tryEncryptSecret, decryptSecret } from "./crypto";
 import { connectWordPress, type WordPressCredentials } from "./wordpress";
 import { enqueue } from "./jobs";
@@ -160,10 +161,21 @@ export async function credentialsFor(project: Project): Promise<WordPressCredent
  *  revoke an application password from outside, and pretending otherwise would
  *  be a lie. The owner is told to revoke it in WordPress themselves. */
 export async function disconnectWordPress(projectId: string): Promise<void> {
+  // Self-host with no repo: stay a (now unconnected) WordPress project. Falling
+  // back to "github" there makes a GitHub project with no repo, which the
+  // self-host wizard cannot resume or finish - it has no connect-a-repo step
+  // after creation the way cloud's c1 does. Drafts wait; reconnecting fixes it.
+  const { data } = await db()
+    .from("projects")
+    .select("github_repo")
+    .eq("id", projectId)
+    .maybeSingle();
+  const repo = (data as { github_repo?: string | null } | null)?.github_repo;
+  const keepWordPress = !isCloudMode() && !repo;
   await db()
     .from("projects")
     .update({
-      publish_target: "github",
+      publish_target: keepWordPress ? "wordpress" : "github",
       wp_url: null,
       wp_username: null,
       wp_app_password: null,

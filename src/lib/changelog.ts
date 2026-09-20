@@ -73,6 +73,14 @@ export type ChangelogEntry = {
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
+    kind: "fixed",
+    text:
+      "Self-hosted installs can now set up a WordPress site. The setup wizard's first step only " +
+      "offered a GitHub repo and refused to continue without one, even though WordPress is " +
+      "supported - it now asks where your articles go, and picking WordPress swaps the repo " +
+      "field and the GitHub token step for a Connect WordPress screen. No GitHub account needed.",
+  },
+  {
     kind: "improved",
     text:
       "Fewer banners, especially on self-host. The \"DispatchSEO has been updated\" bar no longer " +

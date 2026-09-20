@@ -445,7 +445,7 @@ export default async function Home() {
   // no App, so there it stays: applying the pack is the owner's job.
   const jobIssues = cronHealth
     .filter((h) => !isCloudMode() || h.job.includes(`--${project.slug}`))
-    .filter((h) => !h.ok || h.stale);
+    .filter((h) => !h.ok || h.stale || h.blocked_on_review);
   const updateNotices = isCloudMode() ? [] : jobIssues.filter((h) => h.update_available);
 
   // Agent-quota waits split off the same way, and for the same reason: the
@@ -464,8 +464,12 @@ export default async function Home() {
   // "Needs a human" outcomes - a tool PR the validator gave up on, a green PR
   // auto-merge couldn't land. A to-do for the owner, not a failing job: one
   // quiet line with a way out, never the red panel (see isManualReviewNotice).
+  // blocked_on_review is the same to-do seen from the other side: a builder
+  // that has waited a whole window behind the owner's unmerged PR.
   const manualReviews = jobIssues.filter(
-    (h) => !h.update_available && !h.ok && !h.stale && isManualReviewNotice(h.job, h.errors),
+    (h) =>
+      h.blocked_on_review ||
+      (!h.update_available && !h.ok && !h.stale && isManualReviewNotice(h.job, h.errors)),
   );
   // The pack version the update notice is about, from the report's own text
   // ("installed abc, current def"): the snooze key, so a dismissed notice
@@ -654,7 +658,15 @@ export default async function Home() {
   const skippedPowerup = (key: string) => project.powerups_skipped.includes(key);
   // Cloud never shows the PAT card - the GitHub App carries merge rights;
   // its loss has its own reconnect card below.
-  const needsMergeToken = !isCloudMode() && !mergeReady && !skippedPowerup("merge");
+  // A WordPress project has no repo, so every card about one - the merge
+  // token, the pipeline install, the bundled builder - is an instruction it
+  // cannot follow. Its own card (needsWordPress, below) is what it gets.
+  const isWordPress = publishTarget(project) === "wordpress";
+  // Both modes: the self-host wizard's Connect WordPress step is skippable
+  // too, and without this card nothing anywhere says the site is unconnected.
+  const needsWordPress = isWordPress && !project.wp_app_password;
+  const needsMergeToken =
+    !isCloudMode() && !isWordPress && !mergeReady && !skippedPowerup("merge");
   // The App was uninstalled (or the repo left the installation) while a
   // pipeline exists: customer workflows keep running, but approvals,
   // merges, and dispatches from here silently lost their credential.
@@ -700,7 +712,8 @@ export default async function Home() {
   // Same bug class as e23df8f (see the self-host-reuses-default-project-id
   // note): DEFAULT_PROJECT_ID does not mean "the operator's env-backed site".
   const autoBuildsGuides = effectiveAutomations(project).auto_build_guides;
-  const needsPipeline = guidesLoggedCount === 0 && !hasShipped && !skippedPowerup("pipeline");
+  const needsPipeline =
+    !isWordPress && guidesLoggedCount === 0 && !hasShipped && !skippedPowerup("pipeline");
   const pipelineTodo = needsPipeline && !pipelineInstalled;
   // Pipeline is in, nothing has landed yet. In auto mode the daily builder gets
   // there on its own, so the honest card is "waiting"; in semi a human has to
@@ -741,7 +754,8 @@ export default async function Home() {
   // built or checked in - never while pages demonstrably ship another way
   // (the classic "unlocked the dashboard, forgot the token" hole is real,
   // but accusing a working install is worse).
-  const needsBuilder = Boolean(process.env.POSTGREST_URL) && !(await buildsActive());
+  const needsBuilder =
+    Boolean(process.env.POSTGREST_URL) && !isWordPress && !(await buildsActive());
   // Auto mode publishes without a human, so nobody opens this dashboard on a
   // normal day - the failure email is the only passive signal. Self-host only:
   // cloud sends alerts from our own Resend with zero config. The card reads
@@ -795,6 +809,7 @@ export default async function Home() {
   const hasSetupCards =
     !isCloudMode() &&
     (needsMergeToken ||
+      needsWordPress ||
       needsDataforseo ||
       needsUsageLimit ||
       needsFunding ||
@@ -824,8 +839,6 @@ export default async function Home() {
   // wants to set up on their laptop later), so this is where the skip is
   // remembered - without it the owner is left with a dashboard that looks
   // finished and an article that never appears.
-  const needsWordPress =
-    isCloudMode() && publishTarget(project) === "wordpress" && !project.wp_app_password;
   // Only for an owner who TOLD us their AI is a chat app. A null ai_choice is
   // every project created before c0 asked, and those run a coding agent - the
   // card would be an instruction to connect something they do not use.
@@ -837,6 +850,26 @@ export default async function Home() {
   const hasCloudSetupCards =
     isCloudMode() &&
     (needsAppReconnect || (needsGsc && !gscWaiting) || needsWordPress || needsChatConnect);
+  // One element, rendered by whichever mode's setup section is on screen.
+  const wordPressCard = needsWordPress ? (
+    <SetupStep
+      title="Connect your WordPress site"
+      why="Finished articles are waiting for somewhere to go. Connect WordPress from Settings and they publish on their own."
+      steps={[
+        <>
+          <Link
+            href="/settings"
+            className="text-sky-400 underline underline-offset-2 hover:text-sky-300"
+          >
+            Open Settings
+          </Link>{" "}
+          - the WordPress section walks through making an application password.
+        </>,
+        "Anything that finished while there was nowhere to publish is on the Drafts screen, with a Publish now button.",
+      ]}
+      closing="This card disappears on its own the moment the connection is saved."
+    />
+  ) : null;
 
   // The dispatcher's briefing - Home's opening surface, where the agent reports
   // in the first person instead of the page narrating about it. Built from the
@@ -932,10 +965,6 @@ export default async function Home() {
                   alert over MCP once the fix is verified.
                 </p>
               </div>
-              <p className="mt-2 text-xs text-red-300/70">
-                Full detail in your Vercel function logs (daily-ranks) and GitHub Actions runs
-                (hourly-gsc, deploy-check, the seo-* workflows, and the secrets canary).
-              </p>
             </>
           ) : null}
         </DispatcherBriefing>
@@ -1180,25 +1209,7 @@ export default async function Home() {
               closing="This card disappears on its own once the first day of search data arrives."
             />
           ) : null}
-          {needsWordPress ? (
-            <SetupStep
-              title="Connect your WordPress site"
-              why="Finished articles are waiting for somewhere to go. Connect WordPress from Settings and they publish on their own."
-              steps={[
-                <>
-                  <Link
-                    href="/settings"
-                    className="text-sky-400 underline underline-offset-2 hover:text-sky-300"
-                  >
-                    Open Settings
-                  </Link>{" "}
-                  - the WordPress section walks through making an application password.
-                </>,
-                "Anything that finished while there was nowhere to publish is on the Drafts screen, with a Publish now button.",
-              ]}
-              closing="This card disappears on its own the moment the connection is saved."
-            />
-          ) : null}
+          {wordPressCard}
           {needsChatConnect ? (
             <SetupStep
               title="Connect your Claude app"
@@ -1229,6 +1240,7 @@ export default async function Home() {
           Initial setup
         </SectionTitle>
         <div className="grid gap-4 [&>*]:min-w-0 md:grid-cols-2 xl:grid-cols-3">
+          {wordPressCard}
           {needsDataforseo ? (
             <SetupStep
               title="Connect DataForSEO"

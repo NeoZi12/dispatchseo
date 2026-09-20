@@ -3197,7 +3197,7 @@ const mcpHandler = createMcpHandler(
           "smoke test. Empty means no job has ever logged a run (fresh install). " +
           "An entry with update_available=true is NOT a failure: it means the " +
           "repo's installed pipeline pack is a version behind this backend " +
-          "(informational - re-running the install workflow applies it).",
+          "(informational - re-running the install workflow applies it). An entry with blocked_on_review=true is not a failure either: the builder has waited a full schedule window behind an unmerged guide/tool PR - merging or closing that PR is the only thing that lets it run again, so tell the owner which PR rather than re-running the job.",
         inputSchema: {},
       },
       async () => {

@@ -34,6 +34,7 @@ import {
   getProjectBySlug,
   modeForFlags,
   type AutomationFlags,
+  publishTarget,
 } from "@/lib/projects";
 import { markCronFixed } from "@/lib/cron-alerts";
 import {
@@ -810,6 +811,17 @@ export async function setWizardScreen(screenId: string) {
   await assertAuthed();
   if (!/^[a-z0-9_]{1,20}$/.test(screenId)) return;
   const project = await getActiveProject();
+  // A self-host WordPress project's dashboard unlock IS its "s5" stamp (it has
+  // no pipeline install to stamp instead - onboarding-gate.ts), so once
+  // written it must not be walked back: reopening the wizard and pressing Back
+  // would otherwise re-lock every dashboard page.
+  if (
+    !isCloudMode() &&
+    publishTarget(project) === "wordpress" &&
+    project.onboarding_screen === "s5"
+  ) {
+    return;
+  }
   await db().from("projects").update({ onboarding_screen: screenId }).eq("id", project.id);
 }
 
@@ -1298,6 +1310,10 @@ async function createProjectCore(
   // installation behind it, pointing at a repository nobody verified this
   // tenant owns. Ignored, not rejected: nothing legitimate sends it.
   if (isCloudMode()) repo = "";
+  // A WordPress project has no repo anywhere downstream (no pipeline, no
+  // builder job, no merge sweep) - a stray value must not make it look like
+  // a GitHub project to the code that keys on github_repo.
+  if (String(formData.get("publish_target") ?? "") === "wordpress") repo = "";
 
   const domain = rawDomain
     .toLowerCase()
@@ -1311,8 +1327,11 @@ async function createProjectCore(
   }
   // Cloud connects the repo via the GitHub App AFTER creation (wizard c1), so
   // an empty repo is the normal cloud case, not an error.
+  // Self-host: a repo is required UNLESS the owner said articles go to
+  // WordPress - that site has no repo by design, and demanding one locked
+  // every WordPress self-hoster out at step 1 (2026-09-20 support thread).
   if (!repo) {
-    if (!isCloudMode()) {
+    if (!isCloudMode() && String(formData.get("publish_target") ?? "") !== "wordpress") {
       return { error: "Add your GitHub repo - Claude publishes content there as pull requests." };
     }
   } else if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) {
@@ -1581,10 +1600,10 @@ export async function wizardCreateProject(
   formData: FormData,
 ): Promise<CloudWizardCreateState> {
   await assertAuthed();
-  // The two branch questions are the CLOUD wizard's step 1 only. The self-host
-  // wizard shares this action and asks neither: createProjectCore refuses a
-  // project without a repo there, so every self-host site publishes through
-  // GitHub by construction and has nothing to choose.
+  // Both branch questions are required on CLOUD only. The self-host wizard
+  // shares this action and asks just the first, as GitHub-or-WordPress: its AI
+  // is always a coding agent (picked on s3), and an absent answer still means
+  // GitHub, which is what every self-host form posted before the choice existed.
   const cloud = isCloudMode();
   const publishRaw = String(formData.get("publish_target") ?? "").trim();
   const aiRaw = String(formData.get("ai_choice") ?? "").trim();
@@ -1602,6 +1621,22 @@ export async function wizardCreateProject(
   if ("error" in result) return result;
 
   if (cloud) await applyWizardChoices(result.slug, publishTarget, aiChoice);
+  else if (publishTarget === "wordpress") {
+    // Self-host WordPress: record the branch on the row. Unlike the cloud
+    // write above, failure IS fatal to the choice: without publish_target the
+    // row reads as a GitHub project with no repo, which nothing downstream can
+    // finish. (The screen stamp needs no correction here - createProjectCore's
+    // "s1" is the next screen on both self-host branches.)
+    const { error } = await db()
+      .from("projects")
+      .update({ publish_target: "wordpress" })
+      .eq("slug", result.slug);
+    if (error) {
+      return {
+        error: `The site was added, but saving the WordPress choice failed (${error.message}). Set it under Settings, Publishing.`,
+      };
+    }
+  }
 
   // The landing hero stashes the typed domain in pending_domain so step 1
   // prefills once - but it's a 7-day cookie and was never cleared, so it
@@ -1653,7 +1688,12 @@ export async function addSiteAndStartSetup(
     // column, and losing the stamp costs a resume nicety, never the creation
     // the owner just paid attention to.
     try {
-      await db().from("projects").update({ onboarding_screen: "s1" }).eq("slug", result.slug);
+      // publish_target rides the same write when the dialog's answer was
+      // WordPress - same branch record wizardCreateProject makes, so a second
+      // site walks s_wp instead of a GitHub-token step it has no repo for.
+      const row: Record<string, unknown> = { onboarding_screen: "s1" };
+      if (publishRaw === "wordpress") row.publish_target = "wordpress";
+      await db().from("projects").update(row).eq("slug", result.slug);
     } catch {
       // resume falls back to its own defaults
     }
@@ -2299,7 +2339,9 @@ export async function finishWizard(slug: string): Promise<{ ok: true } | { error
   if (isCloudMode()) await assertProjectOwned(project.id);
   const { error } = await db()
     .from("projects")
-    .update({ onboarding_screen: "c5" })
+    // Each wizard's own finale id: the gate (onboarding-gate.ts) and both
+    // resume builders only recognise screens from their own list.
+    .update({ onboarding_screen: isCloudMode() ? "c5" : "s5" })
     .eq("id", project.id);
   // Unlike setWizardScreen's fire-and-forget, this one's failure is worth
   // saying out loud: it is the only thing standing between this owner and

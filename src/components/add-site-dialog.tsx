@@ -84,6 +84,10 @@ export function AddSiteDialog({
   const [name, setName] = useState("");
   const [domain, setDomain] = useState("");
   const [repo, setRepo] = useState("");
+  // Self-host only (cloud asks with its own radio group below): GitHub or
+  // WordPress, same question as the self-host wizard's step 1. WordPress
+  // drops the repo field - that site has none.
+  const [selfHostTarget, setSelfHostTarget] = useState<"github" | "wordpress">("github");
   // Portalled to <body> on purpose. The switcher lives in a sticky header with
   // backdrop-blur, and a backdrop-filter makes its element the containing block
   // for position:fixed descendants - rendered in place, this overlay would be
@@ -141,6 +145,7 @@ export function AddSiteDialog({
     setName("");
     setDomain("");
     setRepo("");
+    setSelfHostTarget("github");
     onClose();
     // Into the wizard, not back to the dashboard. The row exists but nothing
     // runs for it yet - no repo, no Search Console, no workflows - and the
@@ -584,6 +589,41 @@ export function AddSiteDialog({
           {/* Cloud picks the repo through the GitHub App later, so asking here
               would be a field the owner has to answer twice. */}
           {!cloud ? (
+            <fieldset className="block">
+              <legend className="mb-1.5 block text-sm font-medium text-neutral-300">
+                Where should finished articles go?
+              </legend>
+              <div className="grid grid-cols-2 gap-1.5">
+                {(
+                  [
+                    ["github", "A GitHub repo"],
+                    ["wordpress", "WordPress"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <label
+                    key={value}
+                    className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 transition-colors hover:border-neutral-600 has-[:checked]:border-violet-500"
+                  >
+                    <input
+                      type="radio"
+                      name="publish_target"
+                      value={value}
+                      checked={selfHostTarget === value}
+                      onChange={() => setSelfHostTarget(value)}
+                      className="h-4 w-4 accent-violet-500"
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              {selfHostTarget === "wordpress" ? (
+                <span className="mt-1.5 block text-xs text-neutral-500">
+                  WordPress you host yourself. You connect it during setup - no repo needed.
+                </span>
+              ) : null}
+            </fieldset>
+          ) : null}
+          {!cloud && selfHostTarget === "github" ? (
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-neutral-300">GitHub repo</span>
               <input
