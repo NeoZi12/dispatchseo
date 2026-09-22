@@ -178,6 +178,9 @@ import { OnceVsRecurringSeoSplit } from "./once-vs-recurring-seo-split";
 import { SoloSeoDriftTimelineFlow } from "./solo-seo-drift-timeline-flow";
 import { AutomateFirstOrderFlow } from "./automate-first-order-flow";
 import { SerpAnswererFactRow } from "./serp-answerer-fact-row";
+import { BgTaskSurvivalGrid } from "./bg-task-survival-grid";
+import { BgTaskTierDecisionFlow } from "./bg-task-tier-decision-flow";
+import { DispatchseoCronReliabilityStats } from "./dispatchseo-cron-reliability-stats";
 import {
   Callout,
   CardGrid,
@@ -461,4 +464,7 @@ export const mdxComponents: MDXComponents = {
   SoloSeoDriftTimelineFlow,
   AutomateFirstOrderFlow,
   SerpAnswererFactRow,
+  BgTaskSurvivalGrid,
+  BgTaskTierDecisionFlow,
+  DispatchseoCronReliabilityStats,
 };
