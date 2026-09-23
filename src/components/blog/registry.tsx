@@ -157,6 +157,9 @@ import { BypassDecisionChecklist } from "./bypass-decision-checklist";
 import { PermissionModeSpectrum } from "./permission-mode-spectrum";
 import { RulePrecedenceFlow } from "./rule-precedence-flow";
 import { CiPermissionFactRow } from "./ci-permission-fact-row";
+import { SettingsFilePrecedenceStack } from "./settings-file-precedence-stack";
+import { CiSettingsFactRow } from "./ci-settings-fact-row";
+import { SettingsSchemaGotchaGrid } from "./settings-schema-gotcha-grid";
 import { WorktreeCollisionSplit } from "./worktree-collision-split";
 import { WorktreeEnforcementGrid } from "./worktree-enforcement-grid";
 import { WorktreeDemoFactRow } from "./worktree-demo-fact-row";
@@ -437,6 +440,9 @@ export const mdxComponents: MDXComponents = {
   PermissionModeSpectrum,
   RulePrecedenceFlow,
   CiPermissionFactRow,
+  SettingsFilePrecedenceStack,
+  CiSettingsFactRow,
+  SettingsSchemaGotchaGrid,
   WorktreeCollisionSplit,
   WorktreeEnforcementGrid,
   WorktreeDemoFactRow,

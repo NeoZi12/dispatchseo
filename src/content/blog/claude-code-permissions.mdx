@@ -16,7 +16,7 @@ Ask someone how to configure Claude Code's permissions and they'll usually descr
 
 <PermissionModeSpectrum />
 
-The other layer is rules: entries in `permissions.allow`, `permissions.deny`, and `permissions.ask` inside a `settings.json` file. Rules don't replace the mode - they sit on top of it, matching specific tools, commands, and paths regardless of which mode is running. A `deny` rule blocks a call in every mode, `bypassPermissions` included. This is the layer that decides whether a CI job actually runs the commands it needs, or stalls the first time it hits something a rule doesn't cover.
+The other layer is rules: entries in `permissions.allow`, `permissions.deny`, and `permissions.ask` inside a [`settings.json`](/blog/claude-code-settings-json-example) file. Rules don't replace the mode - they sit on top of it, matching specific tools, commands, and paths regardless of which mode is running. A `deny` rule blocks a call in every mode, `bypassPermissions` included. This is the layer that decides whether a CI job actually runs the commands it needs, or stalls the first time it hits something a rule doesn't cover.
 
 ## What allow, deny, and ask actually do in settings.json
 
