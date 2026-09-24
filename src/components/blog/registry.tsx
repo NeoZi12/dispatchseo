@@ -184,6 +184,9 @@ import { SerpAnswererFactRow } from "./serp-answerer-fact-row";
 import { BgTaskSurvivalGrid } from "./bg-task-survival-grid";
 import { BgTaskTierDecisionFlow } from "./bg-task-tier-decision-flow";
 import { DispatchseoCronReliabilityStats } from "./dispatchseo-cron-reliability-stats";
+import { CompactSurvivalTable } from "./compact-survival-table";
+import { AutoCompactThresholdTable } from "./auto-compact-threshold-table";
+import { CompactHardeningChecklist } from "./compact-hardening-checklist";
 import {
   Callout,
   CardGrid,
@@ -473,4 +476,7 @@ export const mdxComponents: MDXComponents = {
   BgTaskSurvivalGrid,
   BgTaskTierDecisionFlow,
   DispatchseoCronReliabilityStats,
+  CompactSurvivalTable,
+  AutoCompactThresholdTable,
+  CompactHardeningChecklist,
 };

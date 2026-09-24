@@ -1,0 +1,86 @@
+---
+title: "Claude Code auto-compact: what it silently drops from an unattended run"
+description: What auto-compact actually keeps and discards when a Claude Code session crosses its token threshold, and why the gaps that don't matter interactively are exactly what a scheduled run never notices.
+date: 2026-09-24
+keyword: claude code auto-compact
+cover: /blog/covers/claude-code-auto-compact.webp
+---
+
+Auto-compact is Claude Code's automatic fix for a context window that's about to fill up: when a session crosses a token threshold, it replaces the older turns with a structured summary so the run keeps going instead of erroring out with a context-limit failure. Most of what matters survives that swap - CLAUDE.md, auto memory, up to five recently-touched files - but a specific, documented set of things doesn't, and none of it announces its own absence.
+
+> **TL;DR** - Compaction keeps your requests and intent, key technical concepts, the files touched most recently, and errors and their fixes. It discards full tool output and intermediate reasoning, and it does not reload skill descriptions or `paths:`-scoped rules on its own - those come back only if a matching file gets read again. Interactively you'd notice a rule going quiet. In a scheduled `claude -p` run, nothing points at the gap; the run just keeps going with less than it started with. Fix it with a project-root CLAUDE.md (always reloads) and a `SessionStart` hook matched to `compact` (fires fresh every time), not a `paths:` rule or a hope that the summary kept enough.
+
+## Not the same "compaction" the API docs describe
+
+Search for this and the second result is usually Anthropic's own [compaction overview](https://platform.claude.com/docs/en/build-with-claude/compaction) - and it's about a different product. That page covers a Claude Developer Platform API feature (`compact-2026-09-04`, on demand or at a token threshold you set in your own request code). Claude Code's auto-compact is a separate, built-in CLI behavior: no beta header, no code to write, triggered automatically as your session's context fills. They share a name and a mechanism - summarize old turns, keep the session going - but the API page won't tell you what `/compact` actually preserves inside Claude Code, which is the part that matters for a run nobody's watching.
+
+## What actually survives a compaction, and what doesn't
+
+Claude Code's own docs lay this out mechanism by mechanism, and it's more specific than "it summarizes the old stuff":
+
+<CompactSurvivalTable />
+
+The two rows worth sitting with are the ones with no visible failure mode. A `paths:`-scoped rule - the kind that loads automatically when Claude touches a matching file - does not come back on its own after compaction; it reloads only the next time Claude reads a file it matches, which may be never for the rest of the run. And the skill index Claude uses to decide what to invoke on its own doesn't reload at all - only skills already invoked earlier in the session survive. Neither absence throws an error. The run just proceeds as if that rule or that skill was never registered.
+
+## Why an interactive session shrugs this off and a scheduled one can't
+
+In a terminal, a dropped rule is annoying but self-correcting: you notice Claude stopped following a convention it was following ten minutes ago, and you either restate it or open the rule file and see it's still there, just unloaded. That correction loop doesn't exist in a headless run. A `claude -p` process - [the pattern this site's own daily guide builder uses](/blog/claude-code-background-tasks) - has no one reading its intermediate output, so a compaction that silently drops a `paths:` rule or a skill's availability doesn't get caught until the output is already wrong: a PR that skips a step the rule used to enforce, a build that doesn't call a tool it should have known about. The failure looks like a bad run, not like a documented, expected side effect of crossing a token threshold partway through.
+
+This is also why [project-root CLAUDE.md](/blog/claude-code-memory) matters more for an unattended pipeline than it does for interactive work: it's one of the few mechanisms in the survival table that reloads unconditionally, every single time, regardless of what got read or invoked before the threshold hit.
+
+## The default trigger points, and how much room is actually left
+
+Nobody sets a compaction threshold on purpose most of the time, so the point where it fires depends entirely on which model picked up the run:
+
+<AutoCompactThresholdTable />
+
+To see where a specific session actually sits, run `/context` for a live breakdown by category, or wire a [status line](/blog/claude-code-settings-json-example) that surfaces context usage continuously instead of checking on demand. Neither tells you what a compaction *would* drop before it happens - the survival table above is a fixed list, not something `/context` calculates - but both tell you how much runway is left before the threshold this table describes actually triggers.
+
+## Keeping the instructions that can't be allowed to vanish
+
+Given the survival table, the fix isn't "write better instructions" - it's picking the mechanism that's documented to survive over the one that isn't:
+
+<CompactHardeningChecklist />
+
+The second item is the one built for exactly this gap. Claude Code's hooks reference documents a `SessionStart` hook matched to the `compact` source specifically for re-injecting context after compaction - the example in the docs is a one-line `echo` of whatever must not be forgotten:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Reminder: use Bun, not npm. Run bun test before committing. Current sprint: auth refactor.'"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Swap the `echo` for anything that produces output worth restating - `git log --oneline -5` for recent commits, a script that prints the current task's acceptance criteria - and it runs on every compaction, not just the first one. For a run long enough to compact more than once, that's the difference between an instruction surviving the first threshold and surviving the fifth.
+
+If none of this fits the run - a short job that would rather fail loudly at the context limit than continue on a lossy summary - `DISABLE_COMPACT=1` turns auto-compact off entirely, and the session stops with a context-limit error instead of compacting past it.
+
+## FAQ
+
+**Does auto-compact lose my CLAUDE.md instructions?**
+No - project-root CLAUDE.md and unscoped rules are explicitly re-injected from disk after every compaction. What doesn't automatically come back is a rule scoped with `paths:` frontmatter, which only reloads once Claude reads a file matching that pattern again.
+
+**Can I make auto-compact trigger later, so it fires less often?**
+Yes. `/autocompact 500k` (or `1M`, or a plain token count) raises the window for the current and future sessions, saved as the `autoCompactWindow` setting. `claude --autocompact <size>` does the same for one session only, and the `CLAUDE_CODE_AUTO_COMPACT_WINDOW` environment variable overrides both.
+
+**Does compaction affect subagents the same way?**
+The survival table describes the main session's context. A subagent runs in its own separate context window and returns only a final summary to the parent - if it compacts internally, that's invisible from the main session either way, since only its result ever entered your context in the first place.
+
+**What happens to a background task or subagent that's still running when compaction fires?**
+It keeps running. Claude Code reminds the compacted session which background commands and subagents are still active, specifically so the run doesn't start a duplicate of something already in flight.
+
+**Is there any way to see what a compaction is about to drop, before it happens?**
+Not directly - `/context` shows current usage by category, not a preview of what a compaction summary would keep or discard. The survival table is the closest thing to a preview that exists, because it's a fixed list of what each mechanism does, not something calculated per session.
+
+Auto-compact doing its job quietly is the point of the feature - it's what keeps a long session running instead of erroring out mid-task. The failure mode this guide is actually about is narrower: treating "it summarized the conversation" as the same guarantee as "it kept everything that mattered," when the two are only true for the rows in that table that say so. DispatchSEO's own guide-builder runs headless for exactly this reason - nobody's reading its terminal output while it works - which is what made the gap worth documenting precisely instead of from memory.
