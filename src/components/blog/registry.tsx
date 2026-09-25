@@ -187,6 +187,9 @@ import { DispatchseoCronReliabilityStats } from "./dispatchseo-cron-reliability-
 import { CompactSurvivalTable } from "./compact-survival-table";
 import { AutoCompactThresholdTable } from "./auto-compact-threshold-table";
 import { CompactHardeningChecklist } from "./compact-hardening-checklist";
+import { OrchestrationShapeCompareTable } from "./orchestration-shape-compare-table";
+import { ScheduledFleetIsolationFlow } from "./scheduled-fleet-isolation-flow";
+import { OrchestrationScaleFactRow } from "./orchestration-scale-fact-row";
 import {
   Callout,
   CardGrid,
@@ -479,4 +482,7 @@ export const mdxComponents: MDXComponents = {
   CompactSurvivalTable,
   AutoCompactThresholdTable,
   CompactHardeningChecklist,
+  OrchestrationShapeCompareTable,
+  ScheduledFleetIsolationFlow,
+  OrchestrationScaleFactRow,
 };
