@@ -1,0 +1,84 @@
+---
+title: "Claude Code multi-agent orchestration: agent teams vs. a scheduled fleet"
+description: Two different Anthropic products both answer to "multi-agent orchestration," and neither one is what runs this site's own daily builder. What agent teams and Managed Agents orchestration actually do, and why a scheduled fleet of single agents is the shape that survives running unattended.
+date: 2026-09-25
+keyword: claude code multi agent orchestration
+cover: /blog/covers/claude-code-multi-agent-orchestration.webp
+---
+
+Search "claude code multi agent orchestration" and you'll land on two different Anthropic products that happen to share half their vocabulary: Claude Code's agent teams, an interactive feature where one session spawns teammates that message each other and share a task list, and Managed Agents' multiagent orchestration, an API-level beta where a coordinator agent delegates to a fixed roster inside one hosted session. Both are real, both are "multi-agent," and neither one is what builds and ships this site's own guides every day - that runs on a third shape entirely: a scheduled fleet of independent, single-agent sessions, one per project, that never talk to each other at all.
+
+> **TL;DR** - Claude Code's agent teams (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`) let one interactive session spawn teammates that coordinate through direct messages and a shared task list - and the docs are explicit that spawning is disabled outright in non-interactive `-p` mode and in Agent SDK sessions, so it cannot run unattended by design. Managed Agents' multiagent orchestration is a different, API-level product: a coordinator agent with a `multiagent.agents` roster (up to 20 unique agents, 25 concurrent session threads, one level of delegation deep) that runs as a hosted session - unattended-capable, but still one session working one task. DispatchSEO's own daily builder is neither: it's `listProjects().map()` wrapped in `Promise.allSettled`, one independent Claude Code session per project, none of them aware the others exist, each one reported to `cron_runs` whether it succeeds, fails, or skips. Reach for agent teams when a human is driving one hard problem; reach for Managed Agents when you're building your own coordinator into a product; reach for a scheduled fleet when the job is the same task repeated across many tenants, forever, with nobody watching.
+
+## Two Anthropic products share one confusing name
+
+The overlap starts right in the terminology. Claude Code's docs title the feature "[Orchestrate teams of Claude Code sessions](https://code.claude.com/docs/en/agent-teams)" and call it agent teams throughout. The Claude platform's docs, for a completely different product built for developers calling the Agent API directly, title their page "[Multiagent orchestration](https://platform.claude.com/docs/en/managed-agents/multiagent-orchestration)" - almost the exact phrase this guide's keyword. A Reddit thread and a couple of independent blog posts use "multi-agent orchestration" to describe whichever one they happen to be trying, and none of the page-1 results for this term stop to say these are two unrelated things. That's the first job this guide has to do before it's useful for anything else.
+
+Agent teams is a Claude Code feature: it lives in your terminal, spawns other Claude Code instances, and is scoped to the one interactive session that started it. Managed Agents orchestration is an Agent Platform feature: it's something you build - a coordinator you define once via the API and reuse across hosted sessions, with no terminal or human typing into it at all. Confusing the two means reading a page about one and shipping automation for the other.
+
+## What Claude Code's agent teams actually do
+
+Agent teams are experimental and off by default. Turning them on takes one environment variable, in `settings.json` or your shell:
+
+```json
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  }
+}
+```
+
+With that set, describing a task in plain language is enough - Claude decides how many teammates to spawn, or you can be explicit ("spawn three teammates: one on UX, one on architecture, one playing devil's advocate"). One session becomes the **team lead**, which coordinates work and synthesizes results; **teammates** are separate Claude Code instances, each with its own context window, that message each other directly and self-claim work off a shared task list. That's a real structural difference from a [subagent](/blog/claude-code-subagents): a subagent reports a summary back to whoever called it and then it's done, while a teammate keeps its own independent thread and can be messaged again later, by the lead or by another teammate.
+
+The docs are equally direct about where this stops working: **spawning a team requires an interactive session.** In non-interactive `-p` mode, including Agent SDK sessions, Claude does not spawn teammates at all - a subagent Claude names runs as an ordinary subagent instead, even with the feature turned on. That single sentence is the whole reason this guide exists: whatever agent teams are good for, running unattended on a schedule is explicitly not one of them, by the feature's own design, not by omission.
+
+What it's good for instead: research and review that benefits from more than one perspective, competing-hypothesis debugging, cross-layer work that's genuinely easy to split into independent pieces. Anthropic's own guidance suggests starting with 3-5 teammates - there's no hard ceiling, but token cost scales with every teammate added, and coordination overhead grows right along with it.
+
+## What runs instead when nobody's watching: a scheduled fleet
+
+<ScheduledFleetIsolationFlow />
+
+This site's own daily guide-builder - the one that wrote this page - never touches agent teams or Managed Agents, because the job it's doing doesn't fit either shape: the same kind of task, run once a day, across every project this deployment manages, with nobody available to watch it or approve a plan mid-run. What actually runs is closer to a fan-out than a team: [every cron route](/blog/claude-code-github-actions) calls `listProjects()` and maps a `runProject()` function over the result, the whole map wrapped in `Promise.allSettled` so one project's expired DataForSEO token or missing GSC grant rejects only that project's promise. Nothing about this needs a task list, a mailbox, or inter-agent messaging - each run is a single, ordinary Claude Code session working exactly one project's queue, with zero knowledge that any other project's session is running at the same moment, or ever.
+
+The isolation exists because the alternative failure mode is worse than slow: without it, one tenant's broken credential would take down the whole night's batch, and a fleet running unattended has no team lead around to notice and route around the failure the way an agent-teams lead would. `reportCronRun()` writes every outcome - success, partial failure, or a clean "setup incomplete" skip - to a `cron_runs` table regardless, and only a genuine regression (a capability that worked before and stopped working now) escalates to the dashboard banner and a debounced email. A project still mid-onboarding skipping a run is expected and silent by design; a project that's been publishing guides for weeks suddenly failing is not, and gets loud on purpose.
+
+<OrchestrationShapeCompareTable />
+
+<OrchestrationScaleFactRow />
+
+The Actions-minutes figure above is this repo's own history, not a hypothetical: every SEO workflow used to carry its own cron chain checking three times a day whether there was actually anything to build, and two of those three checks existed purely to rediscover something the backend already knew - an empty queue, an already-open PR, a guide already shipped that day. GitHub bills a minimum of one full runner-minute per triggered job regardless of how little work it does, so that guard-and-exit pattern cost roughly 300 minutes a month per installed site - close to a quarter of a free GitHub account's entire Actions allowance - just to confirm there was nothing to do. Moving the decision server-side, into the same `seo-dispatch` cron that already isolates every project, turned three guesses a day into one dispatch fired only when a check against this backend's own database says a build is actually due.
+
+## When live orchestration is the right call
+
+Reach for agent teams, or for building a Managed Agents coordinator, when the defining trait of the job is that it benefits from more than one perspective *inside a single piece of work*: a PR that genuinely needs a security read and a performance read and a test-coverage read at the same time, a bug whose cause is unclear enough that testing three competing theories in parallel beats testing them one after another, a feature that spans frontend, backend, and tests where each layer can be owned independently without stepping on the others. The signal isn't "this would go faster with help" - a second context window costs real tokens whether or not it earns them back - it's "this task splits cleanly into pieces that don't share files and benefit from arguing with each other."
+
+Managed Agents' coordinator pattern earns its keep specifically when you're the one *building* that behavior into a product rather than driving it live: a support tool that routes to a specialization agent, a research feature that fans out to independent sub-queries and synthesizes them, anything where the roster is fixed in advance and the API caller - not a person typing into a terminal - decides when a session starts.
+
+## When a scheduled fleet is the right call
+
+The opposite signal: the job is the *same* task, applied to many independent tenants or many independent time slices, and nobody is available to watch any single run. DispatchSEO's own crons - daily rank checks, hourly Search Console pulls, the weekly research pass - are all this shape, and so is basically any "run this thing every night, for every customer, forever" job. None of it benefits from teammates talking to each other, because the runs aren't collaborating on one deliverable; they're each finishing their own. What they need instead is exactly what agent teams and Managed Agents orchestration don't have to solve, because a person or a bounded session is always the alternative for them: an idempotent claim so two overlapping runs can't double-build the same work, per-tenant credentials so one customer's token can never touch another's data, and a failure that's loud enough to page someone without paging them for the mid-setup skips that are supposed to be quiet.
+
+If your job description is "one hard problem, right now, with a person or a caller who'll notice if it goes sideways," look at agent teams or Managed Agents. If it's "this exact task, on a clock, for as long as the product exists," you want [a real cron](/blog/claude-code-routines-vs-cron), not either kind of orchestration.
+
+## Where the two shapes combine
+
+The two aren't mutually exclusive within a single run. Nothing stops one project's scheduled session from reaching for [subagents](/blog/claude-code-subagents) mid-task - a headless run can still spin up a subagent to draft a component while it fact-checks a claim, because subagents (unlike teammates) work in ordinary non-interactive sessions too. What a scheduled run genuinely can't do is spawn an agent *team*, since team-spawning is disabled the moment the session isn't interactive - the closest a headless pipeline gets to that shape is Managed Agents' coordinator pattern, built once and then invoked the same way on every scheduled tick. The fleet stays the outer loop either way: many independent sessions, each free to use whatever single-session tooling helps it finish its own task, none of them aware the others are running.
+
+## FAQ
+
+**Is Claude Code's agent teams feature the same thing as Managed Agents' multiagent orchestration?**
+No. Agent teams is a Claude Code feature - an interactive session spawning other Claude Code instances that message each other and share a task list. Managed Agents orchestration is a different product on the Claude Agent Platform: a coordinator agent you define via the API that delegates to a fixed roster of other agents inside a hosted session. They share vocabulary, not architecture.
+
+**Can agent teams run in a scheduled GitHub Actions workflow or cron job?**
+No. Claude Code's own docs state that spawning teammates requires an interactive session and is disabled in non-interactive `-p` mode and in Agent SDK sessions. A subagent Claude names under those conditions runs as an ordinary subagent instead, never as a teammate.
+
+**What's the actual difference between a subagent and an agent-teams teammate?**
+A subagent works in its own context window and returns a summary to whoever called it - the caller manages all further work. A teammate also gets its own context window, but it's fully independent: it messages other teammates directly, can claim tasks off a shared list on its own, and keeps running until told to shut down.
+
+**Why doesn't DispatchSEO's own pipeline use agent teams or Managed Agents?**
+Because the job doesn't fit either shape: it's the same build task applied to many separate projects on a timer, not one hard problem that benefits from several perspectives inside a single run. A scheduled fleet of independent single-agent sessions, isolated with `Promise.allSettled`, fits a many-tenants-on-a-clock job better than either orchestration pattern would.
+
+**Is there a concurrency limit on Managed Agents' multiagent orchestration?**
+Yes - a session supports at most 25 concurrent threads, and a coordinator's roster can list at most 20 unique agents (though it can call multiple copies of any one of them). Delegation is one level deep: an agent that itself has a `multiagent.agents` roster can't be added to another coordinator's roster.
+
+Three different things all get called "multi-agent orchestration" this year, and the SERP for this exact keyword mixes documentation for two of them without saying so. The honest answer to "which one" was never a fourth option - it's picking the shape that actually matches whether a human is driving, and whether the same job repeats across tenants nobody's watching.
