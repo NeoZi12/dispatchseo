@@ -203,6 +203,9 @@ import {
 } from "@/components/docs/mdx";
 import { AgentTabs, AgentTab } from "@/components/docs/agent-tabs";
 import { slugify } from "@/lib/slugify";
+import { TimeoutLayerCompareTable } from "./timeout-layer-compare-table";
+import { GuideBuilderTimeoutFactRow } from "./guide-builder-timeout-fact-row";
+import { StuckVsSlowSplit } from "./stuck-vs-slow-split";
 
 // The components every blog MDX file renders with: typographic defaults that
 // match the app's dark look (no @tailwindcss/typography dependency), plus
@@ -485,4 +488,7 @@ export const mdxComponents: MDXComponents = {
   OrchestrationShapeCompareTable,
   ScheduledFleetIsolationFlow,
   OrchestrationScaleFactRow,
+  TimeoutLayerCompareTable,
+  GuideBuilderTimeoutFactRow,
+  StuckVsSlowSplit,
 };
