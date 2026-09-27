@@ -28,7 +28,7 @@ An MCP tool call has no default wall-clock limit at all unless one is set - by d
 
 <StuckVsSlowSplit />
 
-The Bash tool has its own pair of limits - `BASH_DEFAULT_TIMEOUT_MS` (2 minutes) and `BASH_MAX_TIMEOUT_MS` (10 minutes, the ceiling the model itself can request for a single command) - so a slow test suite or install still ends on its own well short of "forever." Background tasks and subagents get a similar courtesy: a background shell keeps running for about 5 seconds past the final result to let trailing output land, and a background subagent or workflow gets up to 10 minutes of continuous idle waiting before Claude Code drops it. None of that is stuck - it's budgeted, and the budget is usually the more useful thing to raise than the whole run to restart.
+The Bash tool has its own pair of limits - [`BASH_DEFAULT_TIMEOUT_MS`](/blog/claude-code-environment-variables) (2 minutes) and `BASH_MAX_TIMEOUT_MS` (10 minutes, the ceiling the model itself can request for a single command) - so a slow test suite or install still ends on its own well short of "forever." Background tasks and subagents get a similar courtesy: a background shell keeps running for about 5 seconds past the final result to let trailing output land, and a background subagent or workflow gets up to 10 minutes of continuous idle waiting before Claude Code drops it. None of that is stuck - it's budgeted, and the budget is usually the more useful thing to raise than the whole run to restart.
 
 ## Wrapping the run in a timeout that actually kills it
 

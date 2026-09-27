@@ -1,0 +1,110 @@
+---
+title: "Claude Code environment variables: what a headless CI run actually needs set"
+description: Claude Code documents more than 60 environment variables. A headless CI run only needs a handful - which ones, how they beat settings.json, and a tested GitHub Actions job that sets them right.
+date: 2026-09-27
+keyword: claude code environment variables
+cover: /blog/covers/claude-code-environment-variables.webp
+---
+
+Claude Code's own reference documents more than sixty environment variables, but a headless CI run only ever needs a handful of them: one that authenticates without a browser, a couple that pin the model so a job doesn't ride whatever Anthropic ships as the default next, a few that cap how long a stuck command or a runaway output is allowed to run, and one variable Claude Code sets on the process itself the instant it spawns a subprocess. Which one wins when a variable and a settings.json key disagree isn't decided by file precedence at all - it's decided per pair, and getting that backwards is a common reason a workflow that behaves on a laptop goes quiet or wrong in Actions.
+
+> **TL;DR** - For a headless run, the variables worth knowing are: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, or `CLAUDE_CODE_OAUTH_TOKEN` for auth (pick one); `ANTHROPIC_MODEL` / `ANTHROPIC_DEFAULT_MODEL` to pin the model; `API_TIMEOUT_MS`, `BASH_DEFAULT_TIMEOUT_MS`, `BASH_MAX_TIMEOUT_MS`, and `BASH_MAX_OUTPUT_LENGTH` to keep a run from hanging or flooding its own log; and `CLAUDECODE` / `CLAUDE_CODE_ENTRYPOINT`, which Claude Code sets FOR you inside every subprocess it spawns. None of these are a level in the settings.json precedence stack - each wins or loses against its settings-file counterpart on its own rule, checked variable by variable.
+
+## Which wins when a variable and settings.json disagree
+
+Claude Code's own settings documentation is direct about this: "environment variables aren't a level in this stack." A settings file's `env` block is an ordinary key that follows the usual five-level precedence - managed, command line, project-local, shared project, user - but a shell-exported variable sits outside that stack entirely, and whether it beats a settings file is decided per pair, not by rank.
+
+The clearest example is the model. `ANTHROPIC_MODEL` exported in the shell overrides the `model` key from every settings file, every time, with no way for a committed `.claude/settings.json` to win that fight back. `ANTHROPIC_DEFAULT_MODEL` is the gentler sibling: it only fills in when no settings file sets `model` at all, so it never overrides a value someone deliberately committed. Telemetry works the other way in one specific sense: the export-style flags below don't take effect from a project or local settings file's `env` block except for a few off-values, so muting telemetry from a shared team file is more restricted than setting it directly in the shell.
+
+That asymmetry is exactly why a workflow author needs to know which of these two families a given behavior belongs to before reaching for either file. Get it backwards - assuming a shared settings.json can always override a shell export, or that an export always overrides settings - and the fix that looks correct in review does nothing in the runner.
+
+## Authenticating a run that can't open a browser
+
+A headless run has no browser to complete a device-code flow, which rules out one of Claude Code's four ways to authenticate outright:
+
+<AuthMethodCompareTable />
+
+`CLAUDE_CODE_OAUTH_TOKEN` is the one worth calling out by name: it's minted once, on a machine that does have a browser, with `claude setup-token`, and from then on it's a plain secret a runner can hold - no different in shape from an API key, but billed against a Pro or Max subscription instead of metered usage. It doesn't appear on Claude Code's own environment-variables reference page at all; it's documented instead through the `setup-token` CLI command and the `anthropics/claude-code-action` GitHub Action, which takes it as a direct input. DispatchSEO's own daily guide-builder - the workflow that produced this exact page - sets it as the primary credential and only falls back to `ANTHROPIC_API_KEY` when that secret is empty, specifically so that adding a metered key later can never silently switch a working subscription setup over to per-token billing.
+
+One more var worth testing before trusting it: `CLAUDE_CONFIG_DIR` redirects where Claude Code writes its own config and session history. Setting it and re-running `claude doctor` against the new path produces a real `.claude.json` and a `backups/` directory at exactly that location, nowhere else - confirmed while writing this guide, not assumed from the docs. That's the tool for a self-hosted runner that reuses the same box across concurrent jobs: point each job at its own `CLAUDE_CONFIG_DIR` and they stop competing for the same session-history file. A fresh GitHub-hosted runner doesn't need it - the whole container is disposable already.
+
+## The vars that make a run predictable: model, timeouts, output size
+
+Beyond auth, three narrow families do almost all the useful work for CI:
+
+<EnvVarCategoryChecklist />
+
+`ANTHROPIC_MODEL` is the one to set explicitly rather than skip - a scheduled job that never pins it inherits whatever model Anthropic treats as current the next time the image or CLI updates, which is a quiet way for a pipeline's output quality or cost to shift on a day nobody touched the workflow file. The timeout and output vars matter for the opposite reason: they're the mechanism, not the symptom, behind [a run that hangs mid-session](/blog/claude-code-stuck) - `BASH_DEFAULT_TIMEOUT_MS` defaults to 120000 (two minutes) before Claude Code kills a command on its own, `BASH_MAX_TIMEOUT_MS` caps how far the model itself can raise that ceiling (600000, ten minutes, by default), and `BASH_MAX_OUTPUT_LENGTH` caps how much of a command's output comes back at all (30000 characters by default, 150000 at the outside). None of the three replace a job-level `timeout-minutes` in the workflow file; they're what keeps one bad command from silently eating the whole budget before that outer timeout ever fires.
+
+## What this exact build's own environment actually had set
+
+DispatchSEO's own builder is a live example, not a hypothetical one - here's what a `env | grep CLAUDE` inside this run's own shell actually returned while this guide was being written, next to what `.github/workflows/seo-daily.yml` sets on top of Claude Code's defaults:
+
+<OwnBuilderEnvFactRow />
+
+`CLAUDECODE` and `CLAUDE_CODE_ENTRYPOINT` aren't vars a workflow author sets - Claude Code writes them into every subprocess it spawns (Bash calls, hooks, MCP servers) so that anything running underneath can tell it's inside a Claude Code session rather than a bare terminal, and tell an action-triggered run apart from a bare CLI invocation. A hook or an MCP server that needs to behave differently under automation than it would for a person typing commands by hand can branch on `CLAUDECODE` being present rather than guessing from context. `MCP_TIMEOUT` is the opposite kind of fact: it's this repo's own addition, a ceiling this pipeline puts on its MCP tool calls that Claude Code doesn't set for you by default.
+
+## A GitHub Actions job that sets all of it correctly
+
+A minimal job that authenticates, pins the model, and caps runtime and output - every value here traces to a variable covered above, not a new one:
+
+```yaml
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm install -g @anthropic-ai/claude-code
+      - name: Run Claude Code
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_MODEL: claude-sonnet-5
+          BASH_DEFAULT_TIMEOUT_MS: "120000"
+          BASH_MAX_TIMEOUT_MS: "300000"
+          BASH_MAX_OUTPUT_LENGTH: "30000"
+          DISABLE_TELEMETRY: "1"
+        run: |
+          claude -p "run the test suite and summarize any failures" \
+            --permission-mode bypassPermissions \
+            --max-turns 20
+```
+
+`BASH_MAX_TIMEOUT_MS` is set well under the job's own `timeout-minutes: 30`, on purpose - it's what makes Claude Code's own kill switch fire first, so the failure this job reports is "a command timed out" instead of the far less useful "the whole job timed out" from GitHub itself. `--permission-mode bypassPermissions` still has to be a CLI flag rather than a settings key, [for the reason covered in the settings.json breakdown](/blog/claude-code-settings-json-example): that one mode can't be granted from a committed file at all. This job runs `claude` directly rather than through `anthropics/claude-code-action`; [the scheduled-pattern guide](/blog/claude-code-github-actions) covers that action-based shape and the trigger/concurrency setup around it.
+
+## The failure that only shows up in CI: set locally, missing from secrets
+
+The most common way this goes wrong has nothing to do with which variable to pick - it's that a variable working perfectly on a laptop was never anything but a line in `~/.zshrc` or `~/.bash_profile`, and a GitHub Actions runner starts from a clean image that has never read either file. `ANTHROPIC_MODEL` set that way, or an API key exported once and forgotten, works every time locally and fails - or worse, silently falls back to a different model or auth path - the first time the same command runs in CI. The fix is mechanical but easy to skip under deadline pressure: every variable a workflow's `env:` block needs has to exist as a **repository or organization secret**, referenced explicitly with `${{ secrets.NAME }}`, because nothing on the runner will ever pick it up from a developer's shell.
+
+A cheap preflight catches this before the real job wastes a run on it:
+
+```bash
+for v in CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY ANTHROPIC_MODEL; do
+  [ -n "${!v}" ] && echo "$v: set" || echo "$v: MISSING"
+done
+```
+
+Run that as the first step of the job and a missing secret shows up as one clear line in the log, instead of an auth failure or a wrong-model run twenty minutes into a job that could have failed in the first second.
+
+## When environment variables are the wrong tool
+
+Not everything belongs here. Team policy that needs to be reviewable in a diff - `permissions.allow` and `permissions.deny` rules, hooks, which MCP servers a project trusts - belongs in a committed settings.json, not an environment variable buried in a workflow file that changes behavior without anyone seeing it move. And exactly one permission mode, `bypassPermissions`, can't be reached through an environment variable at all, any more than it can through a committed settings file - it's a session-scoped CLI flag by design, because the mode that skips every check is the one mode that shouldn't be settable from something that persists.
+
+## FAQ
+
+**Does Claude Code read a project's `.env` file automatically?**
+No. Claude Code doesn't source a repo's `.env` file for its own configuration - a variable has to be exported into the process's actual environment (the shell, or a workflow's `env:` block) or set under a settings file's `env` key to take effect.
+
+**If I set `ANTHROPIC_MODEL` and also pass `--model` on the command line, which one runs?**
+`--model` wins. Per Claude Code's own reference, `ANTHROPIC_MODEL` is overridden by both the `--model` flag and the `/model` command - the flag is scoped to that one invocation and always takes precedence over the environment.
+
+**Can I put `ANTHROPIC_API_KEY` directly in the workflow YAML instead of a secret?**
+Don't. A literal key in a committed file is a leaked credential the moment that file is pushed, public repo or not. Store it as a repository or organization secret and reference it with `${{ secrets.ANTHROPIC_API_KEY }}`.
+
+**Does `CLAUDE_CODE_OAUTH_TOKEN` expire?**
+It's built to be long-lived, but it's tied to the subscription that minted it - if that subscription lapses or the token is regenerated elsewhere, authentication fails outright in CI unless the workflow also sets an `ANTHROPIC_API_KEY` fallback, the same pattern DispatchSEO's own builder uses.
+
+**Do I need to set `CLAUDE_CONFIG_DIR` in CI?**
+Usually not. A GitHub-hosted runner starts from a clean, disposable container, so there's nothing for a redirected config directory to avoid colliding with. It earns its place on a self-hosted runner that reuses the same box across concurrent jobs.
+
+Anthropic's own reference is the right place to look up a variable you already suspect exists. What it doesn't do is tell a workflow author which handful of its sixty-plus rows actually change behavior for a scheduled, unattended run - that's a question about CI, not about the CLI, and it has a much shorter answer than the reference page implies.

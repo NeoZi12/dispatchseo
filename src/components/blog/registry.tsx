@@ -38,6 +38,9 @@ import { MemoryMechanismGrid } from "./memory-mechanism-grid";
 import { RepoMemoryFactRow } from "./repo-memory-fact-row";
 import { AutomationFitCompareTable } from "./automation-fit-compare-table";
 import { HeadlessRunFactRow } from "./headless-run-fact-row";
+import { AuthMethodCompareTable } from "./auth-method-compare-table";
+import { EnvVarCategoryChecklist } from "./env-var-category-checklist";
+import { OwnBuilderEnvFactRow } from "./own-builder-env-fact-row";
 import { AutomationPricingScorecard } from "./automation-pricing-scorecard";
 import { HeadlessFlagGrid } from "./headless-flag-grid";
 import { PrintModeEnvelopeFactRow } from "./print-mode-envelope-fact-row";
@@ -491,4 +494,7 @@ export const mdxComponents: MDXComponents = {
   TimeoutLayerCompareTable,
   GuideBuilderTimeoutFactRow,
   StuckVsSlowSplit,
+  AuthMethodCompareTable,
+  EnvVarCategoryChecklist,
+  OwnBuilderEnvFactRow,
 };

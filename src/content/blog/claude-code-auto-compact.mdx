@@ -72,7 +72,7 @@ If none of this fits the run - a short job that would rather fail loudly at the 
 No - project-root CLAUDE.md and unscoped rules are explicitly re-injected from disk after every compaction. What doesn't automatically come back is a rule scoped with `paths:` frontmatter, which only reloads once Claude reads a file matching that pattern again.
 
 **Can I make auto-compact trigger later, so it fires less often?**
-Yes. `/autocompact 500k` (or `1M`, or a plain token count) raises the window for the current and future sessions, saved as the `autoCompactWindow` setting. `claude --autocompact <size>` does the same for one session only, and the `CLAUDE_CODE_AUTO_COMPACT_WINDOW` environment variable overrides both.
+Yes. `/autocompact 500k` (or `1M`, or a plain token count) raises the window for the current and future sessions, saved as the `autoCompactWindow` setting. `claude --autocompact <size>` does the same for one session only, and the [`CLAUDE_CODE_AUTO_COMPACT_WINDOW`](/blog/claude-code-environment-variables) environment variable overrides both.
 
 **Does compaction affect subagents the same way?**
 The survival table describes the main session's context. A subagent runs in its own separate context window and returns only a final summary to the parent - if it compacts internally, that's invisible from the main session either way, since only its result ever entered your context in the first place.
