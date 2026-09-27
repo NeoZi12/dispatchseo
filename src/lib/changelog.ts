@@ -75,6 +75,14 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "fixed",
     text:
+      "Setup now starts on its own if it missed its first chance. The first read of your site " +
+      "only ever started when you reached the last wizard screen, so adding your agent's key " +
+      "or switching agents afterwards left the dashboard empty with nothing to retry it. It is " +
+      "now picked up automatically within a few hours.",
+  },
+  {
+    kind: "fixed",
+    text:
       "Trend ideas now come in your site's own language. On a project set to a non-English " +
       "market, the trend radar used to suggest English topics and keywords while regular " +
       "research correctly followed your market - both now follow the country and language " +

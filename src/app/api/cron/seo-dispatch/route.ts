@@ -12,6 +12,7 @@ import {
   type ScheduledWorkflow,
 } from "@/lib/build-schedule";
 import { reconcileInstallStamp } from "@/lib/install-reconcile";
+import { retrySetupIfNeverStarted } from "@/lib/setup-retry";
 import { checkRepoSecret } from "@/lib/github-app-secrets";
 import { projectAgent } from "@/lib/agents";
 
@@ -117,6 +118,15 @@ export async function GET(req: Request): Promise<Response> {
         const healed = await reconcileInstallStamp(p);
         if (healed.state !== "stamped") {
           if (healed.state === "blocked") out.install_blocked = healed.problems;
+          // Nothing to heal may mean setup never started at all: it is only
+          // ever dispatched from the wizard finale, so a project whose key or
+          // install landed after that moment waited here forever. Informational
+          // either way - never hadError.
+          if (healed.state === "not-ready") {
+            const retry = await retrySetupIfNeverStarted(p);
+            if (retry.state === "dispatched") out.setup_redispatched = `attempt ${retry.attempt}`;
+            else if (retry.state === "skipped") out.skipped = retry.reason;
+          }
           return out;
         }
         out.install_reconciled = true;
