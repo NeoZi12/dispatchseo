@@ -12,10 +12,14 @@ import { effectiveAutomations, type Project } from "./projects";
 // setup ran green twice, workflows live and reporting, stamp never set).
 //
 // So the backend reconciles from its own evidence instead of waiting on the
-// agent's word: setup provably finished (site profile saved) AND
-// verifyPipelinePrereqs positively passes -> stamp. Anything less is a no-op:
-// unlike mark_pipeline_installed, which may stamp on the agent's checklist
-// when GitHub is unverifiable, self-heal acts only on proof.
+// agent's word. Two routes to a stamp:
+//   1. The pipeline already shipped: a page from a PR in the connected repo is
+//      live and the repo's workflows are reporting in. Nothing left to verify.
+//   2. Setup provably ran (site profile saved, or a green seo-setup report)
+//      AND verifyPipelinePrereqs positively passes.
+// Anything less is a no-op: unlike mark_pipeline_installed, which may stamp on
+// the agent's checklist when GitHub is unverifiable, self-heal acts only on
+// proof.
 
 export type ReconcileResult =
   // Stamped now - the caller can treat the project as installed immediately.
@@ -48,18 +52,18 @@ export async function reconcileInstallStamp(
     return result;
   };
 
-  // Setup's proof-of-work, same evidence mark_pipeline_installed requires: a
-  // saved site profile means the personalization run actually completed.
-  // Tolerant like every pre-migration path - a query error never stamps.
-  try {
-    const { count, error } = await db()
-      .from("site_profile")
-      .select("id", { count: "exact", head: true })
-      .eq("project_id", project.id);
-    if (error || (count ?? 0) === 0) return settle({ state: "not-ready" });
-  } catch {
-    return settle({ state: "not-ready" });
-  }
+  // Strongest evidence first: the pipeline has already done its whole job.
+  // A page shipped by a PR in the connected repo, seen live by our own
+  // liveness check, cannot exist unless the workflows, the PR permission and
+  // the agent token all work - so it stamps without asking GitHub anything.
+  if (await shippedLivePage(project)) return settle(await stamp(project.id));
+
+  // Otherwise setup has to have provably run. The saved site profile is one
+  // proof; a green seo-setup report from the repo is the other. The profile
+  // alone used to be the only one accepted, and a setup run that finished
+  // without saving it (2026-09-23: six green setup runs, a published guide,
+  // no profile) left the project unstampable here forever.
+  if (!(await setupRan(project))) return settle({ state: "not-ready" });
 
   const verdict = await verifyPipelinePrereqs(
     project.github_repo,
@@ -69,20 +73,77 @@ export async function reconcileInstallStamp(
   if (!verdict.checked) return settle({ state: "not-ready" });
   if (verdict.problems.length > 0) return settle({ state: "blocked", problems: verdict.problems });
 
-  // Same stamp mark_pipeline_installed writes, including the pre-0040
-  // fallback (migrations are applied by hand, so code can reach a database
-  // without pipeline_verified).
+  return settle(await stamp(project.id));
+}
+
+// Same stamp mark_pipeline_installed writes, including the pre-0040 fallback
+// (migrations are applied by hand, so code can reach a database without
+// pipeline_verified).
+async function stamp(projectId: string): Promise<ReconcileResult> {
   const stampedAt = new Date().toISOString();
   let { error } = await db()
     .from("projects")
     .update({ pipeline_installed_at: stampedAt, pipeline_verified: true })
-    .eq("id", project.id);
+    .eq("id", projectId);
   if (error && /pipeline_verified|does not exist/i.test(error.message)) {
     ({ error } = await db()
       .from("projects")
       .update({ pipeline_installed_at: stampedAt })
-      .eq("id", project.id));
+      .eq("id", projectId));
   }
-  if (error) return settle({ state: "not-ready" });
-  return settle({ state: "stamped" });
+  return error ? { state: "not-ready" } : { state: "stamped" };
+}
+
+// A green report under one of this project's workflow job keys. Claim rows
+// are the scheduler's own bookkeeping, not word from the repo, so they never
+// count. Tolerant like every pre-migration path - a query error proves nothing.
+async function repoReported(project: Project, workflows: string[]): Promise<boolean> {
+  try {
+    const { data, error } = await db()
+      .from("cron_runs")
+      .select("claimed_only")
+      .in("job", workflows.map((w) => `${w}--${project.slug}`))
+      .eq("ok", true)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    if (error) return false;
+    return (data ?? []).some((r) => !r.claimed_only);
+  } catch {
+    return false;
+  }
+}
+
+async function setupRan(project: Project): Promise<boolean> {
+  try {
+    const { count, error } = await db()
+      .from("site_profile")
+      .select("id", { count: "exact", head: true })
+      .eq("project_id", project.id);
+    if (!error && (count ?? 0) > 0) return true;
+  } catch {
+    /* fall through to the workflow report */
+  }
+  return repoReported(project, ["seo-setup"]);
+}
+
+// log_page takes the agent's word for url and pr_url, and a backfill of
+// older posts can carry real PR links - so a live page alone is not enough.
+// The repo also has to be reporting in, which only installed workflows do.
+async function shippedLivePage(project: Project): Promise<boolean> {
+  try {
+    const { data, error } = await db()
+      .from("pages")
+      .select("pr_url")
+      .eq("project_id", project.id)
+      .not("live_at", "is", null)
+      .not("pr_url", "is", null)
+      .limit(50);
+    if (error) return false;
+    const prefix = `https://github.com/${project.github_repo}/pull/`.toLowerCase();
+    const shipped = (data ?? []).some((r) => String(r.pr_url).toLowerCase().startsWith(prefix));
+    if (!shipped) return false;
+  } catch {
+    return false;
+  }
+  return repoReported(project, ["seo-daily", "seo-tools", "seo-auto-merge", "seo-token-check"]);
 }
