@@ -77,7 +77,7 @@ There's no settings.json workaround for this, and there shouldn't be one - the m
 
 <SettingsSchemaGotchaGrid />
 
-The `env` block deserves one more distinction: it's an ordinary settings key, so it follows the same five-level precedence as everything else in this file - but a variable exported directly in the shell isn't part of that stack at all, and for the keys that have a paired variable, the shell often wins regardless of which settings file set the equivalent key. `ANTHROPIC_MODEL` in a workflow's `env:` block overrides `model` from every settings file every time; `ANTHROPIC_DEFAULT_MODEL` is the gentler version that only fills in when nothing sets `model` at all. Mixing the two into one workflow, expecting the settings file to win, is a quiet way to end up running a different model than the file says.
+The `env` block deserves one more distinction: it's an ordinary settings key, so it follows the same five-level precedence as everything else in this file - but a variable exported directly in the shell isn't part of that stack at all, and for the keys that have a paired variable, the shell often wins regardless of which settings file set the equivalent key. [`ANTHROPIC_MODEL`](/blog/claude-code-environment-variables) in a workflow's `env:` block overrides `model` from every settings file every time; `ANTHROPIC_DEFAULT_MODEL` is the gentler version that only fills in when nothing sets `model` at all. Mixing the two into one workflow, expecting the settings file to win, is a quiet way to end up running a different model than the file says.
 
 ## What DispatchSEO's own daily builder passes instead of a settings.json
 
