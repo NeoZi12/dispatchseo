@@ -37,6 +37,13 @@ and only for the subjects the owner picks. Keep this run fast and cheap.
    is already on the radar, was expanded, or was dismissed) and \`get_pages\`
    (never propose a subject the site already covers as its own topic - that
    is an update, which stage 2 handles).
+   **Know the market too: this project targets {{MARKET}}.** The sweep may
+   read sources in any language - a niche's launches are often announced in
+   English first - but a subject only belongs on the radar when searchers in
+   that market are talking about it, and its title and why_now are written
+   in that market's language. Stage 2 validates every take against that
+   country's results, so an English-only conversation queued on a French
+   project produces takes nobody there searches for.
 3. **Sweep for hype** in the product's niche:
    - The latest launches, releases, and announcements from the official
      blogs and changelogs of the products/vendors in the niche.

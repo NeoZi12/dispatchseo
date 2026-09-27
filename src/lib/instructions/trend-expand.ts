@@ -44,6 +44,15 @@ spam to Google.
    - **How-to / setup** ("how to use X", "X with Y tutorial") for launches.
    - **Analysis / answer** to the exact question the threads are asking.
    - **Update** to an existing page when the news lands on covered ground.
+   **Write every take in the language of the project's market
+   ({{MARKET}})** - the title, the query you track, the primary keyword.
+   \`suggest_keywords\` and \`check_serp\` run in that market automatically,
+   so an English query on a French project is validated against results its
+   searchers never see, rank tracking then follows a keyword the market
+   doesn't type, and the guide ships in the wrong language for the site's
+   audience. When the subject's conversation is happening in another
+   language, phrase the take the way THIS market searches for it - a
+   translation of the intent, not a transliteration of the English phrase.
 4. **Validate each candidate** (survivors can be fewer than drafted - three
    strong beats five thin):
    - **Demand**: \`suggest_keywords\` on the take's query - autocomplete

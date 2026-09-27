@@ -75,6 +75,22 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "fixed",
     text:
+      "Trend ideas now come in your site's own language. On a project set to a non-English " +
+      "market, the trend radar used to suggest English topics and keywords while regular " +
+      "research correctly followed your market - both now follow the country and language " +
+      "in Settings.",
+  },
+  {
+    kind: "fixed",
+    text:
+      "The setup checklist no longer sits on its first step after the install has actually " +
+      "finished. If your repo is already running the automations - or has already published " +
+      "an article - the dashboard now recognises the install as done on its own instead of " +
+      "waiting for a final confirmation that sometimes never arrived.",
+  },
+  {
+    kind: "fixed",
+    text:
       "Self-hosted installs can now set up a WordPress site. The setup wizard's first step only " +
       "offered a GitHub repo and refused to continue without one, even though WordPress is " +
       "supported - it now asks where your articles go, and picking WordPress swaps the repo " +

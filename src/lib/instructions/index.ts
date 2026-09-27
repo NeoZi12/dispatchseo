@@ -22,6 +22,7 @@ import {
 } from "@/lib/content-prefs";
 import { CORE, CORE_TAIL, RESEARCH_QUALITY_BAR } from "./core";
 import { internalLinkingEnabled } from "@/lib/projects";
+import { marketLabel } from "@/lib/market";
 import {
   INSTALL,
   INSTALL_STEPS,
@@ -71,7 +72,7 @@ import { WRITE_GUIDE_CHAT, WRITE_GUIDE_CHAT_STEPS } from "./write-guide-chat";
 import { SETUP_CHAT, SETUP_CHAT_STEPS } from "./setup-chat";
 import { RESEARCH_CHAT, RESEARCH_CHAT_STEPS } from "./research-chat";
 
-export const INSTRUCTIONS_VERSION = "2026-08-20.2";
+export const INSTRUCTIONS_VERSION = "2026-09-27.1";
 
 export const WORKFLOWS = [
   "install",
@@ -298,7 +299,11 @@ export async function renderInstructions(workflow: WorkflowName, project: Projec
     .replaceAll("{{CONTENT_HINT}}", contentHint)
     .replaceAll("{{OWNER_PREFS_GUIDE}}", renderGuidePrefsNote(prefs))
     .replaceAll("{{OWNER_PREFS_TOOL}}", renderToolPrefsNote(prefs))
-    .replaceAll("{{RESEARCH_SOURCE_NOTE}}", researchSourceNote);
+    .replaceAll("{{RESEARCH_SOURCE_NOTE}}", researchSourceNote)
+    // "France · French" - the keyword tools follow the project's market on
+    // their own, but a run that is never TOLD the market writes its queries
+    // in English and validates them against another country's results.
+    .replaceAll("{{MARKET}}", marketLabel(project.location_code, project.language_code));
   // Agent-conditional pieces, resolved from the PROJECT - the same run-time
   // resolution the workflows use. Before this, the install playbook had one
   // credential branch and it was Claude's: a Codex install (setup.sh codex is
