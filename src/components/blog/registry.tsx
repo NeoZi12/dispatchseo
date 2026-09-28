@@ -209,6 +209,9 @@ import { slugify } from "@/lib/slugify";
 import { TimeoutLayerCompareTable } from "./timeout-layer-compare-table";
 import { GuideBuilderTimeoutFactRow } from "./guide-builder-timeout-fact-row";
 import { StuckVsSlowSplit } from "./stuck-vs-slow-split";
+import { FastVsEffortSplit } from "./fast-vs-effort-split";
+import { FastModePriceFactRow } from "./fast-mode-price-fact-row";
+import { ScheduledJobFastModeTable } from "./scheduled-job-fast-mode-table";
 
 // The components every blog MDX file renders with: typographic defaults that
 // match the app's dark look (no @tailwindcss/typography dependency), plus
@@ -497,4 +500,7 @@ export const mdxComponents: MDXComponents = {
   AuthMethodCompareTable,
   EnvVarCategoryChecklist,
   OwnBuilderEnvFactRow,
+  FastVsEffortSplit,
+  FastModePriceFactRow,
+  ScheduledJobFastModeTable,
 };
