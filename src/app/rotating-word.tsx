@@ -28,14 +28,31 @@ export function RotatingWord({
   const [widths, setWidths] = useState<number[] | null>(null);
   const probes = useRef<(HTMLSpanElement | null)[]>([]);
 
-  // Measure once mounted, and again whenever the viewport (and so the font
-  // size) changes.
+  // Measure once mounted, and again whenever a probe's own box changes. The
+  // mount measurement alone is not enough: it usually runs before the display
+  // webfont has swapped in, so it records the narrower fallback font and the
+  // slab stops short of the word's last letter. Observing the probes catches
+  // the font swap and viewport (font-size) changes alike; fonts.ready and
+  // resize stay as the fallback for browsers without ResizeObserver.
   useEffect(() => {
-    const measure = () =>
+    let live = true;
+    const measure = () => {
+      if (!live) return;
       setWidths(probes.current.map((el) => (el ? Math.ceil(el.getBoundingClientRect().width) : 0)));
+    };
     measure();
+    let observer: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(measure);
+      for (const el of probes.current) if (el) observer.observe(el);
+    }
+    document.fonts?.ready.then(measure).catch(() => {});
     window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
+    return () => {
+      live = false;
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
   }, [words]);
 
   useEffect(() => {
