@@ -38,6 +38,9 @@ import { MemoryMechanismGrid } from "./memory-mechanism-grid";
 import { RepoMemoryFactRow } from "./repo-memory-fact-row";
 import { AutomationFitCompareTable } from "./automation-fit-compare-table";
 import { HeadlessRunFactRow } from "./headless-run-fact-row";
+import { WindsurfRenameTimelineFlow } from "./windsurf-rename-timeline-flow";
+import { HeadlessSurfaceCompareTable } from "./headless-surface-compare-table";
+import { DevinApprovalModeLadder } from "./devin-approval-mode-ladder";
 import { AuthMethodCompareTable } from "./auth-method-compare-table";
 import { EnvVarCategoryChecklist } from "./env-var-category-checklist";
 import { OwnBuilderEnvFactRow } from "./own-builder-env-fact-row";
@@ -345,6 +348,9 @@ export const mdxComponents: MDXComponents = {
   RepoMemoryFactRow,
   AutomationFitCompareTable,
   HeadlessRunFactRow,
+  WindsurfRenameTimelineFlow,
+  HeadlessSurfaceCompareTable,
+  DevinApprovalModeLadder,
   AutomationPricingScorecard,
   HeadlessFlagGrid,
   PrintModeEnvelopeFactRow,

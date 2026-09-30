@@ -1,0 +1,87 @@
+---
+title: "Claude Code vs Windsurf: which one survives running unattended"
+description: Windsurf is now Devin Desktop, and the part a cron job can call is its terminal CLI. Checked against the current Devin docs and a real claude -p run - headless flags, approval modes, MCP config and the gaps each side leaves.
+date: 2026-09-30
+keyword: claude code vs windsurf
+cover: /blog/covers/claude-code-vs-windsurf.webp
+---
+
+Claude Code is the safer pick for a job that runs with nobody watching, and the reason is narrow: its headless mode documents a JSON result and an exit code you can gate on, while the terminal agent that replaced Windsurf documents neither. Windsurf itself has also changed under the comparison - since June 2, 2026 the product is called Devin Desktop, and the thing a script can invoke is a separate CLI.
+
+> **TL;DR** - Windsurf the editor is built for a person in the chair; the unattended half is now `devin -p "prompt"`. That CLI has one trap a fresh CI checkout hits at once (`-p` fails in an untrusted directory unless you pass `--respect-workspace-trust false`), four of its five permission modes can still stop on a prompt, and its docs publish no exit-code table or JSON response format. `claude -p "prompt" --output-format json` does return an `is_error` flag, and in a real run from this guide's build it agreed with the exit code. Both read project-level MCP config from a file. If you already drive Devin interactively, the gaps are workable. If you are choosing fresh for a scheduled builder, pick the one whose failures a script can read.
+
+## Is Windsurf still the product you are comparing?
+
+Not by that name. Most of page 1 for this query still compares "Windsurf," and its docs domain now redirects to `docs.devin.ai`. Three dated changes explain what you are actually choosing between:
+
+<WindsurfRenameTimelineFlow />
+
+The editor and the CLI are different surfaces. An editor agent has a person to ask when it needs permission. A CLI agent, run from a schedule, has nobody. So the useful question is about `devin`, not about the editor you may have open today.
+
+## What does each tool print when a script calls it?
+
+<HeadlessSurfaceCompareTable />
+
+Both have a print flag: `claude -p` and `devin -p` each take a prompt, run one turn and exit. After that the two diverge on the thing a pipeline reads.
+
+Claude Code's `--output-format json` returns a structured result. Here is a real one. This guide's build ran `claude -p "pong" --output-format json` with Claude Code 2.1.286 in a CI sandbox that has no stored login:
+
+<HeadlessRunFactRow />
+
+That failure is useful evidence. The process exited 1, the JSON said `is_error: true` with `terminal_reason: "api_error"`, and the `result` text was `Not logged in · Please run /login`, all in 90 ms. A script can gate on the exit code or the flag and get the same answer. There is more on the flags in [the headless mode guide](/blog/claude-code-headless-mode).
+
+The Devin CLI reference documents `--print` and, for scripts, JSON only for listing commands like `devin models list --format json`. It documents no JSON format for a prompt's response and no exit-code conventions. That is a statement about the docs, not a claim that the CLI misbehaves: I did not install or run `devin` here, so its real exit codes are untested. But a CI step can only gate on what is written down, and today that means scraping text.
+
+The trust prompt is the one documented behavior worth planning around. Per the reference, non-interactive `--print` mode cannot show the workspace trust prompt, so it fails in an untrusted directory, and `--respect-workspace-trust false` skips the check in scripts and CI. A fresh `actions/checkout` directory is exactly that case.
+
+## Which approval mode survives a run with no one to click?
+
+This is where unattended runs usually die, and [it is also how Claude Code jobs get stuck](/blog/claude-code-stuck): a prompt with no terminal to answer it. Devin's CLI has five permission modes:
+
+<DevinApprovalModeLadder />
+
+Only `bypass` (also `dangerous` or `yolo`) approves everything. `autonomous` pairs with `--sandbox` to auto-approve shell and fetches, but direct file edits still prompt, so a builder that writes files can stall there. `smart` hands the judgment to a fast model, yet installs, `sudo` and `rm` always prompt. For a job that edits files and runs `pnpm install`, that leaves bypass.
+
+Claude Code has the equivalents: a `--permission-mode` flag and `--dangerously-skip-permissions`, both in its current `--help`. The tradeoffs are the same ones. [Bypass mode belongs on a throwaway runner](/blog/claude-code-bypass-permissions), with secrets scoped tight, on either tool.
+
+## Can the agent reach the same MCP state from a cron job?
+
+Yes on both, through a file checked into the repo. Devin's CLI reads project servers from `.devin/mcp_config.json` with secrets in `.devin/mcp_config.local.json`, using the familiar `mcpServers` object. Claude Code takes `--mcp-config <file or JSON>`, and `--strict-mcp-config` makes it use only those servers, which keeps a CI run from picking up whatever happens to be configured on the machine.
+
+Two cautions from the docs. The Devin pages I read do not say which transports the CLI supports or whether it reads a standard `.mcp.json`, so a config written for one tool is not guaranteed to load in the other. And the `mcp_config.json` the Devin Desktop docs describe is for the legacy Cascade agent only, so guides that point you at `~/.config/devin/mcp_config.json` may be describing the wrong agent. The server side is identical either way: [a state-holding MCP server](/blog/claude-code-mcp-server) answers whichever client calls it.
+
+## Where does each one schedule itself?
+
+Neither CLI is a scheduler. A cron job, a GitHub Actions workflow or [Claude Code's own routines](/blog/claude-code-routines-vs-cron) does the waking. On the Devin side, the CLI docs I read describe cloud sessions (`devin --cloud -p` sends one prompt to a cloud session and exits, and `/handoff` moves a local session to the cloud) but document no scheduling feature and no token or environment-variable login for CI, only `devin auth login`. If the job must log in non-interactively on a fresh runner, confirm that path before you commit to the tool.
+
+## Which one should run the overnight builder?
+
+For a scheduled builder, Claude Code, for two checkable reasons: a documented JSON result and an exit code that matches it (the Devin side publishes neither, and adds a trust flag you must remember). This site's own daily builder runs on it for that reason, and it is also the tool its maintainer drives by hand, which keeps one set of prompts and one auth model.
+
+The Devin CLI is a fair choice when your team already lives in Devin Desktop and wants its cloud hand-off. Budget for the gaps: pass the trust flag, run in `bypass` on an isolated runner, and treat its stdout as text until you have run it enough to know its exit codes. If you [compared Cursor the same way](/blog/claude-code-vs-cursor), you will recognize the pattern - and [the Codex comparison](/blog/claude-code-vs-codex) runs on the same test.
+
+## When does this comparison not matter?
+
+If a person always starts the run and watches it, the headless columns do not apply and editor feel should decide. Windsurf's editor is the stronger of the two for someone who wants the agent beside the file tree. The comparison also ages quickly: the Devin CLI launched in April 2026, and a published exit-code table would change the verdict on its most important row.
+
+## FAQ
+
+**Is Windsurf the same thing as Devin Desktop?**
+Yes. The Devin Desktop changelog states that on June 2, 2026 (v3.0.12) "Windsurf is now Devin Desktop." The old `docs.windsurf.com` pages redirect to `docs.devin.ai`.
+
+**Does Windsurf have a headless mode?**
+The editor does not. Its terminal CLI does: `devin -p "prompt"` prints the response and exits. In an untrusted directory it fails unless you pass `--respect-workspace-trust false`.
+
+**Does the Devin CLI return JSON I can parse in CI?**
+Its reference documents JSON for `devin models list` and `devin list`, not for a prompt's response, and it publishes no exit-code table. Claude Code's `--output-format json` includes an `is_error` field that matched the exit code in a real run here.
+
+**Can Windsurf run on a schedule?**
+Not by itself. The CLI docs describe cloud sessions and hand-off, but no scheduler, so a cron job or CI workflow has to start it. The same is true of Claude Code's `-p`, unless you use its routines.
+
+**Does Windsurf support MCP servers?**
+Yes. Devin Desktop documents `stdio`, Streamable HTTP and SSE for the legacy Cascade agent, with a 100-tool limit. The newer Devin CLI reads `.devin/mcp_config.json`. Claude Code loads servers with `--mcp-config`.
+
+**Which one is cheaper to run every day?**
+This guide did not price either one, because a fair number needs your real token volume. Compare usage ceilings on your own account before committing a daily job to either.
+
+Pick the tool whose failures your script can read, then pin its flags in the workflow file. DispatchSEO's queue, rank tracking and dashboard stay the same whichever coding agent does the building.
