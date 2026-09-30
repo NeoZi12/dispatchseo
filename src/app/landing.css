@@ -275,17 +275,6 @@ html:has(.ld) { scroll-behavior: smooth; }
   .ld .show-title { white-space: normal; }
 }
 
-/* ---------- demo video ---------- */
-/* Same chrome as the screenshot slideshow above (.show-frame-wrap /
-   .show-frame / .show-chrome / .show-media, reused from feature-showcase.tsx)
-   so the two feel like one system, not a slideshow bolted to a separate
-   video widget. The slideshow's stage is 3020/1370 (a real screenshot's
-   native ratio); a screen recording is 16:9, so this gets its own stage
-   rather than stretching into that one. */
-.ld .demo-frame-wrap { max-width: 1100px; margin: 0 auto; }
-.ld .demo-stack { position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; }
-.ld .demo-iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
-
 /* ---------- open source ---------- */
 .ld .oss-in { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; }
 .ld .oss-copy h2 { font-size: clamp(28px, 3.8vw, 40px); font-weight: 800; margin-bottom: 20px; }
@@ -768,9 +757,9 @@ html:has(.ld) { scroll-behavior: smooth; }
 
 /* ==========================================================================
    Agent-specific landing pages (claude-code/, codex/), shared with
-   agent-landing.tsx. The hero, features, demo and FAQ sections reuse the
+   agent-landing.tsx. The hero, features and FAQ sections reuse the
    flagship page's own markup and classes untouched (.hero/.hl, #features,
-   #demo, .faq), including their existing mobile rules further up this file
+   .faq), including their existing mobile rules further up this file
    - this block only covers the one thing that is genuinely new: the
    cross-link card. Breakpoints below match the file's own tiers
    (980 / 600 / 380) rather than inventing new ones.

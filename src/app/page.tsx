@@ -4,7 +4,6 @@ import { redirect } from "next/navigation";
 import { DispatchMark } from "@/components/logo";
 import { DISCORD_URL, DiscordMark } from "@/components/discord-mark";
 import { FeatureShowcase } from "./feature-showcase";
-import { DemoVideo } from "./demo-video";
 import { DomainCta } from "./domain-cta";
 import { LandingNav } from "./landing-nav";
 import { PixelDispatcher } from "@/components/pixel-dispatcher";
@@ -168,7 +167,6 @@ export default async function LandingPage({
             DispatchSEO
           </a>
           <div className="nav-links">
-            <a href="#demo">Demo</a>
             <a href="#pricing">Pricing</a>
             <a href="#faq">FAQ</a>
             <a href="/blog">Blog</a>
@@ -239,15 +237,6 @@ export default async function LandingPage({
         </div>
       </section>
 
-      {/* ==================== DEMO VIDEO ==================== */}
-      <section id="demo">
-        <div className="wrap">
-          <div className="sec-h">
-            <h2>See it running</h2>
-          </div>
-          <DemoVideo />
-        </div>
-      </section>
 
       {/* ==================== WHY NOW / WHO FOR ==================== */}
       <section className="band-alt">
@@ -531,8 +520,7 @@ export default async function LandingPage({
             </div>
             <div className="foot-col">
               <h4>Product</h4>
-              <a href="#demo">Demo</a>
-              <a href="#features">Features</a>
+                <a href="#features">Features</a>
               <a href="#pricing">Pricing</a>
               <a href="#faq">FAQ</a>
               {availableAgents().map((a) => (

@@ -19,7 +19,6 @@ type NavLink = { href: string; label: string };
 // site (just page.tsx today) renders byte-identical to before this prop
 // existed. Agent-specific pages (claude-code/, codex/) pass their own set.
 const DEFAULT_LINKS: NavLink[] = [
-  { href: "#demo", label: "Demo" },
   { href: "#pricing", label: "Pricing" },
   { href: "#faq", label: "FAQ" },
   { href: "/blog", label: "Blog" },

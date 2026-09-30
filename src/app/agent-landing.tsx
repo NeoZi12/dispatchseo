@@ -7,14 +7,13 @@ import { AgentMark } from "@/components/agent-mark";
 import { PixelDispatcher } from "@/components/pixel-dispatcher";
 import { availableAgents, type AgentId } from "@/lib/agents";
 import { FeatureShowcase } from "./feature-showcase";
-import { DemoVideo } from "./demo-video";
 import { DomainCta } from "./domain-cta";
 import { LandingNav } from "./landing-nav";
 import "./landing.css";
 
 // Shared shell for the two agent-specific marketing pages
 // (claude-code/page.tsx, codex/page.tsx) - Postiz's "agent hub" pattern:
-// same nav, same hero, same features/demo/FAQ/footer as the flagship
+// same nav, same hero, same features/FAQ/footer as the flagship
 // landing page, just written for one agent instead of both, plus a
 // cross-link to the other agent's page. One component instead of two
 // near-copies of ~500 lines of JSX, so the two pages cannot drift out of
@@ -34,7 +33,6 @@ const GITHUB_URL = "https://github.com/NeoZi12/dispatchseo";
 const DOCS_URL = "/docs";
 
 const NAV_LINKS = [
-  { href: "#demo", label: "Demo" },
   { href: "/#pricing", label: "Pricing" },
   { href: "#faq", label: "FAQ" },
   { href: "/blog", label: "Blog" },
@@ -255,15 +253,6 @@ export function AgentLandingPage({ agentId }: { agentId: AgentPageId }) {
         </div>
       </section>
 
-      {/* ==================== DEMO VIDEO ==================== */}
-      <section id="demo">
-        <div className="wrap">
-          <div className="sec-h">
-            <h2>See it running</h2>
-          </div>
-          <DemoVideo />
-        </div>
-      </section>
 
       {/* ==================== FAQ ==================== */}
       <section className="faq band-alt" id="faq">
@@ -336,7 +325,6 @@ export function AgentLandingPage({ agentId }: { agentId: AgentPageId }) {
             </div>
             <div className="foot-col">
               <h4>Product</h4>
-              <a href="/#demo">Demo</a>
               <a href="/#features">Features</a>
               <a href="/#pricing">Pricing</a>
               {availableAgents().map((a) => (
