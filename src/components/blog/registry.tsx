@@ -218,6 +218,9 @@ import { ScheduledJobFastModeTable } from "./scheduled-job-fast-mode-table";
 import { TaskToolAvailabilityMatrix } from "./task-tool-availability-matrix";
 import { TaskLifecycleFlow } from "./task-lifecycle-flow";
 import { RunHeartbeatStaleHoursRow } from "./run-heartbeat-stale-hours-row";
+import { ContainerRunFactRow } from "./container-run-fact-row";
+import { ContainerBoundarySplit } from "./container-boundary-split";
+import { ContainerCredentialPathTable } from "./container-credential-path-table";
 
 // The components every blog MDX file renders with: typographic defaults that
 // match the app's dark look (no @tailwindcss/typography dependency), plus
@@ -509,6 +512,9 @@ export const mdxComponents: MDXComponents = {
   TaskToolAvailabilityMatrix,
   TaskLifecycleFlow,
   RunHeartbeatStaleHoursRow,
+  ContainerRunFactRow,
+  ContainerBoundarySplit,
+  ContainerCredentialPathTable,
   AuthMethodCompareTable,
   EnvVarCategoryChecklist,
   OwnBuilderEnvFactRow,
