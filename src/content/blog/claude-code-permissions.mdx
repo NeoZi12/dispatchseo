@@ -66,7 +66,7 @@ Worth showing rather than asserting, since it's the exact workflow that opened t
 
 <CiPermissionFactRow />
 
-No `permissions.allow`, no `permissions.deny`, no `dontAsk` allowlist to maintain as the pipeline's tool usage evolves. That's a deliberate trade, not an oversight: this repo's builder runs on a disposable GitHub Actions runner with nothing else on it, and every write lands as a PR that `seo-auto-merge.yml` requires a green build to merge - the two preconditions the bypass-permissions guide's checklist calls for. A team without that isolation, or one that wants a narrower blast radius even inside a container, is exactly who the `dontAsk` allowlist above is for instead. Neither posture is more "correct" in the abstract; they're answers to different questions about what's on the other side of the runner.
+No `permissions.allow`, no `permissions.deny`, no `dontAsk` allowlist to maintain as the pipeline's tool usage evolves. That's a deliberate trade, not an oversight: this repo's builder runs on a disposable GitHub Actions runner with nothing else on it, and every write lands as a PR that `seo-auto-merge.yml` [requires a green build to merge](/blog/claude-code-security-review) - the two preconditions the bypass-permissions guide's checklist calls for. A team without that isolation, or one that wants a narrower blast radius even inside a container, is exactly who the `dontAsk` allowlist above is for instead. Neither posture is more "correct" in the abstract; they're answers to different questions about what's on the other side of the runner.
 
 ## The misconfigurations that fail silently
 

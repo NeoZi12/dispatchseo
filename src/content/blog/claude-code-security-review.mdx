@@ -1,0 +1,106 @@
+---
+title: "Claude Code security review: why an agent that merges its own PRs needs a gate"
+description: What /security-review reads, what it can't stop, and what a merge gate has to do instead - with the numbers from 40 agent-authored PRs that merged unattended on this site.
+date: 2026-10-02
+keyword: claude code security review
+cover: /blog/covers/claude-code-security-review.webp
+---
+
+Claude Code's `/security-review` reads the diff between your branch and the default branch once and reports injection, auth and data-exposure risks. It is a review pass, not a gate: it prints findings and blocks nothing. If an agent opens pull requests while you sleep, the thing that decides whether a bad diff reaches production is whatever can refuse the merge, and that has to be a rule you wrote down, not a reviewer you hoped would run.
+
+> **TL;DR** - The risk with an unattended agent is not a rogue model. It is a plausible diff with a real bug or a leaked secret, merged because every box was green. `/security-review`, the security guidance plugin and Code Review all produce findings; only a required check or merge rule can say no. Scope the auto-merge to directories where a mistake is cheap, and treat anything outside them as a human's job. On this site, 40 agent PRs merged with a median of 2.4 minutes from open to merge, and 4 of them touched files the path rule holds back.
+
+## What is the real risk when an agent merges its own pull requests?
+
+A plausible diff. Nobody is worried that the agent decides to attack you. The failure is quieter: it adds a dependency you did not ask for, logs a token while debugging, loosens a permission to make a build pass, or writes a workflow file that grants more than it needs. Each one looks like normal work in a pull request.
+
+Review used to catch these because a person read every diff. An unattended pipeline removes that person on purpose, which is the whole point of it. So the question moves from "is this diff safe" to "what is allowed to merge without anyone reading it, and what stops the rest".
+
+Anthropic's own security page puts the responsibility where you would expect: you are responsible for reviewing proposed code and commands for safety before approval. A scheduled run has no approval step to hang that on. The review has to be built into the pipeline, which is what the next sections sort out.
+
+## What does /security-review actually check?
+
+Per the [commands reference](https://code.claude.com/docs/en/commands), it analyzes the changes on your current branch: the diff between your branch and origin's default branch, looking for risks like injection, auth issues and data exposure. It needs an `origin` remote, and it covers only that diff. Code you already have in the repo is out of scope, and so is a running site: the review reads source in your checkout.
+
+Three limits matter for an unattended pipeline:
+
+- **It runs when someone runs it.** It is a slash command. A scheduled job has to call it deliberately, and nothing fails if the job forgets.
+- **It reports.** It does not block a commit, a push or a merge.
+- **It is a model's reading of a diff.** A model can miss things. Anthropic says the same about its security guidance plugin: treat it as one layer of defense in depth, not a complete security solution.
+
+None of that makes it useless. It is a cheap second pair of eyes on exactly the diff you are about to ship. It just is not the gate.
+
+## Where do the other Claude Code security layers sit?
+
+Anthropic documents a stack, and it helps to see which parts can stop a merge and which cannot.
+
+<ReviewLayerCoverageTable />
+
+The security guidance plugin works earliest: it pattern-matches risky calls as Claude edits, reviews each turn's diff in the background, and runs a deeper review on commits and pushes Claude makes through its Bash tool. One detail is worth knowing for pipelines: edits under `.github/workflows/` are on its warning list, because a workflow file can grant repository-level permissions. Its docs are explicit that none of its layers block writes or commits, and that for hard enforcement you should pair it with a [hook that blocks the edit](/blog/claude-code-hooks) or a CI check.
+
+So the honest layering is: find problems early with the review tools, and enforce with something that has a veto. If you run Claude Code in Actions, the [GitHub Actions guide](/blog/claude-code-github-actions) covers the workflow side.
+
+## What can a green-checks gate see, and what walks past it?
+
+The gate on this site is a workflow, `seo-auto-merge`, that sweeps open pull requests labeled `seo` whenever a check reports, plus a backstop every six hours. It answers two questions and nothing else.
+
+<AutoMergeGateDecisionFlow />
+
+What it does well:
+
+- **Path scope.** A guide PR may only change files under `src/content/blog/`, `src/components/blog/` and `public/blog/covers/`. The list lives in a repo-owned `.dispatchseo/publish-paths` file on the default branch, so a pipeline update cannot widen it. One file outside and the PR waits for the owner.
+- **No checks, no merge.** If a PR has zero checks reported, the gate refuses. The workflow's comment says it plainly: no gate is not safe.
+- **A failing check leaves the PR alone.** A pending one retries on the next event.
+- **Tool PRs need a validation verdict.** A PR for an interactive tool only merges once a separate job has exercised the live page in a browser. That validation job runs the model-written PR code with no secrets at all.
+
+What walks past it: **anything that lives inside an allowed path and still does harm.** A guide here is MDX plus TSX components, and those are code that runs in the built site. The path rule says the file is in the right folder. It does not say the component is harmless. The checks say the build compiled, not that the diff is safe. If you copy this design, that gap is the part to understand before you rely on it.
+
+## What do 40 merged agent PRs on this site show?
+
+We counted. This is the output of `gh pr list --state merged --label seo --limit 40` against this repository on 2026-10-02, covering PRs first opened on 2026-08-17 through 2026-10-01.
+
+<AgentPrMergeHistoryStats />
+
+Reading it honestly: the median of 2.4 minutes means that for the usual guide PR, nobody is in the loop between the PR opening and the merge. That is the design. The 4 PRs outside the allowed directories are the ones the path rule hands to a human. The slowest PR took 332 minutes, so not everything sails through, though the data does not say why that one waited.
+
+The CodeRabbit number is the one to be careful with. Only 15 of the 40 PRs carried that check, while Vercel reported on all 40. A required-checks gate is only as strong as the checks that actually report, and a check that shows up on some PRs and not others is a soft spot. We did not find the cause from the PR data, so we are not going to guess at one here.
+
+## How do you keep a bad diff small enough to survive?
+
+You cannot make a model's review perfect, so shrink what a mistake can do.
+
+1. **Auto-merge only where the blast radius is small.** Content directories and cover images, yes. Workflow files, auth code, dependency manifests and anything that holds a secret, no. Those go to a person, always.
+2. **Put the allowlist where the agent cannot edit it.** A rule the agent can rewrite in the same PR is not a rule. Ours is read from the default branch, not the PR.
+3. **Make the agent's token small.** Give the run the permissions it needs and no more; the [permissions guide](/blog/claude-code-permissions) covers the knobs, and [bypass mode](/blog/claude-code-bypass-permissions) is the setting to be most deliberate about.
+4. **Fail loudly.** A run that dies or a PR that cannot merge should reach you. Ours reports to a dashboard banner and an email instead of dying in a log nobody opens.
+5. **Run `/security-review` as a check, not a hope.** If you want the review in the loop, have the job run it and fail the run on a finding you care about. Today it only reports, so you decide what a finding means.
+
+## When is a gate like this overkill?
+
+If you review every PR by hand, you already have a gate, and it is you. If the agent writes to a private scratch repo that ships nowhere, a path allowlist is ceremony. And if your pipeline touches money, auth or customer data, a green-checks auto-merge is the wrong tool entirely: keep a required human review there.
+
+The gate is for the middle case: frequent, low-risk, well-scoped changes that you want to ship without being present.
+
+## FAQ
+
+### What does /security-review do in Claude Code?
+
+It analyzes the changes on your current branch, meaning the diff against origin's default branch, for security risks like injection, auth issues and data exposure. It needs an `origin` remote and reports findings; it does not block a commit or merge.
+
+### Does /security-review scan my whole repository?
+
+No. It covers only the diff on your current branch. To look at code you already have, ask Claude to review a specific file or directory, or use Anthropic's Claude Security plugin for a deeper multi-agent scan.
+
+### Is it safe to let an AI agent merge its own pull requests?
+
+Only inside a narrow scope. Auto-merge changes that are cheap to be wrong about, require green checks, keep the allowlist where the agent cannot edit it, and send everything else to a human.
+
+### Can a Claude Code review tool block a merge?
+
+Not by itself. The security guidance plugin, `/security-review` and Code Review produce findings. A required status check or a branch protection rule is what refuses the merge.
+
+### What should an unattended pipeline never auto-merge?
+
+Workflow files, auth and permission code, dependency manifests, and anything that handles secrets or customer data.
+
+This is the gate [DispatchSEO](/) runs on its own guide PRs, and the same one a self-hosted install gets: a scoped path list, green checks, and a failure that lands on your dashboard.
