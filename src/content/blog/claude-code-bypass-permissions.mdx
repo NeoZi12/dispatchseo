@@ -54,7 +54,7 @@ The realistic risk with this flag was never "the agent turns adversarial." It's 
 
 <BypassDecisionChecklist />
 
-All three have to hold at once - drop any one and the flag is doing exactly what the warning says. A [container with production credentials](/blog/claude-code-docker) mounted into it fails precondition two. A sandboxed process whose output merges straight to `main` on a green build fails precondition three. The [Bash sandbox](/blog/claude-code-sandbox) only ever covers precondition one, and only for Bash - it's a real piece of the boundary, never the whole thing on its own.
+All three have to hold at once - drop any one and the flag is doing exactly what the warning says. A [container with production credentials](/blog/claude-code-docker) mounted into it fails precondition two. A sandboxed process whose output [merges straight to `main` on a green build](/blog/claude-code-security-review) fails precondition three. The [Bash sandbox](/blog/claude-code-sandbox) only ever covers precondition one, and only for Bash - it's a real piece of the boundary, never the whole thing on its own.
 
 ## DispatchSEO's own builder runs this way, and never on a laptop
 

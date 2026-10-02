@@ -220,6 +220,9 @@ import { TaskLifecycleFlow } from "./task-lifecycle-flow";
 import { RunHeartbeatStaleHoursRow } from "./run-heartbeat-stale-hours-row";
 import { ContainerRunFactRow } from "./container-run-fact-row";
 import { ContainerBoundarySplit } from "./container-boundary-split";
+import { ReviewLayerCoverageTable } from "./review-layer-coverage-table";
+import { AutoMergeGateDecisionFlow } from "./auto-merge-gate-decision-flow";
+import { AgentPrMergeHistoryStats } from "./agent-pr-merge-history-stats";
 import { ContainerCredentialPathTable } from "./container-credential-path-table";
 
 // The components every blog MDX file renders with: typographic defaults that
@@ -521,4 +524,7 @@ export const mdxComponents: MDXComponents = {
   FastVsEffortSplit,
   FastModePriceFactRow,
   ScheduledJobFastModeTable,
+  ReviewLayerCoverageTable,
+  AutoMergeGateDecisionFlow,
+  AgentPrMergeHistoryStats,
 };
