@@ -73,7 +73,7 @@ So the checklist is a good live view for a person watching, and a poor one for a
 
 The fix isn't a better checklist, it's a signal from outside the agent. Treat the run's outcome as something a step *after* the agent reports, checked against evidence: the PR exists, the row was written, the job wrote a result.
 
-DispatchSEO's own scheduled workflows work this way. Each one ends with a step that calls the backend with `job=<name>&ok=1` or `&fail=<message>`, so a failure shows on the dashboard Home banner and sends an email, instead of sitting in a CI tab. The builder's success step also counts the PRs that should exist before it reports ok, because a green exit code alone was the thing that failed us.
+DispatchSEO's own [scheduled workflows](/blog/claude-code-automation) work this way. Each one ends with a step that calls the backend with `job=<name>&ok=1` or `&fail=<message>`, so a failure shows on the dashboard Home banner and sends an email, instead of sitting in a CI tab. The builder's success step also counts the PRs that should exist before it reports ok, because a green exit code alone was the thing that failed us.
 
 The part that catches silence is the staleness clock. A job that never reports never fails, so the backend also flags any job that hasn't reported inside a window. These are the real thresholds from `src/lib/cron-alerts.ts`:
 

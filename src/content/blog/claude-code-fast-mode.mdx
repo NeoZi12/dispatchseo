@@ -35,7 +35,7 @@ Fast mode has more preconditions than a setting suggests, and each one fails dif
 - **Who allows it.** On Team and Enterprise it is off by default until an Owner enables it. Managed settings with `fastMode: false` block it too.
 - **Whether the availability check can reach Anthropic.** Claude Code checks fast mode availability with a direct request to `api.anthropic.com`. On a network that forces traffic through an LLM gateway, that check can fail even though inference works, and requests fall back to standard speed. Two variables exist for this: `CLAUDE_CODE_SKIP_FAST_MODE_NETWORK_ERRORS` and `CLAUDE_CODE_SKIP_FAST_MODE_ORG_CHECK`.
 
-The consequence for a scheduled run is that failure is mostly soft. If you run out of credits, Claude Code retries each rejected fast request at standard speed and price, so the run keeps going. That is good for reliability and bad for noticing, because a job you believe is fast may quietly be standard. If you want to know, the [rate limit behavior](/blog/claude-code-rate-limit) and the run's own logs are where it shows up.
+The consequence for a [scheduled run](/blog/claude-code-automation) is that failure is mostly soft. If you run out of credits, Claude Code retries each rejected fast request at standard speed and price, so the run keeps going. That is good for reliability and bad for noticing, because a job you believe is fast may quietly be standard. If you want to know, the [rate limit behavior](/blog/claude-code-rate-limit) and the run's own logs are where it shows up.
 
 ## Turning it on in a run nobody is watching
 

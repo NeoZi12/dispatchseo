@@ -138,6 +138,9 @@ import { InteractiveVsHeadlessLimitSplit } from "./interactive-vs-headless-limit
 import { QuotaBackoffTimeline } from "./quota-backoff-timeline";
 import { RoutineVsCronTable } from "./routine-vs-cron-table";
 import { DispatchseoScheduleFactRow } from "./dispatchseo-schedule-fact-row";
+import { UnattendedJobSortGrid } from "./unattended-job-sort-grid";
+import { UnattendedLoopGateFlow } from "./unattended-loop-gate-flow";
+import { OwnLoopRunStats } from "./own-loop-run-stats";
 import { RoutineOrCronChecklist } from "./routine-or-cron-checklist";
 import { LoopInvocationGrid } from "./loop-invocation-grid";
 import { LoopWakeupFlow } from "./loop-wakeup-flow";
@@ -527,4 +530,7 @@ export const mdxComponents: MDXComponents = {
   ReviewLayerCoverageTable,
   AutoMergeGateDecisionFlow,
   AgentPrMergeHistoryStats,
+  UnattendedJobSortGrid,
+  UnattendedLoopGateFlow,
+  OwnLoopRunStats,
 };
