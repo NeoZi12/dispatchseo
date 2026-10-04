@@ -46,8 +46,6 @@
   <a href="https://dispatchseo.com/docs#choose-your-install"><img src="docs/buttons/install.svg" alt="Install now" height="46"></a>
   &nbsp;
   <a href="https://dispatchseo.com/docs"><img src="docs/buttons/docs.svg" alt="Read the docs" height="46"></a>
-  &nbsp;
-  <a href="https://www.youtube.com/watch?v=1gCXPxPqfy0"><img src="docs/buttons/demo.svg" alt="Watch the demo" height="46"></a>
 </p>
 
 <p align="center">
@@ -61,14 +59,6 @@
 </p>
 
 <p align="center"><i>Self-hosted has zero feature limitations. Everything the paid<br />cloud does, this repo does today, in your own accounts, at $0.</i></p>
-
-<p align="center">
-  <a href="https://www.youtube.com/watch?v=1gCXPxPqfy0">
-    <img src="https://img.youtube.com/vi/1gCXPxPqfy0/maxresdefault.jpg" alt="DispatchSEO preview video - the dashboard, the queue, and a pipeline-built pull request, walked through end to end">
-  </a>
-  <br>
-  <sub>▶ Watch the preview</sub>
-</p>
 
 <br />
 

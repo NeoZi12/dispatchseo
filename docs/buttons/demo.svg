@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="166" height="46" viewBox="0 0 166 46" role="img" aria-label="Watch the demo">
-  <rect x="0.5" y="0.5" width="165" height="45" rx="11" fill="#161B22" stroke="#3D444D"/>
-  <circle cx="27" cy="23" r="9" fill="none" stroke="#C9D1D9" stroke-width="1.8"/>
-  <path d="M24.5 18.6 L32 23 L24.5 27.4 Z" fill="#C9D1D9"/>
-  <text x="46" y="28.6" textLength="102" lengthAdjust="spacingAndGlyphs" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#E6EDF3">Watch the demo</text>
-</svg>
