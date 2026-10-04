@@ -70,7 +70,7 @@ jobs:
             --max-turns 20
 ```
 
-`BASH_MAX_TIMEOUT_MS` is set well under the job's own `timeout-minutes: 30`, on purpose - it's what makes Claude Code's own kill switch fire first, so the failure this job reports is "a command timed out" instead of the far less useful "the whole job timed out" from GitHub itself. `--permission-mode bypassPermissions` still has to be a CLI flag rather than a settings key, [for the reason covered in the settings.json breakdown](/blog/claude-code-settings-json-example): that one mode can't be granted from a committed file at all. This job runs `claude` directly rather than through `anthropics/claude-code-action`; [the scheduled-pattern guide](/blog/claude-code-github-actions) covers that action-based shape and the trigger/concurrency setup around it.
+`BASH_MAX_TIMEOUT_MS` is set well under the job's own `timeout-minutes: 30`, on purpose - it's what makes [Claude Code's own kill switch](/blog/claude-code-timeout) fire first, so the failure this job reports is "a command timed out" instead of the far less useful "the whole job timed out" from GitHub itself. `--permission-mode bypassPermissions` still has to be a CLI flag rather than a settings key, [for the reason covered in the settings.json breakdown](/blog/claude-code-settings-json-example): that one mode can't be granted from a committed file at all. This job runs `claude` directly rather than through `anthropics/claude-code-action`; [the scheduled-pattern guide](/blog/claude-code-github-actions) covers that action-based shape and the trigger/concurrency setup around it.
 
 ## The failure that only shows up in CI: set locally, missing from secrets
 
