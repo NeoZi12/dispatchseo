@@ -197,6 +197,9 @@ import { CompactSurvivalTable } from "./compact-survival-table";
 import { AutoCompactThresholdTable } from "./auto-compact-threshold-table";
 import { CompactHardeningChecklist } from "./compact-hardening-checklist";
 import { OrchestrationShapeCompareTable } from "./orchestration-shape-compare-table";
+import { ClaudeTimeoutClockTable } from "./claude-timeout-clock-table";
+import { KillExitCodeStatRow } from "./kill-exit-code-stat-row";
+import { TimedOutRunReportFlow } from "./timed-out-run-report-flow";
 import { ScheduledFleetIsolationFlow } from "./scheduled-fleet-isolation-flow";
 import { OrchestrationScaleFactRow } from "./orchestration-scale-fact-row";
 import {
@@ -533,4 +536,7 @@ export const mdxComponents: MDXComponents = {
   UnattendedJobSortGrid,
   UnattendedLoopGateFlow,
   OwnLoopRunStats,
+  ClaudeTimeoutClockTable,
+  KillExitCodeStatRow,
+  TimedOutRunReportFlow,
 };

@@ -1,0 +1,116 @@
+---
+title: "Claude Code timeout: which of six clocks killed your run, and the setting that moves each"
+description: The two-minute Bash limit, the ten-minute API timeout, MCP idle windows and more - what each Claude Code timeout is, the env var that changes it, and how to make a timed-out unattended run report itself.
+date: 2026-10-04
+keyword: claude code timeout
+cover: /blog/covers/claude-code-timeout.webp
+---
+
+Claude Code has no single timeout. It has at least six separate clocks, and the two-minute number in most complaints is just one of them: the default for a foreground Bash command, which `BASH_DEFAULT_TIMEOUT_MS` raises. A "Request timed out" error is a different clock (10 minutes per API request, after retries), and an MCP tool that goes quiet is a third. Find the message, match it to the table below, then change that one setting.
+
+> **TL;DR** - Bash commands stop at 2 minutes by default (`BASH_DEFAULT_TIMEOUT_MS`, with a 10-minute ceiling in `BASH_MAX_TIMEOUT_MS`). API requests stop at 10 minutes and are retried up to 10 times first (`API_TIMEOUT_MS`, `CLAUDE_CODE_MAX_RETRIES`). MCP calls abort after 5 idle minutes on network servers and 30 on stdio ones. None of these protects an unattended job from a hang, so wrap the run in `timeout`, branch on exit code 124, and post the result somewhere you will see it.
+
+## Which of the six clocks just went off?
+
+<ClaudeTimeoutClockTable />
+
+The defaults come from the [environment variables reference](https://code.claude.com/docs/en/env-vars) and the [error reference](https://code.claude.com/docs/en/errors). The point of the table is the mismatch: these clocks do not share a start time or a unit of measure. One counts a single shell command, one counts a single HTTP request, two count silence rather than elapsed time. Raising the wrong one changes nothing, which is why "I set a longer timeout and it still died" is such a common report.
+
+## What do you set to stop a long shell command dying at two minutes?
+
+Set `BASH_DEFAULT_TIMEOUT_MS` for the default, and `BASH_MAX_TIMEOUT_MS` for the most the model is allowed to ask for on a single command. The docs say the effective ceiling is the larger of the two, so raising only the default also raises the cap.
+
+```bash
+export BASH_DEFAULT_TIMEOUT_MS=900000   # 15 min default for foreground commands
+export BASH_MAX_TIMEOUT_MS=1800000      # 30 min ceiling the model can request
+claude -p "run the full test suite and report failures"
+```
+
+Two details from the docs matter for unattended runs. A default longer than 30 minutes also becomes the default time limit for background commands in unattended sessions, and an effective ceiling longer than 2 hours becomes their maximum. Both need Claude Code v2.1.285 or later. If the command genuinely takes an hour, a background task with a poll is usually a better shape than a 60-minute foreground wait (the [background tasks](/blog/claude-code-background-tasks) guide covers what survives a session ending).
+
+## Why does "Request timed out" show up after ten minutes, not two?
+
+Because that is the API clock, and it is a different one. A request that gets no response within `API_TIMEOUT_MS` (default 600000, ten minutes) is retried automatically, up to 10 times with exponential backoff, before the error reaches you. So the message you see has already survived retries.
+
+That makes the worst case long. Ten attempts at ten minutes each is roughly 100 minutes before the error prints, which is the opposite of what a nightly job wants. Pick what you want the job to do:
+
+```bash
+# fail fast in a script: three tries, then give up
+export CLAUDE_CODE_MAX_RETRIES=3
+
+# slow network or a gateway that holds responses until they finish
+export API_TIMEOUT_MS=1200000
+export CLAUDE_STREAM_FIRST_BYTE_TIMEOUT_MS=120000
+
+# or ride out capacity errors (429, 529) instead of failing
+export CLAUDE_CODE_RETRY_WATCHDOG=1
+```
+
+`CLAUDE_CODE_RETRY_WATCHDOG=1` is documented for unattended sessions: it retries 429 and 529 errors indefinitely and raises the retry count for other transient errors to 300, roughly three hours of backoff. It is the right call for a job that must eventually finish, and exactly wrong for one that should tell you quickly. If your errors are rate limits rather than timeouts, the [rate limit guide](/blog/claude-code-rate-limit) is the better starting point. A separate idle watchdog aborts a streaming response when no bytes arrive for 5 minutes; `API_FORCE_IDLE_TIMEOUT=0` turns it off for slow gateways or local models.
+
+## How long can an MCP tool call run before Claude Code gives up?
+
+Longer than most people assume, as long as the server keeps talking. Network servers (HTTP, SSE, WebSocket) abort after 5 minutes with no response and no progress notification, and stdio servers after 30. `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT` changes that window, `0` disables it, and the value is capped at the overall `MCP_TOOL_TIMEOUT`. A call still running at 2 minutes moves to a background task unless `CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS` says otherwise. The [stuck run guide](/blog/claude-code-stuck) goes deeper on diagnosing which of these is holding a hung session.
+
+## What exit code does a killed run leave behind?
+
+Claude Code's own limits end a call or a turn. They do not guarantee the process ends, so the dependable ceiling is outside it. This is the cheapest version, run on the machine that built this page:
+
+```bash
+$ timeout 2 sleep 10; echo "exit: $?"
+exit: 124
+$ timeout -s INT 2 sleep 10; echo "exit: $?"
+exit: 124
+$ timeout --kill-after=1 2 bash -c 'trap "" TERM; sleep 10'; echo "exit: $?"
+exit: 137
+```
+
+<KillExitCodeStatRow />
+
+124 means `timeout` killed it. 137 means the child ignored the polite signal and got SIGKILL (128 plus 9), which is why `--kill-after` belongs in every wrapper: without it, a process that traps SIGTERM outlives the limit. On SIGTERM, Claude Code itself ends any still-running Bash command and exits 143, so a wrapper can see 124, 137 or 143 for a run that was stopped on purpose.
+
+## How do you make a timed-out scheduled run tell you?
+
+A dead run is silent by default. The process exits non-zero, the scheduler marks one row red, and unless someone is looking at that scheduler, nothing else happens. The fix is a small branch after the command, because a timeout and a crash are different problems and deserve different messages.
+
+<TimedOutRunReportFlow />
+
+```bash
+timeout --kill-after=30 40m claude -p "$PROMPT" --max-turns 100
+rc=$?
+case "$rc" in
+  0)           status="ok" ;;
+  124|137|143) status="fail=timed out after 40 minutes (exit $rc)" ;;
+  *)           status="fail=agent exited $rc" ;;
+esac
+curl -sG --max-time 30 -H "Authorization: Bearer $KEY" \
+  --data-urlencode "job=nightly-build" --data-urlencode "$status" \
+  "https://dispatchseo.com/api/cron/deploy-check" || true
+exit "$rc"
+```
+
+That `curl` target is this backend's own reporting endpoint, so on a DispatchSEO install the failure lands on the Home banner and emails the owner. On anything else, swap in a webhook or a message to yourself; the part that matters is the branch. The `|| true` keeps a failed report from masking the original exit code, and `exit "$rc"` keeps the job red in the scheduler too. DispatchSEO's own workflows lean on GitHub's `timeout-minutes` (45 for the daily guide builder, 30 for weekly research) and a "Report outcome" step rather than this shell wrapper, but the shape is the same: outer limit, then a report. The [headless mode guide](/blog/claude-code-headless-mode) covers the flags that make `claude -p` behave in a script, and the [environment variables guide](/blog/claude-code-environment-variables) lists what else a CI run needs set.
+
+## Which timeouts should you leave alone?
+
+Most of them. A tight `timeout-minutes` kills a run that was about to finish just as readily as one that hung, so lowering it after one slow morning trades a visible problem for a hidden one. Raising `API_TIMEOUT_MS` is only right if you know a proxy is holding responses; on a healthy connection it just delays the retry that would have worked. Disabling the MCP idle check hides a server that has genuinely died. Change a clock when the error message names it, not when a run was merely slow.
+
+## FAQ
+
+**Why does Claude Code time out after 2 minutes?**
+That is the default for a foreground Bash or PowerShell command: `BASH_DEFAULT_TIMEOUT_MS` is 120000. The model can request more for a single command, up to `BASH_MAX_TIMEOUT_MS` (10 minutes by default), so a longer default and ceiling are set through those two variables.
+
+**How do I increase the Claude Code timeout?**
+It depends on which one fired. Shell commands use `BASH_DEFAULT_TIMEOUT_MS` and `BASH_MAX_TIMEOUT_MS`, API requests use `API_TIMEOUT_MS`, and idle MCP calls use `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT`. Check the table above against the message you saw first.
+
+**What does "Request timed out" mean in Claude Code?**
+The API did not respond within `API_TIMEOUT_MS`, which defaults to 10 minutes. Claude Code retries up to 10 times with backoff before showing the error, so it has already failed repeatedly by the time you see it.
+
+**Can I make a script fail faster on timeouts?**
+Yes. Lower `CLAUDE_CODE_MAX_RETRIES`, and on versions that support it set `CLAUDE_CODE_NONSTREAMING_TIMEOUT_RETRIES=0` so a timed-out non-streaming request fails on its first timeout.
+
+**What exit code does `timeout` return when it kills a command?**
+124 when the command outlived the limit, or 137 if you used `--kill-after` and the command ignored the first signal. Branch on both.
+
+**Should an overnight run use `CLAUDE_CODE_RETRY_WATCHDOG`?**
+Only if finishing eventually matters more than finishing on time. It retries capacity errors indefinitely, so pair it with an outer `timeout` so a long outage cannot hold the job open all night.
