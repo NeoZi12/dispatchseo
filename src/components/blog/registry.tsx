@@ -49,6 +49,9 @@ import { HeadlessFlagGrid } from "./headless-flag-grid";
 import { PrintModeEnvelopeFactRow } from "./print-mode-envelope-fact-row";
 import { ClassifyOutcomeBranches } from "./classify-outcome-branches";
 import { SerpTrackingCostScorecard } from "./serp-tracking-cost-scorecard";
+import { GeoToolJobSortGrid } from "./geo-tool-job-sort-grid";
+import { GeoFreeFirstPartyReportTable } from "./geo-free-first-party-report-table";
+import { GeoOwnCitationCheckCard } from "./geo-own-citation-check-card";
 import { SelfHostPipelineFlow } from "./self-host-pipeline-flow";
 import { DiyWinsChecklist } from "./diy-wins-checklist";
 import { McpCategoryGrid } from "./mcp-category-grid";
@@ -368,6 +371,9 @@ export const mdxComponents: MDXComponents = {
   PrintModeEnvelopeFactRow,
   ClassifyOutcomeBranches,
   SerpTrackingCostScorecard,
+  GeoToolJobSortGrid,
+  GeoFreeFirstPartyReportTable,
+  GeoOwnCitationCheckCard,
   SelfHostPipelineFlow,
   DiyWinsChecklist,
   McpCategoryGrid,
