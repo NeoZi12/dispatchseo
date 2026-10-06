@@ -1,0 +1,87 @@
+---
+title: "Generative engine optimization tools: what each kind does, and the one you need first"
+description: GEO tools sort into four jobs - measuring citations, auditing pages, generating content, agency retainers. What each does, what Google and Bing already give you free, and the smallest stack worth running.
+date: 2026-10-06
+keyword: generative engine optimization tools
+cover: /blog/covers/generative-engine-optimization-tools.webp
+---
+
+"Generative engine optimization tool" is one label on four different products: ones that measure whether AI answers cite you, ones that score your pages, ones that write content, and agencies that do all three for a monthly fee. Start with measurement, because it is the only job that tells you whether the other three worked, and two of the measuring tools are free: Google's Generative AI performance report in Search Console and Bing's AI Performance report. Everything else can wait until you have a number to move.
+
+> **TL;DR** - Google says "you don't need to create new machine readable files, AI text files, markup, or Markdown" to appear in its AI features, so no tool is required to be eligible. Measure first with the free first-party reports, add a paid citation tracker only when you need per-prompt history across engines, treat page graders and AI writers as optional, and skip retainers until you know what you are paying someone to fix.
+
+## Which job is the GEO tool actually doing?
+
+<GeoToolJobSortGrid />
+
+Page-1 roundups for this keyword mix all four into one ranked list, which is why they are hard to use: a citation tracker and an AI writer solve unrelated problems and cannot be compared on a score out of ten. Sort by job first, then pick within the job. The grid is ordered by what a small site needs first, not by how often each is sold.
+
+## What do Google and Bing already give you for free?
+
+<GeoFreeFirstPartyReportTable />
+
+Google's [guide to optimizing for generative AI features](https://developers.google.com/search/docs/fundamentals/ai-optimization-guide) says "optimizing for generative AI search is optimizing for the search experience, and thus still SEO," and points to the Generative AI performance report in Search Console for measurement. It also warns: "No third-party tool has access to our internal ranking or AI systems." That does not make third-party tools useless. It means nothing they show you is Google's own data, and nothing they sell is a requirement.
+
+Bing goes further on the measuring side. Its [AI Performance report](https://www.bing.com/webmasters/help/ai-performance-9f8e7d6c) lists total citations, citation counts by URL and the grounding queries behind them, and Microsoft's own help page stresses that a citation is not traffic or a click. Both reports cost nothing and need a verified site, which most owners already have.
+
+## Which tools track citations, and what separates them?
+
+A paid citation tracker earns its price on three things the free reports do not give you: it asks the engines your own target queries on a schedule, it stores the history, and it shows which domains an answer cited instead of you. Profound, Peec AI and SE Ranking's SE Visible sell exactly that, and the prices and gating are broken down in [the AI visibility tracking tool guide](/blog/ai-visibility-tracking-tool). Questions worth asking any of them before you pay:
+
+- Which engines does it actually query, and does it query the live engine or a model's remembered answer?
+- Does it keep history, or only today's snapshot?
+- Does it show the sources cited when you were not named?
+- Is the price per prompt, per brand or per seat?
+
+If a vendor cannot answer the first two plainly, it is a page grader with a tracking label. The by-hand version of the same method is in [how to check if ChatGPT is citing your website](/blog/how-to-check-if-chatgpt-is-citing-your-website), and it is the right way to test whether a tool's number matches reality on five queries before you commit.
+
+## Do page graders and content generators belong in a GEO stack?
+
+Page graders score a URL against a checklist: answer-first opening, headings that match questions, crawlable, structured. The checklist is real advice, and it is also free in most cases, since it is the same material in Google's guide and in any decent on-page guide. A grader is a convenience, not a capability.
+
+AI content tools are the weakest fit for the keyword. They produce text; they cannot tell you whether an AI engine cites it. Google's guidance puts the weight on useful content for people, so a generator that fills a site with undifferentiated pages works against you. If you already use one, such as [Frase](/blog/frase-alternative), judge it as a writing tool and not as GEO.
+
+## What does an AI-citation check look like on a site with no authority?
+
+This site tracks its own. Since 2026-08-24, every week's checks have asked a set of target queries to Claude and to Google's AI Overview and logged whether dispatchseo.com was named.
+
+<GeoOwnCitationCheckCard />
+
+One Claude answer out of 93 named this site, and none of the 91 Google AI Overview checks did. The pipeline works: 93 of 93 Claude queries and 90 of 91 overview queries returned an AI answer, so the engines answer fine and simply prefer other sources. The useful output is the right-hand list. YouTube was cited 123 times for these queries, GitHub 45, the official Claude Code docs 38 and Reddit 36. For a young site, that is a map of where citations come from (video, repos, official docs, forums), which a bare "your score is 1%" never tells you. A tracker earns its keep when it gives you that second list.
+
+## What are you paying for with an agency retainer?
+
+Mostly for someone to do the first three jobs and send a monthly summary. That can be fair value for a team without the time, but a retainer sold before any measurement exists is paying for a fix to a problem nobody has sized. Get one month of citation data first; it also lets you judge whether an agency's claimed lift is real.
+
+## What is the smallest GEO stack worth running?
+
+1. Verify the site in Search Console and Bing Webmaster Tools and read both AI reports monthly. Free.
+2. Pick 10 to 20 target queries and check them by hand against the engines your buyers use. Free, an hour.
+3. Move to a paid or self-hosted tracker only when you outgrow the hand check: more queries, weekly history, gap domains. [DispatchSEO](/) does this through its MCP tools, on top of the rank tracking it already runs.
+4. Fix pages using the evidence: [the tactics that move ChatGPT citations](/blog/how-to-rank-in-chatgpt) and ordinary SEO.
+
+## When are paid GEO tools the wrong buy?
+
+When you have no measurable traffic or authority yet. A new site cited zero or one time in 93 checks is not helped by a better dashboard; it needs pages worth citing and links to them. Paying $99 a month to watch a flat line is the usual mistake. A tool is also the wrong buy if it promises "internal Google metrics," since Google says no third party has them.
+
+## FAQ
+
+**What are generative engine optimization tools?**
+Software that measures or improves how often AI answer engines cite a site. They split into citation trackers, page graders, content generators and agency services, which solve different problems.
+
+**Do I need a GEO tool to appear in Google's AI Overviews?**
+No. Google says no special markup or files are needed, and that optimizing for generative AI features is still SEO. A tool only helps you measure.
+
+**Is there a free GEO tool?**
+Yes. Search Console's Generative AI performance report and Bing Webmaster Tools' AI Performance report are free and first-party. A hand check of your target queries is free too.
+
+**Which GEO tool should a small site start with?**
+A citation measurement, and the free reports cover the first month. Add a paid tracker only when you need per-prompt history across several engines.
+
+**Is GEO different from SEO?**
+Per Google, from its search perspective it is still SEO. The measurement differs: you track whether an answer names you, not just where a page ranks.
+
+**Are GEO agencies worth it?**
+Only once you have baseline citation data to judge them against. Before that you are paying to fix an unmeasured problem.
+
+A tool that measures what AI engines say about you is the first thing worth owning. Everything after it is a decision you can now make with evidence, and if you would rather have your own agent run the checks on a schedule, DispatchSEO tracks them alongside your rankings and Search Console.
