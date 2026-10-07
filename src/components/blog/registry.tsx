@@ -62,6 +62,9 @@ import { AiCitationFreshnessFactRow } from "./ai-citation-freshness-fact-row";
 import { TrendToGuideTimelineFlow } from "./trend-to-guide-timeline-flow";
 import { RefreshVsFrontloadSplit } from "./refresh-vs-frontload-split";
 import { FreeToolJobGrid } from "./free-tool-job-grid";
+import { BeginnerFourJobsGrid } from "./beginner-four-jobs-grid";
+import { BeginnerSkipListTable } from "./beginner-skip-list-table";
+import { BeginnerOwnFirstMonthStats } from "./beginner-own-first-month-stats";
 import { FreeToolMemoryCompareTable } from "./free-tool-memory-compare-table";
 import { PileVsSystemChecklist } from "./pile-vs-system-checklist";
 import { AutomationSerpFieldGrid } from "./automation-serp-field-grid";
@@ -384,6 +387,9 @@ export const mdxComponents: MDXComponents = {
   TrendToGuideTimelineFlow,
   RefreshVsFrontloadSplit,
   FreeToolJobGrid,
+  BeginnerFourJobsGrid,
+  BeginnerSkipListTable,
+  BeginnerOwnFirstMonthStats,
   FreeToolMemoryCompareTable,
   PileVsSystemChecklist,
   AutomationSerpFieldGrid,
