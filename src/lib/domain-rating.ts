@@ -12,12 +12,13 @@ import { backlinksSummary, type DataforseoCreds } from "./dataforseo";
 // show at all (no stored row and no creds / a failed first fetch). DR 0
 // (indexed, no authority yet) is a real value, distinct from null.
 //
-// TTL is WEEKLY since the 2026-07-27 cost cut: DR moves on a monthly scale,
-// and the daily backlinks-summary call ($0.024) was 5% of a project's
-// DataForSEO spend for a number that almost never changed day to day.
+// TTL was cut to weekly on 2026-07-27 and to TWO weeks on 2026-10-08: DR
+// moves on a monthly scale, and the backlinks-summary call ($0.024) is the
+// priciest single request the backend makes for a number that almost never
+// changes week to week.
 
 const DAY_MS = 86_400_000;
-export const DR_TTL_MS = 7 * DAY_MS;
+export const DR_TTL_MS = 14 * DAY_MS;
 // The cron refreshes slightly early so the weekly cadence never drifts a day
 // forward each week (a row refreshed at 04:00 is 6.99d old at the next
 // Monday's 04:00 run, not 7d).

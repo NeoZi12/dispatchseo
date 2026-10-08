@@ -34,7 +34,7 @@ import {
   type DataforseoCreds,
   type SerpItem,
 } from "./dataforseo";
-import { recordDataforseoUsage, type PacingLevel } from "./dataforseo-usage";
+import { platformGlobalCeiling, recordDataforseoUsage, type PacingLevel } from "./dataforseo-usage";
 import { buildGoogleAiSnapshot, recordAiSnapshots, type AiSnapshotInput } from "./ai-visibility";
 import type { Project } from "./projects";
 
@@ -46,7 +46,12 @@ export const SWEEP_TASK_DEPTH = 100;
 // customer never meets it; it exists to bound the runaway case, not to price
 // the plan. Never applied to BYO DataForSEO accounts. See the block in
 // queueDailyRankTasks for why this is the only ceiling on that path.
-export const SWEEP_MAX_PLATFORM = 2000;
+// 2000 -> 500 on 2026-10-08: at $0.0066 per sweep task, 2000 keywords was
+// $13/week per project - more than a Starter plan's whole monthly budget
+// every Monday, and a trial could reach it by pasting a keyword list. 500 is
+// ~5x the largest real project after five months (109 keywords) and, with
+// the dormant-keyword decay below, costs at most ~$1/week.
+export const SWEEP_MAX_PLATFORM = 500;
 const TASK_POST_PATH = "/serp/google/organic/task_post";
 // A standard-queue task normally completes in minutes. One that is still
 // missing after a day is gone (DataForSEO refunds failed tasks); mark it so
@@ -224,13 +229,66 @@ export async function queueDailyRankTasks(
       : eligible;
   const sweepDropped = eligible.length - capped.length;
 
+  // Account-wide backstop (dataforseo-usage.ts): the per-owner budget gate is
+  // bypassed here on purpose, but the platform's own ceiling is not - if the
+  // shared account is being drained, tracking pauses too, with a named
+  // reason, rather than being the one spender that never stops.
+  if (creds.billedTo === "platform") {
+    const ceiling = await platformGlobalCeiling();
+    if (!ceiling.allowed) {
+      return { mode: "queued", queued: 0, skipped: `pacing: ${ceiling.reason}` };
+    }
+  }
+
   if (isSweepDay) {
     // Ground truth day: every keyword, full depth, with the AI Overview.
     // Runs at every pacing level - it IS the reduced cadence.
+    //
+    // Dormant-keyword decay (2026-10-08): a keyword that has been checked in
+    // the last five weeks and NEVER placed in the top 100 is swept every
+    // FOURTH Monday instead of every one. Measured the day this shipped, 232
+    // of the 400 keywords in the weekly sweep had not ranked anywhere in 28
+    // days - ~60% of the sweep bought a weekly "still nowhere" for $0.0066
+    // each. Rank movement into the top 100 from nothing happens on a
+    // monthly scale (a new page needs indexing + weeks), so a monthly recheck
+    // loses nothing the dashboard could chart. The rest week is spread by
+    // keyword id so each Monday carries a quarter of the dormant set, and a
+    // keyword with no check in the window at all (new, or one whose sweeps
+    // failed) is always swept - the decay only ever applies to a keyword we
+    // have positively observed as absent. Five-week window: a keyword resting
+    // three Mondays was last checked 28 days ago, which must still count as
+    // "observed", or it would flip back to weekly on every fourth sweep.
+    const dormantSince = new Date(Date.now() - 35 * 24 * 3600 * 1000).toISOString();
+    const { data: history, error: historyError } = await db()
+      .from("rank_checks")
+      .select("keyword_id, position")
+      .eq("project_id", project.id)
+      .gte("checked_at", dormantSince)
+      .order("checked_at", { ascending: false })
+      .range(0, 19999);
+    if (historyError) throw new Error(historyError.message);
+    const observed = new Set<string>();
+    const ranked = new Set<string>();
+    for (const r of (history ?? []) as Array<{ keyword_id: string; position: number | null }>) {
+      observed.add(r.keyword_id);
+      if (r.position != null) ranked.add(r.keyword_id);
+    }
+    const weekSlot = Math.floor(Date.now() / (7 * 24 * 3600 * 1000)) % 4;
+    const sweeping: typeof capped = [];
+    let dormantResting = 0;
+    for (const kw of capped) {
+      const dormant = observed.has(kw.id) && !ranked.has(kw.id);
+      if (dormant && parseInt(kw.id.slice(-2), 16) % 4 !== weekSlot) {
+        dormantResting++;
+        continue;
+      }
+      sweeping.push(kw);
+    }
+
     const { posted, failed } = await postSerpTasks(
       project,
       creds,
-      capped.map((kw) => ({
+      sweeping.map((kw) => ({
         keywordId: kw.id,
         keyword: kw.keyword,
         purpose: "sweep" as const,
@@ -242,6 +300,7 @@ export async function queueDailyRankTasks(
       mode: "queued",
       sweep: true,
       queued: posted,
+      ...(dormantResting > 0 ? { dormant_resting: dormantResting } : {}),
       ...(inFlightSkipped > 0 ? { in_flight_skipped: inFlightSkipped } : {}),
       ...(sweepDropped > 0 ? { over_platform_cap: sweepDropped } : {}),
       failed,

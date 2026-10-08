@@ -31,6 +31,30 @@ export const TIER_BUDGET_MICROUSD: Record<Tier, number> = {
   scale: 25_000_000, // $25/mo
 };
 
+// A TRIAL gets a flat budget regardless of tier (2026-10-08). Before this a
+// trialing Scale subscription carried the full $25/mo - ten trial signups
+// could have drained the platform's shared DataForSEO account without a
+// single payment landing. $1.50 is still ~5x what a real site spends in its
+// first two weeks after the task-queue migration, so a legitimate trial never
+// notices; a looping or abusive one hits the wall before it costs anything.
+export const TRIAL_BUDGET_MICROUSD = 1_500_000; // $1.50 per trial period
+
+export function budgetForSub(sub: { tier: Tier; status: string }): number {
+  return sub.status === "trialing" ? TRIAL_BUDGET_MICROUSD : TIER_BUDGET_MICROUSD[sub.tier];
+}
+
+// Account-wide backstops, independent of any per-owner maths (2026-10-08).
+// Per-owner budgets bound one subscriber; they say nothing about the SUM -
+// N owners each spending to their cap is exactly the "someone empties the
+// platform account" scenario the owner budgets can't see. These two numbers
+// sit well above legitimate total platform spend (measured ~$0.4/day across
+// every platform-billed project in early Oct 2026) and below "worth noticing
+// on a bank statement". When either trips, every paid platform call -
+// research, check_serp, DR refresh AND the rank sweep - skips with a named
+// reason until the window resets. BYO accounts are untouched.
+export const PLATFORM_DAILY_CEILING_MICROUSD = 3_000_000; // $3/day
+export const PLATFORM_MONTHLY_CEILING_MICROUSD = 40_000_000; // $40/mo
+
 // Interactive live-SERP checks (the check_serp MCP tool, billed-to-platform
 // only) are rate-limited per PROJECT, not metered against the cost budget -
 // recordCheckSerpCall writes calls=1/cost=0 rows under this synthetic
@@ -148,6 +172,45 @@ async function ownedProjectIds(ownerId: string): Promise<string[]> {
   return ((data ?? []) as Array<{ id: string }>).map((r) => r.id);
 }
 
+// Sum of every platform-billed project's spend since `sinceDay` (inclusive).
+async function platformCostSinceMicrousd(sinceDay: string): Promise<number> {
+  const { data, error } = await db()
+    .from("dataforseo_usage")
+    .select("cost_microusd")
+    .gte("day", sinceDay)
+    .gt("cost_microusd", 0);
+  if (error || !data) return 0;
+  return (data as Array<{ cost_microusd: number }>).reduce((sum, r) => sum + (r.cost_microusd ?? 0), 0);
+}
+
+// The account-wide gate. Cloud only - self-host has no shared account to
+// protect. Checked by platformBudgetGate (every hard-gated paid call) AND by
+// the rank queue (which bypasses the per-owner gate on purpose, see
+// credsForProject's skipBudgetGate note); the serp-collect cron never asks,
+// because collecting already-paid task results is free.
+export async function platformGlobalCeiling(): Promise<
+  { allowed: true } | { allowed: false; reason: string }
+> {
+  if (!isCloudMode()) return { allowed: true };
+  const [today, month] = await Promise.all([
+    platformCostSinceMicrousd(todayUtc()),
+    platformCostSinceMicrousd(monthStartUtc()),
+  ]);
+  if (today >= PLATFORM_DAILY_CEILING_MICROUSD) {
+    return {
+      allowed: false,
+      reason: `platform DataForSEO daily ceiling reached ($${(PLATFORM_DAILY_CEILING_MICROUSD / 1_000_000).toFixed(2)}); resets at UTC midnight`,
+    };
+  }
+  if (month >= PLATFORM_MONTHLY_CEILING_MICROUSD) {
+    return {
+      allowed: false,
+      reason: `platform DataForSEO monthly ceiling reached ($${(PLATFORM_MONTHLY_CEILING_MICROUSD / 1_000_000).toFixed(2)}); resets on the 1st`,
+    };
+  }
+  return { allowed: true };
+}
+
 async function monthToDateCostMicrousd(ownerId: string): Promise<number> {
   const ids = await ownedProjectIds(ownerId);
   if (ids.length === 0) return 0;
@@ -170,11 +233,15 @@ export async function platformBudgetGate(
   projectId: string,
 ): Promise<{ allowed: true } | { allowed: false; reason: string }> {
   if (!isCloudMode() || !polarConfigured()) return { allowed: true };
+  // Account-wide first: it is the one check that holds even when the
+  // per-owner lookups below fail open.
+  const global = await platformGlobalCeiling();
+  if (!global.allowed) return global;
   const ownerId = await ownerUserIdForProject(projectId);
   if (!ownerId) return { allowed: true };
   const sub = await getSubscription(ownerId);
   if (!isActive(sub)) return { allowed: true };
-  const budgetMicrousd = TIER_BUDGET_MICROUSD[sub!.tier];
+  const budgetMicrousd = budgetForSub(sub!);
   const spentMicrousd = await monthToDateCostMicrousd(ownerId);
   if (spentMicrousd >= budgetMicrousd) {
     return {
@@ -233,7 +300,7 @@ export async function platformPacingState(projectId: string): Promise<PacingStat
   if (!ownerId) return PACING_OPEN;
   const sub = await getSubscription(ownerId);
   if (!isActive(sub)) return PACING_OPEN;
-  const budgetUsd = TIER_BUDGET_MICROUSD[sub!.tier] / 1_000_000;
+  const budgetUsd = budgetForSub(sub!) / 1_000_000;
   const spentUsd = (await monthToDateCostMicrousd(ownerId)) / 1_000_000;
   return pacingFrom(spentUsd, budgetUsd);
 }
@@ -306,7 +373,7 @@ export async function platformUsageStatus(projectId: string): Promise<PlatformUs
     project ? resolveBilledTo(project) : null,
     ownerId ? getSubscription(ownerId) : null,
   ]);
-  const budgetMicrousd = sub && isActive(sub) ? TIER_BUDGET_MICROUSD[sub.tier] : 0;
+  const budgetMicrousd = sub && isActive(sub) ? budgetForSub(sub) : 0;
   const spentMicrousd = ownerId ? await monthToDateCostMicrousd(ownerId) : 0;
   // Derived from the spend and budget already in hand. Calling
   // platformPacingState here instead would re-run ownerUserIdForProject,

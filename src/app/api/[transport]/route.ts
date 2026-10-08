@@ -11,7 +11,8 @@ import { getJourney } from "@/lib/journey";
 import { getWeeklyProgress } from "@/lib/progress";
 import { getBriefing } from "@/lib/briefing";
 import { AUTOMATIONS, gatherEvidence } from "@/lib/automations";
-import { credsForProject, keywordSuggestions, relatedKeywords, type KeywordIdea } from "@/lib/dataforseo";
+import { credsForProject, type KeywordIdea } from "@/lib/dataforseo";
+import { cachedKeywordSuggestions, cachedRelatedKeywords } from "@/lib/keyword-research-cache";
 import { MARKETS } from "@/lib/market";
 import { setProjectMarket } from "@/lib/market-store";
 import { isCloudMode } from "@/lib/cloud";
@@ -2563,10 +2564,14 @@ const mcpHandler = createMcpHandler(
         // calls both fail contributes nothing, not a guess.
         const merged = new Map<string, KeywordIdea>();
         const callErrors: string[] = [];
+        // Cache first (keyword-research-cache.ts): a seed expanded by any
+        // project in the last 30 days is served from the stored rows at $0,
+        // so repeat research runs stop re-buying the same Labs data.
+        let cacheHits = 0;
         for (const seed of expanded) {
           const settled = await Promise.allSettled([
-            keywordSuggestions(seed, creds, limit ?? 100, p.location_code, p.language_code),
-            relatedKeywords(seed, creds, limit ?? 100, p.location_code, p.language_code),
+            cachedKeywordSuggestions(seed, creds, limit ?? 100, p.location_code, p.language_code),
+            cachedRelatedKeywords(seed, creds, limit ?? 100, p.location_code, p.language_code),
           ]);
           for (const result of settled) {
             if (result.status === "rejected") {
@@ -2575,6 +2580,7 @@ const mcpHandler = createMcpHandler(
               );
               continue;
             }
+            if (result.value.cached) cacheHits++;
             for (const idea of result.value.ideas) {
               if (!idea.keyword) continue;
               if (!idea.search_volume) continue; // no/zero volume - never invent a number
@@ -2612,7 +2618,8 @@ const mcpHandler = createMcpHandler(
 
         const noteParts = [
           `Expanded ${expanded.length} of ${seeds.length} seed(s) via keyword_suggestions + ` +
-            `related_keywords (2 metered calls each, ${expanded.length * 2} total).`,
+            `related_keywords (2 calls each, ${expanded.length * 2} total; ${cacheHits} served from the ` +
+            `30-day research cache, ${expanded.length * 2 - cacheHits} metered).`,
         ];
         if (skipped.length > 0) {
           noteParts.push(

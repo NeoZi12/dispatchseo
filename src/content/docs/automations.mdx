@@ -40,7 +40,7 @@ mode.
 
 | Automation | What it does | Schedule | Control |
 | --- | --- | --- | --- |
-| Nightly rank check | Checks this site's Google position for every tracked keyword. Top-30 rankings get checked nightly; everything gets a full top-100 sweep every Monday. | Nightly ~04:00 UTC, full sweep Mondays | Locked - always on |
+| Nightly rank check | Checks this site's Google position for every tracked keyword. Top-30 rankings get checked nightly; everything gets a full top-100 sweep every Monday, except keywords that have been outside the top 100 for a month - those are re-swept every fourth Monday until they show up again. | Nightly ~04:00 UTC, full sweep Mondays | Locked - always on |
 | Nightly traffic snapshot | Pulls yesterday's clicks and impressions from Search Console into the Home graph. | Nightly ~04:00 UTC | Locked - always on |
 | AI visibility check | Records whether Google's AI Overview cites the site (rides the Monday rank sweep at no extra cost) and runs a weekly scan asking the questions customers would ask an AI assistant, on the owner's own Claude subscription. | Google: with the Monday sweep. Claude scan: Wednesdays 06:00 UTC | Locked - always on |
 | Weekly research run | A Claude research agent reads the product as it exists that week, derives keyword ideas, validates them through DataForSEO, and queues suggestions. Also fires the moment the queue runs dry, so a missed weekly run never starves the builder. | Mondays 06:00 UTC, plus automatically whenever the queue empties (at most once a day) | Locked - required |

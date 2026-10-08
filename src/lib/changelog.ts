@@ -73,6 +73,14 @@ export type ChangelogEntry = {
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
+    kind: "improved",
+    text:
+      "Rank tracking and keyword research spend a lot less DataForSEO credit for the same " +
+      "answers. Keywords that have sat outside the top 100 for a month are re-swept every fourth " +
+      "Monday instead of every week, keyword research reuses rows bought in the last 30 days " +
+      "instead of buying them again, and Domain Rating refreshes every two weeks.",
+  },
+  {
     kind: "fixed",
     text:
       "Setup now starts on its own if it missed its first chance. The first read of your site " +
