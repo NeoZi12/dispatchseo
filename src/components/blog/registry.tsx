@@ -65,6 +65,9 @@ import { FreeToolJobGrid } from "./free-tool-job-grid";
 import { BeginnerFourJobsGrid } from "./beginner-four-jobs-grid";
 import { BeginnerSkipListTable } from "./beginner-skip-list-table";
 import { BeginnerOwnFirstMonthStats } from "./beginner-own-first-month-stats";
+import { SmallBusinessCostLadder } from "./small-business-cost-ladder";
+import { SmallBusinessWeeklyHoursBars } from "./small-business-weekly-hours-bars";
+import { SmallBusinessFreeTierReachStats } from "./small-business-free-tier-reach-stats";
 import { FreeToolMemoryCompareTable } from "./free-tool-memory-compare-table";
 import { PileVsSystemChecklist } from "./pile-vs-system-checklist";
 import { AutomationSerpFieldGrid } from "./automation-serp-field-grid";
@@ -390,6 +393,9 @@ export const mdxComponents: MDXComponents = {
   BeginnerFourJobsGrid,
   BeginnerSkipListTable,
   BeginnerOwnFirstMonthStats,
+  SmallBusinessCostLadder,
+  SmallBusinessWeeklyHoursBars,
+  SmallBusinessFreeTierReachStats,
   FreeToolMemoryCompareTable,
   PileVsSystemChecklist,
   AutomationSerpFieldGrid,
