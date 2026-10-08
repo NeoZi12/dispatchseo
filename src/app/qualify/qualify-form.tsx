@@ -1,8 +1,8 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useState, startTransition } from "react";
 import Link from "next/link";
-import { AI_GROUPS, AI_OPTIONS, SITE_KINDS, type AiChoice, type SiteKind } from "@/lib/qualifier-options";
+import { AI_OPTIONS, SITE_KINDS, type AiChoice, type SiteKind } from "@/lib/qualifier-options";
 import { AiMark, SiteKindMark } from "./qualify-marks";
 import { submitQualifier, type QualifyState } from "./actions";
 
@@ -61,7 +61,20 @@ export function QualifyForm() {
 
   return (
     <>
-      <form action={action} className="mt-8">
+      {/* Submitted from React state, not from the DOM radios: React 19 resets
+          the form after a server action, which unchecked the tile radios and
+          made the SECOND "Check my setup" arrive without site_kind/ai and fail
+          validation (green first, red on the next press, 2026-10-08). */}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          const fd = new FormData(e.currentTarget);
+          fd.set("site_kind", siteKind ?? "");
+          fd.set("ai", ai ?? "");
+          startTransition(() => action(fd));
+        }}
+        className="mt-8"
+      >
         {/* ============ Step 1 · what kind of site ============ */}
         <section hidden={step !== 1} aria-hidden={step !== 1}>
           <StepDots step={1} />
@@ -158,52 +171,47 @@ export function QualifyForm() {
             </p>
           ) : null}
 
-          <div className="mt-4 space-y-4">
-            {AI_GROUPS.map((g) => (
-              <fieldset key={g.id} className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-3.5">
-                <legend className="px-1 text-sm font-semibold text-neutral-100">{g.label}</legend>
-                <p className="px-1 text-[12.5px] text-neutral-500">{g.hint}</p>
-                <div className="mt-2.5 grid gap-2 sm:grid-cols-2">
-                  {AI_OPTIONS.filter((o) => o.group === g.id).map((o) => {
-                    const on = ai === o.value;
-                    return (
-                      <label
-                        key={o.value}
-                        className={[
-                          "flex cursor-pointer items-center gap-3 rounded-xl border px-3.5 py-2.5 transition-colors",
-                          on
-                            ? "border-violet-500/70 bg-violet-500/10"
-                            : "border-neutral-800 bg-neutral-950 hover:border-neutral-700",
-                        ].join(" ")}
-                      >
-                        <input
-                          type="radio"
-                          name="ai"
-                          value={o.value}
-                          checked={on}
-                          onChange={() => setAi(o.value)}
-                          className="sr-only"
-                        />
-                        <span className="shrink-0 text-neutral-200">
-                          <AiMark ai={o.value} className="h-6 w-6" />
-                        </span>
-                        <span className="min-w-0">
-                          <span className="flex items-center gap-2 text-sm font-medium text-neutral-100">
-                            {o.label}
-                            {o.soon ? (
-                              <span className="rounded-md bg-amber-500/15 px-1.5 py-px text-[10.5px] font-semibold uppercase tracking-wide text-amber-300">
-                                soon
-                              </span>
-                            ) : null}
+          <p className="mt-4 text-sm font-medium text-neutral-200">Pick the one you use - just one.</p>
+          <div className="mt-2 space-y-4">
+            <div className="grid gap-2 sm:grid-cols-2">
+              {AI_OPTIONS.filter((o) => o.group !== "other").map((o) => {
+                const on = ai === o.value;
+                return (
+                  <label
+                    key={o.value}
+                    className={[
+                      "flex cursor-pointer items-center gap-3 rounded-xl border px-3.5 py-3 transition-colors",
+                      on
+                        ? "border-violet-500/70 bg-violet-500/10"
+                        : "border-neutral-800 bg-neutral-950 hover:border-neutral-700",
+                    ].join(" ")}
+                  >
+                    <input
+                      type="radio"
+                      name="ai"
+                      value={o.value}
+                      checked={on}
+                      onChange={() => setAi(o.value)}
+                      className="sr-only"
+                    />
+                    <span className="shrink-0 text-neutral-200">
+                      <AiMark ai={o.value} className="h-6 w-6" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="flex items-center gap-2 text-sm font-medium text-neutral-100">
+                        {o.label}
+                        {o.soon ? (
+                          <span className="rounded-md bg-amber-500/15 px-1.5 py-px text-[10.5px] font-semibold uppercase tracking-wide text-amber-300">
+                            soon
                           </span>
-                          <span className="block text-[12px] leading-snug text-neutral-500">{o.hint}</span>
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </fieldset>
-            ))}
+                        ) : null}
+                      </span>
+                      <span className="block text-[12px] leading-snug text-neutral-500">{o.hint}</span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
 
             {/* The dead ends, behind a link: still answerable (and the server
                 still explains why they can't drive this), but not two tiles

@@ -35,11 +35,11 @@ export type AiChoice =
   | "none";
 
 export const AI_OPTIONS: { value: AiChoice; label: string; hint: string; group: AiGroup; soon?: boolean }[] = [
-  { value: "claude-web", label: "Claude", hint: "The Claude app, paid plan", group: "chat" },
-  { value: "chatgpt", label: "ChatGPT", hint: "The ChatGPT app, paid plan", group: "chat", soon: true },
-  { value: "claude-code", label: "Claude Code", hint: "Anthropic's terminal agent", group: "coding" },
-  { value: "codex", label: "Codex", hint: "OpenAI's coding agent", group: "coding" },
-  { value: "cursor", label: "Cursor", hint: "The agent inside the editor", group: "coding" },
+  { value: "claude-web", label: "Claude", hint: "The claude.ai app - you add DispatchSEO as a connector", group: "chat" },
+  { value: "chatgpt", label: "ChatGPT", hint: "The ChatGPT app - not available yet", group: "chat", soon: true },
+  { value: "claude-code", label: "Claude Code", hint: "Anthropic's terminal agent - runs in your repo", group: "coding" },
+  { value: "codex", label: "Codex", hint: "OpenAI's coding agent - runs in your repo", group: "coding" },
+  { value: "cursor", label: "Cursor", hint: "The agent inside the editor - runs in your repo", group: "coding" },
   { value: "gemini", label: "Gemini", hint: "Google's chat app", group: "other" },
   { value: "none", label: "None of these", hint: "I don't use an AI assistant", group: "other" },
 ];
