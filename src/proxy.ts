@@ -176,7 +176,8 @@ export async function proxy(req: NextRequest) {
     PUBLIC_FILES.has(pathname) ||
     // Dev-only setup-path design review (fixtures, no database). Never in a
     // production build: there it stays behind login AND the page 404s.
-    (process.env.NODE_ENV !== "production" && pathname === "/onboarding/preview") ||
+    (process.env.NODE_ENV !== "production" &&
+      (pathname === "/onboarding/preview" || pathname === "/qualify/preview")) ||
     // The marketing landing page and its per-agent hub pages - cloud
     // deployment only. Self-hosted installs never set LANDING_ENABLED, so
     // theirs stay gated (the pages themselves also redirect to /dashboard as

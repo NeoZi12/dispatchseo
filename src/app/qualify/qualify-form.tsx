@@ -1,10 +1,10 @@
 "use client";
 
 import { useActionState, useState, startTransition } from "react";
-import Link from "next/link";
 import { AI_OPTIONS, SITE_KINDS, type AiChoice, type SiteKind } from "@/lib/qualifier-options";
 import { AiMark, SiteKindMark } from "./qualify-marks";
 import { submitQualifier, type QualifyState } from "./actions";
+import { VerdictCard } from "./verdict-card";
 
 // Client half of /qualify. Two screens, one answer. Screen 1 asks what kind of
 // site it is (two big cards, domain optional underneath); screen 2 asks which
@@ -57,6 +57,10 @@ export function QualifyForm() {
     AI_OPTIONS.some((o) => o.group === "other" && o.value === state?.ai),
   );
 
+  // After a verdict the form steps aside; "Change my answers" brings it back.
+  const [reviewing, setReviewing] = useState(false);
+  const showVerdict = Boolean(state?.verdict) && !reviewing;
+
   const chosenKind = SITE_KINDS.find((k) => k.value === siteKind) ?? null;
 
   return (
@@ -71,9 +75,12 @@ export function QualifyForm() {
           const fd = new FormData(e.currentTarget);
           fd.set("site_kind", siteKind ?? "");
           fd.set("ai", ai ?? "");
+          setReviewing(false);
           startTransition(() => action(fd));
         }}
         className="mt-8"
+        hidden={showVerdict}
+        aria-hidden={showVerdict}
       >
         {/* ============ Step 1 · what kind of site ============ */}
         <section hidden={step !== 1} aria-hidden={step !== 1}>
@@ -292,46 +299,15 @@ export function QualifyForm() {
         </p>
       ) : null}
 
-      {state?.verdict ? (
-        <div
-          className={`mt-6 rounded-2xl border px-4 py-4 ${
-            state.verdict.ok
-              ? "border-emerald-500/30 bg-emerald-500/10"
-              : state.verdict.building
-                ? "border-amber-500/30 bg-amber-500/10"
-                : "border-neutral-700 bg-neutral-900"
-          }`}
-        >
-          <p
-            className={`text-[15px] font-semibold ${
-              state.verdict.ok ? "text-emerald-200" : state.verdict.building ? "text-amber-200" : "text-neutral-100"
-            }`}
-          >
-            {state.verdict.headline}
-          </p>
-          <p className="mt-1.5 text-sm leading-relaxed text-neutral-300">{state.verdict.detail}</p>
-
-          {state.detected ? (
-            <p className="mt-3 text-[12px] text-neutral-500">
-              We saw: {state.detected}
-              {state.verdict.ok ? null : " — if that's wrong, reply to your signup email and tell me."}
-            </p>
-          ) : null}
-
-          {state.verdict.ok ? (
-            <Link
-              href="/plans"
-              className="mt-4 inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-emerald-400"
-            >
-              See the plans
-              <span aria-hidden="true">&rarr;</span>
-            </Link>
-          ) : (
-            <p className="mt-4 text-[13px] text-neutral-400">
-              Nothing has been charged. You can change your answers above and check again.
-            </p>
-          )}
-        </div>
+      {showVerdict && state?.verdict ? (
+        <VerdictCard
+          verdict={state.verdict}
+          detected={state.detected}
+          onChange={() => {
+            setReviewing(true);
+            setStep(2);
+          }}
+        />
       ) : null}
     </>
   );
