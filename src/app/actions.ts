@@ -1892,6 +1892,9 @@ export async function addAgentKey(
     const { setRepoSecret } = await import("@/lib/github-app-secrets");
     const res = await setRepoSecret(project, agent.credential.repoSecretName, token);
     if (!res.ok) return { error: `Could not store the credential on your repo: ${res.error}` };
+    // Adding never switches, so this is the project's credential only when
+    // the key is for the agent it already runs [R16].
+    if (projectAgent(project).id === agent.id) await stampAgentCredential(project.id);
   } else if (isCloudMode()) {
     // Cloud with the App gone (uninstalled/suspended): the only honest store
     // target is the repo secret, and without an installation we can't write
@@ -2112,8 +2115,28 @@ export async function connectClaudeToken(
   const { setRepoSecret } = await import("@/lib/github-app-secrets");
   const res = await setRepoSecret(project, agent.credential.repoSecretName, token);
   if (!res.ok) return { error: `Could not store the credential on your repo: ${res.error}` };
+  // The setup path's agent_credential evidence [R16] - but only when the key
+  // just stored belongs to the agent this project now RUNS. reconcile=0 stores
+  // a key for an agent it does not switch to, and stamping that would turn the
+  // step green while the builders still lack their own credential.
+  if (reconcile || projectAgent(project).id === agent.id) {
+    await stampAgentCredential(project.id);
+  }
   revalidatePath("/onboarding");
   return { ok: true };
+}
+
+/** agent_credential_at = now(), best-effort: a pre-0062 database has no
+ *  column, and the setup path's live secret check backfills it anyway. */
+async function stampAgentCredential(projectId: string): Promise<void> {
+  try {
+    await db()
+      .from("projects")
+      .update({ agent_credential_at: new Date().toISOString() })
+      .eq("id", projectId);
+  } catch {
+    // see above
+  }
 }
 
 export type ConnectBuilderTokenState =

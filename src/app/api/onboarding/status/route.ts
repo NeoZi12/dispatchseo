@@ -6,31 +6,11 @@ import { getProjectBySlug } from "@/lib/projects";
 import { getCronHealth, reportCronRun } from "@/lib/cron-alerts";
 import { buildsActive, inStackBuilderOwnsBuilds } from "@/lib/builder-status";
 import { backendBaseUrl, hasDataforseo } from "@/lib/pipeline-pack";
-import { openSeoPrs, dispatchResearch } from "@/lib/github";
+import { dispatchResearch } from "@/lib/github";
+import { openInstallPr } from "@/lib/install-pr";
 import { ownedProjectIds } from "@/lib/tenant-guard";
 import { isCloudMode, isLocalBackendUrl } from "@/lib/cloud";
 import { reconcileInstallStamp } from "@/lib/install-reconcile";
-
-// The open install PR, so the wizard can say "your move: merge this" with a
-// link instead of waiting silently. Cached 60s per repo: the wizard polls
-// every 6s and GitHub's unauthenticated rate limit is 60/hr.
-let prCache: { repo: string; at: number; pr: { url: string; title: string } | null } | null = null;
-
-async function openInstallPr(project: {
-  github_repo: string | null;
-  github_installation_id?: number | null;
-}): Promise<{ url: string; title: string } | null> {
-  const repo = project.github_repo;
-  if (!repo) return null;
-  if (prCache && prCache.repo === repo && Date.now() - prCache.at < 60_000) return prCache.pr;
-  // live: the wizard is waiting for the install PR to APPEAR - the 60s SWR
-  // cache in openSeoPrs would stack on prCache above and delay that moment
-  // to ~2-3 minutes. prCache alone already bounds this to 1 call/min/repo.
-  const prs = await openSeoPrs(project, { live: true });
-  const pr = prs[0] ? { url: prs[0].html_url, title: prs[0].title } : null;
-  prCache = { repo, at: Date.now(), pr };
-  return pr;
-}
 
 // The onboarding wizard's live finale polls this while the owner runs the
 // terminal setup command: it reports how far the repo connection and the
@@ -190,7 +170,9 @@ export async function GET(req: Request): Promise<Response> {
 
   // Only look for a PR while the pipeline is still uninstalled - that's the
   // window where "merge it" is the owner's blocking move.
-  const openPr = pipelineInstalledAt ? null : await openInstallPr(project);
+  // openInstallPr answers undefined when GitHub couldn't be asked; this
+  // route's contract is {url,title} | null, and "unknown" reads as "none".
+  const openPr = pipelineInstalledAt ? null : ((await openInstallPr(project)) ?? null);
 
   return Response.json({
     // Agent-reported step stamps (mark_install_step) - {} on pre-0036 rows

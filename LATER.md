@@ -195,3 +195,24 @@ running without any of them.)*
   tested the shipped render step - which is exactly where a no-op substitution
   bug hid. Either generate the canary's config step from scripts/agent-ci/, or
   add a canary assertion that the rendered file contains no `${` placeholder.
+
+- **Setup path follow-ups (the hosted setup path shipped 2026-10-05).** Kept out of
+  that build on purpose:
+  - **Self-host port of the step engine.** `src/lib/setup-path-core.ts` is
+    client-safe and branch-aware so the self-host wizard can use it later;
+    `connectSteps` just needs the self-host (`s_*`) equivalents. The self-host
+    wizard is untouched until then.
+  - **Atomic jsonb / array writes for the path.** `install_progress` and `setup_deferred`
+    are read-merge-write from supabase-js (no `array_append` / jsonb `||` there), so two
+    writers landing in the same instant can lose one key or one parked id. Rare and
+    self-healing today (the engine re-derives from evidence, and the connect-phase claim
+    is already one conditional update); the fix is a small Postgres RPC
+    (`jsonb_set` / `array_append` in one statement) if it ever shows up.
+  - **ChatGPT connector.** ChatGPT stays "not available yet" everywhere it is shown.
+  - **Onboarding / nudge emails.** None exist today; the path adds none.
+  - **"Send this step to my developer" link.** A magic link on the technical steps that
+    can't be parked (`github_app`, `agent_credential`): "Send to the person who built
+    the site", so a non-technical owner can hand that one step off.
+  - **Delete the legacy cloud wizard** once the `SETUP_PATH_LEGACY` flag is retired, on
+    Neo's say-so: `cloud-onboarding-wizard.tsx`, `chat-next-steps.tsx`,
+    `first-run-status.tsx`'s cloud use, and the `setWizardScreen` action.

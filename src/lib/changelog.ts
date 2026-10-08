@@ -203,12 +203,16 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
       "request and shows when it is merged and live.",
   },
   {
-    kind: "improved",
+    kind: "new",
     text:
-      "Claude-app sites now get a \"Your next step\" list on Home that ticks itself off: connect, " +
-      "let Claude ask its three questions, ask for ideas, approve them on the Queue screen, ask it " +
-      "to write, watch Drafts - each step with the exact sentence to paste. Home also stopped " +
-      "calling a Claude-app site \"Claude Code - setting up\".",
+      "Setup now shows one step at a time, proves each one before moving on, and tells you when " +
+      "there is nothing to do but wait.",
+  },
+  {
+    kind: "fixed",
+    text:
+      "Home no longer describes a Claude-app site as \"Claude Code - setting up\"; the briefing " +
+      "chip says whether your Claude has connected.",
   },
 ];
 

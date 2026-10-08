@@ -41,6 +41,7 @@ export function WordPressConnect({
   status,
   slug,
   onConnected,
+  buttonClassName,
 }: {
   status: WordPressStatus;
   // Optional, and only the wizard passes it: names the project this password
@@ -53,6 +54,11 @@ export function WordPressConnect({
   // Continue button has to become enabled without a page reload. The prop
   // reports the event; it does not change what this component renders.
   onConnected?: () => void;
+  // Optional, and only the setup path passes it: there the submit is the
+  // step's one primary, so it takes the path's full-width violet style and
+  // sits centred like every other primary on it. Settings omits it and keeps
+  // the small left-aligned button.
+  buttonClassName?: string;
 }) {
   const [state, action, pending] = useActionState<ConnectWordPressState, FormData>(
     connectWordPressSite,
@@ -171,13 +177,21 @@ export function WordPressConnect({
           </div>
         </div>
 
-        <button
-          type="submit"
-          disabled={pending}
-          className="cursor-pointer rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {pending ? "Checking your site..." : "Connect WordPress"}
-        </button>
+        {buttonClassName ? (
+          <div className="flex justify-center pt-1">
+            <button type="submit" disabled={pending} className={buttonClassName}>
+              {pending ? "Checking your site..." : "Connect WordPress"}
+            </button>
+          </div>
+        ) : (
+          <button
+            type="submit"
+            disabled={pending}
+            className="cursor-pointer rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {pending ? "Checking your site..." : "Connect WordPress"}
+          </button>
+        )}
       </form>
 
       {state?.error ? (

@@ -46,6 +46,42 @@ export async function retrySetupIfNeverStarted(project: Project): Promise<SetupR
   if (Date.now() - new Date(project.created_at).getTime() < MIN_PROJECT_AGE_MS) {
     return { state: "not-applicable" };
   }
+  // The scheduler's own throttle is the six-hour gap; everything else (the
+  // no-trace guard, the attempt cap, the key check, the install) is the shared
+  // dispatch below, in the same order it always ran.
+  return dispatchSetupNow(project, {
+    minGapMs: RETRY_EVERY_MS,
+    recentReason: "setup was re-dispatched recently, waiting on its report",
+  });
+}
+
+// The setup path's "Start setup again" button reaches this directly, without
+// the scheduler's gates above: a button that answered "re-dispatched
+// recently" for six hours, or refused a project younger than thirty minutes,
+// would be a button that does nothing [R11]. What it keeps is everything that
+// protects the owner's agent and repo:
+//   - the no-trace guard (a run that STARTED is never ours to restart)
+//   - MAX_ATTEMPTS dispatches, ever, counted by the marker rows
+//   - a marker debounce (10 minutes by default; the scheduler passes 6 hours)
+//   - the agent credential verifiably on the repo, fail-closed
+//   - the same idempotent install, whose own guard skips a duplicate dispatch
+// A dispatch writes the first-run-setup--<slug> marker through reportCronRun.
+// Never throws: every refusal comes back as { state: "skipped", reason } (an
+// owner-facing sentence) or "not-applicable" (setup already left a trace, or
+// a query failed and proves nothing either way).
+const BUTTON_DEBOUNCE_MS = 10 * 60_000;
+
+export async function dispatchSetupNow(
+  project: Project,
+  opts: { minGapMs?: number; recentReason?: string } = {},
+): Promise<SetupRetryResult> {
+  const minGapMs = opts.minGapMs ?? BUTTON_DEBOUNCE_MS;
+  const recentReason =
+    opts.recentReason ?? "setup was started a few minutes ago - give it a moment to report";
+  if (project.pipeline_installed_at) return { state: "not-applicable" };
+  if (!project.github_repo || !project.github_installation_id) {
+    return { state: "skipped", reason: "setup incomplete: connect the GitHub App and pick your repo first" };
+  }
 
   // Any trace of setup means it started, and a run that started is not ours
   // to restart. A query error proves nothing either way - stay out of it.
@@ -81,8 +117,8 @@ export async function retrySetupIfNeverStarted(project: Project): Promise<SetupR
       };
     }
     const last = data?.[0]?.created_at as string | undefined;
-    if (last && Date.now() - new Date(last).getTime() < RETRY_EVERY_MS) {
-      return { state: "skipped", reason: "setup was re-dispatched recently, waiting on its report" };
+    if (last && Date.now() - new Date(last).getTime() < minGapMs) {
+      return { state: "skipped", reason: recentReason };
     }
   } catch {
     return { state: "not-applicable" };

@@ -9,70 +9,177 @@ whenever, and it reopens exactly where you stopped.
 
 ## On dispatchseo.com (the hosted version)
 
-The hosted wizard is shorter - about 5 minutes - because the platform does
-the installing for you. It also branches: the first screen asks where your
-articles should go and which AI will write them, and your two answers
-decide which screens you see after that.
+The hosted setup is a **setup path**: one step on the screen at a time,
+about 5 minutes in all, because the platform does the installing for you.
+Every step waits for proof that it's done - GitHub sends you back, your AI
+reaches us, Google says yes - and only then moves on. You don't tick anything off
+by hand, and you can't skip a step by accident. Reload the page or come back
+tomorrow and you land on the same step.
 
-1. **Add your site** - name and domain, then the two questions. Where do
-   finished articles go: a WordPress site you host yourself, a GitHub
-   repo, or neither yet? And which AI will write them: the ordinary Claude
-   app at claude.ai, Claude Code, Codex, or Cursor? There is no repo field
-   here; the repo comes from the GitHub App on the next screen if you pick
-   that answer.
-2. **Connect WordPress**, or **Connect GitHub** - which screen you get
-   depends on the first answer. For **WordPress**: your site's address,
-   the username you log in with, and an application password. The screen
-   shows you where to
-   generate one (in your own WordPress admin: Users, then Profile, then
-   Application Passwords) and checks it against your site before it lets
-   you past. Nothing gets installed on the site itself. For a **GitHub
-   repo**: one click installs the DispatchSEO GitHub App on it, and the
-   platform then commits the pipeline into the repo and manages PRs
-   through the App - no tokens to create or paste. If you answered
-   "neither yet", this screen doesn't appear at all.
-3. **Connect the Claude app**, or **Connect your coding agent** - three
-   shapes, and you get the one your answers point at. If your AI is the
-   **Claude app**, the screen gives you one address to paste into
-   claude.ai under Settings, then Connectors, as a custom connector, plus
-   the sentence to send in a new chat so your
-   Claude introduces itself to the site. A light on the screen turns green
-   on its own the moment your Claude reaches us; there is no button to
-   press. Expect claude.ai to ask you to allow each DispatchSEO tool the
-   first time it uses it - choose Always allow - and expect Claude to ask
-   you three short questions about your business; a sentence each is
-   plenty. From then on the Home screen's "Your next step" list tells you
-   which sentence to paste next and which screen to open. If it's a **coding agent and your articles go to a repo**, you
-   paste the credential the agent asks for (`claude setup-token` for
-   Claude Code, an OpenAI API key for Codex, a Cursor API key from
-   cursor.com/dashboard/api for Cursor). It's stored as a secret on **your
-   repo**, never on our side, and builds run on your own subscription or
-   key. A **coding agent with no repo** gets one connect command to run in
-   a terminal, and stores nothing anywhere. Don't have an agent yet?
-   Install [Claude Code](/docs/install-claude-code),
+Which steps you see depends on the two answers you gave when you signed
+up: where finished articles go (a WordPress site you host yourself, a site
+built from a GitHub repo, or "I'll place them myself"), and which AI writes
+them (the ordinary Claude app at claude.ai, Claude Code, Codex, or Cursor).
+You aren't asked them again.
+
+### The setup screen
+
+1. **"What's your website?"** Type your domain - for example
+   `yoursite.com` - and press **Continue**. Under the field, one line
+   repeats your two signup answers, for example "WordPress site · written
+   by the Claude app". If either is wrong, click **change** and pick
+   again. That's the whole first step.
+2. **Connect your site.** Which step you get depends on where articles go.
+   - **A GitHub repo: "Install the DispatchSEO GitHub App".** Click
+     **Install on GitHub**. You land on GitHub's own install page: choose
+     **Only select repositories**, pick the one repo your site is built
+     from, and press **Install**. GitHub sends you straight back. If you
+     shared more than one repo, the next step asks "Which repo is your
+     site?" - pick it once. Repo in an organization? An owner may have to
+     approve the install; the page re-checks on its own. There are no
+     tokens to create or paste.
+   - **WordPress: "Connect your WordPress".** The step asks for your
+     WordPress address, a username and an application password, and shows
+     you how to make one in your own WordPress admin: go to **Users** and
+     add a new user called `DispatchSEO` with the role **Editor** (your
+     own account works too, but a separate one is easier to switch off
+     later), open that user, scroll to **Application Passwords**, type
+     `DispatchSEO` as the name and click **Add**, then copy the password it
+     shows - WordPress only shows it once. The step checks the password
+     against your site before it turns green. Nothing gets installed on
+     the site itself.
+   - **"I'll place them myself":** there's no step here.
+3. **Connect your AI.** There are three versions, depending on your answers.
+   - **The Claude app: "Connect your Claude app".** Click **Copy the
+     connector address**. Open [claude.ai](https://claude.ai) in a browser
+     (not the phone app - the setting is only on the website), click your
+     name at the bottom left, then **Settings**, then **Connectors**.
+     Click **Add custom connector**, name it `DispatchSEO`, and paste the
+     address as the URL. That address is a password: anyone who has it can
+     read and change your site's content plan, so don't post it anywhere.
+     The step turns green on its own the moment your Claude first reaches
+     us - there is no button to press. Expect claude.ai to ask you to allow
+     each DispatchSEO tool the first time it uses it: choose **Always
+     allow**.
+   - **A coding agent, articles go to a repo: "Give Claude Code a key to
+     your repo"** (or Codex, or Cursor). For **Claude Code**, run this in
+     a terminal and paste what it prints:
+
+     ```bash
+     claude setup-token
+     ```
+
+     For **Codex**, paste an OpenAI API key from
+     [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+     (it starts with `sk-`, and the account needs credit on it). For
+     **Cursor**, paste an API key from
+     [cursor.com/dashboard/api](https://cursor.com/dashboard/api) - open
+     that address directly; any plan can make one. Press **Save the key**.
+     It's stored as a secret on **your repo**, never on our side, and
+     builds run on your own subscription or key.
+   - **A coding agent, no repo: "Connect Claude Code to this site"** (or
+     Codex, or Cursor). Open a terminal in an empty folder for your SEO
+     work, click **Copy the command**, paste it into the terminal and press
+     Enter. Then open your agent in that folder and type:
+
+     ```text
+     Say hello to DispatchSEO
+     ```
+
+     The step turns green on its own the moment your agent reaches us.
+     Nothing is stored anywhere.
+
+   Don't have an agent yet? Install [Claude Code](/docs/install-claude-code),
    [Codex](/docs/install-codex), or [Cursor](/docs/install-cursor) first -
-   about five minutes, and this step won't pass until you have.
-4. **Connect Google Search Console** - one click, sign in with the Google
-   account that has access to your property, pick the property. Read-only,
-   revocable any time. No service account needed. You can skip it and come
-   back later; everything else works without it, you just have no traffic
-   numbers until it's connected.
-5. **Publish mode** - decide whether pages go live only after you approve
-   them (semi-automatic) or fully on their own.
+   about five minutes. The key and connect steps can't turn green until you
+   have.
+4. **"Connect Google Search Console".** Click **Connect Google**, sign in
+   with the Google account that manages your site in Search Console, and
+   allow the read-only access Google asks for. You come straight back. If
+   we can't match your site to a property on that account, one more step
+   asks "Which Search Console property is yoursite.com?" - pick it and it
+   saves on the spot. Site not in Search Console at all yet? See
+   [Google Search Console](/docs/search-console#on-dispatchseo-com).
+5. **"You're connected."** Click **Open your dashboard**.
 
-Then the finale does the rest itself and shows live progress until your
-site's first data lands - on the repo path, that includes installing the
-pipeline. Keyword data is included in your plan - there is nothing to set
-up for it.
+Claude app plus a GitHub repo is the one combination that skips the GitHub
+step here. Your Claude does the writing and DispatchSEO opens the pull
+request, so the GitHub App install comes later, as the first step on Home,
+titled **"Let us publish to your repo"**. It works the same as described in
+step 2.
+
+You're never asked about publish mode during setup. Every site starts in
+**Semi**: nothing goes live until you merge it. Prefer hands-off? Flip the
+**Semi / Auto** switch in the dashboard's top bar, any time.
+
+### "I'll do this later"
+
+Some steps have a small **I'll do this later** link under them: connecting
+WordPress, connecting the Claude app, connecting a coding agent with no
+repo, and Search Console. Click it and the step is parked - "Parked. It'll
+come back as your next step on Home." - and the path moves on. The "You're
+connected" screen lists anything you parked.
+
+The GitHub App, the repo pick and the agent key can't be parked: without
+them nothing can be written or published.
+
+A parked step doesn't disappear. It comes back as the one thing to do on
+Home whenever the rest of setup is only waiting on something, and setup
+doesn't count as finished until it's done.
+
+### After you connect: the next-step card on Home
+
+The dashboard opens with a card at the top of Home showing the one thing
+left to do. Every other dashboard page has a single line linking back to
+it. The card is either a step for you or a **wait**: "Nothing for you to
+do. This turns green on its own.", with how long it's been running and how
+long it usually takes. If a wait runs much longer than usual, the card says
+so and links to where you can look.
+
+For a **coding agent and a GitHub repo**, the card goes through these, in
+order (each one only shows up if it applies):
+
+1. **"Installing your pipeline…"** - automatic. If it fails, the card
+   shows why and a **Try again** button.
+2. **"Merge the install pull request"** - only if your repo needs the
+   install to go in as a pull request. Click **Open the PR** and press
+   **Merge** on GitHub.
+3. **"One GitHub toggle needs your click"** - see the paragraph below.
+4. **"Your agent is learning your site"** - a wait, usually 5-15 minutes.
+5. **"Researching your first keywords"** - a wait, usually 10-20 minutes.
+6. **"Approve the ideas you like"** - click **Open the Queue** and approve
+   one or two. Nothing is written until you do. (Skipped in Auto.)
+7. **"Pulling your first rankings"** - a wait, usually a few minutes.
+8. **"Writing your first article"** - a wait. Approved ideas are written
+   overnight, after midnight UTC.
+9. **"Merge your first article"** - click **Open Pages**, read it, press
+   **Merge**. In Auto this is a wait instead: "Publishing your first
+   article".
+
+For the **Claude app**, or a **coding agent with no repo**, the card gives
+you one sentence at a time to paste to your AI, each with a **Copy**
+button:
+
+1. **"Let it learn your business"** - your AI asks three short questions
+   about your business. A sentence each is plenty.
+2. **"Ask it for article ideas"** - it queues a handful, each with a
+   one-line reason.
+3. **"Approve the ideas you like"** - on the Queue screen.
+4. **"Ask it to write the first one"**.
+5. **"Checking and publishing your article"** - a wait. If you place
+   articles yourself, the article is ready on the Drafts screen with a
+   Copy button.
+
+When the first article is live and nothing is parked, the card goes away.
+Keyword data is included in your plan - there is nothing to set up for it.
 
 If your articles go to a repo, there is one thing the App can't do for
 you. It deliberately holds no permission to change your repo's own
 settings, and some repos have GitHub's "Allow GitHub Actions to create and
 approve pull requests" turned off - which stops DispatchSEO opening the
-pull requests it publishes through. When that's the case, the finale says
-so with a direct link to the setting. Flip it once; the checklist
-re-checks on its own and unblocks, so there's nothing to come back and
-confirm.
+pull requests it publishes through. When that's the case, the card on Home
+says so with a direct link to the setting. Flip it once; it re-checks on
+its own and unblocks, so there's nothing to come back and confirm.
 
 The rest of this page describes the **self-hosted** wizard, which has a
 few more steps because your own install does the work the platform does

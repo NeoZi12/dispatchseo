@@ -13,6 +13,7 @@ import {
   agentById,
   builderAgents,
   isBuilderAgent,
+  projectAgent,
   type AgentDefinition,
   type AgentId,
 } from "@/lib/agents";
@@ -70,6 +71,8 @@ export async function setProjectAgent(
     );
   }
   const agent = agentById(agentId);
+  // Read before the write: projectAgent resolves an absent column to Claude.
+  const changed = projectAgent(project).id !== agent.id;
 
   const { error } = await db().from("projects").update({ agent: agentId }).eq("id", project.id);
   if (error) {
@@ -83,6 +86,23 @@ export async function setProjectAgent(
       );
     }
     throw new Error(error.message);
+  }
+
+  // The setup path's agent_credential evidence belongs to the agent it was
+  // stamped for [R16]: a new agent needs its own key, so the step must ask
+  // again. A separate write on purpose - folded into the update above, a
+  // pre-0062 database's missing column would surface as the 0044 error.
+  // Best-effort: the setup path's live secret check re-stamps it if the new
+  // agent's key is already on the repo.
+  if (changed) {
+    await db()
+      .from("projects")
+      .update({ agent_credential_at: null })
+      .eq("id", project.id)
+      .then(
+        () => undefined,
+        () => undefined,
+      );
   }
 
   // Mirror the choice into the repo's SEO_AGENT Actions variable, so

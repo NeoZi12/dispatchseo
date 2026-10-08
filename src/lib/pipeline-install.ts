@@ -14,7 +14,9 @@ import { projectAgent } from "./agents";
 // FirstRunStatus already knows how to surface ("your move: merge this").
 
 const GH = "https://api.github.com";
-const INSTALL_BRANCH = "dispatchseo-install";
+/** The branch an install PR is opened from. install-pr.ts finds "the install
+ *  PR" by this head, so it is exported, never re-typed. */
+export const INSTALL_BRANCH = "dispatchseo-install";
 
 type GhProject = Pick<
   Project,
@@ -232,8 +234,18 @@ export async function installPipelineToRepo(
         mode = "pr";
         prUrl = String(pr.json?.html_url ?? "");
       } else if (pr.status === 422) {
-        // PR already open from a previous attempt.
+        // PR already open from a previous attempt: link THAT one, so the
+        // owner still gets a "merge this" button on a retried install.
         mode = "pr";
+        const owner = repo.split("/")[0];
+        const existing = await gh(
+          token,
+          "GET",
+          `/repos/${repo}/pulls?state=open&head=${encodeURIComponent(`${owner}:${INSTALL_BRANCH}`)}&per_page=1`,
+        ).catch(() => null);
+        const list = existing?.status === 200 ? (existing.json as unknown as Array<{ html_url?: string }> | null) : null;
+        const url = Array.isArray(list) ? list[0]?.html_url : undefined;
+        if (url) prUrl = String(url);
       } else {
         return fail(`install PR failed: HTTP ${pr.status}`);
       }

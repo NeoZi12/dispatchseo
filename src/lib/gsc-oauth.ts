@@ -49,7 +49,9 @@ async function sign(payload: string): Promise<string> {
 
 // Where the callback should land the user afterwards. An allowlisted TAG,
 // never a raw URL - a URL here would be an open-redirect primitive.
-export type OauthReturnTo = "google" | "onboarding";
+// "dashboard" is the setup path's Home hero (a Google connect parked during
+// onboarding and picked back up from Home).
+export type OauthReturnTo = "google" | "onboarding" | "dashboard";
 
 export async function makeState(
   projectSlug: string,
@@ -75,7 +77,8 @@ export async function verifyStateDetailed(
   const [slug, rawReturnTo, ts] =
     parts.length === 3 ? parts : [parts[0], "google", parts[1]];
   if (!slug || !ts || Date.now() - Number(ts) > STATE_TTL_MS) return null;
-  const returnTo: OauthReturnTo = rawReturnTo === "onboarding" ? "onboarding" : "google";
+  const returnTo: OauthReturnTo =
+    rawReturnTo === "onboarding" || rawReturnTo === "dashboard" ? rawReturnTo : "google";
   return { slug, returnTo };
 }
 

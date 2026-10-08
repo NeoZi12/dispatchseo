@@ -1,19 +1,65 @@
 ---
 title: Google Search Console
-description: Connect free rankings and traffic data with a Google service account.
+description: Connect free rankings and traffic data - one click with Google on dispatchseo.com, or a Google service account when you self-host.
 ---
 
 Search Console is DispatchSEO's free data backbone: real impressions,
-clicks, and positions for your site, snapshotted hourly. Connecting it
-takes a service account - a Google robot identity that can read your
-Search Console data without your password.
+clicks, and positions for your site, snapshotted hourly. How you connect it
+depends on where DispatchSEO runs: on dispatchseo.com it's one click with
+your Google account; on your own install it takes a service account.
+
+## On dispatchseo.com
+
+Setup asks for it as one step, "Connect Google Search Console". If you
+parked it with **I'll do this later**, it comes back as the next-step card
+on Home.
+
+1. Click **Connect Google**.
+2. Sign in with the Google account that manages your site in Search
+   Console.
+3. Google asks for read-only access. Allow it. DispatchSEO can read your
+   clicks, impressions and queries, and can't change anything on your
+   account. You can revoke it any time.
+4. You come straight back. DispatchSEO matches your site to its Search
+   Console property on its own. If it can't, one more step asks "Which
+   Search Console property is yoursite.com?" - pick it and it saves on the
+   spot.
+
+You don't need a service account or a JSON file, and there's nothing to
+paste.
+
+**Your site isn't in the list, or the step says "We don't see any
+properties on this Google account"?** Either you signed in with a
+different Google account than the one that owns the site in Search
+Console, or the site isn't in Search Console yet. To add it:
+
+1. Open [Search Console](https://search.google.com/search-console) with
+   the Google account you want to use.
+2. Click **Add property**, choose the **Domain** type, and enter your
+   domain, for example `yoursite.com`.
+3. Google shows you a DNS record. Add it wherever your domain is
+   registered (Namecheap, Cloudflare, GoDaddy, ...), then click **Verify**
+   back in Search Console. Verification is usually instant.
+4. Back in DispatchSEO, open **Search Console** in the dashboard menu. If
+   the property is now listed, click **use this property** next to it. If
+   it isn't, click **Disconnect**, then **Connect Google Search Console**,
+   and sign in with the account you just verified with.
+
+The first snapshot arrives within an hour, and the dashboard's Search
+traffic page starts filling in. Keyword data is included in your plan -
+there is nothing else to set up.
+
+## Self-hosted: connect with a service account
+
+On your own install, connecting takes a service account - a Google robot
+identity that can read your Search Console data without your password.
 
 The setup wizard walks you through all of this with a check button at the
-end - this page is the same walkthrough in document form, every click
+end - this section is the same walkthrough in document form, every click
 spelled out. It's a one-time ritual: the same service account works for
 every site you ever add.
 
-## Create the service account
+### Create the service account
 
 1. Open [console.cloud.google.com](https://console.cloud.google.com) and
    sign in with the Google account that can see your site in Search
@@ -34,7 +80,7 @@ every site you ever add.
    `.json` file downloads. That file is a password for your search data -
    keep it out of screenshots, chats, and git.
 
-## Grant it access to your site
+### Grant it access to your site
 
 1. On the service account's page, copy its **email** - it ends in
    `.iam.gserviceaccount.com`.
@@ -48,7 +94,7 @@ every site you ever add.
    then continue with the steps above.
 3. Paste the email, set Permission to **Full**, click **Add**.
 
-## Give it to DispatchSEO
+### Give it to DispatchSEO
 
 Open the downloaded `.json` file in any text editor, select **all** of
 it, and paste it where the setup wizard (or the dashboard's **Connect
@@ -67,9 +113,9 @@ Within an hour the first snapshot lands and the dashboard's Search traffic
 page starts filling in. Historical data backfills from what Google exposes
 (up to ~16 months).
 
-## The data tiers
+### The data tiers
 
-Search Console is the free floor. The tiers stack - start free, add keys
+On your own install, Search Console is the free floor. The tiers stack - start free, add keys
 when you want more signal:
 
 | Tier | Price | What you get |

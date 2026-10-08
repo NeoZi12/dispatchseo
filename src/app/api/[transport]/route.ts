@@ -41,7 +41,8 @@ import {
 } from "@/lib/content-prefs";
 import { saveContentPrefs } from "@/lib/content-prefs-store";
 import { renderInstructions, WORKFLOWS } from "@/lib/instructions";
-import { getPipelinePack, hasDataforseo } from "@/lib/pipeline-pack";
+import { backendBaseUrl, getPipelinePack, hasDataforseo } from "@/lib/pipeline-pack";
+import { deferStep, DEFERRABLE_IDS, getSetupStep, undeferStep } from "@/lib/setup-path";
 import { effectiveAutomations, getProjectByToken, internalLinkingEnabled, publishTarget, type Project } from "@/lib/projects";
 import { BUILDER_AGENT_IDS, builderAgents, projectAgent } from "@/lib/agents";
 import { setProjectAgent } from "@/lib/agent-settings";
@@ -256,6 +257,10 @@ const CHAT_TOOLS = new Set([
   "get_research_notes",
   "submit_article",
   "get_drafts",
+  // The setup path: a chat app is often the owner's ONLY agent, and "what
+  // should I do next" is the first thing they ask it.
+  "get_setup_step",
+  "defer_setup_step",
 ]);
 
 // Tools whose effects a client should confirm before running. Purely a UX
@@ -3756,6 +3761,10 @@ const mcpHandler = createMcpHandler(
           // ?client=chat.
           ai_choice: p.ai_choice ?? null,
           chat_app_connected: Boolean(p.chat_last_seen_at),
+          // Evidence like chat_app_connected (migration 0062): true once this
+          // key has been used by something OTHER than a chat app - a coding
+          // agent, or the repo's own workflow runs.
+          agent_connected: Boolean(p.agent_last_seen_at),
           // The onboarding "does the site have a blog?" answer - the setup
           // workflow's content-home hint (the repo wins on conflict).
           content_mode: p.content_mode,
@@ -3768,6 +3777,60 @@ const mcpHandler = createMcpHandler(
           last_trend_scan_at: p.last_trend_scan_at,
           created_at: p.created_at,
         });
+      },
+    );
+
+    // ---- setup path ------------------------------------------------------------
+    server.registerTool(
+      "get_setup_step",
+      {
+        title: "Get setup step",
+        description:
+          "The ONE thing the owner should do next to finish setting up this " +
+          "site - the same card the dashboard's setup path shows, computed from " +
+          "evidence (what is actually connected and what has actually run), " +
+          "never from a click. Returns id, kind (do = the owner acts, wait = " +
+          "something is running, done), phase (connect | launch | first-article " +
+          "| complete), title, why, ordered instructions, the one primary action, " +
+          "the evidence that turns it green, and any parked (deferred) steps. " +
+          "id 'complete' means setup is finished. Paste payloads that would " +
+          "contain this project's key are left out on purpose - send the owner " +
+          "to the dashboard for those. Takes no parameters.",
+        inputSchema: {},
+      },
+      async () => {
+        // mcpToken null: the key must never appear in a chat transcript.
+        const step = await getSetupStep(currentProject(), await backendBaseUrl(), {
+          live: true,
+          mcpToken: null,
+        });
+        return ok(step);
+      },
+    );
+
+    server.registerTool(
+      "defer_setup_step",
+      {
+        title: "Defer setup step",
+        description:
+          "Park a setup step for later (the dashboard's \"I'll do this later\"), " +
+          "or un-park it with undo: true. Only these steps can be parked: " +
+          `${DEFERRABLE_IDS.join(", ")}. A parked step comes back as the next ` +
+          "action whenever setup is otherwise just waiting, and before setup " +
+          "can count as finished. Returns the list of parked steps.",
+        inputSchema: {
+          step: z.enum(DEFERRABLE_IDS).describe("The setup step id to park (see get_setup_step)."),
+          undo: z
+            .boolean()
+            .optional()
+            .describe("true un-parks the step instead. Default false."),
+        },
+      },
+      async ({ step, undo }) => {
+        const p = currentProject();
+        const result = undo ? await undeferStep(p.id, step) : await deferStep(p.id, step);
+        if ("error" in result) return fail(result.error);
+        return ok({ step, parked: !undo, deferred: result.deferred });
       },
     );
 
@@ -4454,6 +4517,7 @@ async function authed(req: Request): Promise<Response> {
   // security-relevant may ever hang off it.
   const client = new URL(req.url).searchParams.get("client") === "chat" ? "chat" : "agent";
   if (client === "chat") noteChatSeen(project);
+  if (client === "agent") noteAgentSeen(project);
   return projectStore.run(project, () => clientKindStore.run(client, () => mcpHandler(req)));
 }
 
@@ -4471,6 +4535,27 @@ function noteChatSeen(project: Project): void {
   void db()
     .from("projects")
     .update({ chat_last_seen_at: new Date().toISOString() })
+    .eq("id", project.id)
+    .then(
+      () => undefined,
+      () => undefined,
+    );
+}
+
+/** The coding agent's "Connected" light (migration 0062): the setup path's
+ *  agent_connect evidence. Copy of noteChatSeen - same ten-minute throttle,
+ *  never awaited, never fails the request. "agent" is every request WITHOUT
+ *  ?client=chat, which includes the repo's own GitHub Actions runs and
+ *  scripts/mcp-schema-check.mjs: what it proves is "this key has been used by
+ *  something other than a chat app". That is still sound evidence for
+ *  agent_connect, which only exists on branches with no repo (so no Actions
+ *  run can be the one that stamps it). */
+function noteAgentSeen(project: Project): void {
+  const last = project.agent_last_seen_at ? Date.parse(project.agent_last_seen_at) : 0;
+  if (Date.now() - last < 10 * 60_000) return;
+  void db()
+    .from("projects")
+    .update({ agent_last_seen_at: new Date().toISOString() })
     .eq("id", project.id)
     .then(
       () => undefined,

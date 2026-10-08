@@ -1245,9 +1245,51 @@ wordpress or manual) and whether WordPress is actually connected
 (what the owner said will write: claude-web, chatgpt, claude-code,
 codex, cursor, or null for projects from before the adaptive wizard) and
 `chat_app_connected` (true once any request has reached this server
-from a chat app). Takes no parameters. Worth calling first in a session,
+from a chat app) and `agent_connected` (true once the key has been used
+by something other than a chat app - a coding agent, or the repo's own
+workflow runs). Takes no parameters. Worth calling first in a session,
 since it tells you which of the other tools will actually work. Secrets
 are never returned - credentials stay dashboard-only.
+
+## Setup
+
+The hosted setup path shows the owner exactly one step at a time, and
+each step turns green only on evidence (a connection that actually
+answers, a run that actually reported) - never on a click. These two
+tools are the same path over MCP, so an agent can tell the owner what
+to do next instead of guessing from `get_project`.
+
+### `get_setup_step`
+
+The one step in front of the owner right now: `id`, `kind` (`do` = the
+owner acts, `wait` = something is running and needs nobody, `done`),
+`phase` (`connect`, `launch`, `first-article`, `complete`), the
+`title` and `why` sentences, ordered `instructions`, the single
+`primary` action, the `evidence` line that says what turns it green,
+and `deferred` (steps the owner parked for later). `id: "complete"`
+means setup is finished. Paste payloads that would carry this
+project's key (the connect command, the connector address) are left
+out on purpose - send the owner to the dashboard for those. Takes no
+parameters.
+
+### `defer_setup_step`
+
+Parks a step for later - the dashboard's "I'll do this later" link - or
+un-parks it. A parked step comes back as the next action whenever setup
+is otherwise only waiting, and before setup can count as finished.
+Returns the list of parked steps.
+
+<Fields>
+  <Field name="step" type="string" required="true">
+    The step to park. Only `wordpress`, `agent_connect`, `chat_connect`,
+    `google_connect` and `gsc_property` can be parked. Parking
+    `google_connect` parks `gsc_property` with it, so the property pick
+    still comes back once Google is connected.
+  </Field>
+  <Field name="undo" type="boolean">
+    `true` un-parks the step instead. Defaults to `false`.
+  </Field>
+</Fields>
 
 ## Dashboard parity
 

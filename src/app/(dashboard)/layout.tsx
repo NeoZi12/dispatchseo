@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { MobileNav, PageTitle, Sidebar } from "@/components/nav";
 import { DispatchMark } from "@/components/logo";
 import { ProjectSwitcher } from "@/components/project-switcher";
@@ -10,6 +10,9 @@ import { getActiveProjectOrNull, scopedProjects } from "@/lib/active-project";
 import { isCloudMode } from "@/lib/cloud";
 import { currentUser } from "@/lib/cloud-auth";
 import { SetupProgressBanner } from "@/components/setup-progress-banner";
+import { SetupPageBar } from "@/components/setup-path/page-bar";
+import { getSetupStepCached } from "@/lib/setup-path";
+import { requestOrigin } from "@/lib/request-origin";
 import { RepoCleanupBanner } from "@/components/repo-cleanup-banner";
 import { PlanLapsedBanner } from "@/components/plan-lapsed-banner";
 import { getSubscription, planBadge, planNotice, sitesRemaining } from "@/lib/billing";
@@ -99,6 +102,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // clutter, and nothing said "this site isn't publishing yet". The component
   // renders mode-appropriate copy (self-host setup waits on the owner's
   // install command; nothing runs "in the background" until it's run).
+  // Self-host only since the setup path: cloud renders the SetupPageBar below
+  // instead. Kept for self-host [R18], whose wizard still ends on the banner.
   const setupInProgress =
     active != null &&
     Boolean(active.github_repo) &&
@@ -115,6 +120,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // Outranks both banners below: it's the only one reporting something the
   // owner may still need to go switch off.
   const repoNotice = decodeRepoNotice(jar.get(REPO_NOTICE_COOKIE)?.value);
+  // Cloud: the setup path's one-line "Your next step" bar. The same cached
+  // read Home's hero makes (getSetupStepCached is keyed on two strings so the
+  // two calls dedupe within the request [R19]); cheap pass only - no GitHub or
+  // Google call on a page render [R14]. Self-host never computes a step.
+  const setupStep =
+    billing && active
+      ? // A failed read hides the bar; it must never take every page down.
+        await getSetupStepCached(active.slug, requestOrigin(await headers())).catch(() => null)
+      : null;
   // The pixel dispatcher's dress follows the active project's agent: clay
   // (its default) stays untinted, every other agent resolves from its
   // registry entry. Two CSS variables on the shell, doing different jobs:
@@ -190,6 +204,18 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <PlanLapsedBanner notice={notice} />
         ) : repoNotice ? (
           <RepoCleanupBanner repo={repoNotice.repo} warnings={repoNotice.warnings} />
+        ) : billing ? (
+          active && setupStep && setupStep.id !== "complete" ? (
+            <SetupPageBar
+              step={{
+                id: setupStep.id,
+                kind: setupStep.kind,
+                phase: setupStep.phase,
+                title: setupStep.title,
+              }}
+              domain={active.domain}
+            />
+          ) : null
         ) : setupInProgress && active ? (
           <SetupProgressBanner
             slug={active.slug}

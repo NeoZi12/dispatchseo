@@ -8,10 +8,15 @@ import { ownedProjectIds } from "@/lib/tenant-guard";
 // Google redirects here after consent. Verifies the signed state (CSRF),
 // exchanges the code, stores the encrypted refresh token on the project the
 // flow started from, then lands back where the flow began - the /google
-// connect page, or mid-wizard when onboarding kicked it off.
+// connect page, mid-wizard when onboarding kicked it off, or Home when the
+// setup path's hero did.
 
 function landing(returnTo: OauthReturnTo, params: string): string {
-  return returnTo === "onboarding" ? `/onboarding?${params}` : `/google?${params}`;
+  if (returnTo === "onboarding") return `/onboarding?${params}`;
+  // The Home hero's Google step (a connect parked during setup): back to
+  // Home, where the hero renders ?connected=1 / ?error=… on its own card.
+  if (returnTo === "dashboard") return `/dashboard?${params}`;
+  return `/google?${params}`;
 }
 
 export async function GET(req: Request): Promise<Response> {

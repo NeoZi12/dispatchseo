@@ -141,6 +141,19 @@ export type Project = {
    *  for the Claude/ChatGPT app, stamped at most every ten minutes. */
   chat_last_seen_at: string | null;
 
+  // --- The setup path (migration 0062) ---
+  //
+  // Absent on a DB that hasn't run 0062 and on the COLS_PRE_0062 fallback tier.
+  /** Last MCP request from a coding agent - the "agent connected" light,
+   *  mirror of chat_last_seen_at. */
+  agent_last_seen_at: string | null;
+  /** When the coding agent's repo credential was saved (or first seen). */
+  agent_credential_at: string | null;
+  /** When the connect phase of the setup path finished. Null = still in it. */
+  setup_connected_at: string | null;
+  /** Setup-path step ids the owner parked with "I'll do this later". */
+  setup_deferred: string[];
+
   created_at: string;
 };
 
@@ -233,6 +246,13 @@ const FALLBACK_PROJECT_SLUG = "default";
 
 // mcp_token deliberately excluded - only fetchProjectToken exposes it.
 const COLS =
+  "id, slug, name, domain, gsc_site_url, github_repo, content_mode, content_path_hint, dataforseo_login, dataforseo_password, keyword_source, serpapi_key, powerups_skipped, location_code, language_code, mode, auto_approve, auto_approve_tools, auto_build_guides, auto_build_tools, auto_merge, last_trend_scan_at, site_launched_at, pipeline_installed_at, pipeline_verified, content_prefs, gsc_oauth_refresh_token, github_installation_id, github_app_installed_at, install_progress, onboarding_screen, owner_user_id, agent, internal_linking, publish_target, wp_url, wp_username, wp_app_password, wp_connected_at, wp_seo_plugin, wp_capabilities, publish_hour, ai_choice, chat_last_seen_at, agent_last_seen_at, agent_credential_at, setup_connected_at, setup_deferred, created_at";
+
+// COLS minus 0062's setup-path columns, for a DB that hasn't run that migration
+// yet. Newest columns, so they are the FIRST thing dropped - a DB lagging only
+// 0062 keeps everything else and simply reads as "no agent seen, nothing
+// parked, connect phase not stamped".
+const COLS_PRE_0062 =
   "id, slug, name, domain, gsc_site_url, github_repo, content_mode, content_path_hint, dataforseo_login, dataforseo_password, keyword_source, serpapi_key, powerups_skipped, location_code, language_code, mode, auto_approve, auto_approve_tools, auto_build_guides, auto_build_tools, auto_merge, last_trend_scan_at, site_launched_at, pipeline_installed_at, pipeline_verified, content_prefs, gsc_oauth_refresh_token, github_installation_id, github_app_installed_at, install_progress, onboarding_screen, owner_user_id, agent, internal_linking, publish_target, wp_url, wp_username, wp_app_password, wp_connected_at, wp_seo_plugin, wp_capabilities, publish_hour, ai_choice, chat_last_seen_at, created_at";
 
 // COLS minus 0060's ai_choice + chat_last_seen_at, for a DB that hasn't run
@@ -298,7 +318,10 @@ async function selectProjects<T>(
     Boolean(e && e.message.includes("does not exist"));
   const first = await run(COLS);
   if (!missingCol(first.error)) return first;
-  // Drop the newest columns (0060's wizard pair) first.
+  // Drop the newest columns (0062's setup-path set) first.
+  const pathless = await run(COLS_PRE_0062);
+  if (!missingCol(pathless.error)) return pathless;
+  // Then 0060's wizard pair.
   const choiceless = await run(COLS_PRE_0060);
   if (!missingCol(choiceless.error)) return choiceless;
   // Then 0055's WordPress publishing set, so a DB
@@ -394,6 +417,11 @@ function envFallbackProject(): Project {
     // and must not claim the owner made a choice or that a chat app connected.
     ai_choice: null,
     chat_last_seen_at: null,
+    // No agent seen, no credential, connect phase unstamped, nothing parked.
+    agent_last_seen_at: null,
+    agent_credential_at: null,
+    setup_connected_at: null,
+    setup_deferred: [],
     created_at: new Date(0).toISOString(),
   };
 }

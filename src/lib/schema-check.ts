@@ -146,6 +146,7 @@ const PROBES: Probe[] = [
   { migration: "0060_ai_choice_repo_publishing", table: "projects", column: "ai_choice" },
   { migration: "0060_ai_choice_repo_publishing", table: "article_drafts", column: "pr_url" },
   { migration: "0061_qualifier_site_kind", table: "signup_qualifiers", column: "site_kind" },
+  { migration: "0062_setup_path", table: "projects", column: "setup_connected_at" },
 ];
 
 // Migrations that genuinely CANNOT be probed through this mechanism, with the

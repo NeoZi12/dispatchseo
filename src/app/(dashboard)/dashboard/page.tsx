@@ -80,7 +80,10 @@ import { cookies } from "next/headers";
 import { DockerAccessTip } from "@/components/docker-access-tip";
 import { ChromeExtensionTip } from "@/components/chrome-extension-tip";
 import { FirstRunBackground } from "@/components/first-run-background";
-import { ChatNextSteps, type ChatStep } from "@/components/chat-next-steps";
+import { SetupHero } from "@/components/setup-path/hero";
+import { getSetupStepCached } from "@/lib/setup-path";
+import { loadSetupCardProps } from "@/lib/setup-card-props";
+import { cleanFlagText, cleanGscFlag } from "@/lib/flag-text";
 import AiVisibilitySection from "./ai-visibility-section";
 
 export const dynamic = "force-dynamic";
@@ -316,7 +319,14 @@ function SectionSkeleton({ rows = 3 }: { rows?: number }) {
   );
 }
 
-export default async function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  // Setup-path callback flags: the GitHub App install callback lands on
+  // /onboarding, which forwards these here once the connect phase is done
+  // [R8]; the Google OAuth callback lands here directly (returnTo=dashboard).
+  searchParams: Promise<{ gh?: string; msg?: string; connected?: string; error?: string }>;
+}) {
   await requireDashboard();
   await requireOnboarded();
 
@@ -352,7 +362,6 @@ export default async function Home() {
     saEmail,
     dfsUsage,
     articleQueue,
-    draftsRes,
   ] = await Promise.all([
     client
       .from("suggestions")
@@ -420,11 +429,7 @@ export default async function Home() {
     // in flight, what gave up. Counts only - see queueHealth's own note on why
     // it never returns rows.
     queueHealth(project.id),
-    // Every article the owner's AI has handed in, by status - drives the
-    // Claude-app next-steps card. Statuses only; the Drafts screen has the rest.
-    client.from("article_drafts").select("status").eq("project_id", project.id),
   ]);
-  const draftStatuses = ((draftsRes.data ?? []) as { status: string }[]).map((d) => d.status);
 
   // Two guide numbers from one query (0033): "logged" drives the setup cards
   // (the pipeline demonstrably works once anything lands, merged or not);
@@ -667,11 +672,8 @@ export default async function Home() {
   const needsWordPress = isWordPress && !project.wp_app_password;
   const needsMergeToken =
     !isCloudMode() && !isWordPress && !mergeReady && !skippedPowerup("merge");
-  // The App was uninstalled (or the repo left the installation) while a
-  // pipeline exists: customer workflows keep running, but approvals,
-  // merges, and dispatches from here silently lost their credential.
-  const needsAppReconnect =
-    isCloudMode() && Boolean(project.github_repo) && project.github_installation_id == null;
+  // (Cloud's "the GitHub App was uninstalled" card is the setup path's
+  // reconnect_app step now - it outranks every other step in the hero.)
   // A paid cloud project that would otherwise ride the bundled DataForSEO
   // plan, but its owner has spent through this month's shared usage budget
   // (see dataforseo-usage.ts) - gets its own card below, distinct from "go
@@ -771,6 +773,19 @@ export default async function Home() {
   // site never collides with or silently shadows the first one's token.
   const hdrs = await headers();
   const dashOrigin = requestOrigin(hdrs);
+  // The setup path's ONE next action (cloud only; self-host keeps its
+  // "Initial setup" section). Same cached cheap-pass read as the layout's
+  // page bar [R19]. The card's extra props (repo list, property list,
+  // WordPress status, the MCP key) load only for the step that renders them.
+  const setupStep = isCloudMode()
+    ? await getSetupStepCached(project.slug, dashOrigin).catch(() => null)
+    : null;
+  const showSetupHero = setupStep != null && setupStep.id !== "complete";
+  const setupHeroProps =
+    showSetupHero && setupStep.phase !== "connect"
+      ? await loadSetupCardProps(project, setupStep)
+      : null;
+  const flags = await searchParams;
   // Built from THIS project's agent, not from Claude's builders. Before this
   // they called mcpAddCommand/setupCommand directly, so a Codex or Cursor
   // project was handed `claude mcp add` and a setup.sh invocation that would
@@ -803,8 +818,8 @@ export default async function Home() {
   // placeholder is gone) - hide the whole section once setup is complete.
   // CLOUD: the whole "Initial setup" section is self-host framing - it walks a
   // self-hoster through steps they do by hand. Cloud does all of it for them
-  // (App install, OAuth GSC, bundled DataForSEO, auto-research), and the top
-  // "setting up in the background" banner is the single honest progress
+  // (App install, OAuth GSC, bundled DataForSEO, auto-research), and the
+  // setup path's hero card (above the briefing) is the single honest progress
   // surface, so the section never renders on cloud.
   const hasSetupCards =
     !isCloudMode() &&
@@ -819,37 +834,6 @@ export default async function Home() {
       needsGsc ||
       needsBuilder ||
       needsAlertEmail);
-  // Cloud gets its OWN tiny section rather than the self-host one, because
-  // most cards above are self-host framing that would actively mislead a cloud
-  // customer (the "bring your own DataForSEO account" card, the PAT card, the
-  // builder card). But two cloud states genuinely need a surface, and both
-  // used to have NONE: needsAppReconnect and the cloud GSC connect card were
-  // written, then rendered inside a section gated on !isCloudMode(), so they
-  // could never appear (2026-07-27).
-  //
-  // needsAppReconnect is the serious one: when the App is uninstalled, the
-  // customer's scheduled workflows keep running while approvals, one-tap merge
-  // and every dashboard-triggered dispatch silently lose their credential -
-  // exactly the "looks healthy, does nothing" state with no way to notice.
-  //
-  // The two below are the same shape of hole on the non-GitHub routes: a site
-  // that is fully set up except for the one connection that decides whether
-  // anything can ever come out of it. Both are skippable in the wizard on
-  // purpose (a WordPress password nobody has to hand, a connector someone
-  // wants to set up on their laptop later), so this is where the skip is
-  // remembered - without it the owner is left with a dashboard that looks
-  // finished and an article that never appears.
-  // Only for an owner who TOLD us their AI is a chat app. A null ai_choice is
-  // every project created before c0 asked, and those run a coding agent - the
-  // card would be an instruction to connect something they do not use.
-  const needsChatConnect =
-    isCloudMode() &&
-    project.ai_choice != null &&
-    aiKind(project.ai_choice) === "chat" &&
-    !project.chat_last_seen_at;
-  const hasCloudSetupCards =
-    isCloudMode() &&
-    (needsAppReconnect || (needsGsc && !gscWaiting) || needsWordPress || needsChatConnect);
   // One element, rendered by whichever mode's setup section is on screen.
   const wordPressCard = needsWordPress ? (
     <SetupStep
@@ -920,6 +904,26 @@ export default async function Home() {
   return (
     <div className="space-y-8">
       <div className="space-y-3">
+        {/* The setup path: one action, above everything else, until the first
+            article is live and nothing is parked. */}
+        {showSetupHero && setupStep ? (
+          <SetupHero
+            step={setupStep}
+            slug={project.slug}
+            domain={project.domain}
+            origin={dashOrigin}
+            agentId={setupHeroProps?.agentId ?? null}
+            token={setupHeroProps?.token ?? null}
+            wp={setupHeroProps?.wp ?? null}
+            repos={setupHeroProps?.repos ?? null}
+            gscSites={setupHeroProps?.gscSites ?? null}
+            gscSiteUrl={setupHeroProps?.gscSiteUrl ?? null}
+            ghFlag={flags.gh ?? null}
+            ghError={cleanFlagText(flags.msg)}
+            gscFlag={cleanGscFlag(flags.connected, flags.error)}
+            serverNow={Date.now()}
+          />
+        ) : null}
         {process.env.POSTGREST_URL ? <DockerAccessTip /> : null}
         {/* The dispatcher's briefing. This one card is what the status pill,
             the "researching in the background" strip and the red job-failure
@@ -976,61 +980,6 @@ export default async function Home() {
         {pipelineInstalled ? (
           <FirstRunBackground slug={project.slug} cloud={isCloudMode()} quiet />
         ) : null}
-        {/* The Claude-app owner's guide: which sentence to paste next, which
-            screen to open, ticking itself off from real state. Leaves once the
-            first article is live - by then the loop is understood. */}
-        {chatProject && !draftStatuses.includes("published")
-          ? (() => {
-              const profileDone =
-                (!profileRes.error && profileRes.data != null) ||
-                (!conventionsRes.error && conventionsRes.data != null);
-              const anyApproved = suggestions.some((s) =>
-                ["approved", "in_progress", "done"].includes(s.status),
-              );
-              const steps: ChatStep[] = [
-                {
-                  title: `Connect ${project.ai_choice === "chatgpt" ? "ChatGPT" : "Claude"} to this site`,
-                  done: project.chat_last_seen_at != null,
-                  href: "/connect",
-                  linkLabel: "Open Connect your AI",
-                  hint: "One address to paste under Settings, then Connectors. The first time it uses each DispatchSEO tool it will ask you to allow it - choose Always allow.",
-                },
-                {
-                  title: "Let it learn your business (three short questions)",
-                  done: profileDone,
-                  paste: "Use the DispatchSEO connector and run the setup-chat workflow from get_instructions.",
-                  hint: "Paste this in a new chat. It asks who buys from you, what never to say, and how it should sound - a sentence each is plenty.",
-                },
-                {
-                  title: "Ask it for article ideas",
-                  done: suggestions.length > 0,
-                  paste: "Use the DispatchSEO connector and run the research-chat workflow from get_instructions. Find five article ideas and propose them.",
-                  hint: "It checks what people search for and queues a handful of ideas with a one-line reason each.",
-                },
-                {
-                  title: "Approve the ideas you like",
-                  done: anyApproved,
-                  href: "/research",
-                  linkLabel: `Open the Queue${pendingSugs.length ? ` (${pendingSugs.length} waiting)` : ""}`,
-                  hint: "Nothing is written until you say yes. Approve one or two to start.",
-                },
-                {
-                  title: "Ask it to write the first one",
-                  done: draftStatuses.length > 0,
-                  paste: "Use the DispatchSEO connector and run the write-guide-chat workflow from get_instructions. Write my next approved article.",
-                  hint: "It researches, writes and hands the article in. We check it, format it, add links and the cover, and publish it on your schedule.",
-                },
-                {
-                  title: "Watch it go live on the Drafts screen",
-                  done: false,
-                  href: "/drafts",
-                  linkLabel: "Open Drafts",
-                  hint: "Checking, then Ready to publish (press Publish now to skip the wait), then Posted, then Live. After the first one, you only repeat the last two steps.",
-                },
-              ];
-              return <ChatNextSteps steps={steps} aiName={chatAiName} />;
-            })()
-          : null}
         {budgetWarning ? (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm">
             <p className="font-medium text-amber-200">
@@ -1163,75 +1112,6 @@ export default async function Home() {
 
       {/* ---------- THE ONE ASK (once ever, after the first page goes live) ---------- */}
       {askStar ? <StarPrompt livePages={guidesLiveCount} /> : null}
-
-      {/* ---------- NEEDS YOU (cloud) - see hasCloudSetupCards ---------- */}
-      {hasCloudSetupCards ? (
-      <section className="space-y-3">
-        <SectionTitle sub="the hosted version handles setup for you - these are the few things it cannot do on your behalf, and each disappears on its own once it's sorted">
-          Needs you
-        </SectionTitle>
-        <div className="grid gap-4 [&>*]:min-w-0 md:grid-cols-2 xl:grid-cols-3">
-          {needsAppReconnect ? (
-            <SetupStep
-              title="Reconnect the GitHub App"
-              why={`The DispatchSEO GitHub App has no access to ${project.github_repo} on record - it was never finished for this site, or it was uninstalled/the repo left the installation. Your repo's scheduled workflows keep running, but approving tools, one-tap merge, and every run triggered from this dashboard are paused until it's connected.`}
-              steps={[
-                <>
-                  <a
-                    href={`/api/github/install/start?slug=${project.slug}`}
-                    className="text-sky-400 underline underline-offset-2 hover:text-sky-300"
-                  >
-                    Reinstall the DispatchSEO GitHub App
-                  </a>{" "}
-                  and grant it access to {project.github_repo}.
-                </>,
-                "That's it - nothing else changed, and no data was lost.",
-              ]}
-            />
-          ) : null}
-          {needsGsc && !gscWaiting ? (
-            <SetupStep
-              title="Connect Google Search Console"
-              why={`Traffic numbers come straight from Google. One click connects the Google account that owns the ${project.domain} property - read-only access, revocable any time. Skipped it during setup? This is where you pick it back up.`}
-              steps={[
-                <>
-                  <Link
-                    href="/google"
-                    className="text-sky-400 underline underline-offset-2 hover:text-sky-300"
-                  >
-                    Connect Google
-                  </Link>{" "}
-                  - sign in with the account that has Search Console access to {project.domain}.
-                </>,
-                "Pick the property if the guess was wrong - the connect page lists everything the account can see.",
-                "Done - traffic starts landing with the next hourly sync. Google's data runs 2-3 days behind, so give it a day or two.",
-              ]}
-              closing="This card disappears on its own once the first day of search data arrives."
-            />
-          ) : null}
-          {wordPressCard}
-          {needsChatConnect ? (
-            <SetupStep
-              title="Connect your Claude app"
-              why="Your Claude hasn't reached us yet. The Connect screen has the address and the three steps."
-              steps={[
-                <>
-                  <Link
-                    href="/connect"
-                    className="text-sky-400 underline underline-offset-2 hover:text-sky-300"
-                  >
-                    Open Connect
-                  </Link>{" "}
-                  - copy the connector address and add it in claude.ai&apos;s own Settings.
-                </>,
-                "Then start a chat with the connector on and paste the setup line that page gives you.",
-              ]}
-              closing="This card disappears on its own the first time your Claude reaches us - there is no button to press."
-            />
-          ) : null}
-        </div>
-      </section>
-      ) : null}
 
       {/* ---------- INITIAL SETUP (hidden once every step is done) ---------- */}
       {hasSetupCards ? (

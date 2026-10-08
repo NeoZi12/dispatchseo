@@ -43,6 +43,7 @@ export const hasConfiguredProject = cache(async (): Promise<boolean> => {
     if (degraded) return true;
     return mine.some(
       (p) =>
+        p.setup_connected_at != null ||
         p.pipeline_installed_at != null ||
         p.onboarding_screen === "c5" ||
         (Boolean(p.github_repo) && p.onboarding_screen == null),
