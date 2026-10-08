@@ -15,29 +15,53 @@ serves a password-gated dashboard for approvals. One deployment manages many
 sites (multi-tenant by MCP bearer token). A paid cloud version is planned;
 the launch plan lives in the maintainer's untracked `docs-private/`.
 
-**The problem it sells the fix to:** a founder or small team knows SEO
-compounds and never gets to it - keyword research, a post a week, watching
-ranks and Search Console. DispatchSEO is the answer to "who does my SEO",
-not to "how do I build an agent pipeline". The subject of this site's
-content is SEO work: keyword research, content operations, rank tracking,
-Search Console, technical and programmatic SEO, and automating any of it.
+**The problem it sells the fix to:** a founder running a code-built site
+(a SaaS, an indie product, a dev tool) knows SEO compounds and never gets to
+it - keyword research, a post a week, watching ranks and Search Console.
+DispatchSEO is the answer to "who does my SEO and marketing content", not to
+"how do I run a coding agent". **The subject of this site's content is SEO,
+GEO (showing up in ChatGPT, Perplexity and AI Overviews) and marketing for
+SaaS and indie founders:** keyword research, content operations, rank
+tracking, Search Console, technical and programmatic SEO, AI visibility,
+launch and distribution marketing, and automating any of it as a founder.
 Coding agents, MCP, Vercel and the rest are how the product is BUILT and what
-its readers happen to run - they are not the subject. (See the quality
-bar's product-is-the-answer test; this paragraph is what it reads.)
+its readers happen to run - they are not the subject. (See the quality bar's
+product-is-the-answer test; this paragraph is what it reads.)
+
+**Off-remit, hard - owner's decision 2026-10-08.** Claude Code, Codex,
+Cursor, MCP servers, agent orchestration and every coding-agent how-to
+("claude code timeout", "claude code hooks", "best mcp servers for claude
+code", "claude code vs cursor") are OUT, whatever their volume or KD. Those
+queries belong to the owner's other site, clockedcode.com, which already
+holds 60+ guides on them; a second copy here ranks for nothing and blurs
+what this site is about (35 such guides shipped here between July and
+October 2026 - none of them index or rank). The only place Claude Code or
+Codex appears on this site is as the thing that runs the SEO workflow,
+inside a guide whose subject is the SEO work. Strike these at the remit
+step, before pricing anything.
+
+**Also off-remit: "<tool> alternative" churn.** This site shipped ten
+"<SEO tool> alternative" pages in ten days (2026-08-15 to 08-24) and lost
+~99% of its impressions in Google's August 2026 spam update the same week.
+Comparison and alternative pages are allowed only when the product is the
+honest answer and the page carries real first-hand data, and a run may queue
+at most ONE of them per week.
 
 **Facets** - the honest descriptions of this product's job, most direct first.
 The research run measures these against the site's current authority every week
-and works whichever is winnable (research step 1.5). "SEO" is the most obvious
-one and the most saturated: Ahrefs and Semrush have published into it since
-2011, so at DR 0 everything both relevant and winnable there is a long-tail.
-The agent facets are much younger markets and equally true of the product.
-1. **SEO automation** - doing the SEO work itself, not advising on it
-2. **Agents that do real work unattended** - an agent that ships, on a
-   schedule, without a human in the loop (NOT "agents" in general, and NOT
-   coding-agent tooling - see the remit test)
-3. **Content pipelines** - research to published page as one automated flow
-4. **Rank tracking + Search Console** - the measurement half, self-hosted
-5. **Marketing that lives in a dev workflow** - PRs, CI, a repo, no CMS
+and works whichever is winnable (research step 1.5). All five are SEO or
+marketing markets; there is deliberately no "agents" or "coding-agent
+tooling" facet any more - that is what produced the Claude Code drift.
+1. **SEO for SaaS and indie founders** - the whole SEO job for a one-person
+   company: what to do, in what order, what to skip, what it costs
+2. **SEO automation** - doing the SEO work itself unattended, keyword
+   research to published page, as a founder's workflow rather than an agency's
+3. **GEO / AI visibility** - getting cited by ChatGPT, Perplexity and AI
+   Overviews, and measuring whether you are
+4. **Rank tracking + Search Console** - the measurement half: reading the
+   data, cheap or self-hosted tooling, what the numbers mean for a young site
+5. **Founder marketing for code-built sites** - content, programmatic SEO,
+   launch distribution, done from a repo instead of a CMS
 
 Product-surface files to read fresh each research run.
 
