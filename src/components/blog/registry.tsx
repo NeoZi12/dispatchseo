@@ -65,6 +65,9 @@ import { FreeToolJobGrid } from "./free-tool-job-grid";
 import { BeginnerFourJobsGrid } from "./beginner-four-jobs-grid";
 import { BeginnerSkipListTable } from "./beginner-skip-list-table";
 import { BeginnerOwnFirstMonthStats } from "./beginner-own-first-month-stats";
+import { SaasSeoYearPlanFlow } from "./saas-seo-year-plan-flow";
+import { SaasSeoYoungSiteImpressionsBars } from "./saas-seo-young-site-impressions-bars";
+import { SaasSeoAutomateVsYouSplit } from "./saas-seo-automate-vs-you-split";
 import { SmallBusinessCostLadder } from "./small-business-cost-ladder";
 import { SmallBusinessWeeklyHoursBars } from "./small-business-weekly-hours-bars";
 import { SmallBusinessFreeTierReachStats } from "./small-business-free-tier-reach-stats";
@@ -393,6 +396,9 @@ export const mdxComponents: MDXComponents = {
   BeginnerFourJobsGrid,
   BeginnerSkipListTable,
   BeginnerOwnFirstMonthStats,
+  SaasSeoYearPlanFlow,
+  SaasSeoYoungSiteImpressionsBars,
+  SaasSeoAutomateVsYouSplit,
   SmallBusinessCostLadder,
   SmallBusinessWeeklyHoursBars,
   SmallBusinessFreeTierReachStats,
