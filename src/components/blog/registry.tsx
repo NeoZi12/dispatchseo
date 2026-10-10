@@ -68,6 +68,9 @@ import { BeginnerOwnFirstMonthStats } from "./beginner-own-first-month-stats";
 import { SaasSeoYearPlanFlow } from "./saas-seo-year-plan-flow";
 import { SaasSeoYoungSiteImpressionsBars } from "./saas-seo-young-site-impressions-bars";
 import { SaasSeoAutomateVsYouSplit } from "./saas-seo-automate-vs-you-split";
+import { ContentMarketingWeeklyLoopFlow } from "./content-marketing-weekly-loop-flow";
+import { SaasContentTypeFitGrid } from "./saas-content-type-fit-grid";
+import { OwnSitePublishingVolumeStats } from "./own-site-publishing-volume-stats";
 import { SmallBusinessCostLadder } from "./small-business-cost-ladder";
 import { SmallBusinessWeeklyHoursBars } from "./small-business-weekly-hours-bars";
 import { SmallBusinessFreeTierReachStats } from "./small-business-free-tier-reach-stats";
@@ -399,6 +402,9 @@ export const mdxComponents: MDXComponents = {
   SaasSeoYearPlanFlow,
   SaasSeoYoungSiteImpressionsBars,
   SaasSeoAutomateVsYouSplit,
+  ContentMarketingWeeklyLoopFlow,
+  SaasContentTypeFitGrid,
+  OwnSitePublishingVolumeStats,
   SmallBusinessCostLadder,
   SmallBusinessWeeklyHoursBars,
   SmallBusinessFreeTierReachStats,
