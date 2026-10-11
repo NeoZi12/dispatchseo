@@ -1,0 +1,105 @@
+---
+title: "SEO for startups: the first 90 days, before Google knows you exist"
+description: What startup SEO looks like with zero authority - get indexed on day 0, pick low-difficulty keywords, publish steadily, read Search Console at day 90, avoid the habits that get a new domain demoted.
+date: 2026-10-11
+keyword: seo for startups
+cover: /blog/covers/seo-for-startups.webp
+---
+
+A startup with no domain authority has one job in the first 90 days: get Google to find, index and trust a small set of pages on a single topic. That means Search Console and a submitted sitemap on day 0, keywords you can win with almost no links in month one, a steady one-page-at-a-time cadence in month two, and a Search Console read in month three that tells you which topic to feed. Rankings for competitive terms come later; this phase is about not wasting the runway.
+
+> **TL;DR** - Day 0: verify Search Console, submit the sitemap, check each page is indexed. Days 1-30: pick low-difficulty, mid-tail, commercial keywords. Days 31-60: publish steadily and link pages to each other. Days 61-90: read the impressions, double down on the cluster that shows up. Avoid thin bursts, off-topic drift and copied angles - they are what gets a young domain discounted.
+
+## What does SEO look like when Google has never heard of you?
+
+Quiet. The usual startup SEO advice is written for companies that already have links, traffic and a brand people search for. You have none of those, so most of that advice does not apply yet.
+
+<StartupNinetyDayPhaseFlow />
+
+Here is what zero authority looks like in real data. This is dispatchseo.com's own Search Console, daily impressions from 2026-09-13 to 2026-10-09, read with the site's own stats tool while writing this guide:
+
+<StartupOwnImpressionsBars />
+
+Two things stand out. Five of the 27 days had no impressions at all, and one day (10-07) produced 73 of the 283 total. Young-site data is spiky, so judge it in weeks, not days. And the queries that did show up split cleanly: searches for the brand name appeared at positions 1 to 3, while the non-brand queries behind its comparison pages sat around positions 40 to 90. Google will show you for your own name almost immediately. Everything else has to be earned.
+
+If you want the longer plan once this phase is done, [SEO for SaaS: a 12-month plan](/blog/seo-for-saas) picks up where this one stops.
+
+## What should happen on day 0, before you write anything?
+
+Three things, in this order, and none of them involve content.
+
+1. **Verify the site in [Google Search Console](https://search.google.com/search-console).** A domain property covers every subdomain and protocol at once. Until this is done you are flying blind.
+2. **Submit the sitemap in Search Console's Sitemaps report.** Listing it in `robots.txt` is not the same thing. Submitting it tells you whether Google fetched it and how many URLs it found, which is feedback you otherwise do not get.
+3. **Inspect each important URL once.** The URL Inspection tool says whether a page is indexed. For a page that is not, "Request indexing" asks Google to crawl it. Do it for the homepage and your first few pages, not for everything.
+
+Then check the boring failure modes: no stray `noindex` tag left over from staging, `robots.txt` not blocking the site, one canonical version of each URL. A new site that is accidentally blocked looks exactly like a new site that is simply unknown, and you lose weeks finding out which.
+
+## Which keywords can a brand-new domain actually win?
+
+Ones where page 1 is not a wall of established sites. With almost no links, you are not competing on authority, so you compete on specificity.
+
+My working rules for a domain in its first month:
+
+- **Low difficulty first.** Keyword difficulty is a rough scale from a keyword tool, not a promise, but treat anything in the low teens or below as your territory and anything much higher as a month-six problem. The difficulty you can take on rises as the site earns links and trust, so the ceiling moves up with you.
+- **Mid-tail over head terms.** "SEO" is out of reach. "SEO for a one-person SaaS" is a real query with a human behind it.
+- **Commercial intent first.** A searcher comparing options or looking for a way to do a job is closer to a decision than one reading for fun. Informational pages come after.
+- **Look at who is on page 1.** If it is agency listicles and a forum thread, a focused page can compete. If it is the biggest brand in the category, move on.
+
+For this very keyword, the live page 1 is mostly agency blog posts, an agency services page and a Reddit thread. That is a beatable result, which is why it was worth writing. The free way to find these is Google's autocomplete and "People also ask" boxes plus Keyword Planner; [the best SEO tools for beginners](/blog/best-seo-tools-for-beginners) covers that stack and what to skip.
+
+## How should days 31 to 60 go?
+
+Steady, on one topic, with pages that link to each other.
+
+**Pace.** One page a day is the ceiling, not a target. A new domain publishing dozens of pages in a week looks like exactly what search engines are trying to filter out. Fewer pages that each fully answer a query beat a pile that restate each other.
+
+**One topic.** Pick the subject your product sits in and write only inside it for these 30 days. Topical focus is how a site with no links signals what it is about.
+
+**Internal links.** Every new page should link to two or three related ones, and a couple of older pages should link to it. Use a descriptive phrase that already sits in a sentence, not a "related posts" block. If you are unsure which pages to connect, the [internal linking tool](/free-tools/internal-linking-tool) scores pairs from content you paste in.
+
+**Check indexing weekly.** The Pages report in Search Console shows which URLs are indexed and why the rest are not. "Discovered - currently not indexed" on a young site is common and usually means Google has not decided the page is worth crawling yet. More pages that are genuinely good, plus internal links to the stuck one, is the usual fix.
+
+## What do you read in Search Console at day 90?
+
+Open the Performance report and sort queries by impressions, not clicks. Clicks are still near zero. Impressions tell you where Google is already testing you.
+
+Look for three patterns:
+
+- **A cluster of related queries all getting impressions.** That is the topic to write more about.
+- **High impressions, no clicks, position under 10.** The page ranks and the title or description is not earning the click. Rewrite those first.
+- **Impressions at position 20 to 40.** Close enough that more depth or a few internal links may push it onto page 1.
+
+Ignore single-day swings and average position on a query with six impressions. At this size, one search by one person can move the number. A weekly review is enough.
+
+## Which three habits get a young domain demoted?
+
+<StartupDemotionRiskGrid />
+
+These are not theory for this site. Between 2026-08-15 and 2026-08-24 it published ten "alternative to a competitor" pages in ten days, and lost roughly 99% of its impressions in Google's August 2026 spam update the same week. Correlation is not proof of cause, and Google does not publish a per-site verdict, but a young domain with ten near-identical templates in ten days is the profile the update targets. The owner's fix was a hard rule: at most one comparison page a week, and every page needs something first-hand that page 1 lacks.
+
+## Should you use a free stack or automate it?
+
+The free stack covers everything above: Search Console for indexing and queries, Keyword Planner and autocomplete for topics, your own writing for pages. It costs nothing but hours, and a founder who enjoys it should keep doing it by hand.
+
+The cost is the weekly cadence. Research, writing, publishing and the Search Console check are four recurring tasks, and the usual way a startup's SEO dies is that the work stops, not that the tool was wrong. [Can you do SEO on your own](/blog/can-you-do-seo-on-your-own) estimates the hours honestly. If the calendar is the problem, [content marketing for SaaS](/blog/content-marketing-for-saas) describes a one-person weekly loop, and DispatchSEO automates the same loop: it tracks Search Console and ranks on a schedule and queues ideas for your coding agent to build as pull requests, so your part is approving.
+
+## When is this plan wrong for you?
+
+If you already have a product with real links, press or a large audience, you are not at zero authority and can aim higher on day one. If your market is local or you sell something with no search demand, this plan finds little to chase and a different channel will do more. And if you need leads in the next 30 days, SEO is the wrong tool: first impressions take weeks and clicks take longer.
+
+## FAQ
+
+**How long does SEO take for a startup?**
+Expect impressions in the first weeks and meaningful clicks over months. On a new domain with no links, the first 90 days are about getting indexed and learning which topic Google will show you for.
+
+**What should a startup do for SEO first?**
+Verify Search Console, submit the sitemap and confirm your key pages are indexed. Content comes after Google can see the site.
+
+**How many pages should a new startup site publish?**
+Steadily, not in a burst. One well-built page a day is a sensible ceiling, and fewer is fine if each one fully answers its query.
+
+**Do startups need backlinks to rank?**
+Eventually, for competitive terms. Low-difficulty, specific queries can rank with very few, which is why the first month targets those.
+
+**Can a startup do SEO without an agency?**
+Yes. The tools for the first 90 days are free, and the constraint is time. An agency mostly buys you the weekly work, which you can also automate.
