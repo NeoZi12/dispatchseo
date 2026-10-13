@@ -68,6 +68,9 @@ import { BeginnerOwnFirstMonthStats } from "./beginner-own-first-month-stats";
 import { StartupNinetyDayPhaseFlow } from "./startup-ninety-day-phase-flow";
 import { StartupOwnImpressionsBars } from "./startup-own-impressions-bars";
 import { StartupDemotionRiskGrid } from "./startup-demotion-risk-grid";
+import { ChannelCompoundResetSplit } from "./channel-compound-reset-split";
+import { OwnClicksBySourceBars } from "./own-clicks-by-source-bars";
+import { MarketingTwelveMonthSequenceFlow } from "./marketing-twelve-month-sequence-flow";
 import { SaasSeoYearPlanFlow } from "./saas-seo-year-plan-flow";
 import { SaasSeoYoungSiteImpressionsBars } from "./saas-seo-young-site-impressions-bars";
 import { SaasSeoAutomateVsYouSplit } from "./saas-seo-automate-vs-you-split";
@@ -405,6 +408,9 @@ export const mdxComponents: MDXComponents = {
   StartupDemotionRiskGrid,
   BeginnerSkipListTable,
   BeginnerOwnFirstMonthStats,
+  ChannelCompoundResetSplit,
+  OwnClicksBySourceBars,
+  MarketingTwelveMonthSequenceFlow,
   SaasSeoYearPlanFlow,
   SaasSeoYoungSiteImpressionsBars,
   SaasSeoAutomateVsYouSplit,
