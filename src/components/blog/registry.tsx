@@ -248,6 +248,9 @@ import { RunHeartbeatStaleHoursRow } from "./run-heartbeat-stale-hours-row";
 import { ContainerRunFactRow } from "./container-run-fact-row";
 import { ContainerBoundarySplit } from "./container-boundary-split";
 import { ReviewLayerCoverageTable } from "./review-layer-coverage-table";
+import { NotFoundTriageFlow } from "./not-found-triage-flow";
+import { RedirectCurlProofTable } from "./redirect-curl-proof-table";
+import { ValidateFixStatesRow } from "./validate-fix-states-row";
 import { AutoMergeGateDecisionFlow } from "./auto-merge-gate-decision-flow";
 import { AgentPrMergeHistoryStats } from "./agent-pr-merge-history-stats";
 import { ContainerCredentialPathTable } from "./container-credential-path-table";
@@ -581,4 +584,7 @@ export const mdxComponents: MDXComponents = {
   ClaudeTimeoutClockTable,
   KillExitCodeStatRow,
   TimedOutRunReportFlow,
+  NotFoundTriageFlow,
+  RedirectCurlProofTable,
+  ValidateFixStatesRow,
 };
