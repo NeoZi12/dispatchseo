@@ -1,0 +1,109 @@
+---
+title: "AI brand visibility: measure whether ChatGPT and Perplexity name you, then move it"
+description: AI brand visibility is the share of relevant AI answers that name your brand. A 20-prompt weekly protocol you can run today, the four levers that move it, and this site's own baseline - 1 citation in 110 Claude checks.
+date: 2026-10-15
+keyword: ai brand visibility
+cover: /blog/covers/ai-brand-visibility.webp
+---
+
+AI brand visibility is the share of relevant AI answers that name your brand or link to your site. You measure it by asking the same fixed set of buyer prompts to each engine on a schedule and counting, because a single answer proves nothing: ask twice and the engine may name different brands.
+
+> **TL;DR** - Pick 20 prompts a buyer would type, run them weekly on ChatGPT, Perplexity, Gemini and Google AI Overviews, and log two things per answer: was the brand named, and was your site linked as a source. Divide by answers seen. Four levers move the number, and three of them are ordinary SEO and off-site work. This site's baseline after six weeks of logging: 1 citation in 110 Claude checks, 0 in 89 Google AI Overviews.
+
+## What are you actually measuring?
+
+Two different events hide inside "visibility", and vendors blur them.
+
+A **mention** is the brand name appearing in the answer text. A **citation** is your URL appearing in the sources the engine shows. You can be mentioned with no link (the model remembered you), or linked with no mention (the engine used your page and named someone else). Track both columns. For how each engine shows its sources, [how to check if ChatGPT is citing your website](/blog/how-to-check-if-chatgpt-is-citing-your-website) has the per-engine details.
+
+The other thing to accept up front: answers are not deterministic. The same prompt on the same engine can return a different shortlist an hour later. That is why you count over many prompts and many weeks instead of screenshotting one lucky answer.
+
+## How do you run the protocol this week?
+
+<AiBrandVisibilityProtocolFlow />
+
+Write the prompts first, and write them as the buyer, not as you. "best rank tracker for a small SaaS" is a prompt. Your brand name is not, because it only tells you whether the engine knows you exist. Aim for a spread:
+
+| Prompt type | Example shape | How many |
+|---|---|---|
+| Category "best X for Y" | best rank tracker for a small SaaS | 6 |
+| Problem "how do I" | how to find keywords with no budget | 6 |
+| Comparison | A vs B for solo founders | 4 |
+| Brand-adjacent | alternatives to a competitor you are often compared with | 4 |
+
+Then, each week on the same day:
+
+1. Open a fresh logged-out session per engine so memory and personalisation do not skew it.
+2. Paste each prompt, copy the answer, note every brand named and every source shown.
+3. Fill one row per prompt per engine: `named` (yes/no), `linked` (yes/no), `competitors named`, `domains cited`.
+4. Compute share of mentions per engine: prompts where you were named, divided by prompts that returned an answer.
+
+Keep the prompt list frozen for at least eight weeks. Edit it and you have broken the trend line. It takes roughly an hour a week by hand; if that is too much, the tracking-tool guide covers [what the paid tools cost and how to log it with two MCP tools](/blog/ai-visibility-tracking-tool).
+
+## What does a young SaaS usually see at the start?
+
+Mostly zero. Here is this site's own log, read from `get_ai_visibility` on 2026-10-15.
+
+<AiBrandVisibilityOwnNumbersRow />
+
+Claude answered all 110 checks and cited this site once, on 2026-09-16, then never again. Google returned an overview on 89 of 91 checks and cited this site on none. Fifteen check days sit in the log between 2026-09-02 and 2026-10-14.
+
+Two things are worth taking from it. First, the engines are answering, so zero is a gap and not a tooling failure. Second, the gap list is the useful output. The domains cited most often on queries where this site was absent are youtube.com (119 times), github.com (42), reddit.com (35), seranking.com (21) and dev.to (14). Those are the places the engines trust for these prompts, and they are your target list.
+
+## Which four levers move it, and which are SEO in disguise?
+
+<AiBrandVisibilityLeverSplit />
+
+**Publish the page that answers the prompt.** If a prompt is "best keyword clustering tool", the engines cite roundups that name tools. A page that answers the query better than those roundups is the same work as ranking for it. Start from the prompts where the sources are thin.
+
+**Get listed where the engines already look.** The most-cited domains in the log are community and video sites, not company blogs. A useful answer in a Reddit thread, a short video, or a mention in an existing roundup does more than a fourth post on your own domain. This is link building and distribution, relabelled.
+
+**Keep the entity consistent.** Same product name, same one-line description, same founder and category on your site, your repo README, directories and social profiles. A model that sees three descriptions has no clear thing to repeat.
+
+**Show a dated fact worth quoting.** This is the only lever that is genuinely newer. Engines quote specific, dated numbers more readily than adjectives. A changelog, a pricing table with a visible "checked on" date, or your own measured data gives an answer something concrete to lift. The broader checklist lives in [how to rank in ChatGPT](/blog/how-to-rank-in-chatgpt).
+
+None of these shows up in a week. Expect the first movement to arrive after the pages are indexed and the off-site mentions exist, and judge it over a quarter.
+
+## Why do vendor dashboards disagree with your own counts?
+
+Different prompt sets, different locations, different sampling, and often a scoring model that counts a passing mention as full visibility. Two tools tracking the same brand can show very different percentages, and neither matches what you see logged out in a browser. Treat any vendor number as a trend inside that vendor, never as a fact about the market. Your frozen 20-prompt log is smaller, but it measures the same thing every week, which is what a trend needs. [Generative engine optimization tools](/blog/generative-engine-optimization-tools) sorts the tool types by job if you do want one.
+
+## How do you read it next to Search Console?
+
+Search Console tells you whether Google shows your pages and who clicks. The AI log tells you whether an engine names you. Read them side by side on the same week:
+
+- A page gaining impressions in Search Console but never cited usually needs a clearer answer in its first paragraph.
+- A page cited by an engine but with no clicks is doing brand work. Check whether the prompt is one you care about.
+- Neither moving for a new page means it is likely not indexed yet. Fix that before anything else.
+
+Do not expect click data from the AI engines themselves. Treat cited domains and named brands as the leading indicator, and branded search impressions as the lagging one.
+
+## When is this a waste of your week?
+
+Skip the weekly protocol if you have no pages ranking for anything yet. With zero indexed pages, the answer is zero for a known reason, and the hour is better spent publishing. Skip paid tracking if your category has fewer than a few hundred searches a month in total: the engines will not have much to say either way. And do not read a single negative answer as a verdict, since the same prompt can flip on the next run.
+
+## FAQ
+
+### What is AI brand visibility?
+
+The share of relevant AI-generated answers that mention your brand or cite your site, measured across a fixed set of prompts and engines over time.
+
+### How is it different from SEO rankings?
+
+A ranking is a position in a list for one query. AI visibility is a rate across many prompts, and engines may name a brand with or without linking it.
+
+### How many prompts do I need?
+
+Twenty is enough to start. Fewer than ten makes the weekly number swing on one answer.
+
+### How often should I check?
+
+Weekly, on the same day, with a frozen prompt list. Daily checks mostly measure the engine's randomness.
+
+### Can I improve it without paying for a tool?
+
+Yes. Three of the four levers are publishing, distribution and consistent naming. A spreadsheet covers the measurement.
+
+### How long until I see a change?
+
+Plan on a quarter. The pages need to be indexed and the off-site mentions need to exist before an engine can repeat them.
