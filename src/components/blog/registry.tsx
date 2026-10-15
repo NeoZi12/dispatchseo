@@ -30,6 +30,9 @@ import { BacklinkRealityCard } from "./backlink-reality-card";
 import { AiVisibilityLandscapeScorecard } from "./ai-visibility-landscape-scorecard";
 import { CitationCheckChecklist } from "./citation-check-checklist";
 import { AiVisibilityRealityCard } from "./ai-visibility-reality-card";
+import { AiBrandVisibilityProtocolFlow } from "./ai-brand-visibility-protocol-flow";
+import { AiBrandVisibilityOwnNumbersRow } from "./ai-brand-visibility-own-numbers-row";
+import { AiBrandVisibilityLeverSplit } from "./ai-brand-visibility-lever-split";
 import { SubagentShapeCompareTable } from "./subagent-shape-compare-table";
 import { ClaimAndBuildFlow } from "./claim-and-build-flow";
 import { PipelineClaimFactRow } from "./pipeline-claim-fact-row";
@@ -376,6 +379,9 @@ export const mdxComponents: MDXComponents = {
   AiVisibilityLandscapeScorecard,
   CitationCheckChecklist,
   AiVisibilityRealityCard,
+  AiBrandVisibilityProtocolFlow,
+  AiBrandVisibilityOwnNumbersRow,
+  AiBrandVisibilityLeverSplit,
   SubagentShapeCompareTable,
   ClaimAndBuildFlow,
   PipelineClaimFactRow,
