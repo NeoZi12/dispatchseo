@@ -81,6 +81,9 @@ import { ContentMarketingWeeklyLoopFlow } from "./content-marketing-weekly-loop-
 import { SaasContentTypeFitGrid } from "./saas-content-type-fit-grid";
 import { OwnSitePublishingVolumeStats } from "./own-site-publishing-volume-stats";
 import { SmallBusinessCostLadder } from "./small-business-cost-ladder";
+import { AgencyRetainerAverageBars } from "./agency-retainer-average-bars";
+import { AgencyRedFlagGrid } from "./agency-red-flag-grid";
+import { AgencyYearCostTable } from "./agency-year-cost-table";
 import { SmallBusinessWeeklyHoursBars } from "./small-business-weekly-hours-bars";
 import { SmallBusinessFreeTierReachStats } from "./small-business-free-tier-reach-stats";
 import { FreeToolMemoryCompareTable } from "./free-tool-memory-compare-table";
@@ -427,6 +430,9 @@ export const mdxComponents: MDXComponents = {
   SaasContentTypeFitGrid,
   OwnSitePublishingVolumeStats,
   SmallBusinessCostLadder,
+  AgencyRetainerAverageBars,
+  AgencyRedFlagGrid,
+  AgencyYearCostTable,
   SmallBusinessWeeklyHoursBars,
   SmallBusinessFreeTierReachStats,
   FreeToolMemoryCompareTable,
