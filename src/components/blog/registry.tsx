@@ -84,6 +84,9 @@ import { SmallBusinessCostLadder } from "./small-business-cost-ladder";
 import { AgencyRetainerAverageBars } from "./agency-retainer-average-bars";
 import { AgencyRedFlagGrid } from "./agency-red-flag-grid";
 import { AgencyYearCostTable } from "./agency-year-cost-table";
+import { SearchConsoleVsAnalyticsClickSplit } from "./search-console-vs-analytics-click-split";
+import { SearchConsoleVsAnalyticsMismatchGrid } from "./search-console-vs-analytics-mismatch-grid";
+import { SearchConsoleOwnNumbersCard } from "./search-console-own-numbers-card";
 import { SmallBusinessWeeklyHoursBars } from "./small-business-weekly-hours-bars";
 import { SmallBusinessFreeTierReachStats } from "./small-business-free-tier-reach-stats";
 import { FreeToolMemoryCompareTable } from "./free-tool-memory-compare-table";
@@ -433,6 +436,9 @@ export const mdxComponents: MDXComponents = {
   AgencyRetainerAverageBars,
   AgencyRedFlagGrid,
   AgencyYearCostTable,
+  SearchConsoleVsAnalyticsClickSplit,
+  SearchConsoleVsAnalyticsMismatchGrid,
+  SearchConsoleOwnNumbersCard,
   SmallBusinessWeeklyHoursBars,
   SmallBusinessFreeTierReachStats,
   FreeToolMemoryCompareTable,
