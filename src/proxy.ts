@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { availableAgents } from "@/lib/agents";
+import { GONE_POSTS } from "@/lib/pruned-posts";
 
 // Next 16 proxy (the middleware.ts successor). Gates the dashboard behind the
 // password cookie. /api/* is excluded - the MCP route and crons carry their
@@ -108,6 +109,13 @@ async function persistRotatedSession(req: NextRequest): Promise<NextResponse | n
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  // Deliberately removed posts answer 410 before anything else runs: the
+  // route no longer exists, so without this they would 404 (a "maybe it is
+  // back tomorrow" signal that keeps a demoted URL in Google's recrawl queue)
+  // - and on a self-host without LANDING_ENABLED they would bounce to /login.
+  if (pathname.startsWith("/blog/") && GONE_POSTS.has(pathname.slice("/blog/".length))) {
+    return new NextResponse(null, { status: 410 });
+  }
   if (
     pathname.startsWith("/api/") ||
     // RFC 8414 / RFC 9728 discovery. MCP clients (claude.ai's custom

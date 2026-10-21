@@ -24,11 +24,11 @@ That fourth card is this project's own number, not a projection - dispatchseo.co
 
 ## What building the tracker actually takes
 
-A single API call isn't [a rank tracker](/blog/wincher-alternative). Getting from "one response" to "a system I'd trust to run unattended every night" is the actual DIY project, and it looks like this:
+A single API call isn't [a rank tracker](/blog/ahrefs-alternative). Getting from "one response" to "a system I'd trust to run unattended every night" is the actual DIY project, and it looks like this:
 
 <SelfHostPipelineFlow />
 
-None of these steps are hard individually. Skipping any one of them is exactly how a self-built tracker degrades from "working" to "quietly wrong": no isolation and one bad keyword takes down the whole night's run - the same [per-project failure isolation](/blog/claude-code-github-actions) a multi-tenant cron needs for any of its jobs, not just this one; no delta calculation and every position is a number with no story; no alerting and a page falling from #4 to #34 looks identical to a page holding steady, until someone happens to check.
+None of these steps are hard individually. Skipping any one of them is exactly how a self-built tracker degrades from "working" to "quietly wrong": no isolation and one bad keyword takes down the whole night's run - the same per-project failure isolation a multi-tenant cron needs for any of its jobs, not just this one; no delta calculation and every position is a number with no story; no alerting and a page falling from #4 to #34 looks identical to a page holding steady, until someone happens to check.
 
 ## Where a managed layer earns its keep
 
@@ -36,7 +36,7 @@ None of these steps are hard individually. Skipping any one of them is exactly h
 |---|---|---|
 | Upfront cost | $0 - pay per call | Usually a monthly seat, on top of the API's own cost |
 | What you get per call | Position, title, URL - one moment | The same call, already wrapped in storage and history |
-| History & trend | You build the table and the query | Already queryable [over one door](/blog/claude-code-mcp-server), by keyword or by day |
+| History & trend | You build the table and the query | Already queryable over one door, by keyword or by day |
 | Failure isolation | You write the try/catch per keyword and per project | Already isolated - one broken project can't kill another's run |
 | Alerting | You decide what a "regression" is and wire the notification | Already wired, usually to a dashboard or an email digest |
 | Multi-project scoping | You add a `project_id` column and remember to filter by it everywhere | Already the unit the whole system is built around |
@@ -56,7 +56,7 @@ If the only thing tracked is a handful of keywords checked by hand once a month,
 ## FAQ
 
 **Is a SERP tracking API the same thing as a rank tracker?**
-No. The API is one stateless call - a snapshot for one keyword at one moment. [A rank tracker](/blog/accuranker-alternative) is that call wired into storage, a schedule, and history; nothing about the API itself remembers what it returned yesterday.
+No. The API is one stateless call - a snapshot for one keyword at one moment. [A rank tracker](/blog/ahrefs-alternative) is that call wired into storage, a schedule, and history; nothing about the API itself remembers what it returned yesterday.
 
 **What does DataForSEO's SERP API actually cost per check?**
 $0.0006/SERP on the standard queued tier (~5 min turnaround), $0.0012 on priority (~1 min), $0.002 on live mode (~6 sec) - current pricing, checked live for this guide. Adding a search operator like `site:` or `filetype:` to the query multiplies the cost by 5.
