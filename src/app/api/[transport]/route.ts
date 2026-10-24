@@ -51,7 +51,7 @@ import { loadSiteProfile } from "@/lib/site-profile";
 import { credentialWarnings, isDryRun, missingCredentials } from "@/lib/writer/models";
 import { getWriterRun, listWriterRuns, startWriterRun } from "@/lib/writer/runs";
 import { startHostedRunClaimed } from "@/lib/autopilot/scheduler";
-import { writerMode as projectWriterMode } from "@/lib/projects";
+import { writerMode as projectWriterMode, writerProvider as projectWriterProvider } from "@/lib/projects";
 import { releaseWriterRun } from "@/lib/writer/stages";
 import { listAgentTasks, submitAgentTask } from "@/lib/writer/agent-tasks";
 import {
@@ -4686,6 +4686,10 @@ const mcpHandler = createMcpHandler(
       },
       async ({ limit }) => {
         const p = currentProject();
+        // Only a project the operator switched to the subscription provider
+        // hands out tasks: a customer's token must never be able to read the
+        // writer's prompts (fetched page text included) or answer in its place.
+        if (projectWriterProvider(p) !== "agent") return fail("This project does not use the subscription writer.");
         try {
           const tasks = await listAgentTasks(p.id, limit ?? 20);
           return ok({ count: tasks.length, tasks });
@@ -4712,6 +4716,7 @@ const mcpHandler = createMcpHandler(
       },
       async ({ task_id, text }) => {
         const p = currentProject();
+        if (projectWriterProvider(p) !== "agent") return fail("This project does not use the subscription writer.");
         try {
           const outcome = await submitAgentTask(p.id, task_id, text);
           if ("error" in outcome) return fail(outcome.error);
