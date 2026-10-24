@@ -88,6 +88,12 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "improved",
     text:
+      "Plans now write 1 (Starter), 3 (Growth) and 5 (Scale) articles a week. Up to three a " +
+      "week they start two days apart; five is one every weekday.",
+  },
+  {
+    kind: "improved",
+    text:
       "Every article now links at least one of your site's own related guides or tools inline, " +
       "and the writer no longer counts your blog index or home page as a related page. Articles " +
       "committed to a repo link your own pages the way your posts do (/blog/...), and the FAQ " +

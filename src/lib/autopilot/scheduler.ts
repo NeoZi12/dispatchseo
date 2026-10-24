@@ -26,7 +26,7 @@ export { weekUsage, type WeekUsage } from "./usage";
 // DB write failing, startWriterRun throwing) propagates.
 //
 // The cadence rule lives in math.ts (`cadence`): N articles per ISO week by
-// plan, never two within 2 UTC days. startWriterRun enforces the same gate for
+// plan, never two closer than the plan's spacing (math.ts spacingDaysFor). startWriterRun enforces the same gate for
 // every other caller; this module passes `gated: true` so it is not computed
 // twice, after claiming the day's slot atomically (claimSlot).
 
@@ -264,7 +264,7 @@ export async function startHostedRunClaimed(
   const plan = await projectPlan(project.id);
   const usage = await weekUsage(project.id, now);
   const verdict = cadence({ now, quota: plan.articlesPerWeek, countThisWeek: usage.count, lastStartedAt: usage.lastStartedAt });
-  if (!verdict.write) return { refused: "This site's next article can't start yet (weekly quota or two-day spacing)." };
+  if (!verdict.write) return { refused: "This site's next article can't start yet (weekly quota or spacing between articles)." };
   const previous = project.next_article_at;
   let q = db().from("projects").update({ next_article_at: verdict.nextAfter.toISOString() }).eq("id", project.id);
   q = previous ? q.eq("next_article_at", previous) : q.is("next_article_at", null);

@@ -11,11 +11,16 @@ export const DAY_MS = 86_400_000;
 // --- Cadence --------------------------------------------------------------------
 
 /** Two articles of one site never start less than this many UTC calendar
- *  days apart. A weekly quota of 3 still lands as Mon / Wed / Fri, never
- *  three on one morning: a burst is what a content farm looks like from the
+ *  days apart: a weekly quota of 3 lands as Mon / Wed / Fri, never three on
+ *  one morning, because a burst is what a content farm looks like from the
  *  outside. Calendar days, not 48 hours: a run that started at 05:31 must
- *  not push the next one past the 05:30 cron two days later. */
+ *  not push the next one past the 05:30 cron two days later. A quota of 4
+ *  or more cannot fit in a week two days apart, so those plans go daily
+ *  (Scale: five, Mon-Fri) - still one a day, never two. */
 export const MIN_SPACING_DAYS = 2;
+export function spacingDaysFor(quota: number): number {
+  return quota >= 4 ? 1 : MIN_SPACING_DAYS;
+}
 
 /** Midnight UTC of the day containing `d`. */
 export function utcDay(d: Date): Date {
@@ -59,7 +64,8 @@ export function cadence(input: CadenceInput): CadenceVerdict {
   const nextWeek = new Date(weekStartUtc(now).getTime() + 7 * DAY_MS);
   if (quota <= 0) return { write: false, reason: "no quota", nextAt: null };
   // The first UTC midnight at which the spacing rule allows a start.
-  const spacedFrom = (iso: string | null) => (iso ? new Date(utcDay(new Date(iso)).getTime() + MIN_SPACING_DAYS * DAY_MS) : null);
+  const spacing = spacingDaysFor(quota);
+  const spacedFrom = (iso: string | null) => (iso ? new Date(utcDay(new Date(iso)).getTime() + spacing * DAY_MS) : null);
   const earliest = spacedFrom(lastStartedAt);
   if (countThisWeek >= quota) {
     const at = earliest && earliest > nextWeek ? earliest : nextWeek;
@@ -70,10 +76,44 @@ export function cadence(input: CadenceInput): CadenceVerdict {
     // resets there, which is the same date either way.
     return { write: false, reason: "spacing", nextAt: earliest };
   }
-  const following = new Date(utcDay(now).getTime() + MIN_SPACING_DAYS * DAY_MS);
+  const following = new Date(utcDay(now).getTime() + spacing * DAY_MS);
   // Starting this one fills the quota: the next one waits for Monday.
   const nextAfter = countThisWeek + 1 >= quota && nextWeek > following ? nextWeek : following;
   return { write: true, nextAfter };
+}
+
+/**
+ * The dates the next `n` articles of a site are expected to start, from the
+ * same rules cadence() applies: the weekly quota (Monday reset), the spacing
+ * between two starts, and the daily 05:30 UTC run. Pure projection for the
+ * queue screen ("this idea is next, on Wednesday"); the scheduler itself
+ * still decides each morning. Dates are UTC midnights.
+ */
+export function upcomingStarts(input: CadenceInput & { n: number }): Date[] {
+  const { quota, n } = input;
+  if (quota <= 0 || n <= 0) return [];
+  const spacing = spacingDaysFor(quota);
+  const out: Date[] = [];
+  // The daily run is at 05:30 UTC: once it has passed, today is no longer a
+  // candidate (nothing starts twice in a day).
+  const past = input.now.getUTCHours() > 5 || (input.now.getUTCHours() === 5 && input.now.getUTCMinutes() >= 40);
+  let day = new Date(utcDay(input.now).getTime() + (past ? DAY_MS : 0));
+  let week = weekStartUtc(day);
+  let count = input.countThisWeek;
+  let last = input.lastStartedAt ? utcDay(new Date(input.lastStartedAt)) : null;
+  for (let guard = 0; out.length < n && guard < 400; guard++, day = new Date(day.getTime() + DAY_MS)) {
+    const thisWeek = weekStartUtc(day);
+    if (thisWeek.getTime() !== week.getTime()) {
+      week = thisWeek;
+      count = 0;
+    }
+    if (count >= quota) continue;
+    if (last && utcDaysBetween(last, day) < spacing) continue;
+    out.push(day);
+    last = day;
+    count++;
+  }
+  return out;
 }
 
 // --- Auto-pause ---------------------------------------------------------------

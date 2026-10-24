@@ -51,16 +51,19 @@ export const TIER_LIMITS: Record<Tier, { sites: number; price: number; annual: n
   scale: { sites: 5, price: 99, annual: 69 },
 };
 
-// Articles a week the hosted writer (the autopilot) publishes per tier. Weekly,
-// never daily: a young site that suddenly gains a post a day reads as a
-// content farm to Google, and the plan is sold as a steady cadence, not a
-// volume. Env-overridable so the operator can tune cost against results
-// without a deploy. Prices above are unchanged by this (2026-10-23 decision:
-// the Polar products are the owner's call).
+// Articles a week the hosted writer (the autopilot) publishes per tier
+// (owner, 2026-10-24: 1 / 3 / 5; the per-plan numbers are still to be sat
+// down over, these are the interim ones). Up to three a week they start two
+// days apart; five is one a day, Mon-Fri (math.ts spacingDaysFor) - never two
+// in one morning, which is what a content farm looks like. Env-overridable so
+// the operator can tune cost against results without a deploy, and
+// projects.writer_weekly_quota (0070, operator-only SQL) overrides it for one
+// site. Prices above are unchanged by this (the Polar products are the
+// owner's call).
 export const ARTICLES_PER_WEEK: Record<Tier, number> = {
   starter: 1,
-  growth: 2,
-  scale: 3,
+  growth: 3,
+  scale: 5,
 };
 
 /** Interactive tool pages (calculators, generators) are a feature of the
@@ -830,5 +833,18 @@ export async function projectPlan(
   const sub = await getSubscription(ownerId);
   if (!sub) return { tier: null, status: "none", articlesPerWeek: 0 };
   const tier: Tier = sub.status === "trialing" ? "starter" : sub.tier;
-  return { tier, status: sub.status, articlesPerWeek: isActive(sub) ? articlesPerWeekFor(tier) : 0 };
+  if (!isActive(sub)) return { tier, status: sub.status, articlesPerWeek: 0 };
+  const override = await weeklyQuotaOverride(projectId);
+  return { tier, status: sub.status, articlesPerWeek: override ?? articlesPerWeekFor(tier) };
+}
+
+/** projects.writer_weekly_quota (0070): an operator-only, per-site number of
+ *  articles a week that replaces the plan's (the owner's own Paperbot takes 3
+ *  on a 5-a-week plan). Null, a DB that has not run 0070, or a read error
+ *  all mean "the plan's number". Never surfaced in the UI or a tier. */
+async function weeklyQuotaOverride(projectId: string): Promise<number | null> {
+  const { data, error } = await db().from("projects").select("writer_weekly_quota").eq("id", projectId).maybeSingle();
+  if (error || !data) return null;
+  const n = (data as { writer_weekly_quota: number | null }).writer_weekly_quota;
+  return typeof n === "number" && Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
 }

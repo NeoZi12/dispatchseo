@@ -3,7 +3,7 @@ import { isCloudMode } from "@/lib/cloud";
 import { planGate, polarConfigured, projectPlan } from "@/lib/billing";
 import { writerMode, type Project } from "@/lib/projects";
 import { missingCredentials } from "@/lib/writer/models";
-import { cadence, weekStartUtc } from "./math";
+import { cadence, weekStartUtc, spacingDaysFor } from "./math";
 
 // What a site has used of its weekly article quota, and the one gate every
 // writer start passes (startWriterRun calls writerStartGate - so the MCP
@@ -124,8 +124,8 @@ export async function weekUsage(projectId: string, now: Date): Promise<WeekUsage
  *   plan            cloud fails CLOSED: billing not configured, a plan the
  *                   gate does not cover, or a plan that buys 0 articles.
  *                   Self-host has no plan and is not gated here.
- *   quota/spacing   hosted projects only: the weekly quota and the 2-UTC-day
- *                   spacing (math.ts cadence). `gated` skips ONLY this part,
+ *   quota/spacing   hosted projects only: the weekly quota and the spacing
+ *                   between starts (math.ts cadence / spacingDaysFor). `gated` skips ONLY this part,
  *                   for the scheduler, which just evaluated the same rule.
  */
 export async function writerStartGate(project: Project, opts: { gated?: boolean } = {}, now = new Date()): Promise<string | null> {
@@ -147,7 +147,7 @@ export async function writerStartGate(project: Project, opts: { gated?: boolean 
       return verdict.reason === "quota met"
         ? `This site has used its ${plan.articlesPerWeek} article${plan.articlesPerWeek === 1 ? "" : "s"} for this week.${when}`
         : verdict.reason === "spacing"
-          ? `Articles for one site start at least two days apart.${when}`
+          ? `Articles for one site start at least ${spacingDaysFor(plan.articlesPerWeek) === 1 ? "a day" : `${spacingDaysFor(plan.articlesPerWeek)} days`} apart.${when}`
           : "This site's plan includes no articles right now.";
     }
   }

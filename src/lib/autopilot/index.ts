@@ -16,7 +16,7 @@ import { reprobeRewriteWeekly } from "@/lib/hosted-rewrite";
 //                    nothing else
 //   2. research.ts   top the idea queue up to six, weekly (or on the first run)
 //   3. scheduler.ts  start today's article if the plan's weekly quota and the
-//                    two-day spacing allow it
+//                    spacing between articles allow it
 //   4. health.ts     make lasting trouble loud (autopilot--<slug>)
 //
 // profile.ts writes the site profile from the crawl; report.ts is the

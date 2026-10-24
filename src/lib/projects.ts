@@ -202,6 +202,11 @@ export type Project = {
    *  tier. Read it through writerProvider(). */
   writer_provider: string | null;
 
+  /** Migration 0070, operator-only: articles a week for THIS site in place of
+   *  its plan's number (billing.ts projectPlan). Set by SQL only; null = the
+   *  plan's. Absent on a DB that hasn't run 0070 and on the COLS_PRE_0070 tier. */
+  writer_weekly_quota: number | null;
+
   created_at: string;
 };
 
@@ -310,6 +315,11 @@ export function writerProvider(p: Pick<Project, "writer_provider">): "api" | "ag
 
 // mcp_token deliberately excluded - only fetchProjectToken exposes it.
 const COLS =
+  "id, slug, name, domain, gsc_site_url, github_repo, content_mode, content_path_hint, dataforseo_login, dataforseo_password, keyword_source, serpapi_key, powerups_skipped, location_code, language_code, mode, auto_approve, auto_approve_tools, auto_build_guides, auto_build_tools, auto_merge, last_trend_scan_at, site_launched_at, pipeline_installed_at, pipeline_verified, content_prefs, gsc_oauth_refresh_token, github_installation_id, github_app_installed_at, install_progress, onboarding_screen, owner_user_id, agent, internal_linking, publish_target, wp_url, wp_username, wp_app_password, wp_connected_at, wp_seo_plugin, wp_capabilities, publish_hour, ai_choice, chat_last_seen_at, agent_last_seen_at, agent_credential_at, setup_connected_at, setup_deferred, hosted_cta_url, hosted_cta_label, hosted_rewrite_pr_url, hosted_rewrite_live_at, hosted_theme, hosted_key, hosted_origin, writer_mode, writer_paused_at, writer_pause_reason, writer_resumed_at, author_name, author_bio, author_url, last_research_at, next_article_at, writer_provider, writer_weekly_quota, created_at";
+
+// Pre-0070 (per-site weekly quota): writer_weekly_quota is absent. Newest, so
+// dropped first; such a DB reads as "every site takes its plan's number".
+const COLS_PRE_0070 =
   "id, slug, name, domain, gsc_site_url, github_repo, content_mode, content_path_hint, dataforseo_login, dataforseo_password, keyword_source, serpapi_key, powerups_skipped, location_code, language_code, mode, auto_approve, auto_approve_tools, auto_build_guides, auto_build_tools, auto_merge, last_trend_scan_at, site_launched_at, pipeline_installed_at, pipeline_verified, content_prefs, gsc_oauth_refresh_token, github_installation_id, github_app_installed_at, install_progress, onboarding_screen, owner_user_id, agent, internal_linking, publish_target, wp_url, wp_username, wp_app_password, wp_connected_at, wp_seo_plugin, wp_capabilities, publish_hour, ai_choice, chat_last_seen_at, agent_last_seen_at, agent_credential_at, setup_connected_at, setup_deferred, hosted_cta_url, hosted_cta_label, hosted_rewrite_pr_url, hosted_rewrite_live_at, hosted_theme, hosted_key, hosted_origin, writer_mode, writer_paused_at, writer_pause_reason, writer_resumed_at, author_name, author_bio, author_url, last_research_at, next_article_at, writer_provider, created_at";
 
 // Pre-0069 (writer provider): writer_provider is absent. Newest, so dropped
@@ -398,7 +408,10 @@ async function selectProjects<T>(
     Boolean(e && e.message.includes("does not exist"));
   const first = await run(COLS);
   if (!missingCol(first.error)) return first;
-  // Drop 0069's writer_provider first (reads as the API provider).
+  // Drop 0070's writer_weekly_quota first (reads as the plan's number).
+  const quotaless = await run(COLS_PRE_0070);
+  if (!missingCol(quotaless.error)) return quotaless;
+  // Then 0069's writer_provider (reads as the API provider).
   const providerless = await run(COLS_PRE_0069);
   if (!missingCol(providerless.error)) return providerless;
   // Drop 0066's autopilot columns first, then 0065's hosted-blog columns,
@@ -529,6 +542,7 @@ function envFallbackProject(): Project {
     last_research_at: null,
     next_article_at: null,
     writer_provider: null,
+    writer_weekly_quota: null,
     created_at: new Date(0).toISOString(),
   };
 }

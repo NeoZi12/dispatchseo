@@ -157,6 +157,7 @@ const PROBES: Probe[] = [
   // fallback, so the function alone is not worth a probe).
   { migration: "0069_writer_provider_agent", table: "projects", column: "writer_provider" },
   { migration: "0069_writer_provider_agent", table: "writer_tasks", column: "key" },
+  { migration: "0070_writer_weekly_quota", table: "projects", column: "writer_weekly_quota" },
 ];
 
 // Migrations that genuinely CANNOT be probed through this mechanism, with the
