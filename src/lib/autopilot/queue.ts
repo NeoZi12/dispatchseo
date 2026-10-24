@@ -150,8 +150,8 @@ export async function getHostedQueue(project: Pick<Project, "id" | "next_article
  *  on is left alone. The MCP counterpart is update_suggestion with status
  *  "rejected". */
 /** "Set aside", not delete: the idea moves to the parked list with a reason
- *  the owner wrote (so it can be put back), never to rejected, which nothing
- *  on the hosted dashboard lists again. */
+ *  the owner can read, and restoreQueuedIdea puts it back. Never rejected,
+ *  which nothing on the hosted dashboard lists again. */
 export const SET_ASIDE_REASON = "[writer did not build: you set it aside]";
 export async function removeQueuedIdea(projectId: string, suggestionId: string): Promise<boolean> {
   const { data, error } = await db()

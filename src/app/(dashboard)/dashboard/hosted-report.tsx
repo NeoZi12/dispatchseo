@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import type { Project } from "@/lib/projects";
 import type { AutopilotReport } from "@/lib/autopilot/report";
+import type { HostedQueue } from "@/lib/autopilot/queue";
 import type { OverviewData } from "./overview-data";
 import { pauseAutopilot, resumeAutopilot, suggestTopicAction } from "@/app/autopilot-actions";
 import { PixelDesk, type DispatcherMood } from "@/components/pixel-dispatcher";
@@ -112,9 +113,10 @@ const dayOf = (t: number) => Math.floor(t / DAY) * DAY;
 /** This month's calendar cards. Live articles sit on the day they went
  *  live; anything happening now (being written, waiting for you) sits on
  *  today; a stopped one on the day it started. Queued topics are dashed on
- *  the days they're due: the first on the scheduler's next slot, the rest
- *  spaced by the plan's cadence (two a week = every 3-4 days). */
-function monthCards(r: AutopilotReport, now: number): { cards: CalCard[]; today: number; monthName: string; liveThisMonth: number } {
+ *  the days they're due - the Queue page's own dates (queue.ts
+ *  expected_start), so Home and /queue always agree. Only when the queue
+ *  didn't load does it fall back to spacing by the plan's cadence. */
+function monthCards(r: AutopilotReport, now: number, queue: HomeQueue | null): { cards: CalCard[]; today: number; monthName: string; liveThisMonth: number } {
   const today = dayOf(now);
   const d = new Date(now);
   const first = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
@@ -146,7 +148,16 @@ function monthCards(r: AutopilotReport, now: number): { cards: CalCard[]; today:
       href: articleHref(a) ?? undefined,
     });
   }
-  if (!r.paused && r.nextArticleAt && r.plan.articlesPerWeek > 0) {
+  if (queue) {
+    queue.upcoming.forEach((q) => {
+      const day = q.expected_start ? Date.parse(q.expected_start) : NaN;
+      if (Number.isFinite(day) && inMonth(day)) cards.push({ key: `next-${q.suggestion_id}`, day, title: q.title, word: "Up next", tone: "neutral", upcoming: true, href: "/queue" });
+    });
+    // An empty queue still has a next slot: that morning researches first.
+    if (!queue.upcoming.length && queue.nextStart && inMonth(Date.parse(queue.nextStart))) {
+      cards.push({ key: "next-research", day: Date.parse(queue.nextStart), title: "A fresh topic from the research queue", word: "Up next", tone: "neutral", upcoming: true });
+    }
+  } else if (!r.paused && r.nextArticleAt && r.plan.articlesPerWeek > 0) {
     const spacing = Math.max(1, Math.round(7 / r.plan.articlesPerWeek));
     const start = Math.max(today, dayOf(Date.parse(r.nextArticleAt)));
     const titles = r.ideas.nextTitles.length ? r.ideas.nextTitles : ["A fresh topic from the research queue"];
@@ -165,6 +176,9 @@ function monthCards(r: AutopilotReport, now: number): { cards: CalCard[]; today:
 
 export type ReportFlags = { msg: string | null; gsc: string | null; sort?: string | null };
 
+/** What Home needs of the queue (getHostedQueue): its order and its dates. */
+type HomeQueue = Pick<HostedQueue, "upcoming" | "nextStart">;
+
 export async function HostedReport({
   project,
   report,
@@ -173,9 +187,13 @@ export async function HostedReport({
   flags,
   siteIssues = [],
   operatorSites = null,
+  queue = null,
 }: {
   project: Project;
   report: AutopilotReport | null;
+  /** The Queue page's list and dates; null when it didn't load (the
+   *  report's own idea summary and a cadence estimate stand in). */
+  queue?: HomeQueue | null;
   /** criticalCronIssues for THIS site (getCronHealth scoped to its slug):
    *  the autopilot's own health row, its pause row and its articles' way
    *  out. Before 2026-10-24 the hosted Home rendered none of them, so a site
@@ -213,7 +231,10 @@ export async function HostedReport({
   const gaps = setupGaps({ ...r.setup, keywordSource: r.plan.articlesPerWeek === 0 ? undefined : r.setup.keywordSource });
   const missing = gaps.filter((g) => !g.done);
   const message = messageOf(r, gaps);
-  const month = monthCards(r, now);
+  const month = monthCards(r, now, queue);
+  // "Up next" in the queue's own order (the owner's drag order included).
+  const nextCount = queue ? queue.upcoming.length : r.ideas.approved;
+  const nextTitles = queue ? queue.upcoming.slice(0, 3).map((q) => q.title) : r.ideas.nextTitles;
   const sort = parseSort(flags.sort ?? undefined);
   const recent = sortArticles(r.articles, sort).slice(0, 8);
   const published = r.articles
@@ -377,14 +398,19 @@ export async function HostedReport({
             id="next-title"
             title="Up next"
             description={
-              r.ideas.approved
-                ? `${r.ideas.approved} ${r.ideas.approved === 1 ? "topic" : "topics"} researched and ready, written in this order.`
+              nextCount
+                ? `${nextCount} ${nextCount === 1 ? "topic" : "topics"} researched and ready, written in this order.`
                 : "We research new topics for your site every week."
             }
+            action={
+              <Link href="/queue" className={buttonClass("ghost", "sm")}>
+                Open the queue
+              </Link>
+            }
           />
-          {r.ideas.nextTitles.length ? (
+          {nextTitles.length ? (
             <ol className="mt-5 space-y-3">
-              {r.ideas.nextTitles.slice(0, 3).map((t, i) => (
+              {nextTitles.slice(0, 3).map((t, i) => (
                 <li key={i} className="flex gap-3.5 text-[15px]">
                   <span className="mt-px w-4 shrink-0 text-right font-medium text-ink-faint tabular-nums">{i + 1}</span>
                   <span className="min-w-0 text-ink">{t}</span>

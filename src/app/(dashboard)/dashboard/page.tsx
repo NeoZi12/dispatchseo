@@ -88,6 +88,7 @@ import AiVisibilitySection from "./ai-visibility-section";
 import { HostedReport } from "./hosted-report";
 import { isOperator, operatorOverview } from "@/lib/autopilot/operator";
 import { loadOverviewData } from "./overview-data";
+import { getHostedQueue } from "@/lib/autopilot/queue";
 import { loadReport, writerMode } from "../mode";
 
 export const dynamic = "force-dynamic";
@@ -344,7 +345,7 @@ export default async function Home({
     // self-host too: the hosted Home speaks for one site). A failed read
     // hides the panel - it never takes Home down.
     const operator = isOperator(auth.user?.id);
-    const [report, overview, siteHealth, operatorSites] = await Promise.all([
+    const [report, overview, siteHealth, operatorSites, queue] = await Promise.all([
       loadReport(project.id),
       loadOverviewData(project).catch(() => null),
       // Only the autopilot's own job families. A site switched from agent
@@ -355,11 +356,15 @@ export default async function Home({
         .then((h) => criticalCronIssues(h).filter((x) => /^(autopilot|autopilot-pause|articles)--/.test(x.job)))
         .catch(() => []),
       operator ? operatorOverview().catch(() => null) : Promise.resolve(null),
+      // The Queue page's own list and dates (lib/autopilot/queue.ts), so
+      // Home's calendar and "Up next" never disagree with /queue.
+      getHostedQueue(project).catch(() => null),
     ]);
     return (
       <HostedReport
         project={project}
         report={report}
+        queue={queue}
         overview={overview}
         siteIssues={siteHealth}
         operatorSites={operatorSites}

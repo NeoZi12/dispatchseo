@@ -1703,7 +1703,7 @@ slot runs on its fallback). Refuses when the idea is not this site's
 approved guide, when a run is already on it, or when the site is at its
 cap (2 runs in flight, 3 starts per UTC day). On a hosted (autopilot)
 site it also takes the weekly slot the daily scheduler uses, atomically:
-it refuses past the plan's weekly quota or the two-day spacing, while the
+it refuses past the plan's weekly quota or the spacing between articles, while the
 platform's keyword data budget is spent, and when another start for the
 site won the same moment. Fails with a `missing` list when the deploy has
 no Anthropic key; `WRITER_DRY_RUN=1` exercises the pipeline without any.
@@ -1803,6 +1803,15 @@ owner should describe it with `set_brand`), the owner's brand, tone,
 blocked topics and byline, and this month's spend. Article `error`
 strings are the writer's raw text; the dashboard shows a plain-words
 version.
+
+It also carries the Queue screen: `upcoming` is every idea the writer will
+write, in the order it writes them (approved guides, oldest first, minus
+any a run is already on), each as `{ suggestion_id, title, keyword, volume,
+kd, expected_start }` - `expected_start` is the UTC day (`yyyy-mm-dd`) it is
+expected to start under the weekly quota and spacing, null while paused or
+when the plan includes no articles. `parked` lists the ideas the writer set
+aside, with its `reason`. To take an idea out of the queue, call
+`update_suggestion` with status `rejected`.
 
 ### `pause_writer`
 

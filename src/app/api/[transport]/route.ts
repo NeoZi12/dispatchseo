@@ -51,6 +51,7 @@ import { loadSiteProfile } from "@/lib/site-profile";
 import { credentialWarnings, isDryRun, missingCredentials } from "@/lib/writer/models";
 import { getWriterRun, listWriterRuns, startWriterRun } from "@/lib/writer/runs";
 import { startHostedRunClaimed } from "@/lib/autopilot/scheduler";
+import { getHostedQueue } from "@/lib/autopilot/queue";
 import { writerMode as projectWriterMode, writerProvider as projectWriterProvider } from "@/lib/projects";
 import { listAgentTasks, submitAgentTask } from "@/lib/writer/agent-tasks";
 import {
@@ -4556,7 +4557,7 @@ const mcpHandler = createMcpHandler(
           "the quality gate and queues it to publish - no customer-side AI involved. Pass a " +
           "suggestion_id from get_suggestions (approved guides), or a bare keyword. With " +
           "neither, the oldest approved guide idea is written. On an autopilot site it takes the " +
-          "weekly article slot (refused past the weekly quota or two-day spacing). Returns the run " +
+          "weekly article slot (refused past the weekly quota or the spacing between articles). Returns the run " +
           "id; follow it with get_writer_runs.",
         inputSchema: {
           suggestion_id: z.string().uuid().optional().describe("An approved guide idea to write."),
@@ -4724,13 +4725,19 @@ const mcpHandler = createMcpHandler(
           "article carries prUrl/prMerged - open and unmerged means it waits for a merge on GitHub), " +
           "Search Console traffic, the next queued ideas, what setup is missing (setup.rewritePrUrl = " +
           "the forwarding PR to merge; setup.siteUnreadable = describe the site with set_brand), the " +
-          "owner's brand/tone/blocked topics/author, and this month's spend.",
+          "owner's brand/tone/blocked topics/author, and this month's spend. `upcoming` = the queue " +
+          "the writer will work through, in order, each with its expected_start day (yyyy-mm-dd UTC); " +
+          "`parked` = ideas the writer set aside, with the reason.",
         inputSchema: {},
       },
       async () => {
         const p = currentProject();
         try {
-          return ok(await getAutopilotReport(p.id));
+          // The /queue screen's list and dates ride along (parity): what the
+          // writer will write next, in order, with expected start days, and
+          // the ideas it set aside with the reason.
+          const [report, queue] = await Promise.all([getAutopilotReport(p.id), getHostedQueue(p)]);
+          return ok({ ...report, upcoming: queue.upcoming, parked: queue.parked });
         } catch (e) {
           return fail(`Could not build the autopilot report: ${e instanceof Error ? e.message : String(e)}`);
         }
@@ -4761,7 +4768,7 @@ const mcpHandler = createMcpHandler(
         title: "Resume the autopilot",
         description:
           "Start the autopilot again after a pause (the owner's or its own). The next article " +
-          "starts on the next daily run if the weekly quota and the two-day spacing allow.",
+          "starts on the next daily run if the weekly quota and the spacing between articles allow.",
         inputSchema: {},
       },
       async () => {

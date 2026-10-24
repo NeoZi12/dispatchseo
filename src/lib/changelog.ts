@@ -86,6 +86,13 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
       "waiting for a publishing hour.",
   },
   {
+    kind: "new",
+    text:
+      "A Queue page: every article the writer will take next, in order, with its keyword, " +
+      "monthly searches, difficulty and the day it is expected to start. Drag to reorder, set " +
+      "an idea aside and put it back, or add a topic. Home's calendar shows the same dates.",
+  },
+  {
     kind: "improved",
     text:
       "Plans now write 1 (Starter), 3 (Growth) and 5 (Scale) articles a week. Up to three a " +

@@ -413,6 +413,31 @@
   }
 }
 
+/* The Queue board (queue/queue-board.tsx). A card that joins the list after
+   the page arrived (added, put back) rises in on its own - the same rise as
+   .dispatch-rise but with `backwards` fill, because a kept end-state
+   transform would beat the inline transforms the board's drag and FLIP
+   reorder write. A card being set aside slides out to the right first. */
+.dispatch-join {
+  animation: dispatch-rise 0.28s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+}
+.dispatch-leave {
+  opacity: 0;
+  transform: translateX(1.5rem);
+  pointer-events: none;
+  transition:
+    opacity 0.18s ease-in,
+    transform 0.18s cubic-bezier(0.4, 0, 1, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .dispatch-join {
+    animation: none;
+  }
+  .dispatch-leave {
+    transition: none;
+  }
+}
+
 /* Hand-drawn marks in the landing hero's doodle hand (round caps, a 2.2
    stroke): the circle around Today. Paths carry pathLength="1" so
    .dispatch-draw draws them in - and no non-scaling stroke, which browsers

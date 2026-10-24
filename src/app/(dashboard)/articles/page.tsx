@@ -53,7 +53,16 @@ export default async function ArticlesPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="mx-auto max-w-5xl space-y-8">
-      <PageHeading className="arrive-up" title="Articles" description="Everything the writer has started for this site. Open a row for the facts that matter, or the full page for everything." />
+      <PageHeading
+        className="arrive-up"
+        title="Articles"
+        description="Everything the writer has started for this site. Open a row for the facts that matter, or the full page for everything."
+        actions={
+          <Link href="/queue" className="text-sm font-medium text-accent underline decoration-accent/40 underline-offset-[3px] hover:decoration-accent">
+            See the queue
+          </Link>
+        }
+      />
 
       {!report ? (
         <Callout tone="warn" title="Articles didn't load" role="status">

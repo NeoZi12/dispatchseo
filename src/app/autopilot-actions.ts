@@ -16,6 +16,7 @@ import {
   TOPIC_LIMITS,
   type ControlResult,
 } from "@/lib/autopilot/controls";
+import { removeQueuedIdea, restoreQueuedIdea } from "@/lib/autopilot/queue";
 import type { ActionState } from "@/components/ui/action-state";
 
 // The dashboard's door to the autopilot owner controls (decision 7 of the
@@ -59,6 +60,7 @@ function fromControl(r: ControlResult, success: string): ActionState {
 function refresh() {
   revalidatePath("/dashboard");
   revalidatePath("/articles");
+  revalidatePath("/queue");
   revalidatePath("/settings");
 }
 
@@ -164,6 +166,41 @@ export async function suggestTopicAction(_prev: ActionState, fd: FormData): Prom
   if ("rejected" in r) return state(false, `Not added: ${r.rejected}`, "topic");
   refresh();
   return state(true, `Added "${r.title}" to the queue.`);
+}
+
+/** Set one idea aside from the hosted queue (/queue). Reversible: it parks
+ *  the idea, and restoreQueuedTopicAction puts it back. The MCP twin is
+ *  update_suggestion with status "parked". */
+export async function removeQueuedTopicAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  const o = await ownedProject(fd);
+  if ("refused" in o) return o.refused;
+  const id = text(fd, "id");
+  if (!id) return state(false, "Nothing to set aside.");
+  let removed: boolean;
+  try {
+    removed = await removeQueuedIdea(o.project.id, id);
+  } catch {
+    return state(false, "We couldn't set it aside just now, so it's still in the queue. Try again in a moment.");
+  }
+  refresh();
+  return removed ? state(true, "Set aside. Put it back any time.") : state(false, "That idea isn't in the queue any more. Reload to see the current list.");
+}
+
+/** Put a set-aside idea back at the end of the hosted queue (/queue). The
+ *  MCP twin is update_suggestion with status "approved". */
+export async function restoreQueuedTopicAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  const o = await ownedProject(fd);
+  if ("refused" in o) return o.refused;
+  const id = text(fd, "id");
+  if (!id) return state(false, "Nothing to put back.");
+  let restored: boolean;
+  try {
+    restored = await restoreQueuedIdea(o.project.id, id);
+  } catch {
+    return state(false, "We couldn't put it back just now, so it's still set aside. Try again in a moment.");
+  }
+  refresh();
+  return restored ? state(true, "Back in the queue, at the end.") : state(false, "That idea isn't set aside any more. Reload to see the current list.");
 }
 
 // startWriterRun's refusals are written for agents and name MCP tools. Every

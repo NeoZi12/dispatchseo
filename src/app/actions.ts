@@ -241,6 +241,7 @@ export async function reorderQueue(
   if (!result.ok) return result;
   revalidatePath("/dashboard");
   revalidatePath("/research");
+  revalidatePath("/queue");
   return result;
 }
 

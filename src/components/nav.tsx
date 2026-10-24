@@ -302,6 +302,7 @@ const HOSTED_GROUPS: NavGroup[] = [
     links: [
       { href: "/dashboard", label: "Overview", Icon: ReportIcon },
       { href: "/articles", label: "Articles", Icon: PagesIcon },
+      { href: "/queue", label: "Queue", Icon: QueueIcon },
       { href: "/analytics", label: "Analytics", Icon: AnalyticsIcon },
       // Interactive tool pages; on Starter this is the page that says
       // they come with Growth and Scale.
