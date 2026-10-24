@@ -420,10 +420,11 @@ export async function HostedReport({
           ) : (
             <p className="mt-5 text-sm text-ink-muted">
               {r.ideas.lastResearchAt
-                ? "No winnable keywords found yet; we retry weekly. Suggesting a topic below is the fastest way to get the next article."
+                ? "No winnable keywords found yet; we look again within two days, and dig deeper each time. Suggesting a topic below also works."
                 : "The queue is empty right now. The next research run fills it."}
             </p>
           )}
+          {r.ideas.note ? <p className="mt-4 text-sm text-ink-muted">{r.ideas.note}</p> : null}
         </div>
         <div>
           <ActionForm action={suggestTopicAction} slug={project.slug} submitLabel="Add topic" successLabel="Dispatched" variant="secondary" inline resetOnSuccess>

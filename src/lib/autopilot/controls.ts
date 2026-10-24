@@ -225,7 +225,7 @@ export async function suggestTopic(projectId: string, text: string): Promise<Sug
   const { profile } = await loadSiteProfile(project);
   let fit: number;
   try {
-    const verdict = await judgeCandidates(project, profile, [{ keyword: topic, volume: 0, kd: null }]);
+    const verdict = await judgeCandidates(project, profile, [{ keyword: topic, volume: null, kd: null }]);
     fit = verdict.results[0]?.fit ?? 0;
   } catch {
     return { rejected: "We couldn't check that topic just now. Try again in a minute." };

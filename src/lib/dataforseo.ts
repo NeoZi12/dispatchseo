@@ -644,6 +644,39 @@ export async function relatedKeywords(
   return { ideas: mapLabsItems(items), cost: json.cost };
 }
 
+// Labs keyword_overview: volume + KD for keywords we already have in hand
+// (autopilot research's model-proposed rung - research.ts). One task, up to
+// 700 keywords (80 chars / 10 words each; DataForSEO lowercases them). Flat
+// item shape, the same as keyword_suggestions: tasks[0].result[0].items[] with
+// keyword, keyword_info.search_volume, keyword_properties.keyword_difficulty /
+// detected_language / is_another_language (docs.dataforseo.com/v3/
+// dataforseo_labs/google/keyword_overview/live, read 2026-10-24) - so
+// mapLabsItems reads it unchanged. A keyword the database does not know is
+// simply ABSENT from items, and is not billed.
+export async function keywordOverview(
+  keywords: string[],
+  creds: DataforseoCreds,
+  locationCode: number = LOCATION_CODE,
+  languageCode: string = LANGUAGE_CODE,
+): Promise<{ ideas: KeywordIdea[]; cost: number }> {
+  const list = [...new Set(keywords.map((k) => k.trim().toLowerCase().replace(/\s+/g, " ")))]
+    .filter((k) => k && k.length <= 80 && k.split(" ").length <= 10)
+    .slice(0, 700);
+  if (list.length === 0) return { ideas: [], cost: 0 };
+  const json = await post<{
+    cost: number;
+    tasks: Array<{ result?: Array<{ items?: unknown[] }> }>;
+  }>("/dataforseo_labs/google/keyword_overview/live", [
+    {
+      keywords: list,
+      location_code: locationCode,
+      language_code: languageCode,
+    },
+  ], creds);
+  const items = json.tasks?.[0]?.result?.[0]?.items ?? [];
+  return { ideas: mapLabsItems(items), cost: json.cost };
+}
+
 export type BacklinksSummary = {
   // DataForSEO's Ahrefs-DR-equivalent, 0-1000. Divide by 10 for a 0-100 DR.
   rank: number | null;

@@ -1,4 +1,5 @@
 import { unstable_cache } from "next/cache";
+import { thinNote } from "./research";
 import { db } from "@/lib/db";
 import { projectPlan } from "@/lib/billing";
 import { credsForProject } from "@/lib/dataforseo";
@@ -82,6 +83,11 @@ export type AutopilotReport = {
   ideas: {
     approved: number;
     nextTitles: string[];
+    /** Queued ideas research proposed from the site itself because the
+     *  keyword data knows too little of this market (thin-market rung 4). */
+    proposed: number;
+    /** The one-line explanation for a thin market, or null. */
+    note: string | null;
     /** When research last ran (projects.last_research_at). With approved 0,
      *  a recent run means "no winnable keywords found yet", not "not run". */
     lastResearchAt: string | null;
@@ -353,7 +359,7 @@ export async function getAutopilotReport(projectId: string): Promise<AutopilotRe
     articles: articles.slice(0, ARTICLE_LIMIT),
     articlesTruncated: articles.length > ARTICLE_LIMIT || drafts.length >= DRAFT_LIMIT,
     traffic: { days, clicks28d, impressions28d, deltaClicksPct: prev28.length >= 14 ? deltaPct(clicks28d, prevClicks) : null, topQueries },
-    ideas: { ...ideas, lastResearchAt: project.last_research_at ?? null },
+    ideas: { ...ideas, note: ideas.proposed > 0 ? thinNote(project.language_code, 4, ideas.proposed) : null, lastResearchAt: project.last_research_at ?? null },
     setup: { ...setup, profile: profile.fromDb, siteUnreadable: setup.siteUnreadable && !profile.fromDb },
     controls: {
       brand: {
@@ -408,19 +414,21 @@ async function ideaSummary(projectId: string): Promise<Omit<AutopilotReport["ide
   const [{ data: rows, error: rowsError }, { data: busy, error: busyError }] = await Promise.all([
     db()
       .from("suggestions")
-      .select("id, title")
+      .select("id, title, rationale")
       .eq("project_id", projectId)
       .eq("type", "guide")
       .eq("status", "approved")
+      .order("queue_position", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: true })
       .limit(100),
     db().from("writer_runs").select("suggestion_id").eq("project_id", projectId).eq("status", "running").not("suggestion_id", "is", null),
   ]);
   if (rowsError || busyError) throw new Error(`could not read the idea queue: ${(rowsError ?? busyError)!.message}`);
   const taken = new Set(((busy ?? []) as { suggestion_id: string }[]).map((r) => r.suggestion_id));
-  // Oldest first: the order the writer's pick stage takes them in.
-  const free = ((rows ?? []) as { id: string; title: string }[]).filter((r) => !taken.has(r.id));
-  return { approved: free.length, nextTitles: free.slice(0, 3).map((r) => r.title) };
+  // The owner's order, then oldest first: the order the writer's pick stage takes them in.
+  const free = ((rows ?? []) as { id: string; title: string; rationale: string | null }[]).filter((r) => !taken.has(r.id));
+  const proposed = free.filter((r) => /proposed from the site's profile/.test(r.rationale ?? "")).length;
+  return { approved: free.length, nextTitles: free.slice(0, 3).map((r) => r.title), proposed, note: null };
 }
 
 async function setupSummary(project: Project): Promise<Omit<AutopilotReport["setup"], "profile">> {

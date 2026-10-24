@@ -296,6 +296,20 @@ export type FilterContext = {
  *  searched keyword - and it is applied once, never compounded. */
 export const WIDEN_KD_BY = 5;
 export const WIDEN_MIN_VOLUME = 20;
+/** Research's second widening (the thin-market ladder's rung 3), same raw
+ *  rows, same +5 KD: in a small language a 10-a-month query is a real reader,
+ *  and DataForSEO under-reports the Hebrew/Thai/etc. long tail - Paperbot's
+ *  four runs on 2026-10-24 dropped 60-70% of their candidates under 50. */
+export const WIDEN2_MIN_VOLUME = 10;
+/** A model-proposed query DataForSEO cannot see (no volume, or no KD) is a
+ *  guess about a real reader: it needs a much surer fit than a measured one,
+ *  and at most this many land per research run, so a thin site keeps moving
+ *  without its queue filling up with guesses. */
+export const UNMEASURED_FIT_MIN = 0.85;
+// Four, not two: where DataForSEO is blind to the niche (Paperbot: 1 of 20
+// Hebrew queries known) every idea is a proposal, and two a run starved a
+// 3-a-week site. The 0.85 fit bar and the evergreen/intent rules still hold.
+export const UNMEASURED_MAX_PER_RUN = 4;
 
 export type DropReason = "volume" | "kd" | "language" | "blocked" | "duplicate" | "near-duplicate";
 
@@ -373,6 +387,29 @@ export function filterCandidates(
   }
   kept.sort((a, b) => opportunity(b) - opportunity(a) || b.volume - a.volume);
   return { kept, dropped };
+}
+
+/**
+ * The checks of filterCandidates that do not need volume or KD - blocked
+ * topics, exact duplicates, near-duplicates of the site and of each other -
+ * for queries that have no keyword data yet (research's model-proposed
+ * rung). Same thresholds, so a proposal is never held to a looser bar than a
+ * DataForSEO row. Returns the survivors normalized, in input order.
+ */
+export function screenTopics(
+  keywords: string[],
+  ctx: Pick<FilterContext, "blockedTopics" | "takenKeywords" | "existingTexts">,
+): string[] {
+  const kept: string[] = [];
+  for (const raw of keywords) {
+    const k = normalizeKeyword(raw);
+    if (!k || kept.includes(k)) continue;
+    if (matchesBlockedTopic(k, ctx.blockedTopics)) continue;
+    if (ctx.takenKeywords.has(k)) continue;
+    if ([...ctx.existingTexts, ...kept].some((t) => jaccard(t, k) >= DUPLICATE_JACCARD)) continue;
+    kept.push(k);
+  }
+  return kept;
 }
 
 export const FIT_MIN = 0.6;
