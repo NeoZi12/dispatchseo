@@ -860,7 +860,17 @@ export async function publishDraftToRepo(
       const repoPath = normalizeRepoPath(`${dir}/${relDir}/${slug}.png`);
       if (repoPath) coverTarget = { repoPath, ref: `${relDir}/${slug}.png` };
     } else if (allPaths.some((p) => p.startsWith(publicPrefix))) {
-      coverTarget = { repoPath: `${publicPrefix}images/dispatchseo/${slug}.png`, ref: `/images/dispatchseo/${slug}.png` };
+      // A site-root neighbour ("/blog/covers/x.webp") names the folder this
+      // site already serves its covers from: ours goes there too. The first
+      // Paperbot article's cover sat in /images/dispatchseo/, which that
+      // site's auth proxy does not allowlist - it 307'd to /login and the
+      // post showed a broken image. Only when the folder really exists under
+      // public/ (a CDN URL or a path nobody serves falls back to ours).
+      const siteRootDir = /^\/[^?#]*\//.test(sampleCover) ? sampleCover.slice(0, sampleCover.lastIndexOf("/")) : "";
+      const ownFolder = siteRootDir && allPaths.some((p) => p.startsWith(`${publicPrefix}${siteRootDir.slice(1)}/`));
+      coverTarget = ownFolder
+        ? { repoPath: `${publicPrefix}${siteRootDir.slice(1)}/${slug}.png`, ref: `${siteRootDir}/${slug}.png` }
+        : { repoPath: `${publicPrefix}images/dispatchseo/${slug}.png`, ref: `/images/dispatchseo/${slug}.png` };
     }
   }
   if (draft.cover_url && coverTarget) {
