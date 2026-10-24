@@ -370,6 +370,28 @@ type LinkCandidate = { url: string; title: string; keywords?: string[] };
 
 const BRIEF_STOP = new Set(["the", "and", "for", "with", "how", "what", "why", "when", "best", "top", "your", "you", "are", "can", "does", "from", "into", "about", "guide", "tips", "vs", "versus", "near", "free", "online"]);
 
+/** Section indexes (/blog, /guides, /tools, /blog/page/2) are not related
+ *  pages: the first Paperbot article linked "the blog" because the index page
+ *  lists every title and so shares tokens with every keyword, and the site's
+ *  own content lint then failed it for linking no actual guide. A link to the
+ *  home page is a product link, not a related page, for the same reason. */
+export function isHubPage(url: string): boolean {
+  let path: string;
+  try {
+    path = new URL(url).pathname.replace(/\/+$/, "");
+  } catch {
+    return false;
+  }
+  if (path === "") return true;
+  const segs = path.split("/").filter(Boolean);
+  const hub = /^(blog|blogs|articles|posts|news|guides|guide|resources|tools|free-tools|docs|insights|learn|knowledge-base|kb|category|categories|tag|tags|topics|archive|archives|page)$/i;
+  // /blog, /blog/page/2, /blog/category/x, /tag/x: an index whichever way it is reached.
+  if (segs.length === 1 && hub.test(segs[0])) return true;
+  if (segs.length >= 2 && hub.test(segs[0]) && /^(page|category|categories|tag|tags|topics|archive)$/i.test(segs[1])) return true;
+  if (segs.length === 2 && /^(category|categories|tag|tags|topics|author|authors|archive)$/i.test(segs[0])) return true;
+  return false;
+}
+
 export async function buildSiteBrief(project: Project, keyword: string): Promise<SiteBrief> {
   const own = project.domain.replace(/^www\./, "").toLowerCase();
   const [{ profile }, digestRow, gscRow] = await Promise.all([
@@ -402,6 +424,7 @@ export async function buildSiteBrief(project: Project, keyword: string): Promise
     ? ((digestRow.data as { link_candidates: LinkCandidate[] }).link_candidates)
     : [];
   const pages = candidates
+    .filter((c) => !isHubPage(c.url))
     .map((c) => {
       const hay = `${c.title} ${(c.keywords ?? []).join(" ")} ${c.url.replace(/[-_/]+/g, " ")}`;
       const t = tokens(hay, lang);

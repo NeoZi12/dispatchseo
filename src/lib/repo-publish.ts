@@ -1,4 +1,5 @@
 import { tokenForRef } from "./github";
+import { faqHeadingFor } from "@/lib/writer/evidence";
 import type { Project } from "./projects";
 import { yamlDoubleQuote } from "./article-render";
 import { backendBaseUrl } from "./pipeline-pack";
@@ -381,6 +382,14 @@ export type ArticleFileInput = {
    *  the markdown and its own generator's schema, so the questions ride in the
    *  body where the site's template can see them. */
   faq?: { question: string; answer: string }[] | null;
+  /** The site's own host: links to it are written root-relative, the way the
+   *  repo's own posts link each other (and the way a site's content lint
+   *  counts them - Paperbot's requires `](/blog/...)` and failed the first
+   *  hosted article's build over an absolute URL to its own guide). */
+  siteDomain?: string | null;
+  /** The FAQ section heading in the article's language (writer/evidence
+   *  faqHeadingFor); defaults to English. */
+  faqHeading?: string | null;
 };
 
 /** Whether a sample has a cover-shaped key at all - the one signal that this
@@ -462,7 +471,8 @@ export function buildArticleFile(sample: ParsedSample | null, article: ArticleFi
 function bodyWithFaq(article: ArticleFileInput, sample: ParsedSample | null): string {
   // The frontmatter carries the title; unless this site's own posts open with
   // an H1, the layout prints it and a body H1 would show it twice.
-  const body = (sample?.bodyHasH1 ? article.markdown : article.markdown.replace(/^\s*#\s+[^\n]*\n+/, "")).trim();
+  const withTitle = sample?.bodyHasH1 ? article.markdown : article.markdown.replace(/^\s*#\s+[^\n]*\n+/, "");
+  const body = relativizeOwnLinks(withTitle, article.siteDomain).trim();
   const faq = (article.faq ?? []).filter(
     (f) => f && typeof f.question === "string" && typeof f.answer === "string" && f.question.trim() && f.answer.trim(),
   );
@@ -470,7 +480,19 @@ function bodyWithFaq(article: ArticleFileInput, sample: ParsedSample | null): st
   const section = faq
     .map((f) => `### ${f.question.trim().replace(/\s+/g, " ")}\n\n${f.answer.trim()}`)
     .join("\n\n");
-  return `${body}\n\n## Frequently asked questions\n\n${section}`;
+  return `${body}\n\n## ${(article.faqHeading ?? "").trim() || "Frequently asked questions"}\n\n${section}`;
+}
+
+/** `[text](https://www.site.com/blog/x)` -> `[text](/blog/x)` for the site's
+ *  own host only (www. or not, http or https); every other link is untouched.
+ *  The home page becomes `/`. Only markdown link targets are rewritten, so a
+ *  URL quoted in prose stays as the writer put it. */
+export function relativizeOwnLinks(markdown: string, siteDomain: string | null | undefined): string {
+  const own = (siteDomain ?? "").trim().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/+$/, "").toLowerCase();
+  if (!own) return markdown;
+  const host = own.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`\\]\\(https?://(?:www\\.)?${host}(/[^)\\s]*)?\\)`, "gi");
+  return markdown.replace(re, (_m, path: string | undefined) => `](${path && path.length ? path : "/"})`);
 }
 
 // ---------------------------------------------------------------------------
@@ -879,6 +901,8 @@ export async function publishDraftToRepo(
     faq: draft.faq ?? null,
     dateIso,
     coverPath,
+    siteDomain: project.domain,
+    faqHeading: faqHeadingFor(project.language_code),
   });
   treeEntries.unshift({ path: repoPath, mode: "100644", type: "blob", content });
 

@@ -82,8 +82,16 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "improved",
     text:
-      "A first article held for a quality read is never stuck: it publishes itself within 48 " +
-      "hours, and you can still publish it straight away.",
+      "Articles publish the moment they pass the quality gate - no held first article, no " +
+      "waiting for a publishing hour.",
+  },
+  {
+    kind: "improved",
+    text:
+      "Every article now links at least one of your site's own related guides or tools inline, " +
+      "and the writer no longer counts your blog index or home page as a related page. Articles " +
+      "committed to a repo link your own pages the way your posts do (/blog/...), and the FAQ " +
+      "heading is in the article's language.",
   },
   {
     kind: "improved",

@@ -54,6 +54,7 @@ import {
 import { advanceRun, failRun, recordDraft, saveScratch, suggestionIdsInFlight, VENDOR_FAILURE_RE, type FailureKind, type Stage, type WriterRun } from "./runs";
 
 import { matchesBlockedTopic } from "@/lib/autopilot/math";
+import { isHubPage } from "./research";
 import { blockedTopicsOf } from "@/lib/autopilot/prefs";
 
 // The stages of one article. Five persisted stages, each one job in the
@@ -103,8 +104,6 @@ import { blockedTopicsOf } from "@/lib/autopilot/prefs";
 const MAX_PATCHES = 2;
 const FACT_SHEET_TTL_MS = 45 * 86_400_000;
 const CLIENT_KIND = "dispatchseo-writer";
-const DAILY_PUBLISH_CAP = 3;
-const IN_FLIGHT_CAP = 5;
 /** More than this fraction of 8-word shingles shared with ONE source, or a
  *  verbatim run this long outside a quote, is a rewrite of that page. */
 const OVERLAP_FRACTION_LIMIT = 0.04;
@@ -669,6 +668,7 @@ const writerRules = (lang: string): string => `RULES - every one of them is a re
 - Cite sparingly: one marker per source per paragraph, on the sentence that carries its most specific fact, and at most one marker per table row. A paragraph that names the source in prose ("Primeline's 2026 breakdown…") carries the marker there and nowhere else. An article where every sentence ends in a marker reads like a term paper and gets skimmed, not read.
 - The byline is the site, not a person: never write "I", "I'd", "my" or "in my experience". Give every verdict as the site's recommendation ("we'd pick…" is fine, "I agree" is not).
 - Use the site's own pages and products from the brief only where they genuinely solve the reader's problem: at most one bounded section, never the spine, linked inline as markdown links.
+- Link at least one of the brief's RELATED PAGES (the S<n> pages that are guides or tools, not the home page and not a section index) inline, in the sentence where a reader would want to go deeper, by its title and its URL as a markdown link. Internal links are how a site's pages help each other rank; an article that links none of them is incomplete.
 - A table only for a real multi-attribute comparison with figures. Lists only for genuinely parallel items or ordered steps. Otherwise prose.
 - Vary sentence length. No rhetorical questions as transitions. No summary conclusion that restates the sections; end with the reader's next action.
 - Never use: in today's, delve, landscape, navigate the, it's important to note, whether you're a, game-changer, unlock, elevate, seamless, robust, in conclusion, comprehensive guide, let's dive, look no further, ever-evolving, plays a crucial role, in the realm of, a testament to, it's worth noting, when it comes to, in this article. No em-dashes.
@@ -1272,6 +1272,32 @@ async function runChecks(c: Ctx, sheet: FactSheet, brief: SiteBrief, p: Plan, in
     if (!tableInIntro) issues.push({ section: "", note: `right after the TL;DR and before the first section heading, add the one side-by-side markdown table that shows the bottom line (${p.glance_table ?? "options against what decides between them, with a verdict row"})`, blocking: true });
   }
 
+  // 6b. One real internal link. The brief's related pages are guides and
+  //     tools of this site that share the keyword's terms; the first Paperbot
+  //     article linked only the blog index and its own content lint failed the
+  //     build ("no internal link to another guide or tool"). Section indexes
+  //     and the home page do not count. The patch goes to the section whose
+  //     text shares most with the best related page's title.
+  {
+    const related = brief.pages.filter((pg) => !isHubPage(pg.url));
+    if (related.length) {
+      const bare = (u: string) => u.replace(/\/+$/, "");
+      const linked = related.some((pg) => full.includes(`[S${pg.n}]`) || full.includes(`](${bare(pg.url)}`));
+      if (!linked) {
+        const best = related[0]; // brief order: most shared terms first
+        const want = new Set(tokenize(best.title));
+        const where = sections
+          .map((sec) => ({ h: sec.heading, n: tokenize(sec.text).filter((t) => want.has(t)).length }))
+          .sort((a, b) => b.n - a.n)[0];
+        issues.push({
+          section: where && where.n > 0 ? where.h : null,
+          note: `add one inline internal link to this site's related page "${best.title}" (${best.url}) as a markdown link, in the sentence where a reader would want to go deeper - not the home page, not a section index`,
+          blocking: true,
+        });
+      }
+    }
+  }
+
   // 7. Banned phrases, placed where they occur (a FAQ answer carrying them
   //    is dropped, a section is patched). Blocking from two phrases up.
   const lowerFull = full.toLowerCase();
@@ -1512,32 +1538,9 @@ async function handoff(c: Ctx, draft: Draft, p: Plan, report: ValidationReport, 
   if (run.suggestion_id) {
     await db().from("suggestions").update({ status: "in_progress", started_at: new Date().toISOString() }).eq("id", run.suggestion_id);
   }
-  const holdReason =
-    process.env.WRITER_HOLD_FIRST === "1" && !(await writerHasPublished(project.id))
-      ? "first article of this site, held for a read"
-      : await publishCapReason(project.id, draftId);
-  const value = { held: Boolean(holdReason), reason: holdReason, draft: { ...draft, archetype: p.archetype } };
-  if (holdReason) {
-    await advanceRun(run, { key: "verify", value: { ...record, handoff: value } }, "done", { draft_id: draftId, status: "held" }, costSoFar);
-    return;
-  }
+  const value = { draft: { ...draft, archetype: p.archetype } };
   await enqueue({ projectId: project.id, kind: "finish", payload: { draftId }, idempotencyKey: `finish:${draftId}` });
   await advanceRun(run, { key: "verify", value: { ...record, handoff: value } }, "done", { draft_id: draftId }, costSoFar);
-}
-
-export async function releaseWriterRun(run: WriterRun): Promise<void> {
-  if (run.status !== "held" || !run.draft_id) throw new Error("that run is not held");
-  // The owner just read it and said publish: no waiting for the daily slot.
-  await enqueue({ projectId: run.project_id, kind: "finish", payload: { draftId: run.draft_id, publishNow: true }, idempotencyKey: `finish:${run.draft_id}` });
-  await db().from("writer_runs").update({ status: "done", updated_at: new Date().toISOString() }).eq("id", run.id);
-}
-
-/** Accepted and finished count too: the first article may still be on its
- *  way out (or waiting on a PR merge), and the second must not be held as
- *  "first" meanwhile. */
-async function writerHasPublished(projectId: string): Promise<boolean> {
-  const { count } = await db().from("article_drafts").select("id", { count: "exact", head: true }).eq("project_id", projectId).eq("client_kind", CLIENT_KIND).in("status", ["accepted", "finished", "published"]);
-  return (count ?? 0) > 0;
 }
 
 /** The writer's own unprocessed draft for this run's idea that no other run
@@ -1558,17 +1561,6 @@ async function orphanDraft(projectId: string, run: WriterRun): Promise<string | 
   if (!live || live.client_kind !== CLIENT_KIND || live.status !== "submitted") return null;
   const { data: owner } = await db().from("writer_runs").select("id").eq("draft_id", live.id).neq("id", run.id).limit(1).maybeSingle();
   return owner ? null : live.id;
-}
-
-async function publishCapReason(projectId: string, ownDraftId: string): Promise<string | null> {
-  const startOfDay = `${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`;
-  const [{ count: today }, { count: inFlight }] = await Promise.all([
-    db().from("article_drafts").select("id", { count: "exact", head: true }).eq("project_id", projectId).gte("created_at", startOfDay).in("status", ["submitted", "accepted", "blocked_setup", "finished", "published"]).neq("id", ownDraftId),
-    db().from("article_drafts").select("id", { count: "exact", head: true }).eq("project_id", projectId).in("status", ["submitted", "accepted"]).neq("id", ownDraftId),
-  ]);
-  if ((today ?? 0) >= DAILY_PUBLISH_CAP) return `site already took ${DAILY_PUBLISH_CAP} articles today`;
-  if ((inFlight ?? 0) >= IN_FLIGHT_CAP) return `site already has ${IN_FLIGHT_CAP} articles waiting to publish`;
-  return null;
 }
 
 // --- helpers ---------------------------------------------------------------------
