@@ -1,4 +1,5 @@
 import { requireDashboard } from "@/lib/auth-gate";
+import { redirectIfHosted } from "../mode";
 import { db } from "@/lib/db";
 import { requireOnboarded } from "@/lib/onboarding-gate";
 import { getActiveProject } from "@/lib/active-project";
@@ -127,6 +128,9 @@ function AutomationCard({
 
 export default async function AutomationsPage() {
   await requireDashboard();
+  // Hosted writer: this screen belongs to the agent workflow; the hosted
+  // dashboard covers it on /dashboard.
+  await redirectIfHosted("/dashboard");
   await requireOnboarded();
 
   const project = await getActiveProject();

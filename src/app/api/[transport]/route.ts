@@ -48,6 +48,22 @@ import { effectiveAutomations, getProjectByToken, internalLinkingEnabled, publis
 import { BUILDER_AGENT_IDS, builderAgents, projectAgent } from "@/lib/agents";
 import { setProjectAgent } from "@/lib/agent-settings";
 import { loadSiteProfile } from "@/lib/site-profile";
+import { credentialWarnings, isDryRun, missingCredentials } from "@/lib/writer/models";
+import { getWriterRun, listWriterRuns, startWriterRun } from "@/lib/writer/runs";
+import { releaseWriterRun } from "@/lib/writer/stages";
+import {
+  getAutopilotReport,
+  pauseWriter,
+  resumeWriter,
+  runResearch,
+  setAuthor,
+  setBlockedTopics,
+  setBrand,
+  setTone,
+  suggestTopic,
+} from "@/lib/autopilot";
+import { checkRewriteLive, manualSnippet, switchToHostedBlog } from "@/lib/hosted-rewrite";
+import { normalizeTheme, readableAccent, readSiteTheme } from "@/lib/hosted-theme";
 import { clientKindStore, currentClientKind, currentProject, projectStore } from "@/lib/mcp-context";
 import { duplicateNote, findDuplicateSuggestion, isDuplicateKeyError } from "@/lib/suggestion-dedupe";
 import { fetchProjectUrl, isProjectUrl } from "@/lib/url-guard";
@@ -1387,7 +1403,7 @@ const mcpHandler = createMcpHandler(
         // reporting "queued" for work that cannot run is the failure mode this
         // whole readiness split exists to prevent.
         const route = publishRoute(p);
-        if (route !== "wordpress" && route !== "repo") return fail(blockedReason(p));
+        if (route !== "wordpress" && route !== "repo" && route !== "hosted") return fail(blockedReason(p));
 
         // Pulls an already-scheduled publish forward instead of silently
         // deduping against it - see publishDraftNow.
@@ -1629,20 +1645,29 @@ const mcpHandler = createMcpHandler(
         description:
           "Owner-gated: choose where finished articles go. `wordpress` posts them straight " +
           "to the site's own WordPress; `github` commits the article to the connected repo " +
-          "and opens a pull request (merged automatically in automatic mode); `manual` " +
-          "finishes the article and leaves it for the owner to place. Use " +
+          "and opens a pull request (merged automatically in automatic mode); `hosted` " +
+          "means DispatchSEO serves the site's /blog itself (for a site with no blog: one " +
+          "forwarding rule we open as a pull request, pages under the site's own domain); " +
+          "`manual` finishes the article and leaves it for the owner to place. Use " +
           "ONLY when the owner asked for the change in this conversation. This does NOT " +
           "connect anything - the WordPress username and password are entered on the " +
           "Settings screen and never travel through here. Setting `wordpress` before that " +
           "connection exists is allowed, and articles simply wait until it does.",
         inputSchema: {
           target: z
-            .enum(["github", "wordpress", "manual"])
+            .enum(["github", "wordpress", "hosted", "manual"])
             .describe("Where finished articles go from now on."),
         },
       },
       async ({ target }) => {
         const p = currentProject();
+        if (target === "hosted") {
+          // The full switch: key, theme, forwarding pull request, parked
+          // drafts released - not just the column.
+          const switched = await switchToHostedBlog(p);
+          if (!switched) return fail("Could not switch this site to the hosted blog.");
+          return ok({ publish_target: "hosted", blog_url: `${switched.hosted_origin ?? `https://${p.domain}`}/blog`, rewrite_pr: switched.hosted_rewrite_pr_url, note: "Articles now publish to the hosted blog. Merge the forwarding pull request (or add the rule on Settings) so the site's /blog answers from it." });
+        }
         const { error } = await db()
           .from("projects")
           .update({ publish_target: target })
@@ -1653,6 +1678,9 @@ const mcpHandler = createMcpHandler(
         // choosing wordpress on a site with no WordPress connected looks like
         // it worked and then quietly parks every article.
         const notes: string[] = [];
+        if (publishTarget(p) === "hosted") {
+          notes.push("This site's /blog was being served by DispatchSEO. Revert the forwarding rule in the repo (the pull request named 'Forward /blog to your hosted blog'), or that address will now return nothing.");
+        }
         if (target === "wordpress" && !p.wp_app_password) {
           notes.push(
             "No WordPress site is connected yet, so articles will wait. Connect it on the Settings screen.",
@@ -4451,6 +4479,353 @@ const mcpHandler = createMcpHandler(
         const { prefs, error } = await saveContentPrefs(p, next);
         if (error) return fail(error);
         return ok({ saved: true, project: p.slug, content_prefs: prefs });
+      },
+    );
+
+    server.registerTool(
+      "set_hosted_blog",
+      {
+        title: "Set the hosted blog's call to action",
+        description:
+          "Owner-gated. For a site whose /blog DispatchSEO serves (publish target `hosted`): " +
+          "where the call-to-action box under every article points and what it says. Omit " +
+          "cta_url to point at the site itself. Also reports whether the site's own /blog " +
+          "answers from us yet (the forwarding rule merged) and the pull request that adds it.",
+        inputSchema: {
+          cta_url: z.string().url().optional().describe("Absolute URL on the site's own domain."),
+          cta_label: z.string().max(60).optional().describe("Button text, up to 60 characters."),
+          accent: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().describe("Brand colour as #rrggbb (links, active ToC item, CTA)."),
+          mode: z.enum(["light", "dark"]).optional().describe("Page background family."),
+          logo_url: z.string().url().optional().describe("Absolute https image URL for the mark in the header and the product card."),
+          reread_site: z.boolean().optional().describe("Re-read colours and logo from the site's homepage, discarding overrides."),
+        },
+      },
+      async ({ cta_url, cta_label, accent, mode, logo_url, reread_site }) => {
+        const p = currentProject();
+        const patch: Record<string, unknown> = {};
+        if (reread_site) {
+          const fresh = await readSiteTheme(p);
+          if (!fresh) return fail("Could not read the site's homepage.");
+          patch.hosted_theme = fresh.theme;
+          patch.hosted_origin = fresh.origin;
+        } else if (accent !== undefined || mode !== undefined || logo_url !== undefined) {
+          const cur = normalizeTheme(p.hosted_theme);
+          const m = mode ?? cur.mode;
+          patch.hosted_theme = { accent: readableAccent((accent ?? cur.accent).toLowerCase(), m), mode: m, logo: logo_url ?? cur.logo, source: "owner" };
+        }
+        if (cta_url !== undefined) {
+          if (!isProjectUrl(cta_url, p.domain)) return fail("cta_url must be on this site's own domain.");
+          patch.hosted_cta_url = cta_url;
+        }
+        if (cta_label !== undefined) patch.hosted_cta_label = cta_label.trim() || null;
+        if (Object.keys(patch).length) {
+          const { error } = await db().from("projects").update(patch).eq("id", p.id);
+          if (error) return fail(`Could not save: ${error.message}`);
+        }
+        const live = await checkRewriteLive(p);
+        return ok({
+          publish_target: publishTarget(p),
+          cta_url: (patch.hosted_cta_url as string | undefined) ?? p.hosted_cta_url ?? `https://${p.domain}`,
+          cta_label: (patch.hosted_cta_label as string | undefined) ?? p.hosted_cta_label ?? null,
+          blog_url: `https://${p.domain}/blog`,
+          theme: normalizeTheme((patch.hosted_theme as unknown) ?? p.hosted_theme),
+          forwarding_live: live,
+          rewrite_pr: p.hosted_rewrite_pr_url,
+          snippets: p.hosted_rewrite_pr_url === "manual" && p.hosted_key ? manualSnippet(await backendBaseUrl(), p.hosted_key) : undefined,
+        });
+      },
+    );
+
+    // --- Hosted writer (pivot of 2026-10-22) -----------------------------------
+    //
+    // Our server writes the article: research -> write -> claim ledger ->
+    // cross-vendor review -> gate -> the same finish/publish/verify chain
+    // submit_article feeds. These three tools are the agent-side door to that
+    // state; the dashboard report screen is the next build step.
+    server.registerTool(
+      "write_article",
+      {
+        title: "Write an article (hosted writer)",
+        description:
+          "Start the hosted writer on one idea. DispatchSEO reads the page-one results and the " +
+          "site's own pages, plans an article that covers what searchers expect AND adds one " +
+          "thing page one lacks, writes it from that research only, verifies every claim against " +
+          "a quoted passage, checks originality against page one and the site's own posts, runs " +
+          "the quality gate and queues it to publish - no customer-side AI involved. Pass a " +
+          "suggestion_id from get_suggestions (approved guides), or a bare keyword. With " +
+          "neither, the oldest approved guide idea is written. Returns the run id; follow it " +
+          "with get_writer_runs.",
+        inputSchema: {
+          suggestion_id: z.string().uuid().optional().describe("An approved guide idea to write."),
+          keyword: z.string().min(2).max(120).optional().describe("Write about this keyword instead of a queued idea."),
+          title_hint: z.string().max(200).optional().describe("Optional working title."),
+        },
+      },
+      async ({ suggestion_id, keyword, title_hint }) => {
+        const p = currentProject();
+        const missing = missingCredentials();
+        if (missing.length) {
+          return failWith("The hosted writer has no model credentials on this deploy yet.", {
+            missing,
+            hint: "Set the keys in the backend's environment, or WRITER_DRY_RUN=1 to exercise the pipeline without a model.",
+          });
+        }
+        const started = await startWriterRun({ projectId: p.id, suggestionId: suggestion_id, keyword, titleHint: title_hint });
+        if (!started.run) return fail(started.refused);
+        const run = started.run;
+        return ok({
+          run_id: run.id,
+          stage: run.stage,
+          status: run.status,
+          warnings: credentialWarnings(),
+          note: "Queued. The jobs cron runs it (research, plan, write, verify), chaining stages inside a tick where time allows; check get_writer_runs.",
+        });
+      },
+    );
+
+    server.registerTool(
+      "get_writer_runs",
+      {
+        title: "Get writer runs",
+        description:
+          "The hosted writer's recent runs for this site: stage, status, cost so far, the " +
+          "draft it produced (if any), and - with run_id - the full research ledger (fact " +
+          "sheet, claim verification, reviewer notes, gate report).",
+        inputSchema: {
+          run_id: z.string().uuid().optional().describe("Return one run with its full stage outputs."),
+          limit: z.number().int().min(1).max(50).optional(),
+        },
+      },
+      async ({ run_id, limit }) => {
+        const p = currentProject();
+        if (run_id) {
+          const run = await getWriterRun(p.id, run_id);
+          if (!run) return fail("No such writer run on this project.");
+          // The research record carries every source's shingle hashes (for the
+          // overlap gate) - thousands of integers nobody reading a run wants.
+          const research = run.stage_outputs.research as { sheet?: { sources?: Record<string, unknown>[] } } | undefined;
+          if (research?.sheet?.sources) {
+            research.sheet.sources = research.sheet.sources.map(({ shingles: _s, ...rest }) => rest);
+          }
+          return ok(run);
+        }
+        const runs = await listWriterRuns(p.id, limit ?? 20);
+        return ok({
+          dry_run: isDryRun(),
+          missing_credentials: missingCredentials(),
+          warnings: credentialWarnings(),
+          runs: runs.map((r) => ({
+            run_id: r.id,
+            keyword: r.keyword,
+            stage: r.stage,
+            status: r.status,
+            rewrites: r.rewrites,
+            cost_usd: Number(r.cost_usd),
+            draft_id: r.draft_id,
+            error: r.error,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+          })),
+        });
+      },
+    );
+
+    server.registerTool(
+      "release_writer_run",
+      {
+        title: "Release a held writer run",
+        description:
+          "A site's first hosted-writer article is held for a human read when the deploy sets " +
+          "WRITER_HOLD_FIRST=1 (status 'held'). This queues it to finish and publish on the " +
+          "owner's usual schedule.",
+        inputSchema: { run_id: z.string().uuid() },
+      },
+      async ({ run_id }) => {
+        const p = currentProject();
+        const run = await getWriterRun(p.id, run_id);
+        if (!run) return fail("No such writer run on this project.");
+        if (run.status !== "held") return fail(`That run is ${run.status}, not held.`);
+        await releaseWriterRun(run);
+        return ok({ run_id: run.id, status: "done", draft_id: run.draft_id });
+      },
+    );
+
+    // --- The autopilot (2026-10-23) -------------------------------------------
+    //
+    // A hosted project's whole surface: the report the dashboard renders and
+    // every owner control on it, as tools (the parity rule). The logic lives in
+    // src/lib/autopilot/*; each tool is a thin door onto the same function the
+    // dashboard's server action calls.
+    server.registerTool(
+      "get_autopilot",
+      {
+        title: "Get the autopilot report",
+        description:
+          "Everything the hosted dashboard shows for this site in one read: writer mode, pause " +
+          "state (with the reason when it paused itself), plan and articles per week, when the next " +
+          "article starts, this week's count against the quota, the last 50 articles with status " +
+          "(writing / verifying / held / scheduled / published / failed / needs_setup), cost and " +
+          "28-day clicks, Search Console traffic, the next queued ideas, what setup is missing, the " +
+          "owner's brand/tone/blocked topics/author, and this month's spend.",
+        inputSchema: {},
+      },
+      async () => {
+        const p = currentProject();
+        try {
+          return ok(await getAutopilotReport(p.id));
+        } catch (e) {
+          return fail(`Could not build the autopilot report: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      },
+    );
+
+    server.registerTool(
+      "pause_writer",
+      {
+        title: "Pause the autopilot",
+        description:
+          "Stop researching and starting new articles for this site. Articles already written " +
+          "still publish. Stays paused until resume_writer - nothing resumes it automatically.",
+        inputSchema: {
+          reason: z.string().max(300).optional().describe("Why, in a sentence. Shown on the dashboard."),
+        },
+      },
+      async ({ reason }) => {
+        const p = currentProject();
+        await pauseWriter(p.id, reason?.trim() || "Paused by the owner.");
+        return ok({ paused: true });
+      },
+    );
+
+    server.registerTool(
+      "resume_writer",
+      {
+        title: "Resume the autopilot",
+        description:
+          "Start the autopilot again after a pause (the owner's or its own). The next article " +
+          "starts on the next daily run if the weekly quota and the two-day spacing allow.",
+        inputSchema: {},
+      },
+      async () => {
+        const p = currentProject();
+        await resumeWriter(p.id);
+        return ok({ paused: false });
+      },
+    );
+
+    server.registerTool(
+      "set_brand",
+      {
+        title: "Set the brand text",
+        description:
+          "What the site is, in the owner's words: tagline (<= 60 chars), short description " +
+          "(<= 160, required - the writer judges topics against it), long description (<= 1000) and " +
+          "categories (1-8; research seeds from them). Omitted fields keep their value. Saving locks " +
+          "the profile: the server never regenerates it after an owner edit.",
+        inputSchema: {
+          tagline: z.string().max(200).optional(),
+          short: z.string().max(400).optional(),
+          long: z.string().max(2000).optional(),
+          categories: z.array(z.string().max(80)).max(20).optional(),
+        },
+      },
+      async (input) => {
+        const p = currentProject();
+        const r = await setBrand(p.id, input);
+        return r.ok ? ok({ saved: true }) : fail(r.error);
+      },
+    );
+
+    server.registerTool(
+      "set_tone",
+      {
+        title: "Set the writing tone",
+        description:
+          "House rules the writer follows on every article (voice, words to avoid, how to address " +
+          "the reader). Free text, up to 2000 characters. Replaces the current rules; an empty " +
+          "string clears them.",
+        inputSchema: { house_rules: z.string().max(4000) },
+      },
+      async ({ house_rules }) => {
+        const p = currentProject();
+        const r = await setTone(p.id, house_rules);
+        return r.ok ? ok({ saved: true }) : fail(r.error);
+      },
+    );
+
+    server.registerTool(
+      "set_blocked_topics",
+      {
+        title: "Set topics to avoid",
+        description:
+          "Topics this site must never get an article about (max 50, 80 chars each). Replaces the " +
+          "whole list. A topic blocks every keyword containing all of its words. Ideas already " +
+          "queued under a newly blocked topic are removed from the queue.",
+        inputSchema: { topics: z.array(z.string()).max(100) },
+      },
+      async ({ topics }) => {
+        const p = currentProject();
+        const r = await setBlockedTopics(p.id, topics);
+        return r.ok ? ok({ saved: true }) : fail(r.error);
+      },
+    );
+
+    server.registerTool(
+      "set_author",
+      {
+        title: "Set the article byline",
+        description:
+          "The author shown on articles. With a name, the article's structured data names a Person " +
+          "(with the page URL when given) and the hosted blog shows a byline; without one the byline " +
+          "is the site itself. The page URL must be on the site's own domain. Pass null to clear a " +
+          "field; omit it to keep it.",
+        inputSchema: {
+          name: z.string().max(200).nullable().optional(),
+          bio: z.string().max(1000).nullable().optional(),
+          url: z.string().max(400).nullable().optional(),
+        },
+      },
+      async (input) => {
+        const p = currentProject();
+        const r = await setAuthor(p.id, input);
+        return r.ok ? ok({ saved: true }) : fail(r.error);
+      },
+    );
+
+    server.registerTool(
+      "suggest_topic",
+      {
+        title: "Suggest a topic",
+        description:
+          "Ask the autopilot to write about a topic. It passes the same gate research uses - on " +
+          "the site's subject, not a blocked topic, not something the site already has - and is " +
+          "either queued as an approved idea (written in turn) or rejected with the reason.",
+        inputSchema: { topic: z.string().min(3).max(120).describe("A search phrase, e.g. \"how to price a logo design\".") },
+      },
+      async ({ topic }) => {
+        const p = currentProject();
+        const r = await suggestTopic(p.id, topic);
+        return "rejected" in r ? fail(r.rejected) : ok(r);
+      },
+    );
+
+    server.registerTool(
+      "run_research_now",
+      {
+        title: "Run autopilot research now",
+        description:
+          "Top the idea queue up to six now instead of at the next weekly run (hosted projects " +
+          "only). Respects every cap: once per 24 hours, the plan gate, the DataForSEO budget, and " +
+          "nothing is added when six ideas are already queued.",
+        inputSchema: {},
+      },
+      async () => {
+        const p = currentProject();
+        if (p.last_research_at && Date.now() - Date.parse(p.last_research_at) < 86_400_000) {
+          return fail(`Research already ran at ${p.last_research_at}; it can run again 24 hours after that.`);
+        }
+        const outcome = await runResearch(p);
+        return "skipped" in outcome ? fail(`Research did not run: ${outcome.skipped}.`) : ok(outcome);
       },
     );
 

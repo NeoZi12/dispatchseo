@@ -1,5 +1,8 @@
 User-agent: *
 Allow: /
+# Customers' hosted blogs are served from here under THEIR domains (via a
+# forwarding rule); the copies at this host must not be indexed as ours.
+Disallow: /hosted/
 
 Sitemap: https://dispatchseo.com/sitemap.xml
 

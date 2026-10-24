@@ -1,0 +1,81 @@
+import type { Project } from "@/lib/projects";
+import { writerMode } from "@/lib/projects";
+import { isDryRun } from "@/lib/writer/models";
+import { evaluateAutoPause } from "./pause";
+import { RESEARCH_EVERY_MS, runResearch, type ResearchOutcome } from "./research";
+import { runScheduler, type SchedulerOutcome } from "./scheduler";
+import { reportSiteHealth, siteHealthProblems } from "./health";
+
+// The autopilot (2026-10-23 pivot): a hosted project's research, cadence and
+// brakes, with no agent anywhere. One daily pass per project, run by
+// /api/cron/autopilot:
+//
+//   1. pause.ts      should this site stop? (GSC collapse, zero-impression
+//                    streak) - checked first, because a paused site does
+//                    nothing else
+//   2. research.ts   top the idea queue up to six, weekly (or on the first run)
+//   3. scheduler.ts  start today's article if the plan's weekly quota and the
+//                    two-day spacing allow it
+//   4. health.ts     make lasting trouble loud (autopilot--<slug>)
+//
+// profile.ts writes the site profile from the crawl; report.ts is the
+// dashboard's (and get_autopilot's) read model; controls.ts holds every
+// owner control; usage.ts holds the start gate every writer run passes. See
+// src/content/docs/autopilot.mdx for the owner's version.
+
+export { getAutopilotReport, type AutopilotReport, type AutopilotArticle, type AutopilotArticleStatus } from "./report";
+export { evaluateAutoPause, pauseWriter, resumeWriter } from "./pause";
+export { runResearch, RESEARCH_EVERY_MS } from "./research";
+export { runScheduler } from "./scheduler";
+export { generateSiteProfile } from "./profile";
+export { writerStartGate, weekUsage } from "./usage";
+export * from "./controls";
+
+export type AutopilotPass = {
+  skipped?: string;
+  pause?: { paused: boolean; reason?: string };
+  research?: ResearchOutcome | { error: string };
+  scheduler?: SchedulerOutcome;
+  health?: string[];
+  /** A real fault happened in a stage that did not stop the pass. */
+  hadError?: boolean;
+};
+
+export async function runAutopilotPass(project: Project, now = new Date()): Promise<AutopilotPass> {
+  if (writerMode(project) !== "hosted") return { skipped: "not a hosted project" };
+  // A dry-run deploy answers every model call with canned text. Its articles
+  // and "approved" ideas must never reach a real customer's site, so the
+  // daily pass does nothing at all there (the smoke test drives write_article
+  // by hand instead).
+  if (isDryRun()) return { skipped: "dry run" };
+  const pause = await evaluateAutoPause(project, now);
+  if (pause.paused) {
+    await reportSiteHealth(project, []);
+    return { pause };
+  }
+
+  // Research failing (DataForSEO down for every seed) must not cost today's
+  // article: the queue usually still holds ideas. It is reported, loudly, and
+  // the scheduler runs anyway.
+  let research: ResearchOutcome | { error: string } | undefined;
+  const stale = !project.last_research_at || now.getTime() - Date.parse(project.last_research_at) >= RESEARCH_EVERY_MS;
+  if (stale) {
+    try {
+      research = await runResearch(project, now);
+    } catch (e) {
+      research = { error: `research: ${e instanceof Error ? e.message : String(e)}` };
+    }
+  }
+  const researched = Boolean(research && !("skipped" in research));
+  const scheduler = await runScheduler(project, now, { researchedThisRun: researched });
+
+  const skips = [
+    research && "skipped" in research ? research.skipped : "",
+    "skipped" in scheduler ? scheduler.skipped : "",
+    "skipped" in scheduler && scheduler.research && "skipped" in scheduler.research ? scheduler.research.skipped : "",
+  ].filter(Boolean);
+  const health = await siteHealthProblems(project, skips, now);
+  await reportSiteHealth(project, health);
+
+  return { pause, research, scheduler, ...(health.length ? { health } : {}), ...(research && "error" in research ? { hadError: true } : {}) };
+}

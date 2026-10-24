@@ -3,7 +3,9 @@ name: Background job queue
 # Drains the work queue behind the article flow (src/lib/jobs.ts, migration
 # 0056): crawling a customer's site, finishing an accepted draft into
 # publishable HTML, posting it, and checking afterwards that the page is
-# genuinely live.
+# genuinely live - and, since the 2026-10-22 pivot, every stage of the hosted
+# writer (src/lib/writer/). vercel.json also runs this route every 5 minutes;
+# the claim mechanism makes the overlap harmless.
 #
 # Every 10 minutes because two of those jobs are user-visible waits. An owner
 # who connects their site expects the "we read your site" step to finish while

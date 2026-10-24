@@ -40,12 +40,12 @@ export default async function QualifyPage() {
         </div>
 
         <h1 className="text-2xl font-semibold tracking-tight text-neutral-50 sm:text-3xl">
-          Two questions before you pay
+          One question before you pay
         </h1>
         <p className="mt-2 text-[15px] leading-relaxed text-neutral-400">
-          What your site is built with, and which AI will do the writing. DispatchSEO publishes to
-          two kinds of site and runs on your own AI rather than ours - both are easier to check now
-          than to discover after you&apos;ve been charged.
+          What your site is built with. DispatchSEO writes the articles and publishes them for you,
+          and it can publish to two kinds of site - easier to check now than to discover after
+          you&apos;ve been charged.
         </p>
 
         <QualifyForm />

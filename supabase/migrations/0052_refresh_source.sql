@@ -9,4 +9,4 @@
 alter table suggestions drop constraint if exists suggestions_source_check;
 alter table suggestions
   add constraint suggestions_source_check
-  check (source in ('research', 'trend-scan', 'manual', 'refresh'));
+  check (source in ('research', 'trend-scan', 'manual', 'refresh', 'autopilot', 'owner'));

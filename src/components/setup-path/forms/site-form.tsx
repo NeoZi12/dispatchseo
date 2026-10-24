@@ -21,6 +21,7 @@ type CreateState = { error: string } | { ok: true; slug: string } | null;
 const PUBLISH_SUMMARY: Record<PublishTarget, string> = {
   wordpress: "WordPress site",
   github: "Site built from a GitHub repo",
+  hosted: "Site built from a GitHub repo, blog served by DispatchSEO",
   manual: "Placing articles yourself",
 };
 
@@ -46,7 +47,7 @@ export function SiteForm({
     qualifier != null &&
     qualifier.publish_target != null &&
     qualifier.ai_choice != null &&
-    isWizardAiChoice(qualifier.ai_choice);
+    isWizardAiChoice(qualifier.ai_choice, { allowHosted: true });
   const [open, setOpen] = useState(!usable);
   const [state, action, pending] = useActionState<CreateState, FormData>(
     createSiteFromPath as (prev: CreateState, fd: FormData) => Promise<CreateState>,
@@ -59,7 +60,7 @@ export function SiteForm({
   }, [state]);
 
   const publishDefault = qualifier?.publish_target ?? "github";
-  const aiDefault = qualifier?.ai_choice && isWizardAiChoice(qualifier.ai_choice) ? qualifier.ai_choice : null;
+  const aiDefault = qualifier?.ai_choice && isWizardAiChoice(qualifier.ai_choice, { allowHosted: true }) ? qualifier.ai_choice : null;
 
   return (
     <form action={action} className="space-y-4" onSubmit={preview ? (e) => e.preventDefault() : undefined}>

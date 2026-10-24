@@ -1,4 +1,5 @@
 import { requireDashboard } from "@/lib/auth-gate";
+import { redirectIfHosted } from "../mode";
 import { db } from "@/lib/db";
 import { requireOnboarded } from "@/lib/onboarding-gate";
 import { getActiveProject } from "@/lib/active-project";
@@ -70,6 +71,9 @@ function fmtHistoryDate(s: SuggestionRow): string {
 
 export default async function ResearchPage() {
   await requireDashboard();
+  // Hosted writer: this screen belongs to the agent workflow; the hosted
+  // dashboard covers it on /articles.
+  await redirectIfHosted("/articles");
   await requireOnboarded();
 
   const project = await getActiveProject();

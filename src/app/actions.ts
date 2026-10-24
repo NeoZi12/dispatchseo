@@ -1416,6 +1416,13 @@ async function createProjectCore(
     // Bundled DataForSEO is the paid-tier default - the cloud wizard has no
     // keyword-source step (budget caps degrade to GSC-only under the hood).
     row.keyword_source = "dataforseo";
+    // The autopilot (2026-10-23): on cloud OUR server researches, writes and
+    // publishes; there is no agent to connect. Auto mode because nobody is
+    // there to merge a pull request or approve an idea - the hosted dashboard
+    // has no buttons for either, by design. Self-host keeps the agent path.
+    row.writer_mode = "hosted";
+    row.ai_choice = "hosted";
+    row.mode = "auto";
   }
   // A fresh instance's fixed-id default project (setup.sql seeds it NEUTRAL,
   // no domain/repo) is claimed in place by the first real site: same row,
@@ -1465,6 +1472,17 @@ async function createProjectCore(
     // cloud concept); CLOUD_MODE deployments must have 0031 applied.
     if (error.message.includes("owner_user_id") && !isCloudMode()) {
       delete retry.owner_user_id;
+      dropped = true;
+    }
+    // 0066 / 0060 pending: the row still works as an agent project, which is
+    // what it would have been a day earlier; the scheduler simply skips it
+    // until the migration lands and the mode is set.
+    if (error.message.includes("writer_mode")) {
+      delete retry.writer_mode;
+      dropped = true;
+    }
+    if (error.message.includes("ai_choice")) {
+      delete retry.ai_choice;
       dropped = true;
     }
     if (dropped) ({ error } = await write(retry));
@@ -1573,17 +1591,30 @@ async function applyWizardChoices(
   publishTarget: PublishChoice,
   aiChoice: string,
 ): Promise<void> {
+  // Cloud is the hosted writer since 2026-10-23, whatever AI a form posted:
+  // the add-site dialog may still ask the old question, and its answer must
+  // not turn a new site back into an agent project nobody will connect.
+  const hosted = isCloudMode();
+  const choice = hosted ? "hosted" : aiChoice;
   const row: Record<string, unknown> = {
     publish_target: publishTarget,
-    ai_choice: aiChoice,
-    onboarding_screen: firstStepAfterCreate(publishTarget, aiKind(aiChoice)),
+    ai_choice: choice,
+    onboarding_screen: firstStepAfterCreate(publishTarget, aiKind(choice)),
   };
+  if (hosted) {
+    row.writer_mode = "hosted";
+    row.mode = "auto";
+  }
   // Only when the AI actually IS a coding agent. A chat app has no builder to
   // run, and writing null here would erase the column's default rather than
   // say "not applicable".
-  const agent = agentForAiChoice(aiChoice);
+  const agent = agentForAiChoice(choice);
   if (agent) row.agent = agent;
   let { error } = await db().from("projects").update(row).eq("slug", slug);
+  if (error && error.message.includes("writer_mode")) {
+    delete row.writer_mode;
+    ({ error } = await db().from("projects").update(row).eq("slug", slug));
+  }
   if (error && error.message.includes("ai_choice")) {
     delete row.ai_choice;
     ({ error } = await db().from("projects").update(row).eq("slug", slug));
@@ -1612,10 +1643,10 @@ export async function wizardCreateProject(
     // wizard this owner walks - a submit that skipped the client's `required`
     // must not silently create a GitHub-flow project for a WordPress site.
     if (!isPublishChoice(publishRaw)) return { error: "Pick where articles should go." };
-    if (!isWizardAiChoice(aiRaw)) return { error: "Pick which AI will do the writing." };
+    if (!isWizardAiChoice(aiRaw, { allowHosted: isCloudMode() })) return { error: "Pick which AI will do the writing." };
   }
   const publishTarget: PublishChoice = isPublishChoice(publishRaw) ? publishRaw : "github";
-  const aiChoice = isWizardAiChoice(aiRaw) ? aiRaw : "";
+  const aiChoice = isWizardAiChoice(aiRaw, { allowHosted: isCloudMode() }) ? aiRaw : "";
 
   const result = await createProjectCore(formData);
   if ("error" in result) return result;
@@ -1674,7 +1705,7 @@ export async function addSiteAndStartSetup(
   const aiRaw = String(formData.get("ai_choice") ?? "").trim();
   if (cloud) {
     if (!isPublishChoice(publishRaw)) return { error: "Pick where articles should go." };
-    if (!isWizardAiChoice(aiRaw)) return { error: "Pick which AI will do the writing." };
+    if (!isWizardAiChoice(aiRaw, { allowHosted: isCloudMode() })) return { error: "Pick which AI will do the writing." };
   }
   const result = await createProjectCore(formData);
   if ("error" in result) return result;
@@ -2665,7 +2696,7 @@ export async function approveDraft(draftId: string): Promise<DraftActionState> {
     "@/lib/job-handlers/draft-status"
   );
   const route = project ? publishRoute(project) : "blocked";
-  if (!project || (route !== "wordpress" && route !== "repo")) {
+  if (!project || (route !== "wordpress" && route !== "repo" && route !== "hosted")) {
     return { error: project ? blockedReason(project) : "That site no longer exists." };
   }
 
@@ -2694,3 +2725,4 @@ export async function discardDraft(draftId: string): Promise<DraftActionState> {
   revalidatePath("/drafts");
   return { ok: "Discarded." };
 }
+

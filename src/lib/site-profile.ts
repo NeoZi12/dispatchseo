@@ -47,7 +47,7 @@ function skeletonProfile(project: Project): SiteProfile {
 
 export async function loadSiteProfile(
   project: Project,
-): Promise<{ profile: SiteProfile; fromDb: boolean }> {
+): Promise<{ profile: SiteProfile; fromDb: boolean; error?: string }> {
   const { data, error } = await db()
     .from("site_profile")
     .select("name, url, tagline, short_description, long_description, categories, tags")
@@ -58,6 +58,10 @@ export async function loadSiteProfile(
       profile:
         project.slug === DEFAULT_PROJECT_SLUG ? FALLBACK_PROFILE : skeletonProfile(project),
       fromDb: false,
+      // A failed READ is not "no profile": callers that would write a new one
+      // on fromDb=false (the autopilot) must be able to tell the two apart,
+      // or a transient error overwrites the real profile with a fresh guess.
+      ...(error ? { error: error.message } : {}),
     };
   }
   return {

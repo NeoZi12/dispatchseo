@@ -51,6 +51,46 @@ export const TIER_LIMITS: Record<Tier, { sites: number; price: number; annual: n
   scale: { sites: 5, price: 99, annual: 69 },
 };
 
+// Articles a week the hosted writer (the autopilot) publishes per tier. Weekly,
+// never daily: a young site that suddenly gains a post a day reads as a
+// content farm to Google, and the plan is sold as a steady cadence, not a
+// volume. Env-overridable so the operator can tune cost against results
+// without a deploy. Prices above are unchanged by this (2026-10-23 decision:
+// the Polar products are the owner's call).
+export const ARTICLES_PER_WEEK: Record<Tier, number> = {
+  starter: 1,
+  growth: 2,
+  scale: 3,
+};
+
+/** Interactive tool pages (calculators, generators) are a feature of the
+ *  plans above Starter. No tier (self-host, unbilled) means no plan gate at
+ *  all, so tools are allowed there. Read-only presentation gate: the tool
+ *  builder's own cadence is decided elsewhere. */
+export function planAllowsTools(tier: Tier | null | undefined): boolean {
+  if (!tier) return true;
+  return tier === "growth" || tier === "scale";
+}
+
+/** Hosted projects outside cloud billing (self-host, billing unconfigured, the
+ *  operator's ownerless rows) - there is no tier to read. */
+export const UNBILLED_ARTICLES_PER_WEEK = 2;
+
+const WEEKLY_ENV: Record<Tier, string> = {
+  starter: "WRITER_WEEKLY_STARTER",
+  growth: "WRITER_WEEKLY_GROWTH",
+  scale: "WRITER_WEEKLY_SCALE",
+};
+
+/** Articles a week for a tier; null = no tier (see UNBILLED_ARTICLES_PER_WEEK).
+ *  A trial is Starter (Polar models the trial on the Starter product). */
+export function articlesPerWeekFor(tier: Tier | null | undefined): number {
+  if (!tier) return UNBILLED_ARTICLES_PER_WEEK;
+  const override = Number(process.env[WEEKLY_ENV[tier]]);
+  if (process.env[WEEKLY_ENV[tier]]?.trim() && Number.isFinite(override) && override >= 0) return Math.floor(override);
+  return ARTICLES_PER_WEEK[tier] ?? UNBILLED_ARTICLES_PER_WEEK;
+}
+
 /** What Polar charges once a year for the annual plan, in whole dollars. */
 export function annualCharge(tier: Tier): number {
   return TIER_LIMITS[tier].annual * 12;
@@ -773,3 +813,22 @@ export const planPausedProjectSlugs = cache(async (): Promise<Set<string>> => {
     return new Set();
   }
 });
+
+// The plan a project runs on, for the autopilot's cadence and its report.
+// tier null = there is no plan to read (self-host, billing unconfigured, an
+// ownerless operator row, or an owner with no subscription row yet); status
+// says which: "self-host" | "unbilled" | "none" | the Polar status. A trial
+// reads as Starter whatever product it was started on, because the trial is
+// what the decision table prices.
+export async function projectPlan(
+  projectId: string,
+): Promise<{ tier: Tier | null; status: string; articlesPerWeek: number }> {
+  if (!isCloudMode()) return { tier: null, status: "self-host", articlesPerWeek: UNBILLED_ARTICLES_PER_WEEK };
+  if (!polarConfigured()) return { tier: null, status: "unbilled", articlesPerWeek: UNBILLED_ARTICLES_PER_WEEK };
+  const ownerId = await ownerUserIdForProject(projectId);
+  if (!ownerId) return { tier: null, status: "unbilled", articlesPerWeek: UNBILLED_ARTICLES_PER_WEEK };
+  const sub = await getSubscription(ownerId);
+  if (!sub) return { tier: null, status: "none", articlesPerWeek: 0 };
+  const tier: Tier = sub.status === "trialing" ? "starter" : sub.tier;
+  return { tier, status: sub.status, articlesPerWeek: isActive(sub) ? articlesPerWeekFor(tier) : 0 };
+}

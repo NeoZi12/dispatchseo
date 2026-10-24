@@ -26,7 +26,12 @@ export function isPublishChoice(value: string): value is PublishChoice {
   return value === "github" || value === "wordpress" || value === "manual";
 }
 
-export function isWizardAiChoice(value: string): boolean {
+/** `allowHosted`: "hosted" (DispatchSEO writes - the cloud autopilot,
+ *  2026-10-23) is valid ONLY on cloud. This module is client-safe and cannot
+ *  read the deploy mode itself, so server callers pass isCloudMode(); a
+ *  self-host form must never store an AI that self-host cannot run. */
+export function isWizardAiChoice(value: string, opts: { allowHosted?: boolean } = {}): boolean {
+  if (value === "hosted") return opts.allowHosted === true;
   return (WIZARD_AI_VALUES as readonly string[]).includes(value);
 }
 

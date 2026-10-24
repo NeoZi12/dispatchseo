@@ -13,7 +13,8 @@ import { instanceTokenAllowedFor } from "@/lib/github";
 //   accepted      we rendered it; it is queued to go out
 //   blocked_setup we rendered it, but this site has nowhere to publish it yet
 //   finished      posted to WordPress, or pull request opened in the repo, not
-//                 yet confirmed live
+//                 yet confirmed live (the hosted route skips this: our own
+//                 page is live the moment it is written)
 //   published     confirmed live by the verify job
 //   discarded     the owner threw it away
 //
@@ -49,11 +50,16 @@ export async function markBlockedSetup(draftId: string, extra: Record<string, un
  * anywhere yet. Shared by the finish and publish handlers so the two can never
  * disagree about whether a project is set up.
  */
-export function publishRoute(project: Project): "wordpress" | "repo" | "manual" | "blocked" {
+export function publishRoute(project: Project): "wordpress" | "repo" | "manual" | "hosted" | "blocked" {
   const target = publishTarget(project);
   // Deliberate terminal state, not a gap: this owner asked us to finish the
   // article and hand it over, and has nowhere for us to post it.
   if (target === "manual") return "manual";
+  // We serve the blog ourselves (src/lib/hosted-blog.ts); nothing to connect,
+  // so this route can never be blocked. Whether the site's /blog forwards to
+  // us yet is a setup card, not a publishing precondition - the pages exist
+  // on our side either way.
+  if (target === "hosted") return "hosted";
   if (target === "wordpress") {
     // A target of wordpress with no credential ever stored means the owner
     // pointed us at WordPress and has not connected it yet (or disconnected).
@@ -78,6 +84,11 @@ export function publishRoute(project: Project): "wordpress" | "repo" | "manual" 
 /** The owner-facing sentence for a blocked draft, computed fresh every time it
  *  is shown. Used by the drafts screen and the MCP read tools. */
 export function blockedReason(project: Project): string {
+  if (publishTarget(project) === "hosted") {
+    // The hosted route cannot park a draft (nothing to connect); a blocked
+    // draft here predates the switch and just needs its publish job.
+    return "This article was parked before your blog moved to DispatchSEO hosting. Press Publish now and it goes out.";
+  }
   if (publishTarget(project) === "wordpress") {
     if (!project.wp_app_password) {
       return "Connect your WordPress site on the Settings screen and this article goes out on its own.";

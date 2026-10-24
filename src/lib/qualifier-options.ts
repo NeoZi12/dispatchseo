@@ -26,6 +26,10 @@ export function isSiteKind(value: string): value is SiteKind {
 export type AiGroup = "chat" | "coding" | "other";
 
 export type AiChoice =
+  // DispatchSEO's own writer (the cloud autopilot, 2026-10-23). Never offered
+  // as a tile: on cloud the qualifier no longer asks which AI, and records
+  // this value for every answer.
+  | "hosted"
   | "claude-code"
   | "codex"
   | "cursor"
@@ -52,5 +56,5 @@ export const AI_GROUPS: { id: AiGroup; label: string; hint: string }[] = [
 export const AI_VALUES = AI_OPTIONS.map((o) => o.value);
 
 export function isAiChoice(value: string): value is AiChoice {
-  return (AI_VALUES as string[]).includes(value);
+  return value === "hosted" || (AI_VALUES as string[]).includes(value);
 }

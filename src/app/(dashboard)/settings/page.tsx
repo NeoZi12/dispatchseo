@@ -9,6 +9,12 @@ import { getActiveProjectOrNull } from "@/lib/active-project";
 import { credsForProject } from "@/lib/dataforseo";
 import { DEFAULT_PROJECT_ID, fetchProjectToken, publishTarget } from "@/lib/projects";
 import { setContentPathHint } from "@/app/repo-actions";
+import { rewriteLiveCached } from "@/lib/hosted-rewrite";
+import { normalizeTheme } from "@/lib/hosted-theme";
+import { HostedBlogCard } from "./hosted-blog-card";
+import { HostedSettings } from "./hosted-settings";
+import { writerMode } from "../mode";
+import { backendBaseUrl } from "@/lib/pipeline-pack";
 import { isCloudMode } from "@/lib/cloud";
 import { ClaudeTokenConnect } from "@/components/claude-token-connect";
 import { BuilderTokenConnect } from "@/components/builder-token-connect";
@@ -89,7 +95,7 @@ function AccountSection({ email }: { email: string | null }) {
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ credential?: string }>;
+  searchParams: Promise<{ credential?: string; section?: string }>;
 }) {
   const auth = await requireDashboard();
 
@@ -157,6 +163,13 @@ export default async function SettingsPage({
         ) : null}
       </div>
     );
+  }
+
+  // Hosted writer: the short settings page with only the owner's controls.
+  // Everything below (agent, project key, cron key, keyword source) is the
+  // agent-mode page, unchanged.
+  if (writerMode(project) === "hosted") {
+    return <HostedSettings project={project} email={auth.user?.email ?? null} account={account} section={(await searchParams).section} />;
   }
 
   const isDefault = project.id === DEFAULT_PROJECT_ID;
@@ -298,12 +311,13 @@ export default async function SettingsPage({
             by reading the repo - which is right for almost every layout and
             guessable-wrong for the rest. Left empty on purpose: an answer is
             only needed when an article parks itself asking for one. */}
-        {publishTarget(project) === "github" && project.github_repo ? (
+        {(publishTarget(project) === "github" || publishTarget(project) === "hosted") && project.github_repo ? (
           <div className="rounded-xl bg-neutral-900 px-4 py-4 sm:px-5">
             <h3 className="text-sm font-semibold text-neutral-100">Where your articles live</h3>
             <p className="mt-1 text-[13px] leading-relaxed text-neutral-400">
-              The folder in your repo that holds your articles. Leave empty and we work it out
-              from the repo.
+              {publishTarget(project) === "hosted"
+                ? "Your blog is served by DispatchSEO (below). If your repo does have a blog folder, name it here and articles go back to being pull requests in your repo - then revert the forwarding pull request."
+                : "The folder in your repo that holds your articles. Leave empty and we work it out from the repo."}
             </p>
             <form action={setContentPathHint} className="mt-3 flex flex-wrap items-center gap-2">
               <input
@@ -327,6 +341,24 @@ export default async function SettingsPage({
               </button>
             </form>
           </div>
+        ) : null}
+        {/* THE HOSTED BLOG. This site has no blog of its own, so we serve
+            /blog for it (src/lib/hosted-blog.ts). Two facts the owner needs:
+            does their domain forward to us yet (checked live, by the marker
+            header our pages send), and where the button under every article
+            points. */}
+        {publishTarget(project) === "hosted" ? (
+          <HostedBlogCard
+            slug={project.slug}
+            domain={project.domain}
+            hostedKey={project.hosted_key ?? ""}
+            prUrl={project.hosted_rewrite_pr_url}
+            ctaUrl={project.hosted_cta_url}
+            ctaLabel={project.hosted_cta_label}
+            live={await rewriteLiveCached(project)}
+            backend={await backendBaseUrl()}
+            theme={normalizeTheme(project.hosted_theme)}
+          />
         ) : null}
       </section>
 

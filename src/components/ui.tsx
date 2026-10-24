@@ -46,8 +46,8 @@ export function SelectWrap({
 export function PageHeader({ title, hint }: { title: string; hint?: string }) {
   return (
     <div className="space-y-1.5">
-      <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
-      {hint ? <p className="text-sm text-neutral-400">{hint}</p> : null}
+      <h1 className="text-[1.75rem] font-semibold leading-tight tracking-tight text-ink">{title}</h1>
+      {hint ? <p className="max-w-[62ch] text-sm leading-relaxed text-ink-muted">{hint}</p> : null}
     </div>
   );
 }
@@ -55,8 +55,8 @@ export function PageHeader({ title, hint }: { title: string; hint?: string }) {
 export function SectionTitle({ children, sub }: { children: React.ReactNode; sub?: React.ReactNode }) {
   return (
     <div>
-      <h2 className="text-lg font-semibold tracking-tight text-neutral-100">{children}</h2>
-      {sub ? <p className="mt-0.5 text-sm text-neutral-400">{sub}</p> : null}
+      <h2 className="text-[15px] font-semibold tracking-tight text-ink">{children}</h2>
+      {sub ? <p className="mt-1 text-[13px] text-ink-muted">{sub}</p> : null}
     </div>
   );
 }

@@ -1,0 +1,127 @@
+---
+title: How the autopilot works
+description: What DispatchSEO does on its own for a cloud site - how it picks topics, how often it publishes, when it pauses itself, and the few things you control.
+---
+
+On DispatchSEO Cloud, a new site runs on autopilot. You don't connect an AI
+of your own. Our server picks the keywords, writes the articles and
+publishes them on a fixed weekly schedule. This page explains what it
+does, when it does it, and what you can change.
+
+If you run DispatchSEO yourself (self-hosted), your sites still use your
+own coding agent, and nothing on this page applies to them.
+
+## Before the first article
+
+Once you finish setup, three things happen without you:
+
+1. We read your site. The server visits up to 150 of your pages and
+   notes your sections, page titles and the pages you link to most.
+2. We describe your site. From that reading and your homepage, a model
+   writes a short profile: a tagline, a one-line description, a longer
+   description and the categories you cover. You can rewrite any of it on
+   **Settings > Brand**. Once you save your own version, we never overwrite
+   it.
+3. We research keywords. The server looks for searches people make
+   around your categories (and, once Google Search Console has data, around
+   the searches you already show up for). It keeps up to six ideas queued.
+
+The first article usually starts the next morning.
+
+## How topics are picked
+
+You never approve ideas. Each keyword has to pass every check below, in
+this order:
+
+- It gets at least 50 searches a month.
+- Its difficulty is under a ceiling set by your site's authority. A new
+  site gets 10 out of 100, and the ceiling rises as your site earns links.
+- It's in the language your site is set to.
+- It isn't on your list of [topics to avoid](#what-you-control).
+- You don't already have it. That covers anything you've published,
+  queued or written about before, near-duplicates included: "how to choose a
+  crm" and "how to choose crm software" count as one article.
+- It fits your site. A judging model asks whether your readers would search
+  it, whether your site can answer it credibly, and whether the searcher
+  wants to learn or compare rather than buy right now. Topics that won't
+  still be searched in a year are skipped too.
+
+The ones left are ranked by how much traffic they can realistically bring
+(searches a month, discounted by difficulty), and the best go to the front
+of the queue. Research runs again once a week.
+
+## How often it publishes
+
+| Plan | Articles a week |
+|---|---|
+| Starter (and the free trial) | 1 |
+| Growth | 2 |
+| Scale | 3 |
+
+The week resets on Monday (UTC). Two articles for the same site never
+start less than two days apart, so three a week lands roughly Monday,
+Wednesday and Friday. The dashboard shows the date of the next one.
+
+There is no daily option, on purpose. A young site that suddenly publishes
+every day looks like a content farm to Google, and a steady pace does
+better.
+
+## How each article is written
+
+For every article the server reads the pages that rank on page one for
+the keyword and pulls out facts with the exact quote behind each one. It
+plans an article that covers what searchers expect and adds one thing
+those pages don't have. Then it writes from that research only, checks
+every figure and claim against its source, and checks the result isn't too
+close to any page-one article or to your own earlier posts. An article that
+can't beat page one isn't written at all.
+
+Then it publishes the same way as before. You get a pull request on your
+repo (merged for you), a post on your WordPress site, or a page on the
+blog we host at yoursite.com/blog.
+
+## When it pauses itself
+
+The autopilot stops writing if the numbers say more articles would not
+help:
+
+- **Search Console impressions collapse.** Your last 7 days get fewer than
+  40% of the impressions the previous four weeks predict. This only counts
+  on a site that had at least 500 impressions in those four weeks. A drop
+  like that usually means a Google update or a manual action.
+- **Google shows your new articles to nobody.** Your last three articles
+  have been indexed for three weeks or more, and none of them has a single
+  impression.
+
+When it pauses, the dashboard tells you which one happened. Articles that
+were already written still publish. It doesn't start again by itself. Look
+at Search Console first, then press **Resume** when you're ready.
+
+You can also pause it yourself at any time from the dashboard.
+
+## What you control
+
+These settings are all you need to change. Everything else runs by itself.
+
+- **Pause and resume.**
+- **Brand.** Your tagline, short and long description, and categories. The
+  writer uses the short description to decide what is on-topic, and
+  research starts from the categories.
+- **Tone.** House rules the writer follows on every article, for example
+  "Write in British English" or "Never mention competitors by name". Up to
+  2000 characters.
+- **Topics to avoid.** Up to 50. A topic blocks every keyword that contains
+  all of its words, so "crypto" blocks "best crypto wallets". Ideas already
+  queued under a new blocked topic leave the queue straight away.
+- **Suggest a topic.** Type a search phrase. It goes through the same
+  checks as research (on-topic, not blocked, not a duplicate) and is either
+  queued or turned down with the reason.
+- **Author.** A name, a short bio and a page on your own site. With a name,
+  articles list that person as the author. Without one, the author is your
+  site.
+- **Your blog.** Where articles go and how the hosted blog looks.
+- **Google Search Console** and **billing.**
+
+Every one of these is also an MCP tool (`get_autopilot`, `pause_writer`,
+`set_tone` and so on, listed under [MCP tools](/docs/mcp-tools#autopilot)),
+for anyone who would rather ask an AI to change them.

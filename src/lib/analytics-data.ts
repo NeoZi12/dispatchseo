@@ -85,7 +85,14 @@ function attachTraffic(
     .sort((a, b) => b.clicks - a.clicks || b.impressions - a.impressions);
 }
 
-export async function getAnalyticsOverview(project: Project): Promise<AnalyticsOverview> {
+export type AnalyticsOverviewOpts = {
+  /** Skip the live Search Console 24h call (a network round trip per render). */
+  fresh24?: boolean;
+  /** Skip the domain-rating read (a DataForSEO-backed lookup when stale). */
+  dr?: boolean;
+};
+
+export async function getAnalyticsOverview(project: Project, opts: AnalyticsOverviewOpts = {}): Promise<AnalyticsOverview> {
   const client = db();
   const since30 = new Date(Date.now() - 30 * 86400000).toISOString();
 
@@ -133,10 +140,12 @@ export async function getAnalyticsOverview(project: Project): Promise<AnalyticsO
       // "current rank" a month old, always, instead of occasionally.
       .order("checked_at", { ascending: false })
       .range(0, 19999),
-    credsForProject(project).then((creds) => getDomainRating(project.id, project.domain, creds)),
+    opts.dr === false
+      ? Promise.resolve(null)
+      : credsForProject(project).then((creds) => getDomainRating(project.id, project.domain, creds)),
     // Fresh data is a nice-to-have; a GSC hiccup must not take down the page.
     // No GSC property connected yet -> no fresh numbers, by definition.
-    project.gsc_site_url
+    project.gsc_site_url && opts.fresh24 !== false
       ? gscClientForProject(project)
           .then((sc) => getFresh24h(project.gsc_site_url!, sc))
           .catch(() => null)

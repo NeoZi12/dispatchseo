@@ -1,6 +1,8 @@
 import { db } from "@/lib/db";
 import { crawlSite } from "@/lib/site-crawl";
-import { getProjectById } from "@/lib/projects";
+import { getProjectById, writerMode } from "@/lib/projects";
+import { loadSiteProfile } from "@/lib/site-profile";
+import { generateSiteProfile } from "@/lib/autopilot/profile";
 import type { Job } from "@/lib/jobs";
 
 // Reads a customer's site and stores what it learned.
@@ -65,4 +67,19 @@ export async function runCrawlJob(job: Job): Promise<void> {
       { onConflict: "project_id" },
     );
   if (error) throw new Error(`could not save what we read: ${error.message}`);
+
+  // A hosted project has no agent to write its site profile, so the server
+  // writes it from what was just read (src/lib/autopilot/profile.ts) - once,
+  // and never over the owner's own edit (the lock is checked inside). After
+  // the save on purpose, and never thrown: the crawl's job is done, and a
+  // retry here would re-read 150 pages to repair a missing description. The
+  // autopilot cron retries the profile itself on its next run.
+  if (writerMode(project) === "hosted") {
+    try {
+      const { fromDb, error } = await loadSiteProfile(project);
+      if (!fromDb && !error) await generateSiteProfile(project);
+    } catch (e) {
+      console.warn(`[crawl] site profile for ${project.slug} not written: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 }

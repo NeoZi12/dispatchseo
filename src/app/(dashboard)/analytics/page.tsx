@@ -1,4 +1,7 @@
 import { requireDashboard } from "@/lib/auth-gate";
+import { writerMode } from "../mode";
+import { getActiveProjectOrNull } from "@/lib/active-project";
+import { HostedAnalytics } from "../results/hosted-analytics";
 import Link from "next/link";
 import { requireOnboarded } from "@/lib/onboarding-gate";
 import { getActiveProject } from "@/lib/active-project";
@@ -32,6 +35,12 @@ export const dynamic = "force-dynamic";
 
 export default async function AnalyticsPage() {
   await requireDashboard();
+  // A hosted project gets its own Analytics screen on this same route (the
+  // hosted nav says Analytics; /results forwards here).
+  if (writerMode(await getActiveProjectOrNull()) === "hosted") {
+    await requireOnboarded();
+    return <HostedAnalytics />;
+  }
   await requireOnboarded();
 
   const project = await getActiveProject();

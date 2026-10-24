@@ -2,6 +2,8 @@
   "regions": ["fra1"],
   "ignoreCommand": "node scripts/vercel-ignore-build.mjs",
   "crons": [
-    { "path": "/api/cron/daily-ranks", "schedule": "0 4 * * *" }
+    { "path": "/api/cron/daily-ranks", "schedule": "0 4 * * *" },
+    { "path": "/api/cron/jobs", "schedule": "*/5 * * * *" },
+    { "path": "/api/cron/autopilot", "schedule": "30 5 * * *" }
   ]
 }

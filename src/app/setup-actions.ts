@@ -18,10 +18,12 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { db } from "@/lib/db";
 import { dashboardAuth } from "@/lib/auth-gate";
+import { isCloudMode } from "@/lib/cloud";
 import { currentUser } from "@/lib/cloud-auth";
 import { captureServer } from "@/lib/posthog-server";
 import { assertProjectOwned } from "@/lib/tenant-guard";
-import { getProjectBySlug, publishTarget, type Project } from "@/lib/projects";
+import { getProjectBySlug, publishTarget, writerMode, type Project } from "@/lib/projects";
+import { enqueue } from "@/lib/jobs";
 import { cleanDomain } from "@/lib/domain";
 import { latestQualifier } from "@/lib/qualifier";
 import { aiKind, isWizardAiChoice } from "@/lib/wizard-branch";
@@ -94,9 +96,14 @@ export async function createSiteFromPath(
           : "github";
     }
     if (!ai) {
-      ai = qualified?.ai_choice && isWizardAiChoice(qualified.ai_choice) ? qualified.ai_choice : "";
+      ai = qualified?.ai_choice && isWizardAiChoice(qualified.ai_choice, { allowHosted: isCloudMode() }) ? qualified.ai_choice : "";
     }
   }
+  // Cloud is the hosted writer: there is no AI question any more (the
+  // qualifier dropped it), and applyWizardChoices writes 'hosted' regardless.
+  // Set here too so the create action's "which AI" check never refuses a
+  // signup over a question nobody was asked.
+  if (isCloudMode()) ai = "hosted";
 
   const fd = new FormData();
   fd.set("name", nameFromDomain(domain));
@@ -207,8 +214,12 @@ export async function completeConnectPhase(slug: string): Promise<ConnectComplet
   const at = new Date().toISOString();
   const publish = publishTarget(project);
   const kind = aiKind(project.ai_choice);
+  // The hosted writer has no pipeline: nothing runs in the owner's repo but
+  // the pull requests our server opens. ai_choice 'hosted' reads as "coding"
+  // to aiKind, so the writer mode is checked explicitly.
+  const hostedWriter = writerMode(project) === "hosted";
   const installs =
-    publish === "github" && kind === "coding" && Boolean(project.github_repo) && !project.pipeline_installed_at;
+    !hostedWriter && publish === "github" && kind === "coding" && Boolean(project.github_repo) && !project.pipeline_installed_at;
 
   // ONE conditional write claims the phase AND the install attempt: only the
   // request whose update matched the still-null row goes on to install, so
@@ -248,6 +259,23 @@ export async function completeConnectPhase(slug: string): Promise<ConnectComplet
     ai_kind: kind,
     deferred: step.deferred,
   });
+
+  // Hosted: read the site now rather than at tomorrow's cron, so the profile
+  // (written when the crawl lands, job-handlers/crawl.ts) and the first
+  // research are ready by the autopilot's next run. Best-effort: the daily
+  // cron queues the same crawl if this one is lost.
+  if (hostedWriter && project.domain) {
+    try {
+      await enqueue({
+        projectId: project.id,
+        kind: "crawl",
+        payload: { isWordPress: publish === "wordpress", maxPages: 150 },
+        idempotencyKey: `crawl:${project.id}:${at.slice(0, 10)}`,
+      });
+    } catch (e) {
+      console.warn(`[setup] first crawl for ${project.slug} not queued: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 
   let installError: string | null = null;
   if (installs) {

@@ -74,6 +74,7 @@ export const DOCS_NAV: { section: string; items: DocsNavItem[] }[] = [
   {
     section: "Using it",
     items: [
+      { slug: "autopilot", title: "How the autopilot works" },
       { slug: "day-to-day", title: "Day to day" },
       { slug: "dashboard", title: "The dashboard, page by page" },
       { slug: "automations", title: "Automations and modes" },

@@ -48,3 +48,12 @@
 # than at the top of the next one. An empty queue exits in one indexed query,
 # so idle ticks are cheap.
 */10 * * * * /bin/sh /usr/local/bin/hit.sh jobs >> /proc/1/fd/1 2>&1
+
+# The autopilot (src/lib/autopilot, migration 0066): once a day, for every
+# project in hosted-writer mode, check the auto-pause rules, top up keyword
+# research weekly, and start the day's article when the plan's weekly quota
+# and the two-day spacing allow. Projects in agent mode (every self-host
+# project unless switched) are skipped in one read, so this is a no-op on a
+# default install. 05:30 UTC, after daily-ranks has stored yesterday's Search
+# Console numbers the pause check reads. Mirrors vercel.json.
+30 5 * * * /bin/sh /usr/local/bin/hit.sh autopilot >> /proc/1/fd/1 2>&1

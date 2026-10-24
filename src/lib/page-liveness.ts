@@ -23,6 +23,19 @@ export function isLive(row: LivenessRow): boolean {
   return !("live_at" in row) || row.live_at != null;
 }
 
+/** Known NOT to load on the site, from what's already stored (no probe):
+ *  never verified live and its last check is over a day old, or checked
+ *  again after it went live and that check didn't stamp it. A page never
+ *  checked (or a pre-0033 row) is never "gone" - unknown is not dead. The
+ *  dashboard shows these as "Gone" and stops linking to them. */
+export function isKnownGone(row: LivenessRow, now = Date.now()): boolean {
+  if (!("live_at" in row) || !row.live_checked_at) return false;
+  const checked = Date.parse(row.live_checked_at);
+  if (!Number.isFinite(checked)) return false;
+  if (row.live_at == null) return now - checked > 86_400_000;
+  return checked > Date.parse(row.live_at);
+}
+
 // Probe backoff: a pending page is re-checked at most this often, so a PR
 // that sits unmerged for a day doesn't get hammered on every dashboard view.
 const RECHECK_MS = 5 * 60_000;

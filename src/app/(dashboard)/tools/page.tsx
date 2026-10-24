@@ -1,4 +1,7 @@
 import { requireDashboard } from "@/lib/auth-gate";
+import { writerMode } from "../mode";
+import { getActiveProjectOrNull } from "@/lib/active-project";
+import { HostedTools } from "./hosted-tools";
 import { db } from "@/lib/db";
 import { requireOnboarded } from "@/lib/onboarding-gate";
 import { getActiveProject } from "@/lib/active-project";
@@ -77,6 +80,12 @@ function googleStatusBadge(p: PageRow, impressions: number) {
 
 export default async function ToolsPage() {
   await requireDashboard();
+  // A hosted project gets its own Tools screen on this route (plan-gated:
+  // Growth and Scale have tools; Starter sees what they are).
+  if (writerMode(await getActiveProjectOrNull()) === "hosted") {
+    await requireOnboarded();
+    return <HostedTools />;
+  }
   await requireOnboarded();
 
   const project = await getActiveProject();

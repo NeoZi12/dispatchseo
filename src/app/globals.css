@@ -8,6 +8,34 @@
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
+/* Colour tokens for the dashboard primitives (src/components/ui/*). Values
+   sit on Tailwind's neutral scale so token-styled and legacy neutral-* screens
+   read as one surface family. One accent (violet) for "now / active / focus";
+   ok, warn and danger are meaning only, never decoration. */
+@theme {
+  --color-canvas: #0a0a0a;
+  --color-surface: #141414;
+  --color-surface-2: #1c1c1c;
+  --color-surface-3: #262626;
+  --color-line: #262626;
+  --color-line-soft: #1f1f1f;
+  --color-ink: #f5f5f5;
+  --color-ink-muted: #a3a3a3;
+  --color-ink-faint: #8a8a8a;
+  --color-accent: #a78bfa;
+  --color-accent-strong: #8b5cf6;
+  --color-accent-soft: rgb(167 139 250 / 0.12);
+  --color-ok: #34d399;
+  --color-ok-soft: rgb(52 211 153 / 0.12);
+  --color-warn: #fbbf24;
+  --color-warn-soft: rgb(251 191 36 / 0.1);
+  --color-danger: #f87171;
+  --color-danger-soft: rgb(248 113 113 / 0.1);
+  /* Data colour only (the impressions chart), never a status. */
+  --color-info: #60a5fa;
+  --color-info-soft: rgb(96 165 250 / 0.12);
+}
+
 @layer base {
   /* Hanken is a variable font, so 450 renders true. Google's 400 cut reads
      thinner than the commercial grotesques (PostHog's RoundHog/Matter) this
@@ -136,5 +164,568 @@
 @media (prefers-reduced-motion: reduce) {
   .dispatch-spin {
     animation-duration: 1.4s;
+  }
+}
+
+/* ---- The live dashboard (hosted mode). Every animation below says
+   something about state - on air, working, waiting for you, just landed -
+   and each keeps the reduced-motion fallback pattern above: entrances are
+   dropped (the final state shows at once), loops go still or calm. ---- */
+
+/* Page entrance: one short staggered rise for the top of a screen. The
+   delay comes from --rise (stagger.ts), so the whole sequence ends inside
+   ~400ms. */
+@keyframes dispatch-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.dispatch-rise {
+  animation: dispatch-rise 0.28s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: var(--rise, 0ms);
+}
+
+/* On-air signal: the two arcs either side of the dot light up outward in
+   turn, a radio transmitting. Delay per ring is inline. */
+@keyframes dispatch-signal {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  35% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 0.25;
+  }
+}
+/* A few transmissions on arrival, then the arcs rest lit: after the page
+   has arrived, only the dispatcher itself keeps moving. */
+.dispatch-signal {
+  animation: dispatch-signal 2.4s ease-in-out 3;
+}
+
+/* Breathing glow on whatever is being worked on right now (the active
+   cadence slot, the current pipeline step, the open setup item). */
+@keyframes dispatch-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(167 139 250 / 0);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px rgb(167 139 250 / 0.16),
+      0 0 14px 0 rgb(167 139 250 / 0.32);
+  }
+}
+.dispatch-breathe {
+  animation: dispatch-breathe 2.6s ease-in-out 3;
+}
+
+/* A light passing through a slot that is about to fill (next-up cadence
+   slot, the pipeline step in progress). The element needs position:
+   relative + overflow: hidden; the sweep is its ::after. */
+@keyframes dispatch-shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+.dispatch-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.28), transparent);
+  animation: dispatch-shimmer 2.2s ease-in-out 3;
+}
+.dispatch-shimmer-soft::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgb(167 139 250 / 0.22), transparent);
+  animation: dispatch-shimmer 3.2s ease-in-out 3;
+}
+
+/* Cadence slots grow up from the week's baseline, one after another. */
+@keyframes dispatch-fill {
+  from {
+    transform: scaleY(0);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.dispatch-fill {
+  transform-origin: bottom;
+  animation: dispatch-fill 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: var(--rise, 0ms);
+}
+
+/* Checkmarks draw themselves (the path carries pathLength="1"), and a done
+   item's strike wipes across after it. */
+@keyframes dispatch-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.dispatch-draw {
+  stroke-dasharray: 1;
+  animation: dispatch-draw 0.4s ease-out both;
+  animation-delay: var(--rise, 0ms);
+}
+@keyframes dispatch-strike {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.dispatch-strike {
+  transform-origin: left;
+  animation: dispatch-strike 0.3s ease-out both;
+  animation-delay: var(--rise, 0ms);
+}
+
+/* A row that is waiting on the owner: three soft amber passes, then still.
+   The static amber edge (set on the row) keeps saying it after that. */
+@keyframes dispatch-flag {
+  0%,
+  100% {
+    background-color: transparent;
+  }
+  50% {
+    background-color: rgb(251 191 36 / 0.07);
+  }
+}
+.dispatch-flag {
+  animation: dispatch-flag 1.8s ease-in-out 0.5s 3;
+}
+
+/* Expanding an article row: the panel eases open. Height animates where the
+   browser can interpolate to auto; everywhere else the body still fades
+   down into place. */
+@keyframes dispatch-open {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.dispatch-details[open] .dispatch-details-body {
+  animation: dispatch-open 0.22s ease-out;
+}
+@supports (interpolate-size: allow-keywords) {
+  .dispatch-details {
+    interpolate-size: allow-keywords;
+  }
+  .dispatch-details::details-content {
+    block-size: 0;
+    overflow: clip;
+    transition:
+      block-size 0.24s ease,
+      content-visibility 0.24s allow-discrete;
+  }
+  .dispatch-details[open]::details-content {
+    block-size: auto;
+  }
+}
+
+/* Count-up numbers (count-up.tsx) hide until the client starts counting.
+   If the script never runs, this fades the real number in anyway. */
+@keyframes dispatch-count-fallback {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.dispatch-count-pending {
+  animation: dispatch-count-fallback 0.25s ease-out 0.9s both;
+}
+
+/* The brand mark keys up on hover: a quick walkie-talkie wobble. */
+@keyframes dispatch-key {
+  0%,
+  100% {
+    transform: none;
+  }
+  25% {
+    transform: rotate(-7deg);
+  }
+  55% {
+    transform: rotate(5deg);
+  }
+  80% {
+    transform: rotate(-2deg);
+  }
+}
+.dispatch-logo img {
+  transform-origin: 50% 90%;
+}
+.dispatch-logo:hover img,
+.dispatch-logo:focus-visible img {
+  animation: dispatch-key 0.5s ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dispatch-rise,
+  .dispatch-fill,
+  .dispatch-draw,
+  .dispatch-strike,
+  .dispatch-flag,
+  .dispatch-count-pending,
+  .dispatch-details[open] .dispatch-details-body,
+  .dispatch-logo:hover img,
+  .dispatch-logo:focus-visible img {
+    animation: none;
+  }
+  .dispatch-details::details-content {
+    transition: none;
+  }
+  .dispatch-shimmer::after,
+  .dispatch-shimmer-soft::after {
+    animation: none;
+    opacity: 0;
+  }
+  .dispatch-signal {
+    animation: none;
+  }
+  .dispatch-breathe {
+    animation: none;
+    box-shadow: 0 0 0 2px rgb(167 139 250 / 0.18);
+  }
+}
+
+/* Hand-drawn marks in the landing hero's doodle hand (round caps, a 2.2
+   stroke): the circle around Today. Paths carry pathLength="1" so
+   .dispatch-draw draws them in - and no non-scaling stroke, which browsers
+   don't agree on combining with pathLength dashes. */
+.dispatch-doodle {
+  pointer-events: none;
+  overflow: visible;
+}
+.dispatch-doodle path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The dispatcher's message popover (dispatcher-button.tsx): it eases open
+   under the character, with the same pixel-stepped tail pointing up at its
+   head (~39% across the 132px scene, so ~80px in from the right edge). */
+.dispatch-pop:not([hidden]) {
+  animation: dispatch-open 0.18s ease-out;
+}
+.dispatch-pop-tail {
+  position: absolute;
+  z-index: 1;
+  right: 65px;
+  bottom: calc(100% - 2px);
+  width: 30px;
+  height: 15px;
+}
+.dispatch-pop-tail::before,
+.dispatch-pop-tail::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+.dispatch-pop-tail::before {
+  background: var(--color-line);
+  clip-path: polygon(10px 0, 20px 0, 20px 5px, 25px 5px, 25px 10px, 30px 10px, 30px 15px, 0 15px, 0 10px, 5px 10px, 5px 5px, 10px 5px);
+}
+.dispatch-pop-tail::after {
+  background: var(--color-surface-2);
+  clip-path: polygon(11px 1px, 19px 1px, 19px 6px, 24px 6px, 24px 11px, 29px 11px, 29px 15px, 1px 15px, 1px 11px, 6px 11px, 6px 6px, 11px 6px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .dispatch-pop:not([hidden]) {
+    animation: none;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   Arrival: the page arrives rather than appears. The same vocabulary and
+   timing as Neo's other products (PaperBot's pb-* classes, the landing
+   pages' motion tokens): easeOutExpo, 0.45s, a 14px fade-up, staggered by
+   --i (the item's index) after --at (the group's start). Lines wipe in left
+   to right, bars rise from their base, gridlines fade. Everything runs once
+   on mount and is still within ~1.5s; under reduced motion every rule stops
+   and the final state shows at once.
+   Fill mode is `backwards`, never `both`: the start state holds through
+   the delay, and once it lands the element is back to its own styles. A
+   kept end-state transform/opacity leaves every animated section its own
+   stacking context for good - which painted the next section over the
+   dispatcher's popover.
+   --------------------------------------------------------------------------- */
+:root {
+  --ease-out-expo: cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes arrive-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes arrive-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes arrive-rise {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+@keyframes arrive-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+/* A line drawing left to right. A wipe, not a dash offset: the charts
+   stretch with preserveAspectRatio="none" and a non-scaling stroke, where
+   browsers disagree on how pathLength dashes scale. For a time series the
+   two read the same - x only ever moves right. */
+@keyframes arrive-wipe {
+  from {
+    clip-path: inset(-10% 100% -10% 0);
+  }
+  to {
+    clip-path: inset(-10% 0 -10% 0);
+  }
+}
+.arrive-up,
+.arrive-in,
+.arrive-rise,
+.arrive-grow,
+.arrive-wipe {
+  animation-delay: calc(var(--at, 0ms) + var(--i, 0) * var(--step, 70ms));
+}
+.arrive-up {
+  animation: arrive-up 0.45s var(--ease-out-expo) backwards;
+  animation-delay: calc(var(--at, 0ms) + var(--i, 0) * var(--step, 70ms));
+}
+.arrive-in {
+  animation: arrive-in 0.6s ease-out backwards;
+  animation-delay: calc(var(--at, 0ms) + var(--i, 0) * var(--step, 70ms));
+}
+.arrive-rise {
+  transform-origin: bottom;
+  animation: arrive-rise 0.6s var(--ease-out-expo) backwards;
+  animation-delay: calc(var(--at, 0ms) + var(--i, 0) * var(--step, 40ms));
+}
+.arrive-grow {
+  transform-origin: 0 50%;
+  animation: arrive-grow 0.7s var(--ease-out-expo) backwards;
+  animation-delay: calc(var(--at, 0ms) + var(--i, 0) * var(--step, 90ms));
+}
+.arrive-wipe {
+  animation: arrive-wipe 0.9s var(--ease-out-expo) backwards;
+  animation-delay: var(--at, 0ms);
+}
+/* A range switch redraws just the line, quickly. */
+.arrive-wipe-quick {
+  animation: arrive-wipe 0.4s var(--ease-out-expo) backwards;
+}
+/* A live dot pings a few times, then holds still. */
+@keyframes dispatch-ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  75%,
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+.dispatch-ping {
+  animation: dispatch-ping 1.2s cubic-bezier(0, 0, 0.2, 1) 3;
+}
+/* ...then the dot itself breathes, slowly, while the work goes on. */
+@keyframes dispatch-calm {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+.dispatch-calm {
+  animation: dispatch-calm 3s ease-in-out 3.6s infinite;
+}
+/* A slow light along a progress line for something in flight. */
+.dispatch-flow::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.55), transparent);
+  animation: dispatch-shimmer 2.8s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .arrive-up,
+  .arrive-in,
+  .arrive-rise,
+  .arrive-grow,
+  .arrive-wipe,
+  .arrive-wipe-quick,
+  .dispatch-ping,
+  .dispatch-calm,
+  .dispatch-flow::after {
+    animation: none;
+  }
+}
+
+
+/* ---- Buttons (ui/button.tsx buttonClass). Component classes so each button
+   is "btn btn-primary btn-md" in the markup instead of ~250 characters of
+   utilities, repeated in the HTML and again in the RSC payload. ---- */
+@layer components {
+  .btn {
+    @apply inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-lg font-medium transition-colors outline-none disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas;
+  }
+  .btn-primary {
+    @apply bg-ink text-canvas hover:bg-white disabled:bg-ink/40;
+  }
+  .btn-secondary {
+    @apply border border-line bg-surface-2 text-ink hover:border-surface-3 hover:bg-surface-3 disabled:text-ink-faint;
+  }
+  .btn-ghost {
+    @apply text-ink-muted hover:bg-surface-2 hover:text-ink disabled:text-ink-faint;
+  }
+  .btn-danger {
+    @apply border border-danger/30 bg-danger-soft text-danger hover:bg-danger/20 disabled:opacity-60;
+  }
+  .btn-sm {
+    @apply h-8 gap-1.5 px-3 text-[13px];
+  }
+  .btn-md {
+    @apply h-9 gap-2 px-4 text-sm;
+  }
+  .btn-lg {
+    @apply h-11 gap-2 px-5 text-[15px];
+  }
+}
+
+/* ---- The article list's rows (ui/article-list.tsx), named for the same
+   reason: eight to fifty rows of identical long class strings. ---- */
+@layer components {
+  .al-sum {
+    @apply flex cursor-pointer list-none flex-col gap-1.5 px-4 py-4 outline-none transition-colors hover:bg-surface-2/50 focus-visible:bg-surface-2 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 sm:grid sm:items-center sm:gap-4 sm:px-5 sm:grid-cols-[10rem_minmax(0,1fr)_5rem_5.5rem_1rem];
+  }
+  .al-sum::-webkit-details-marker {
+    display: none;
+  }
+  .al-title {
+    @apply line-clamp-2 text-[15px] font-medium text-ink group-open:line-clamp-none sm:truncate sm:group-open:whitespace-normal;
+  }
+  .al-chev {
+    @apply ml-auto h-4 w-4 shrink-0 text-ink-faint transition-transform group-open:rotate-180 motion-reduce:transition-none sm:order-5 sm:ml-0;
+  }
+  .al-panel {
+    @apply border-t border-line-soft bg-canvas/40 px-4 py-5 sm:px-5;
+  }
+  .al-facts {
+    @apply grid gap-y-2.5 text-[14px] sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-x-6;
+  }
+  .al-dd {
+    @apply min-w-0 text-ink sm:mb-0 [&:not(:last-child)]:mb-1.5;
+  }
+}
+
+/* In-app navigation (ui/arrival-mode.tsx sets data-nav after the first
+   page): the same arrival, compressed to under 400ms in total - delays
+   capped, durations shortened - so screens swap quickly. */
+html[data-nav] .arrive-up,
+html[data-nav] .arrive-in,
+html[data-nav] .arrive-rise,
+html[data-nav] .arrive-grow {
+  animation-duration: 0.24s;
+  animation-delay: calc(min(var(--at, 0ms), 60ms) + min(var(--i, 0) * var(--step, 70ms), 100ms));
+}
+html[data-nav] .arrive-wipe {
+  animation-duration: 0.36s;
+  animation-delay: 30ms;
+}
+
+/* Skeleton ghosts (ui/skeleton.tsx): short classes, since a page ghost is
+   hundreds of placeholders sent twice. A soft pulse, still under reduced
+   motion. */
+/* In the components layer so utilities on the same element (hidden,
+   sm:block, rounded-lg, rounded-full) still win. */
+@layer components {
+  .sk {
+    display: block;
+    border-radius: 0.25rem;
+    background: var(--color-surface-2);
+  }
+  .sk-card {
+    border-radius: 1rem;
+    border: 1px solid var(--color-line-soft);
+    background: var(--color-surface);
+  }
+  /* Seven day-number placeholders in one span: a 1.25rem stripe at the start
+     of each seventh of the row. */
+  .sk-week {
+    display: block;
+    height: 1rem;
+    margin: 0.25rem 0.375rem 0;
+    background: repeating-linear-gradient(to right, var(--color-surface-2) 0 1.25rem, transparent 1.25rem calc(100% / 7));
+    border-radius: 0.25rem;
+  }
+}
+@keyframes sk-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .sk,
+  .sk-week {
+    animation: sk-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+}
+
+/* The month grid's day cells (ui/month-board.tsx), 35 a month. */
+@layer components {
+  .mb-cell {
+    @apply flex min-h-36 min-w-0 flex-col gap-1.5 p-1;
+  }
+  .mb-num {
+    @apply flex h-6 items-center px-1 text-[13px] tabular-nums;
   }
 }

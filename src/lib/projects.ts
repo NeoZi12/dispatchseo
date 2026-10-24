@@ -153,17 +153,66 @@ export type Project = {
   setup_connected_at: string | null;
   /** Setup-path step ids the owner parked with "I'll do this later". */
   setup_deferred: string[];
+  /** Hosted blog (migration 0065): the call-to-action on every article, the
+   *  rewrite pull request we opened, and when /blog on the site's own domain
+   *  last answered with our marker. All null until the hosted route is used. */
+  hosted_cta_url: string | null;
+  hosted_cta_label: string | null;
+  hosted_rewrite_pr_url: string | null;
+  hosted_rewrite_live_at: string | null;
+  /** { accent, bg, ink, mode, logo } read from the site's homepage, or the
+   *  owner's overrides. Null = default theme. See hosted-theme.ts. */
+  hosted_theme: unknown;
+  /** Random public key the hosted routes are addressed by; never the slug. */
+  hosted_key: string | null;
+  /** The origin the site serves from (www or apex), learned from its homepage. */
+  hosted_origin: string | null;
+
+  // --- The autopilot (migration 0066) ---
+  //
+  // NULLABLE for the same reason as the 0055 set: absent on a DB that hasn't
+  // run 0066 and on the COLS_PRE_0066 fallback tier. Read writer_mode through
+  // writerMode() below, which resolves absence to "agent" - what every project
+  // was before our own writer existed.
+  /** 'hosted' = our server researches and writes on a weekly cadence (the
+   *  cloud default since 2026-10-23); 'agent' = the owner's coding agent or
+   *  chat app does the work through MCP (legacy, and every self-host). */
+  writer_mode: string | null;
+  /** Set when the autopilot stops itself (a GSC collapse, articles that never
+   *  earn an impression) or the owner pauses it. Null = running. Nothing ever
+   *  clears it but the owner. */
+  writer_paused_at: string | null;
+  writer_pause_reason: string | null;
+  /** When the owner last resumed it: the auto-pause rules read only evidence
+   *  newer than this (src/lib/autopilot/pause.ts). */
+  writer_resumed_at: string | null;
+  /** The byline. Set = article schema Person (with url); null = Organization. */
+  author_name: string | null;
+  author_bio: string | null;
+  author_url: string | null;
+  /** When autopilot keyword research last ran for this site. */
+  last_research_at: string | null;
+  /** Informational: when the scheduler expects to start the next article. */
+  next_article_at: string | null;
 
   created_at: string;
 };
+
+/** Who writes this project's articles. Absence (a DB pre-0066, the
+ *  COLS_PRE_0066 tier, or a legacy row) resolves to "agent": that is what
+ *  every project was before the hosted writer, and the only answer that never
+ *  starts spending model keys on a site whose owner did not sign up for it. */
+export function writerMode(p: Pick<Project, "writer_mode">): "hosted" | "agent" {
+  return p.writer_mode === "hosted" ? "hosted" : "agent";
+}
 
 /** Where a project's articles go. Absence - a DB pre-0055, the COLS_PRE_0055
  *  fallback tier, or a project that never connected anything - resolves to
  *  "github", which is what every project was before WordPress and the only
  *  answer that cannot publish somewhere the owner did not intend. */
-export function publishTarget(p: Pick<Project, "publish_target">): "github" | "wordpress" | "manual" {
+export function publishTarget(p: Pick<Project, "publish_target">): "github" | "wordpress" | "manual" | "hosted" {
   const t = p.publish_target;
-  return t === "wordpress" || t === "manual" ? t : "github";
+  return t === "wordpress" || t === "manual" || t === "hosted" ? t : "github";
 }
 
 // The five automations a project owner can toggle (migrations 0011 + 0028).
@@ -246,6 +295,16 @@ const FALLBACK_PROJECT_SLUG = "default";
 
 // mcp_token deliberately excluded - only fetchProjectToken exposes it.
 const COLS =
+  "id, slug, name, domain, gsc_site_url, github_repo, content_mode, content_path_hint, dataforseo_login, dataforseo_password, keyword_source, serpapi_key, powerups_skipped, location_code, language_code, mode, auto_approve, auto_approve_tools, auto_build_guides, auto_build_tools, auto_merge, last_trend_scan_at, site_launched_at, pipeline_installed_at, pipeline_verified, content_prefs, gsc_oauth_refresh_token, github_installation_id, github_app_installed_at, install_progress, onboarding_screen, owner_user_id, agent, internal_linking, publish_target, wp_url, wp_username, wp_app_password, wp_connected_at, wp_seo_plugin, wp_capabilities, publish_hour, ai_choice, chat_last_seen_at, agent_last_seen_at, agent_credential_at, setup_connected_at, setup_deferred, hosted_cta_url, hosted_cta_label, hosted_rewrite_pr_url, hosted_rewrite_live_at, hosted_theme, hosted_key, hosted_origin, writer_mode, writer_paused_at, writer_pause_reason, writer_resumed_at, author_name, author_bio, author_url, last_research_at, next_article_at, created_at";
+
+// Pre-0066 (autopilot): the writer_mode / pause / author / schedule columns
+// are absent. Newest, so dropped first; such a DB reads as "every project is
+// agent-driven", which is what it was before the autopilot.
+const COLS_PRE_0066 =
+  "id, slug, name, domain, gsc_site_url, github_repo, content_mode, content_path_hint, dataforseo_login, dataforseo_password, keyword_source, serpapi_key, powerups_skipped, location_code, language_code, mode, auto_approve, auto_approve_tools, auto_build_guides, auto_build_tools, auto_merge, last_trend_scan_at, site_launched_at, pipeline_installed_at, pipeline_verified, content_prefs, gsc_oauth_refresh_token, github_installation_id, github_app_installed_at, install_progress, onboarding_screen, owner_user_id, agent, internal_linking, publish_target, wp_url, wp_username, wp_app_password, wp_connected_at, wp_seo_plugin, wp_capabilities, publish_hour, ai_choice, chat_last_seen_at, agent_last_seen_at, agent_credential_at, setup_connected_at, setup_deferred, hosted_cta_url, hosted_cta_label, hosted_rewrite_pr_url, hosted_rewrite_live_at, hosted_theme, hosted_key, hosted_origin, created_at";
+
+// Pre-0065 (hosted blog): the four hosted_* columns are absent.
+const COLS_PRE_0065 =
   "id, slug, name, domain, gsc_site_url, github_repo, content_mode, content_path_hint, dataforseo_login, dataforseo_password, keyword_source, serpapi_key, powerups_skipped, location_code, language_code, mode, auto_approve, auto_approve_tools, auto_build_guides, auto_build_tools, auto_merge, last_trend_scan_at, site_launched_at, pipeline_installed_at, pipeline_verified, content_prefs, gsc_oauth_refresh_token, github_installation_id, github_app_installed_at, install_progress, onboarding_screen, owner_user_id, agent, internal_linking, publish_target, wp_url, wp_username, wp_app_password, wp_connected_at, wp_seo_plugin, wp_capabilities, publish_hour, ai_choice, chat_last_seen_at, agent_last_seen_at, agent_credential_at, setup_connected_at, setup_deferred, created_at";
 
 // COLS minus 0062's setup-path columns, for a DB that hasn't run that migration
@@ -318,7 +377,12 @@ async function selectProjects<T>(
     Boolean(e && e.message.includes("does not exist"));
   const first = await run(COLS);
   if (!missingCol(first.error)) return first;
-  // Drop the newest columns (0062's setup-path set) first.
+  // Drop 0066's autopilot columns first, then 0065's hosted-blog columns,
+  // then 0062's setup-path set.
+  const pilotless = await run(COLS_PRE_0066);
+  if (!missingCol(pilotless.error)) return pilotless;
+  const hostless = await run(COLS_PRE_0065);
+  if (!missingCol(hostless.error)) return hostless;
   const pathless = await run(COLS_PRE_0062);
   if (!missingCol(pathless.error)) return pathless;
   // Then 0060's wizard pair.
@@ -422,6 +486,24 @@ function envFallbackProject(): Project {
     agent_credential_at: null,
     setup_connected_at: null,
     setup_deferred: [],
+    hosted_cta_url: null,
+    hosted_cta_label: null,
+    hosted_rewrite_pr_url: null,
+    hosted_rewrite_live_at: null,
+    hosted_theme: null,
+    hosted_key: null,
+    hosted_origin: null,
+    // Agent mode, never hosted: "we couldn't read your settings" must never be
+    // the reason the server starts writing (and paying for) articles.
+    writer_mode: null,
+    writer_paused_at: null,
+    writer_pause_reason: null,
+    writer_resumed_at: null,
+    author_name: null,
+    author_bio: null,
+    author_url: null,
+    last_research_at: null,
+    next_article_at: null,
     created_at: new Date(0).toISOString(),
   };
 }
@@ -518,6 +600,14 @@ export async function getProjectBySlug(slug: string): Promise<Project | null> {
   // No row and no error is a real miss for anything else; only the seeded
   // default keeps the older read-failed tolerance.
   return error && slug === DEFAULT_PROJECT_SLUG ? envFallbackProject() : null;
+}
+
+/** Hosted-blog lookup (0065): by the random public key, never the slug. */
+export async function getProjectByHostedKey(key: string): Promise<Project | null> {
+  const { data } = await selectProjects<Project>((cols) =>
+    db().from("projects").select(cols).eq("hosted_key", key).maybeSingle(),
+  );
+  return (data as Project | null) ?? null;
 }
 
 export async function getProjectById(id: string): Promise<Project | null> {

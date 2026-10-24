@@ -95,10 +95,25 @@ const LEGS_STRIDE = ["..CC....CC..", ".CC......CC."];
 const LEGS_PASS = ["...CC..CC...", "...CC..CC..."];
 const LEGS_SIT = ["..CC....CC..", "..CC....CC.."];
 
+// Looking out of the screen at you (eyes shifted toward the viewer and up a
+// row): the hover/tap reaction, and the face it makes while waving.
+const BODY_LOOK = [
+  ...BODY_OPEN.slice(0, 3),
+  ".cccecccecc.",
+  ".cccecccecc.",
+  ".cccccccccc.",
+  ".cccccccccc.",
+  ...BODY_OPEN.slice(7),
+];
+
 const WALK_A = [...BODY_OPEN, ...LEGS_STRIDE];
 const WALK_B = [...BODY_OPEN, ...LEGS_PASS];
 const SIT = [...BODY_OPEN, ...LEGS_SIT];
 const SIT_BLINK = [...BODY_BLINK, ...LEGS_SIT];
+const SIT_LOOK = [...BODY_LOOK, ...LEGS_SIT];
+
+// 3 x 3 sleep "z" for the paused mood.
+const ZED = ["zzz", ".z.", "zzz"];
 
 // 12 x 9 headset grid, anchored 1 unit above the character's head
 const HEADSET = [
@@ -155,10 +170,60 @@ function drawGrid(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Moods (the hosted Report's dispatcher)
+// ---------------------------------------------------------------------------
+//
+// What the character is doing says what the writer is doing, so the owner
+// reads the state off the scene before reading a word:
+//   working   - an article is in flight: typing (a hand hopping between keys),
+//               the rank chart climbing on the monitor
+//   idle      - nothing in flight, autopilot on: blinking, breathing, the odd
+//               sip of coffee, the chart sitting finished
+//   paused    - eyes shut, headset still on, a "z" drifting up now and then,
+//               the monitor dimmed and the coffee gone cold
+// On top of any mood, `flag` means it has something to tell the owner: an
+// amber "!" stays over its head (the cue to click it), and awake it waves a
+// few times when the scene settles, then gets back to work.
+// No mood = the original scene, byte-identical, for every older call site.
+// Colour discipline holds: the mood bits reuse the body colour and the
+// scene's own violet/greys; amber appears only as the "!".
+export type DispatcherMood = "working" | "idle" | "paused";
+
+type SceneOpts = {
+  mood: DispatcherMood;
+  /** Looking up at the owner (hover / tap). */
+  look: boolean;
+  /** An article went live this week: the coffee steams a little higher. */
+  steam: boolean;
+  /** Something to say: the "!" (and, awake, a short wave). */
+  flag: boolean;
+};
+
+const SIP_EVERY = 70; // ticks between sips (~8s)
+const WAVE_FROM = 2; // idle ticks after settling before the wave starts
+const WAVE_TO = 22; // ...and when it stops (five waves)
+const ZED_EVERY = 30; // ticks between z's (~3.6s)
+
+/** Where the mug is during a sip, or null when it's on the desk. */
+function sipPhase(idle: number): "lift" | "sip" | null {
+  const k = idle % SIP_EVERY;
+  if (k === SIP_EVERY - 9 || k === SIP_EVERY - 2) return "lift";
+  if (k > SIP_EVERY - 9 && k < SIP_EVERY - 2) return "sip";
+  return null;
+}
+
+function waving(opts: SceneOpts | undefined, idle: number): boolean {
+  return Boolean(opts?.flag) && opts?.mood !== "paused" && idle >= WAVE_FROM && idle < WAVE_TO;
+}
+
 // Draw the whole scene at tick t. Same composition + order as the old SVG,
 // so later paints (desk, monitor) still sit in front of the character.
-function drawScene(ctx: CanvasRenderingContext2D, t: number, palette: Record<string, string>) {
+function drawScene(ctx: CanvasRenderingContext2D, t: number, palette: Record<string, string>, opts?: SceneOpts) {
   ctx.clearRect(0, 0, VB_W, VB_H);
+  const idle = t - DROP_END;
+  const mood = opts?.mood;
+  const sip = mood === "idle" && idle >= 0 && !opts?.look ? sipPhase(idle) : null;
 
   // --- character position + frame ---
   let charX: number;
@@ -174,10 +239,12 @@ function drawScene(ctx: CanvasRenderingContext2D, t: number, palette: Record<str
   } else {
     charX = SEAT_X;
     charY = SEAT_Y;
-    const idle = t - DROP_END;
     if (idle >= 0) {
-      charY += idle % 16 < 8 ? 0 : 1;
+      // Asleep, the breathing slows down.
+      charY += (mood === "paused" ? idle % 24 < 12 : idle % 16 < 8) ? 0 : 1;
       grid = idle % 27 < 2 ? SIT_BLINK : SIT;
+      if (mood === "paused" || sip === "sip") grid = SIT_BLINK;
+      else if (opts?.look || waving(opts, idle)) grid = SIT_LOOK;
     } else {
       grid = SIT;
     }
@@ -206,6 +273,15 @@ function drawScene(ctx: CanvasRenderingContext2D, t: number, palette: Record<str
   drawGrid(ctx, grid, charX, charY, palette);
   if (headsetY !== null) drawGrid(ctx, HEADSET, charX, headsetY, palette);
 
+  // the wave: an arm raised on the far side of the chair, two frames
+  if (idle >= 0 && waving(opts, idle)) {
+    const arm: Array<[number, number]> =
+      Math.floor(idle / 2) % 2 === 0
+        ? [[65, 29], [64, 28], [63, 27], [62, 26], [61, 25]]
+        : [[65, 29], [64, 28], [64, 27], [64, 26], [64, 25]];
+    for (const [x, y] of arm) fillPx(ctx, x, y + (charY - SEAT_Y), 1, 1, palette.c);
+  }
+
   // desk
   fillPx(ctx, 77, 30, 32, 1, "#3a3a42");
   fillPx(ctx, 77, 31, 32, 1, "#2e2e35");
@@ -218,28 +294,72 @@ function drawScene(ctx: CanvasRenderingContext2D, t: number, palette: Record<str
   fillPx(ctx, 82, 29, 1, 1, "#3a3a42");
   fillPx(ctx, 84, 29, 1, 1, "#3a3a42");
 
-  // monitor: bezel, screen, chart, live dot, stand
+  // typing: one hand hopping between keys, the arm reaching from the body
+  if (idle >= 0 && mood === "working" && !opts?.look) {
+    const k = idle % 6;
+    const hx = [79, 79, 82, 82, 80, 80][k];
+    const hy = k % 2 === 0 ? 29 : 28;
+    for (let x = 77; x < hx; x++) fillPx(ctx, x, 29, 1, 1, palette.C);
+    fillPx(ctx, hx, hy, 2, 1, palette.c);
+  }
+
+  // monitor: bezel, screen, chart, live dot, stand. Without a mood the chart
+  // climbs on a loop (the original scene); with one it climbs only while an
+  // article is being written, sits finished otherwise, and dims when paused.
+  const dim = mood === "paused";
   fillPx(ctx, 88, 19, 13, 9, "#26262c");
-  fillPx(ctx, 89, 20, 11, 7, screenOn ? "#12121a" : "#0a0a0c");
+  fillPx(ctx, 89, 20, 11, 7, screenOn ? (dim ? "#0d0d11" : "#12121a") : "#0a0a0c");
   if (screenOn) {
-    const growth = Math.floor(((t - DROP_END) % 46) / 2);
+    const climbing = !mood || mood === "working";
+    const growth = climbing ? Math.floor(((t - DROP_END) % 46) / 2) : 99;
     for (let i = 0; i < CHART_TARGETS.length; i++) {
       const h = Math.min(CHART_TARGETS[i], Math.max(0, growth - i * 3));
-      if (h > 0) fillPx(ctx, CHART_X[i], CHART_BASE - h, 2, h, "#4ade80");
+      if (h > 0) fillPx(ctx, CHART_X[i], CHART_BASE - h, 2, h, dim ? "#1d3d2b" : "#4ade80");
     }
   }
-  if (screenOn && t % 6 < 3) fillPx(ctx, 98, 21, 1, 1, "#8b5cf6");
+  if (screenOn && !dim && t % 6 < 3) fillPx(ctx, 98, 21, 1, 1, "#8b5cf6");
   fillPx(ctx, 93, 28, 3, 2, "#26262c");
 
-  // mug + steam
-  fillPx(ctx, 103, 27, 2, 3, "#8b5cf6");
-  fillPx(ctx, 105, 28, 1, 1, "#6d3fd8");
-  if (t % 8 < 4) {
-    fillPx(ctx, 103, 24, 1, 1, "#4b4b55");
-    fillPx(ctx, 104, 22, 1, 1, "#3a3a42");
+  // mug + steam: on the desk, or in hand mid-sip (lifted, then at the face
+  // with the eyes shut). Paused, the coffee has gone cold - no steam.
+  // In hand it sits a pixel clear of the headset cup, tipped up at the sip,
+  // so the two violets never merge into one shape.
+  if (sip === "lift") {
+    fillPx(ctx, 79, 27, 2, 3, "#8b5cf6");
+  } else if (sip === "sip") {
+    fillPx(ctx, 79, 26, 2, 3, "#8b5cf6");
+    fillPx(ctx, 81, 26, 1, 1, "#6d3fd8");
   } else {
-    fillPx(ctx, 104, 24, 1, 1, "#4b4b55");
-    fillPx(ctx, 103, 22, 1, 1, "#3a3a42");
+    fillPx(ctx, 103, 27, 2, 3, "#8b5cf6");
+    fillPx(ctx, 105, 28, 1, 1, "#6d3fd8");
+    if (!dim) {
+      if (t % 8 < 4) {
+        fillPx(ctx, 103, 24, 1, 1, "#4b4b55");
+        fillPx(ctx, 104, 22, 1, 1, "#3a3a42");
+        if (opts?.steam) fillPx(ctx, 103, 20, 1, 1, "#2e2e35");
+      } else {
+        fillPx(ctx, 104, 24, 1, 1, "#4b4b55");
+        fillPx(ctx, 103, 22, 1, 1, "#3a3a42");
+        if (opts?.steam) fillPx(ctx, 104, 20, 1, 1, "#2e2e35");
+      }
+    }
+  }
+
+  if (idle < 0) return;
+  // something to say: the amber "!" over the head, for as long as it's true
+  if (opts?.flag) {
+    fillPx(ctx, 71, 15, 2, 3, "#fbbf24");
+    fillPx(ctx, 71, 19, 2, 1, "#fbbf24");
+  }
+  // paused: a "z" drifts up and to the right, fading as it goes
+  if (dim) {
+    const f = idle % ZED_EVERY;
+    if (f < 14) {
+      const zx = 78 + Math.floor(f / 4);
+      const zy = 20 - Math.floor(f / 2);
+      const tone = f < 5 ? "#a3a3a3" : f < 10 ? "#6b6b75" : "#3a3a42";
+      drawGrid(ctx, ZED, zx, zy, { z: tone });
+    }
   }
 }
 
@@ -359,5 +479,136 @@ export function PixelDispatcher({
         className="block h-auto w-full [image-rendering:pixelated]"
       />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Reporter: the hosted Report's dispatcher, delivering the headline
+// ---------------------------------------------------------------------------
+//
+// A crop between the desk crop and the full scene: wide enough on the left
+// for the last stretch of the walk-in to happen on screen, tall enough over
+// the head for the mood marks (the "!", the drifting "z"). Scene x 46-111,
+// y 14-41, so the seated agent's head sits ~39% across - the speech bubble's
+// tail points there.
+const REPORT_X = 26; // canvas space (scene x 46)
+const REPORT_Y = 2; // canvas space (scene y 14)
+const REPORT_W = 66;
+const REPORT_H = 28;
+// First tick of the walk worth drawing: the agent's leading edge is just
+// off the crop's left side here, so it walks straight into frame.
+const WALK_ENTER = 22;
+const LOOK_TICKS = 9;
+
+const MOOD_LABEL: Record<DispatcherMood, string> = {
+  working: "Your dispatcher at the desk, typing an article",
+  idle: "Your dispatcher at the desk between articles, coffee in reach",
+  paused: "Your dispatcher asleep at the desk while autopilot is paused",
+};
+
+// sessionStorage flag: the walk-in has played in this browser session.
+const WALKIN_SEEN_KEY = "dispatch-walkin-seen";
+
+/**
+ * The walk-in plays once per browser session (a sessionStorage flag, read
+ * and set right here); every later render starts seated - watching it walk
+ * to its chair on the fiftieth load is charming zero times. Hover or tap and it looks
+ * up at you for a second. `label` replaces the canvas's own description
+ * when a parent (a button) already names it.
+ */
+export { MOOD_LABEL as DISPATCHER_MOOD_LABEL };
+
+export function PixelReporter({
+  mood,
+  steam = false,
+  flag = false,
+  className,
+  variant = "clay",
+  decorative = false,
+}: {
+  mood: DispatcherMood;
+  steam?: boolean;
+  flag?: boolean;
+  className?: string;
+  variant?: MascotVariant;
+  /** Inside a control that names it: hide the canvas from assistive tech. */
+  decorative?: boolean;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const tick = useRef(DROP_END);
+  const lookUntil = useRef(-1);
+  const repaint = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!ctx || !canvas) return;
+    const paint = (t: number) => {
+      ctx.setTransform(1, 0, 0, 1, -REPORT_X, -REPORT_Y);
+      ctx.clearRect(REPORT_X, REPORT_Y, REPORT_W, REPORT_H);
+      drawScene(ctx, t, paletteFor(canvas, variant), { mood, steam, flag, look: t < lookUntil.current });
+    };
+
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      // One settled frame that still tells the mood: typing hand, finished
+      // chart, a z mid-drift, the "!" - and a look when hovered.
+      const still = DROP_END + 36;
+      repaint.current = () => {
+        tick.current = still;
+        paint(still);
+      };
+      paint(still);
+      return () => {
+        repaint.current = null;
+      };
+    }
+
+    let walk = false;
+    try {
+      walk = !sessionStorage.getItem(WALKIN_SEEN_KEY);
+      sessionStorage.setItem(WALKIN_SEEN_KEY, "1");
+    } catch {
+      // Storage blocked: no way to remember, so it simply starts seated.
+    }
+    // A mood change mid-visit keeps the clock running (no second walk-in).
+    tick.current = walk && tick.current === DROP_END ? WALK_ENTER : Math.max(tick.current, DROP_END);
+    paint(tick.current);
+    repaint.current = () => paint(tick.current);
+    const id = setInterval(() => {
+      tick.current += 1;
+      paint(tick.current);
+    }, TICK_MS);
+    return () => {
+      clearInterval(id);
+      repaint.current = null;
+    };
+  }, [mood, steam, flag, variant]);
+
+  const lookUp = () => {
+    if (tick.current < HOP_END) return; // still walking in
+    lookUntil.current = tick.current + LOOK_TICKS;
+    repaint.current?.();
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      // No clock ticking to end the look: put the face back by hand.
+      window.setTimeout(() => {
+        lookUntil.current = -1;
+        repaint.current?.();
+      }, LOOK_TICKS * TICK_MS);
+    }
+  };
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={REPORT_W}
+      height={REPORT_H}
+      role={decorative ? undefined : "img"}
+      aria-label={decorative ? undefined : MOOD_LABEL[mood]}
+      aria-hidden={decorative || undefined}
+      translate="no"
+      onPointerEnter={lookUp}
+      onClick={lookUp}
+      className={`block h-auto [image-rendering:pixelated] ${className ?? ""}`}
+    />
   );
 }

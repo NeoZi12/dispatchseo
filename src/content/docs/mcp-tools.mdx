@@ -1670,6 +1670,165 @@ current value.
   </Field>
 </Fields>
 
+## Hosted writer
+
+Since the 2026-10-22 pivot DispatchSEO can write the article itself.
+Five stages: **pick** (keyword, intent, refusals for off-topic, doorway
+pairs and queries the site already ranks for), **research** (eight
+page-one results read with tables and dates kept, every fact filtered
+by the judge, People-Also-Ask as the only FAQ source, a coverage map,
+plus the site brief: the owner's own pages and Search Console queries),
+**plan** (angle, intent contract, one information-gain asset backed by
+fact ids or site pages, sections with facts assigned; a plan that
+cannot beat page one ends the run and puts the idea back to pending),
+**write** (Opus, from the research only), **verify** (the gate, figures
+against quotes, claims judged against passages, SERP overlap, sameness
+against the site's own posts, banned phrases, the judge's rubric; at most
+two section-level patches), then the same finish/publish/verify chain
+`submit_article` feeds. Decisions are made by TypeSafe's Jev (Haiku
+when no key is set); stages chain inside one cron tick where time
+allows, so an article normally hands off within two ticks.
+
+### `write_article`
+
+Start a run. Pass an approved guide `suggestion_id`, a bare `keyword`,
+or nothing (the oldest approved guide idea is written). Returns the
+`run_id` plus `warnings` for any optional key the deploy lacks (the
+slot runs on its fallback). Refuses when the idea is not this site's
+approved guide, when a run is already on it, or when the site is at its
+cap (2 runs in flight, 3 starts per UTC day). Fails with a `missing`
+list when the deploy has no Anthropic key; `WRITER_DRY_RUN=1` exercises
+the pipeline without any.
+
+<Fields>
+  <Field name="suggestion_id" type="string">An approved guide idea.</Field>
+  <Field name="keyword" type="string">Write about this keyword instead.</Field>
+  <Field name="title_hint" type="string">Optional working title.</Field>
+</Fields>
+
+### `get_writer_runs`
+
+Recent runs: stage, status, rewrites, cost so far, the draft id and any
+error. With `run_id`, the full run including the fact sheet, the site
+brief, the plan with the judge's verdicts, the claim ledger, overlap and
+sameness results, and the gate report.
+
+<Fields>
+  <Field name="run_id" type="string">One run with its full stage outputs.</Field>
+  <Field name="limit" type="number">Up to 50, default 20.</Field>
+</Fields>
+
+### `release_writer_run`
+
+Releases a held run - a site's first hosted article when the deploy sets
+`WRITER_HOLD_FIRST=1`, or an article that landed while the site was at
+its daily publish cap: queues the finish job it skipped.
+
+<Fields>
+  <Field name="run_id" type="string" required="true">The held run.</Field>
+</Fields>
+
+### `set_hosted_blog`
+
+For a site whose /blog DispatchSEO serves (publish target `hosted`, chosen
+automatically when the connected repo has no blog folder): where the
+call-to-action box under every article points and what it says. Returns
+whether the site's own /blog answers from us yet, the forwarding pull
+request, and the manual forwarding snippets when no pull request could be
+opened for the host.
+
+<Fields>
+  <Field name="cta_url" type="string">Absolute URL on the site's own domain.</Field>
+  <Field name="cta_label" type="string">Button text, up to 60 characters.</Field>
+</Fields>
+
+## Autopilot
+
+A hosted site (the cloud default since 2026-10-23) runs on its own: the
+server researches keywords weekly, starts articles on the plan's weekly
+cadence (1, 2 or 3 a week, never two within two days), and pauses itself
+when Search Console collapses. These tools are the whole owner surface of
+that - the same functions the dashboard calls. See
+[How the autopilot works](/docs/autopilot).
+
+### `get_autopilot`
+
+The dashboard's report in one read: mode, pause state and reason, plan
+and articles per week, `nextArticleAt`, this week's count against the
+quota, the last 50 articles (status, stage, cost, gain, 28-day clicks and
+impressions), Search Console traffic and top queries, the next queued
+ideas, what setup is missing, the owner's brand, tone, blocked topics and
+byline, and this month's spend.
+
+### `pause_writer`
+
+Stops research and new articles. Articles already written still publish.
+Never lifts by itself.
+
+<Fields>
+  <Field name="reason" type="string">Shown on the dashboard.</Field>
+</Fields>
+
+### `resume_writer`
+
+Starts the autopilot again after any pause, the owner's or its own.
+
+### `set_brand`
+
+The brand text, in the owner's words. Omitted fields keep their value.
+Saving locks the profile against regeneration.
+
+<Fields>
+  <Field name="tagline" type="string">Up to 60 characters.</Field>
+  <Field name="short" type="string">Up to 160 characters; required.</Field>
+  <Field name="long" type="string">Up to 1000 characters.</Field>
+  <Field name="categories" type="string[]">1 to 8; research seeds from them.</Field>
+</Fields>
+
+### `set_tone`
+
+House rules the writer follows on every article. Replaces the current
+rules; an empty string clears them.
+
+<Fields>
+  <Field name="house_rules" type="string" required="true">Up to 2000 characters.</Field>
+</Fields>
+
+### `set_blocked_topics`
+
+Topics never to write about. Replaces the list. A topic blocks every
+keyword that contains all of its words; queued ideas under it are removed.
+
+<Fields>
+  <Field name="topics" type="string[]" required="true">Up to 50, 80 characters each.</Field>
+</Fields>
+
+### `set_author`
+
+The byline. With a name, articles carry a Person author (and the page URL
+when given); without, the site itself. `null` clears a field.
+
+<Fields>
+  <Field name="name" type="string">Up to 80 characters.</Field>
+  <Field name="bio" type="string">Up to 500 characters.</Field>
+  <Field name="url" type="string">A page on the site's own domain.</Field>
+</Fields>
+
+### `suggest_topic`
+
+Asks the autopilot to write about a topic. It passes the research gate
+(on-topic, not blocked, not a duplicate) and is queued as an approved idea,
+or rejected with the reason.
+
+<Fields>
+  <Field name="topic" type="string" required="true">A search phrase.</Field>
+</Fields>
+
+### `run_research_now`
+
+Tops the idea queue up to six now instead of at the weekly run. At most
+once per 24 hours; the plan gate and DataForSEO budget still apply.
+
 ### `join_waitlist`
 
 The odd one out in this section - it doesn't touch content preferences

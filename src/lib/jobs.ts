@@ -26,7 +26,7 @@ import { db } from "./db";
 // mean becomes the place every feature reaches into, and then nothing can be
 // changed without changing it.
 
-export type JobKind = "crawl" | "finish" | "publish" | "verify";
+export type JobKind = "crawl" | "finish" | "publish" | "verify" | "write";
 
 export type Job = {
   id: string;

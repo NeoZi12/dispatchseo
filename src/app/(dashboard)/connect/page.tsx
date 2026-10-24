@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { redirectIfHosted } from "../mode";
 import { requireDashboard } from "@/lib/auth-gate";
 import { db } from "@/lib/db";
 import { getActiveProjectOrNull } from "@/lib/active-project";
@@ -18,6 +19,9 @@ export const dynamic = "force-dynamic";
 
 export default async function ConnectPage() {
   await requireDashboard();
+  // Hosted writer: this screen belongs to the agent workflow; the hosted
+  // dashboard covers it on /dashboard.
+  await redirectIfHosted("/dashboard");
   const project = await getActiveProjectOrNull();
 
   if (!project) {

@@ -1,4 +1,5 @@
 import { after } from "next/server";
+import { redirectIfHosted } from "../mode";
 import { requireDashboard } from "@/lib/auth-gate";
 import { db } from "@/lib/db";
 import { requireOnboarded } from "@/lib/onboarding-gate";
@@ -93,6 +94,9 @@ function googleStatusBadge(p: PageRow, live: boolean, impressions: number) {
 
 export default async function PagesPage() {
   await requireDashboard();
+  // Hosted writer: this screen belongs to the agent workflow; the hosted
+  // dashboard covers it on /articles.
+  await redirectIfHosted("/articles");
   await requireOnboarded();
 
   const project = await getActiveProject();

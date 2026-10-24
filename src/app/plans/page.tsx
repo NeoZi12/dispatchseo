@@ -13,6 +13,7 @@ import {
   polarConfigured,
   priceLabel,
   TIER_LIMITS,
+  articlesPerWeekFor,
   type BillingInterval,
   type Tier,
 } from "@/lib/billing";
@@ -51,10 +52,12 @@ const TIER_COPY: Record<
 };
 
 // Truthful to what the SEO autopilot actually does - no invented numbers.
+// Since 2026-10-23 cloud sites are written and published by our server (the
+// hosted writer), so there is no PR for the owner to merge any more.
 const CAPABILITIES = [
-  "Autonomous keyword research",
+  "Keyword research done for you, every week",
   "Daily rank + Search Console tracking",
-  "One-tap PR merge for content",
+  "Pauses itself if Google stops showing your site",
 ];
 
 function Check({ className }: { className?: string }) {
@@ -244,7 +247,11 @@ export default async function PlansPage({
                     public pricing section; the full table and the
                     spending-limit instruction live on the card shown when
                     someone adds their third site. */}
-                {tier !== "starter" ? (
+                {/* Off since 2026-10-23: cloud sites run on the hosted writer,
+                    which runs nothing in the owner's repo, so there are no
+                    GitHub Actions minutes to warn about. Kept (not deleted)
+                    for an agent-mode plan, should one come back. */}
+                {false ? (
                   <p className="mt-3 text-xs leading-relaxed text-neutral-400">
                     After your first two sites, GitHub charges about $5 per site a month - to
                     them, not to us.{" "}
@@ -276,6 +283,13 @@ export default async function PlansPage({
                       <span>
                         <span className="font-medium text-white tabular-nums">{limits.sites}</span>{" "}
                         site{limits.sites === 1 ? "" : "s"}
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2.5 text-neutral-300">
+                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-violet-400" />
+                      <span>
+                        <span className="font-medium text-white tabular-nums">{articlesPerWeekFor(tier)}</span>{" "}
+                        article{articlesPerWeekFor(tier) === 1 ? "" : "s"} a week, written and published for you
                       </span>
                     </li>
                     {CAPABILITIES.map((cap) => (

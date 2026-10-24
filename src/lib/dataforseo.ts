@@ -706,3 +706,64 @@ export async function backlinksSummary(
     cost: json.cost,
   };
 }
+
+// --- Writer research SERP ----------------------------------------------------
+//
+// One advanced live call that the hosted writer (src/lib/writer/) turns into
+// its research inputs: the organic top 10 to read, the People-Also-Ask
+// questions (real user questions, the only honest source for a FAQ), and the
+// related searches (the long tail the article should cover). The regular
+// endpoint used by rank tracking returns organic rows only; the advanced one
+// carries the SERP features at a slightly higher price, and the writer makes
+// exactly one such call per article.
+export type SerpResearch = {
+  organic: OrganicResult[];
+  peopleAlsoAsk: string[];
+  relatedSearches: string[];
+  cost: number;
+};
+
+type AdvancedItem = SerpItem & {
+  items?: Array<{
+    type?: string;
+    title?: string;
+    seed_question?: string;
+    references?: Array<{ domain?: string; url?: string; title?: string; source?: string }>;
+  }>;
+};
+
+export async function serpResearch(
+  keyword: string,
+  creds: DataforseoCreds,
+  locationCode: number = LOCATION_CODE,
+  languageCode: string = LANGUAGE_CODE,
+): Promise<SerpResearch> {
+  const json = await post<{
+    cost: number;
+    tasks: Array<{ result?: Array<{ items?: AdvancedItem[] }> }>;
+  }>("/serp/google/organic/live/advanced", [
+    { keyword, location_code: locationCode, language_code: languageCode, depth: 10 },
+  ], creds);
+  const items = json.tasks?.[0]?.result?.[0]?.items ?? [];
+  const peopleAlsoAsk: string[] = [];
+  const relatedSearches: string[] = [];
+  for (const it of items) {
+    if (it.type === "people_also_ask") {
+      for (const sub of it.items ?? []) {
+        const q = (sub.title ?? sub.seed_question ?? "").trim();
+        if (q) peopleAlsoAsk.push(q);
+      }
+    } else if (it.type === "related_searches") {
+      for (const sub of it.items ?? []) {
+        const q = (sub.title ?? "").trim();
+        if (q) relatedSearches.push(q);
+      }
+    }
+  }
+  return {
+    organic: mapOrganicItems(items),
+    peopleAlsoAsk: [...new Set(peopleAlsoAsk)].slice(0, 8),
+    relatedSearches: [...new Set(relatedSearches)].slice(0, 10),
+    cost: json.cost,
+  };
+}

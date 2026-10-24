@@ -430,3 +430,29 @@ export async function getFreshSnapshots(site: string, days = 3, scArg?: GscClien
   const dates = (await datesWithData(sc, site, 7, "ALL")).slice(-days);
   return Promise.all(dates.map((d) => snapshotDay(sc, site, d, "ALL")));
 }
+
+// Impressions for pages whose URL contains `pathContains`, from `startDate`
+// to today, straight from the Search Analytics API. The stored daily
+// snapshots keep only the top 100 pages, so "this page had no impressions"
+// can only be PROVEN with a page-filtered query - which is what the
+// autopilot's zero-impression pause asks before it stops a site. Matching on
+// the path makes http/https and www/apex variants of one page count as one.
+export async function gscPageImpressions(
+  site: string,
+  pathContains: string,
+  startDate: string,
+  scArg?: GscClient,
+): Promise<number> {
+  const sc = scArg ?? (await searchConsole());
+  const res = await sc.searchanalytics.query({
+    siteUrl: site,
+    requestBody: {
+      startDate,
+      endDate: ymd(new Date()),
+      dimensions: ["page"],
+      dimensionFilterGroups: [{ filters: [{ dimension: "page", operator: "contains", expression: pathContains }] }],
+      rowLimit: 50,
+    },
+  });
+  return (res.data.rows ?? []).reduce((sum, r) => sum + (r.impressions ?? 0), 0);
+}

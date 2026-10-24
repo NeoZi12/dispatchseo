@@ -10,7 +10,17 @@ import { disconnectRepo, type DisconnectRepoState } from "@/app/actions";
 // Named BEFORE the click, not after: "your repo" is vague enough to be scary
 // while telling you nothing, owner/name is something you can check against the
 // tab you already have open.
-export function DisconnectRepoForm({ slug, repo }: { slug: string; repo: string }) {
+export function DisconnectRepoForm({
+  slug,
+  repo,
+  // A hosted-writer site never had the agent pipeline installed, so the
+  // workflow/secret inventory below would describe things it doesn't have.
+  hosted = false,
+}: {
+  slug: string;
+  repo: string;
+  hosted?: boolean;
+}) {
   const [typed, setTyped] = useState("");
   const [state, formAction, pending] = useActionState<DisconnectRepoState, FormData>(
     disconnectRepo,
@@ -33,6 +43,13 @@ export function DisconnectRepoForm({ slug, repo }: { slug: string; repo: string 
           {state.error}
         </p>
       ) : null}
+      {hosted ? (
+        <p className="text-sm leading-relaxed text-neutral-400">
+          Disconnecting stops DispatchSEO from opening pull requests in{" "}
+          <span className="font-medium text-neutral-200">{repo}</span>. Articles already published stay
+          where they are. You can reconnect later.
+        </p>
+      ) : (
       <p className="text-sm leading-relaxed text-neutral-400">
         Disconnecting turns off and deletes the seo-* workflows in{" "}
         <span className="font-medium text-neutral-200">{repo}</span>, removes the .dispatchseo
@@ -40,6 +57,7 @@ export function DisconnectRepoForm({ slug, repo }: { slug: string; repo: string 
         GitHub Actions minutes. Your published guides, tools and pages stay exactly where they
         are, and so does everything on this dashboard. You can reconnect later.
       </p>
+      )}
       <input type="hidden" name="slug" value={slug} />
       <label className="block text-sm text-neutral-400">
         Type <span className="font-mono text-neutral-200">{repo}</span> to confirm

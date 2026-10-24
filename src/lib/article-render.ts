@@ -921,6 +921,8 @@ export type SchemaInput = {
   /** Default "Person". Pass "Organization" when the byline is the business
    *  itself rather than a named writer. */
   authorType?: "Person" | "Organization";
+  /** The author's own page (a Person byline's about page). Optional. */
+  authorUrl?: string;
   siteName: string;
   siteUrl: string;
   imageUrl?: string;
@@ -953,7 +955,11 @@ export function buildSchema(article: SchemaInput, opts: BuildSchemaOpts = {}): R
     description: article.description,
     datePublished: article.datePublished,
     dateModified: article.dateModified,
-    author: { "@type": article.authorType ?? "Person", name: article.authorName },
+    author: {
+      "@type": article.authorType ?? "Person",
+      name: article.authorName,
+      ...(article.authorUrl ? { url: article.authorUrl } : {}),
+    },
     publisher,
     mainEntityOfPage: { "@type": "WebPage", "@id": article.url },
   };
@@ -1065,6 +1071,7 @@ export type FinishArticleInput = {
   modifiedAt?: string;
   authorName?: string;
   authorType?: "Person" | "Organization";
+  authorUrl?: string;
   logoUrl?: string;
   coverImageUrl?: string;
   /** Default 5 - see addInternalLinks(). */
@@ -1128,6 +1135,7 @@ export function finishArticle(input: FinishArticleInput): FinishedArticle {
       dateModified: modifiedAt,
       authorName: input.authorName ?? input.siteName,
       authorType: input.authorType,
+      authorUrl: input.authorUrl,
       siteName: input.siteName,
       siteUrl: input.siteUrl,
       imageUrl: input.coverImageUrl,

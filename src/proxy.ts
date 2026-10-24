@@ -108,6 +108,15 @@ async function persistRotatedSession(req: NextRequest): Promise<NextResponse | n
 }
 
 export async function proxy(req: NextRequest) {
+  // The hosted blog is reached through a customer's forwarding rule, which
+  // may carry a trailing slash (/blog/ -> /hosted/<key>/blog/). Next's own
+  // trailing-slash redirect would answer with a Location the customer's
+  // domain cannot use, so the slash is dropped here, invisibly.
+  if (req.nextUrl.pathname.startsWith("/hosted/") && req.nextUrl.pathname.length > 8 && req.nextUrl.pathname.endsWith("/")) {
+    const url = req.nextUrl.clone();
+    url.pathname = url.pathname.replace(/\/+$/, "");
+    return NextResponse.rewrite(url);
+  }
   const { pathname } = req.nextUrl;
   // Deliberately removed posts answer 410 before anything else runs: the
   // route no longer exists, so without this they would 404 (a "maybe it is
@@ -145,6 +154,9 @@ export async function proxy(req: NextRequest) {
     pathname === "/setup" ||
     pathname === "/blog" ||
     pathname.startsWith("/blog/") ||
+    // The hosted blog: customers' sites forward their /blog here, so every
+    // visitor is anonymous and the pages must never bounce to /login.
+    pathname.startsWith("/hosted/") ||
     // Public docs (src/app/docs) - install instructions have to be readable
     // before anyone has an install to log into.
     pathname === "/docs" ||

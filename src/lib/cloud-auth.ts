@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
+import { isCloudMode } from "@/lib/cloud";
 
 // Supabase Auth for CLOUD_MODE deployments - real multi-user accounts, unlike
 // the single-password gate in dashboard-auth.ts. Uses the anon key + the
@@ -12,8 +13,13 @@ function anonKey(): string | null {
   return process.env.SUPABASE_ANON_KEY ?? null;
 }
 
+// Only a CLOUD_MODE deployment has cloud users. A self-host run (local
+// CLOUD_MODE=false against the same .env.local) still has the keys, and
+// building an auth client there with a stale sb-* cookie in the jar makes
+// auth-js log "Invalid Refresh Token" on every request - noise the proxy
+// never clears, because its cookie sweep is also cloud-only.
 export function cloudAuthConfigured(): boolean {
-  return Boolean(process.env.SUPABASE_URL && anonKey());
+  return isCloudMode() && Boolean(process.env.SUPABASE_URL && anonKey());
 }
 
 // A request-scoped Supabase client bound to the caller's auth cookies.

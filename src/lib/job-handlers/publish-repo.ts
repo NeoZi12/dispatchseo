@@ -2,7 +2,8 @@ import { db } from "@/lib/db";
 import { enqueue } from "@/lib/jobs";
 import { publishDraftToRepo, type RepoDraft } from "@/lib/repo-publish";
 import { markBlockedSetup } from "./draft-status";
-import { effectiveAutomations, type Project } from "@/lib/projects";
+import { dryDraftBlocked, parkDryDraft } from "./dry-guard";
+import { effectiveAutomations, writerMode, type Project } from "@/lib/projects";
 import { isCloudMode } from "@/lib/cloud";
 
 // The repo half of the publish job: the article becomes a commit and a pull
@@ -42,26 +43,48 @@ export async function runRepoPublish(project: Project, draftId: string): Promise
   const { data } = await db()
     .from("article_drafts")
     .select(
-      "id, title, slug, meta_description, primary_keyword, markdown, faq, cover_url, pr_url, pr_number, repo_path, status",
+      "id, title, slug, meta_description, primary_keyword, markdown, faq, cover_url, pr_url, pr_number, repo_path, status, validation",
     )
     .eq("id", draftId)
     .eq("project_id", project.id)
     .maybeSingle();
   if (!data) throw new Error("that article no longer exists");
-  const row = data as RepoDraft & { status: string };
+  const row = data as RepoDraft & { status: string; validation: unknown };
 
   // ALLOWLIST, not a blocklist, for the same reason the WordPress handler has
   // one: "accepted" is the scheduled case, "finished" a retry, "blocked_setup"
   // a parked draft being released. A discarded draft with a pending job must
   // never turn into a pull request in someone's repo.
   if (!["accepted", "finished", "blocked_setup"].includes(row.status)) return;
+  if (dryDraftBlocked(row.validation)) return parkDryDraft(row.id, row.validation);
 
   const result = await publishDraftToRepo(project, row);
 
   if (!result.ok) {
-    if (result.reason === "no-content-dir") {
+    if (result.reason === "no-content-dir" && writerMode(project) !== "hosted") {
+      // An agent-mode project (self-host OR an existing cloud customer whose
+      // own agent drives the repo) keeps the old answer: park the draft and
+      // let the Drafts screen ask for the folder. Only a hosted-writer project
+      // is ever switched to our blog on its behalf - flipping a customer's
+      // publish route and opening a PR in their repo is not something a
+      // folder-detection miss should be able to do.
       await markBlockedSetup(draftId);
       return;
+    }
+    if (result.reason === "no-content-dir") {
+      // No blog in this repo. The old answer was to park the draft and ask
+      // the owner for a folder; the new one is to become their blog: switch
+      // the project to the hosted route, open the one-line rewrite pull
+      // request (best effort - the pages exist on our side either way), and
+      // publish this article there now.
+      const { switchToHostedBlog } = await import("@/lib/hosted-rewrite");
+      const switched = await switchToHostedBlog(project);
+      if (!switched) {
+        await markBlockedSetup(draftId);
+        return;
+      }
+      const { runHostedPublish } = await import("./publish-hosted");
+      return runHostedPublish(switched, draftId);
     }
     if (result.reason === "no-token") {
       // Cloud: publishRoute only lets a project reach here with an App

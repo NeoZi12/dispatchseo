@@ -7,8 +7,9 @@ import { CANCELLATION_REASONS, REASON_LABELS } from "@/lib/cancellation-reasons"
 import { PixelDispatcher } from "@/components/pixel-dispatcher";
 import { SelectWrap } from "@/components/ui";
 
-// The cancel button, on the billing page, where someone looking for it will
-// actually look - plus the one screen that asks why.
+// The cancel button, at the top of the billing page next to "Change plan",
+// where someone looking for it will actually look - plus the one screen
+// that asks why.
 //
 // Until this existed the only way out was a grey text link to the provider's
 // hosted portal, on someone else's domain, while the landing page promised
@@ -36,14 +37,15 @@ function formatDate(iso: string | null): string | null {
   return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 }
 
-export function CancelPlan({
-  pending,
+/** "Cancel plan", for the plan card at the top of Billing: a button that
+ *  opens the one-screen dialog below. A cancellation that goes through
+ *  re-renders the page into the "cancelled, runs until" state, and the
+ *  dialog closes itself. */
+export function CancelPlanButton({
   endsAt,
   tierName,
   siteCount,
 }: {
-  /** True when a cancellation is already scheduled - flips this into the undo. */
-  pending: boolean;
   /** ISO date the plan runs out. Null when the provider hasn't told us one. */
   endsAt: string | null;
   tierName: string;
@@ -52,86 +54,23 @@ export function CancelPlan({
   const [open, setOpen] = useState(false);
   const [state, formAction, busy] = useActionState<CancelPlanState, FormData>(cancelPlan, null);
   const endLabel = formatDate(endsAt);
+  const errorBlock = <ErrorBlock state={state} />;
 
-  const error = state && "error" in state ? state : null;
-  const errorBlock = error ? (
-    <p
-      role="alert"
-      className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm leading-relaxed text-red-300"
-    >
-      {error.error}{" "}
-      {error.portal ? (
-        <a href="/api/polar/portal" className="font-medium underline underline-offset-2">
-          Open the billing portal
-        </a>
-      ) : null}
-    </p>
-  ) : null;
-
-  // A cancellation that went through closes the dialog on its own - the page
-  // behind it has already re-rendered into the "your plan ends on X" panel, so
-  // leaving the form up would show someone a cancel button for a plan they
-  // just cancelled. An ERROR deliberately keeps it open, with the message.
+  // A cancellation that went through closes the dialog on its own; an ERROR
+  // deliberately keeps it open, with the message.
   useEffect(() => {
     if (state && "done" in state) setOpen(false);
   }, [state]);
 
-  // Already cancelled: say so plainly, with the date and the way back.
-  if (pending) {
-    return (
-      <div className="space-y-3 rounded-xl border border-amber-900 bg-amber-950/30 p-5">
-        {/* The word ACTIVE, in the affirmative, before anything else. Someone
-            who just cancelled is the person most likely to wonder whether they
-            still have what they paid for - leading with "your plan ends" answers
-            the wrong question first and reads like access is already gone. */}
-        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-300">
-            <span className="size-1.5 rounded-full bg-emerald-400" aria-hidden="true" />
-            Active
-          </span>
-          <h3 className="font-semibold text-amber-200">
-            {endLabel ? `until ${endLabel}` : "until the end of this period"}
-          </h3>
-        </div>
-        <p className="text-sm leading-relaxed text-amber-100/70">
-          Your plan is cancelled, but nothing changes before then -{" "}
-          {siteCount === 1 ? "your site keeps" : "your sites keep"} running on {tierName} until the
-          last day, and you won&apos;t be charged again. After that the automation stops and your
-          data stays put, so picking a plan back up puts everything where you left it.
-        </p>
-        {errorBlock}
-        <form action={formAction}>
-          <input type="hidden" name="intent" value="resume" />
-          <button
-            type="submit"
-            disabled={busy}
-            className="cursor-pointer rounded-lg bg-white px-4 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-neutral-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {busy ? "Restarting..." : "Keep my plan"}
-          </button>
-        </form>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-900 p-5">
-      {!open ? errorBlock : null}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h3 className="font-semibold text-white">Cancel your plan</h3>
-          <p className="mt-1 text-sm text-neutral-400">
-            Keeps working until the end of the period you&apos;ve paid for. No email required.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="shrink-0 cursor-pointer rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-200 transition-colors hover:border-neutral-500 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-400"
-        >
-          Cancel subscription
-        </button>
-      </div>
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-line px-4 text-sm font-medium text-ink-muted transition-colors hover:border-danger/40 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+      >
+        Cancel plan
+      </button>
       {open ? (
         <CancelDialog
           onClose={() => setOpen(false)}
@@ -143,7 +82,41 @@ export function CancelPlan({
           siteCount={siteCount}
         />
       ) : null}
+    </>
+  );
+}
+
+/** "Keep my plan": the undo for a cancellation that hasn't run out yet. */
+export function KeepPlanButton() {
+  const [state, formAction, busy] = useActionState<CancelPlanState, FormData>(cancelPlan, null);
+  return (
+    <div className="space-y-2">
+      <form action={formAction}>
+        <input type="hidden" name="intent" value="resume" />
+        <button
+          type="submit"
+          disabled={busy}
+          className="inline-flex h-9 cursor-pointer items-center justify-center rounded-lg bg-ink px-4 text-sm font-medium text-canvas transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {busy ? "Restarting..." : "Keep my plan"}
+        </button>
+      </form>
+      <ErrorBlock state={state} />
     </div>
+  );
+}
+
+function ErrorBlock({ state }: { state: CancelPlanState }) {
+  if (!state || !("error" in state)) return null;
+  return (
+    <p role="alert" className="rounded-lg border border-danger/30 bg-danger-soft px-3 py-2 text-sm leading-relaxed text-danger">
+      {state.error}{" "}
+      {state.portal ? (
+        <a href="/api/polar/portal" className="font-medium underline underline-offset-2">
+          Open the billing portal
+        </a>
+      ) : null}
+    </p>
   );
 }
 
@@ -203,7 +176,7 @@ function CancelDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="cancel-plan-title"
-        className="relative w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-6 shadow-2xl shadow-black/60 focus:outline-none"
+        className="relative w-full max-w-md rounded-2xl border border-line bg-surface p-6 shadow-2xl shadow-black/60 focus:outline-none"
       >
         <button
           type="button"
@@ -220,24 +193,13 @@ function CancelDialog({
             five seconds of whimsy in front of a thing they came to do. */}
         <PixelDispatcher working className="mx-auto mb-5 w-[min(220px,55vw)]" />
 
-        <h2 id="cancel-plan-title" className="text-lg font-semibold text-white">
-          Before you go
+        <h2 id="cancel-plan-title" className="text-lg font-semibold text-ink">
+          Cancel your {tierName} plan?
         </h2>
-        <p className="mt-1.5 text-sm leading-relaxed text-neutral-400">
-          {tierName} stays on{endLabel ? ` until ${endLabel}` : " until the end of this period"} -
-          you keep what you&apos;ve paid for and you won&apos;t be charged again.
-          {siteCount > 0 ? (
-            <>
-              {" "}
-              After that, tracking and building stop for{" "}
-              {siteCount === 1 ? "your site" : `your ${siteCount} sites`}. Nothing is deleted, and
-              your published content and repos are untouched.
-            </>
-          ) : (
-            // Subscribed but never added a site - there is nothing to stop, and
-            // saying "your 0 sites stop" would be nonsense.
-            <> Nothing is deleted, and you can pick a plan back up any time.</>
-          )}
+        {/* The consequence, in one sentence. */}
+        <p className="mt-1.5 text-sm leading-relaxed text-ink-muted">
+          It keeps running {endLabel ? `until ${endLabel}` : "to the end of this period"} and you won&apos;t be charged again; after that new articles stop
+          {siteCount > 1 ? ` on your ${siteCount} sites` : ""}, and nothing is deleted.
         </p>
 
         <form
@@ -250,7 +212,7 @@ function CancelDialog({
         >
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-neutral-300">
-              What made you cancel?{" "}
+              Why are you leaving?{" "}
               <span className="font-normal text-neutral-500">Optional</span>
             </span>
             <SelectWrap className="w-full">
@@ -271,12 +233,12 @@ function CancelDialog({
 
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-neutral-300">
-              Anything you&apos;d want fixed?{" "}
+              Anything we should fix?{" "}
               <span className="font-normal text-neutral-500">Optional</span>
             </span>
             <textarea
               name="comment"
-              rows={3}
+              rows={2}
               maxLength={1000}
               placeholder="Goes straight to the person who builds this. Skip it if you'd rather."
               className="w-full resize-y rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-violet-500/50 focus:outline-none"
@@ -292,7 +254,7 @@ function CancelDialog({
               disabled={busy}
               className="cursor-pointer rounded-lg px-3 py-2 text-sm text-neutral-400 transition-colors hover:text-neutral-200 disabled:opacity-50"
             >
-              Never mind
+              Keep my plan
             </button>
             {/* Never disabled on "no feedback given" - an empty form is a
                 complete answer here. Only the in-flight submit disables it. */}
@@ -301,7 +263,7 @@ function CancelDialog({
               disabled={busy}
               className="cursor-pointer rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-red-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-400 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {busy ? "Cancelling..." : "Cancel my plan"}
+              {busy ? "Cancelling..." : "Cancel plan"}
             </button>
           </div>
         </form>

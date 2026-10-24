@@ -73,6 +73,44 @@ export type ChangelogEntry = {
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
+    kind: "new",
+    text:
+      "New cloud sites run on autopilot. DispatchSEO picks the keywords your site can win, " +
+      "writes the articles and publishes them on your plan's schedule - one a week on Starter, " +
+      "two on Growth, three on Scale - with no AI of your own to connect. You set the brand, " +
+      "tone, topics to avoid and the byline; everything else runs by itself.",
+  },
+  {
+    kind: "new",
+    text:
+      "The autopilot pauses itself if Google stops showing your site - a sudden collapse in " +
+      "Search Console impressions, or three articles in a row that get indexed and then shown to " +
+      "nobody - and tells you why. It only starts again when you press Resume.",
+  },
+  {
+    kind: "new",
+    text:
+      "Articles can carry a real author. Add a name, a short bio and a page on your site, and " +
+      "articles name that person as the author, with a byline on the hosted blog.",
+  },
+  {
+    kind: "new",
+    text:
+      "Sites with no blog get one. When your repo has nowhere to put articles, DispatchSEO now " +
+      "serves your blog itself at yoursite.com/blog - your domain, your site name, a link back " +
+      "to your site under every article - and opens a one-line pull request that forwards /blog " +
+      "to it. Set the button under each article on Settings or with set_hosted_blog.",
+  },
+  {
+    kind: "new",
+    text:
+      "DispatchSEO now writes articles itself. The hosted writer reads the top-ranking pages " +
+      "for a keyword, writes from that research only, checks every figure against a quoted " +
+      "source, has a second model review it, and hands the result to the usual publish flow - " +
+      "no coding agent or chat AI on your side. Start one with the write_article MCP tool and " +
+      "follow it with get_writer_runs.",
+  },
+  {
     kind: "improved",
     text:
       "Rank tracking and keyword research spend a lot less DataForSEO credit for the same " +
@@ -221,6 +259,13 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
     text:
       "Home no longer describes a Claude-app site as \"Claude Code - setting up\"; the briefing " +
       "chip says whether your Claude has connected.",
+  },
+  {
+    kind: "improved",
+    text:
+      "The autopilot dashboard moves now: the dispatcher reports in on Home, each article being " +
+      "written shows the step it is on, and numbers, checklists and the traffic chart animate in. " +
+      "Everything respects your reduced-motion setting.",
   },
 ];
 

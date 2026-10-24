@@ -20,11 +20,15 @@ export function DeleteProjectForm({
   // find Billing from - so say it here, before the click, rather than leaving
   // someone to discover it on the next invoice.
   lastSiteWhileSubscribed = false,
+  // A hosted-writer site: plain wording for the repo note, and no "moving to
+  // another install" escape hatch (that is an agent-pipeline concept).
+  hosted = false,
 }: {
   slug: string;
   domain: string;
   repo?: string | null;
   lastSiteWhileSubscribed?: boolean;
+  hosted?: boolean;
 }) {
   const [typed, setTyped] = useState("");
   const [state, formAction, pending] = useActionState<DeleteProjectState, FormData>(
@@ -51,7 +55,13 @@ export function DeleteProjectForm({
           if that is what you are here to do.
         </p>
       ) : null}
-      {repo ? (
+      {repo && hosted ? (
+        <p className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-sm leading-relaxed text-neutral-400">
+          This also disconnects DispatchSEO from{" "}
+          <span className="font-mono text-xs text-neutral-200">{repo}</span>.{" "}
+          <b className="font-medium text-neutral-300">Articles already merged into your repo stay.</b>
+        </p>
+      ) : repo ? (
         <div className="space-y-2 rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-sm">
           <p className="leading-relaxed text-neutral-400">
             This also removes DispatchSEO from{" "}

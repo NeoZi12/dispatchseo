@@ -70,6 +70,9 @@ export type ValidationContext = {
   existingTitles?: string[];
   existingSlugs?: string[];
   siteName?: string;
+  /** ISO code of the article's language. Only matters for scripts written
+   *  without spaces (th, ja, zh), where words must be segmented. */
+  lang?: string;
 };
 
 export type CheckSeverity = "blocking" | "advisory";
@@ -131,9 +134,25 @@ export type HeadingNode = {
 /** See the ceiling check at the top of validateArticle for why this exists. */
 const MAX_MARKDOWN_CHARS = 200_000;
 
-const WORD_RE = /[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+)*/g;
+// Any script's letters and digits are words - Hebrew, Thai, Japanese and
+// Arabic articles were counting as zero words under the old [A-Za-z0-9]
+// pattern and failing every length check. Scripts written without spaces
+// are segmented with Intl when the caller names the language.
+const WORD_RE = /[\p{L}\p{M}\p{N}]+(?:['’-][\p{L}\p{M}\p{N}]+)*/gu;
+const SPACELESS_LANGS = new Set(["th", "ja", "zh", "km", "lo", "my"]);
+let segmenterLang: string | null = null;
 
 function wordsOf(text: string): string[] {
+  if (segmenterLang && typeof Intl !== "undefined" && "Segmenter" in Intl) {
+    try {
+      const seg = new Intl.Segmenter(segmenterLang, { granularity: "word" });
+      const out: string[] = [];
+      for (const s of seg.segment(text)) if (s.isWordLike) out.push(s.segment);
+      return out;
+    } catch {
+      // fall through to the regex
+    }
+  }
   return text.match(WORD_RE) ?? [];
 }
 
@@ -523,7 +542,10 @@ function hasTable(markdown: string): boolean {
   }
   return false;
 }
-const SLUG_SHAPE_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+// Lower-case letters and digits of any script: a Hebrew or Thai site's slugs
+// are in its own script (WordPress and Next.js both serve them), and an
+// ASCII-only shape made every such article fail the gate.
+const SLUG_SHAPE_RE = /^[\p{Ll}\p{Lo}\p{M}\p{N}]+(?:-[\p{Ll}\p{Lo}\p{M}\p{N}]+)*$/u;
 
 // --- Score ------------------------------------------------------------------
 
@@ -555,6 +577,16 @@ export function validateArticle(
   submission: ArticleSubmission,
   context: ValidationContext = {},
 ): ValidationReport {
+  const langBase = (context.lang ?? "").toLowerCase().split(/[-_]/)[0];
+  segmenterLang = SPACELESS_LANGS.has(langBase) ? langBase : null;
+  try {
+    return validateArticleInner(submission, context);
+  } finally {
+    segmenterLang = null; // never leak one article's language into the next word count
+  }
+}
+
+function validateArticleInner(submission: ArticleSubmission, context: ValidationContext): ValidationReport {
   // Computed once, reused by every check below - this is also what
   // guarantees the different checks can never disagree about the same fact
   // (e.g. the word-count check and the section-substance check both derive

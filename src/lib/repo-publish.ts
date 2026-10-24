@@ -35,6 +35,15 @@ const GH = "https://api.github.com";
 /** Mirrors pipeline-install.ts's helper: same headers, same 20s bound. A hung
  *  GitHub socket must not sit inside the jobs cron's budget until the platform
  *  kills the whole batch. */
+export async function githubApi(
+  token: string,
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<{ status: number; json: Record<string, unknown> | null }> {
+  return gh(token, method, path, body);
+}
+
 async function gh(
   token: string,
   method: string,

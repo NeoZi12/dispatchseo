@@ -1,4 +1,5 @@
 import { requireDashboard } from "@/lib/auth-gate";
+import { redirectIfHosted } from "../mode";
 import { requireOnboarded } from "@/lib/onboarding-gate";
 import { getActiveProject } from "@/lib/active-project";
 import { mcpServerName } from "@/lib/mcp-connect";
@@ -211,6 +212,9 @@ function SecondaryStrip() {
 
 export default async function InstructionsPage() {
   await requireDashboard();
+  // Hosted writer: this screen belongs to the agent workflow; the hosted
+  // dashboard covers it on /dashboard.
+  await redirectIfHosted("/dashboard");
   await requireOnboarded();
 
   const project = await getActiveProject();

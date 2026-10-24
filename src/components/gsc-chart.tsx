@@ -11,6 +11,7 @@
 import { useId, useState } from "react";
 import type { GscRow } from "@/lib/metrics";
 import { RangeSelector } from "./range-selector";
+import { CountUp } from "./ui/count-up";
 
 // Same windows as the glance tiles, minus 24 hours: GSC rows are daily, so a
 // 24-hour "line" would be a single point - the glance tiles already cover the
@@ -123,7 +124,7 @@ export function GscChart({ rows: allRows }: { rows: GscRow[] }) {
             visitors (clicks)
           </p>
           <p className="mt-1 text-4xl font-semibold tabular-nums tracking-tight text-neutral-100">
-            {totalClicks.toLocaleString("en-US")}
+            <CountUp value={totalClicks} />
           </p>
         </div>
         <div>
@@ -132,7 +133,7 @@ export function GscChart({ rows: allRows }: { rows: GscRow[] }) {
             impressions
           </p>
           <p className="mt-1 text-4xl font-semibold tabular-nums tracking-tight text-neutral-100">
-            {totalImprs.toLocaleString("en-US")}
+            <CountUp value={totalImprs} />
           </p>
         </div>
       </div>

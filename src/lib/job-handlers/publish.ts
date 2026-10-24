@@ -6,6 +6,7 @@ import { createPost, publishPost, updatePostContent, uploadMedia } from "@/lib/w
 import { buildSchema, schemaScript } from "@/lib/article-render";
 import { backendBaseUrl } from "@/lib/pipeline-pack";
 import { enqueue } from "@/lib/jobs";
+import { dryDraftBlocked, parkDryDraft } from "./dry-guard";
 import type { Job } from "@/lib/jobs";
 
 // Puts a finished article on the customer's site.
@@ -39,6 +40,10 @@ export async function runPublishJob(job: Job): Promise<void> {
   if (route === "repo") {
     const { runRepoPublish } = await import("./publish-repo");
     return runRepoPublish(project, draftId);
+  }
+  if (route === "hosted") {
+    const { runHostedPublish } = await import("./publish-hosted");
+    return runHostedPublish(project, draftId);
   }
 
   // Setup states park the draft and complete the job; regressions throw.
@@ -80,6 +85,7 @@ export async function runPublishJob(job: Job): Promise<void> {
     wp_post_id: number | null;
     status: string;
     faq: { question: string; answer: string }[] | null;
+    validation: unknown;
   };
 
   // ALLOWLIST, not a blocklist: "accepted" is the scheduled case, "finished"
@@ -89,6 +95,7 @@ export async function runPublishJob(job: Job): Promise<void> {
   // matters - is a quiet no-op, never a publish. Discard does not cancel
   // queued jobs; this line is what makes that safe.
   if (!["accepted", "finished", "blocked_setup"].includes(row.status)) return;
+  if (dryDraftBlocked(row.validation)) return parkDryDraft(row.id, row.validation);
   if (!row.rendered_html) throw new Error("this article has not been finished yet");
 
   // Resume rather than restart. A retry after a failed flip must not create a

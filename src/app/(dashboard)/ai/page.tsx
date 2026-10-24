@@ -1,4 +1,5 @@
 import { requireDashboard } from "@/lib/auth-gate";
+import { redirectIfHosted } from "../mode";
 // The full AI visibility (GEO) detail view - Home's compact card, uncapped.
 // Same data source as the Home teaser and the get_ai_visibility MCP tool
 // (parity rule): getAiVisibility(project.id, project.domain) is the single
@@ -64,6 +65,9 @@ function AnswerLog({ answers }: { answers: AiVisibility["recent_answers"] }) {
 
 export default async function AiVisibilityPage() {
   await requireDashboard();
+  // Hosted writer: this screen belongs to the agent workflow; the hosted
+  // dashboard covers it on /results.
+  await redirectIfHosted("/results");
   await requireOnboarded();
 
   const project = await getActiveProject();

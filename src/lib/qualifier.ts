@@ -56,6 +56,9 @@ const PLATFORM_SUPPORT: Record<string, Support> = {
 // --- What will drive it --------------------------------------------------
 
 const AI_SUPPORT: Record<AiChoice, Support> = {
+  // Our own writer: nothing on the owner's side to connect, so nothing here
+  // can refuse them - the site question is the whole qualifier on cloud.
+  hosted: "ready",
   "claude-code": "ready",
   codex: "ready",
   cursor: "ready",
@@ -101,7 +104,12 @@ export const UNPROBED: PlatformResult = {
 
 /** The owner's own words for the route their choice implies, used when the
  *  probe has nothing more specific to say. */
-function messageForKind(kind: SiteKind): string {
+function messageForKind(kind: SiteKind, ai: AiChoice | null = null): string {
+  if (ai === "hosted") {
+    return kind === "wordpress"
+      ? "WordPress it is - we write the articles and post them straight to your site with an application password, no plugin needed."
+      : "A code-built site it is - we write the articles and publish them through your GitHub repo, or serve your /blog for you if the site has none.";
+  }
   return kind === "wordpress"
     ? "WordPress it is - articles publish straight to your site with an application password, no repo or plugin needed."
     : "A code-built site it is - articles arrive as pull requests in your GitHub repo, and nothing ships until you merge.";
@@ -119,7 +127,7 @@ export function verdictFor(
   // (a WordPress version, a REST heads-up).
   const site =
     siteKind && platform.platform !== "wordpress" && probed.verdict !== "unsupported"
-      ? { ...probed, message: messageForKind(siteKind) }
+      ? { ...probed, message: messageForKind(siteKind, ai) }
       : siteKind && platform.platform === "wordpress" && siteKind === "code"
         ? {
             ...probed,

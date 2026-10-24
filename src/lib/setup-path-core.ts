@@ -24,15 +24,20 @@ export type StepId =
   | "reconnect_app"                               // App uninstalled after connect
   | "chat_setup" | "chat_research" | "agent_setup" | "agent_research"
   | "approve_idea" | "first_build" | "merge_first_pr" | "write_first"
+  | "first_article"                               // hosted writer: our server writes the first one
   | "publishing" | "complete";
 
-export type PublishTarget = "github" | "wordpress" | "manual";
+export type PublishTarget = "github" | "wordpress" | "hosted" | "manual";
 export type AiKind = "chat" | "coding";
 
 export type SetupProjectSnapshot = {
   slug: string; name: string; domain: string;
   publish_target: PublishTarget;
   ai_choice: string | null;                   // aiKindOf() decides chat vs coding
+  /** 'hosted' = the autopilot writes (migration 0066): no agent, no chat app,
+   *  no pipeline - a branch of its own. Optional so snapshots built before
+   *  0066 (and fixtures) read as the agent path they are. */
+  writer_mode?: "hosted" | "agent" | null;
   agent: string | null;
   github_installation_id: number | null; github_repo: string | null;
   /** The project may use the INSTANCE GitHub token (instanceTokenAllowedFor:
@@ -74,6 +79,9 @@ export type SetupCounts = {
    *  "published" [R3]. */
   drafts_accepted: number;
   drafts_blocked_setup: number; gsc_rows: number;
+  /** Hosted-writer runs parked as `held` (WRITER_HOLD_FIRST): the first
+   *  article waits for the owner's read. Optional: absent = none. */
+  writer_held?: number;
 };
 
 export type SetupHealth = {
@@ -212,8 +220,25 @@ export function aiKindOf(aiChoice: string | null | undefined): AiKind {
   return aiChoice === "claude-web" || aiChoice === "chatgpt" ? "chat" : "coding";
 }
 
+/** Is this the hosted-writer branch? writer_mode is the truth once the
+ *  project exists; before that (the `site` step's rail) the qualifier's
+ *  ai_choice 'hosted' says the same thing. */
+export function isHostedBranch(p: { writer_mode?: string | null; ai_choice?: string | null } | null | undefined): boolean {
+  return p?.writer_mode === "hosted" || (p?.writer_mode == null && p?.ai_choice === "hosted");
+}
+
+/** Hosted writer: only what publishing and measuring need. No agent, no chat
+ *  app, no key to paste - the server does the writing. A target of hosted or
+ *  manual has nothing to connect at all (we serve /blog ourselves). */
+export function hostedConnectSteps(publish: PublishTarget): StepId[] {
+  if (publish === "github") return ["site", "github_app", "github_repo", "google_connect", "gsc_property", "connected"];
+  if (publish === "wordpress") return ["site", "wordpress", "google_connect", "gsc_property", "connected"];
+  return ["site", "google_connect", "gsc_property", "connected"];
+}
+
 /** Ordered connect-phase ids for a branch. */
-export function connectSteps(publish: PublishTarget, kind: AiKind): StepId[] {
+export function connectSteps(publish: PublishTarget, kind: AiKind, hosted = false): StepId[] {
+  if (hosted) return hostedConnectSteps(publish);
   if (publish === "github") {
     return kind === "coding"
       ? ["site", "github_app", "github_repo", "agent_credential", "google_connect", "gsc_property", "connected"]
@@ -294,6 +319,7 @@ type Ctx = {
   kind: AiKind;
   ip: Record<string, string>;
   connected: boolean;   // setup_connected_at is stamped
+  hosted: boolean;      // the autopilot writes (isHostedBranch)
 };
 
 function repoDone(p: SetupProjectSnapshot): boolean {
@@ -343,7 +369,7 @@ function parkedSet(x: Ctx): Set<StepId> {
 /** Deferred ids that still apply to this branch and whose evidence is false,
  *  in connect order. */
 function unmetDeferred(x: Ctx): StepId[] {
-  const order = connectSteps(x.publish, x.kind);
+  const order = connectSteps(x.publish, x.kind, x.hosted);
   const parked = parkedSet(x);
   const unmet = order.filter((id) => DEFERRABLE.has(id) && parked.has(id) && !connectDone(id, x));
   // The property pick is part of "Search Console" while Google itself is
@@ -821,13 +847,58 @@ function conversationChain(x: Ctx): Draft | null {
   return null;
 }
 
+/** The hosted-writer chain: after connect there is nothing left for the
+ *  owner to do but wait for the first article (and read it, when the deploy
+ *  holds a site's first one). Research, the profile and the writing all run
+ *  on the server's own schedule (src/lib/autopilot). */
+function hostedChain(x: Ctx): Draft | null {
+  const { c, publish } = x;
+  if ((c.writer_held ?? 0) > 0 && !publishedDone(x)) {
+    return {
+      id: "first_article", kind: "do", phase: "first-article",
+      title: "Read your first article",
+      why: "It's written and checked. We hold a site's first one so you can read it before it goes live.",
+      instructions: [{ text: "Open Articles, read it, then press Publish." }],
+      primary: { kind: "link", label: "Open Articles", href: "/articles" },
+      evidence: "This turns green on its own the moment it's live.",
+      polls: true,
+    };
+  }
+  if (c.drafts === 0) {
+    return wait(
+      "first_article", "first-article",
+      "Writing your first article",
+      "We read your site, pick a keyword you can win, research page one and write the article. Nothing for you to do.",
+      "This turns green on its own the moment the article is written.",
+      { since: null, typical: "within a day", slowAfterMs: BUILD_SLOW_MS, slowHint: "Taking a while - open Articles", slowHref: "/articles" },
+    );
+  }
+  if (!publishedDone(x)) {
+    if (publish === "wordpress" && c.drafts_blocked_setup > 0 && !x.p.wp_connected) {
+      return connectStep("wordpress", x, "first-article");
+    }
+    return wait(
+      "publishing", "first-article",
+      "Publishing your first article",
+      publish === "manual"
+        ? "It's written and checked. It's ready to copy the moment it's formatted."
+        : "It's written and checked. We format it, add links and the cover, then publish it.",
+      "Nothing for you to do. This turns green on its own.",
+      { since: null, typical: "a few hours", slowAfterMs: PUBLISH_SLOW_MS, slowHint: "Taking a while - open Articles", slowHref: "/articles" },
+    );
+  }
+  return null;
+}
+
 function completeDraft(x: Ctx): Draft {
   return {
     id: "complete", kind: "done", phase: "complete",
     title: "Your first article is live.",
     why: "Setup is finished. From here it runs on its schedule.",
     instructions: x.publish === "manual"
-      ? [{ text: "Your articles are on the Drafts screen with a Copy button", href: "/drafts" }]
+      ? [x.hosted
+          ? { text: "Your articles are on the Articles screen, ready to copy", href: "/articles" }
+          : { text: "Your articles are on the Drafts screen with a Copy button", href: "/drafts" }]
       : [],
     primary: { kind: "none" },
     evidence: "",
@@ -889,18 +960,28 @@ export function computeSetupStep(s: SetupSnapshot): SetupStep {
   const p = s.project;
   if (!p) {
     const hint = s.branch_hint;
-    const order = connectSteps(hint?.publish_target ?? "github", aiKindOf(hint?.ai_choice));
+    const order = connectSteps(hint?.publish_target ?? "github", aiKindOf(hint?.ai_choice), isHostedBranch(hint));
     return finish(siteStepDraft(), null, railFor(order, "site"), null);
   }
 
-  const publish: PublishTarget = p.publish_target === "wordpress" || p.publish_target === "manual" ? p.publish_target : "github";
+  const hosted = isHostedBranch(p);
+  // The agent path reads a hosted target as github (it predates the hosted
+  // blog and its chains know only these three); the hosted writer keeps it,
+  // because "we serve your /blog" has nothing to connect.
+  const publish: PublishTarget =
+    p.publish_target === "wordpress" || p.publish_target === "manual"
+      ? p.publish_target
+      : hosted && p.publish_target === "hosted"
+        ? "hosted"
+        : "github";
   const kind = aiKindOf(p.ai_choice);
   const x: Ctx = {
     s, p, c: s.counts, h: s.health, publish, kind,
     ip: p.install_progress ?? {},
     connected: p.setup_connected_at != null,
+    hosted,
   };
-  const order = connectSteps(publish, kind);
+  const order = connectSteps(publish, kind, hosted);
 
   // ---- connect phase: only until setup_connected_at is stamped ----
   if (!x.connected) {
@@ -921,7 +1002,9 @@ export function computeSetupStep(s: SetupSnapshot): SetupStep {
         title: "You're connected.",
         why: "That's everything we need from you up front. The rest starts on its own.",
         instructions: [
-          { text: "Nothing goes live without you. Prefer hands-off? Flip Auto in the top bar." },
+          hosted
+            ? { text: "We pick the topics, write and publish on your plan's schedule. You can pause it any time from the dashboard." }
+            : { text: "Nothing goes live without you. Prefer hands-off? Flip Auto in the top bar." },
           ...(parkedNames.length ? [{ text: `Parked for later: ${parkedNames.join(", ")}` }] : []),
         ],
         primary: { kind: "link", label: "Open your dashboard", href: "/dashboard" },
@@ -955,7 +1038,9 @@ export function computeSetupStep(s: SetupSnapshot): SetupStep {
   }
 
   let current: Draft | null;
-  if (publish === "github" && kind === "coding") {
+  if (hosted) {
+    current = hostedChain(x);
+  } else if (publish === "github" && kind === "coding") {
     current = pipelineChain(x);
   } else if (publish === "github") {
     current = letUsPublish(x) ?? conversationChain(x);

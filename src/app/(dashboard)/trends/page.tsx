@@ -1,4 +1,5 @@
 import { requireDashboard } from "@/lib/auth-gate";
+import { redirectIfHosted } from "../mode";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireOnboarded } from "@/lib/onboarding-gate";
@@ -81,6 +82,9 @@ function topicEvidenceLines(evidence: TrendTopic["evidence"]) {
 
 export default async function TrendsPage() {
   await requireDashboard();
+  // Hosted writer: this screen belongs to the agent workflow; the hosted
+  // dashboard covers it on /dashboard.
+  await redirectIfHosted("/dashboard");
   await requireOnboarded();
 
   const project = await getActiveProject();

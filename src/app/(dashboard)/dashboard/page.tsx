@@ -85,6 +85,9 @@ import { getSetupStepCached } from "@/lib/setup-path";
 import { loadSetupCardProps } from "@/lib/setup-card-props";
 import { cleanFlagText, cleanGscFlag } from "@/lib/flag-text";
 import AiVisibilitySection from "./ai-visibility-section";
+import { HostedReport } from "./hosted-report";
+import { loadOverviewData } from "./overview-data";
+import { loadReport, writerMode } from "../mode";
 
 export const dynamic = "force-dynamic";
 
@@ -325,12 +328,27 @@ export default async function Home({
   // Setup-path callback flags: the GitHub App install callback lands on
   // /onboarding, which forwards these here once the connect phase is done
   // [R8]; the Google OAuth callback lands here directly (returnTo=dashboard).
-  searchParams: Promise<{ gh?: string; msg?: string; connected?: string; error?: string }>;
+  searchParams: Promise<{ gh?: string; msg?: string; connected?: string; error?: string; sort?: string }>;
 }) {
   await requireDashboard();
   await requireOnboarded();
 
   const project = await getActiveProject();
+  // Hosted writer: our server writes and publishes, so Home is the calm
+  // autopilot report and nothing below (agent briefing, pipeline cards, PR
+  // merges) applies. Agent projects fall through to the full Home unchanged.
+  if (writerMode(project) === "hosted") {
+    const flags = await searchParams;
+    return (
+      <HostedReport
+        project={project}
+        // The report and the overview's Google data load side by side.
+        {...await Promise.all([loadReport(project.id), loadOverviewData(project).catch(() => null)]).then(([report, overview]) => ({ report, overview }))}
+        now={Date.now()}
+        flags={{ msg: cleanFlagText(flags.msg), gsc: cleanGscFlag(flags.connected, flags.error), sort: flags.sort ?? null }}
+      />
+    );
+  }
   // Free-tier DIY: every DataForSEO call bills the project's own account.
   const dfsCreds = await credsForProject(project);
 

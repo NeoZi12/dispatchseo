@@ -46,7 +46,10 @@ export async function buildCloudResume(): Promise<CloudWizardResume | null> {
   // Which of the three setups this project is on. Everything below - the
   // default screen, which stale screens get corrected, whether a missing repo
   // is a problem at all - follows from these two.
-  const target = publishTarget(project);
+  // A hosted-blog project is a GitHub-connected project as far as the wizard
+  // is concerned: same repo step, same agent step; only where articles land differs.
+  const raw = publishTarget(project);
+  const target = raw === "hosted" ? "github" : raw;
   const kind = aiKind(project.ai_choice);
   const branchDefault = firstStepAfterCreate(target, kind);
   const saved =

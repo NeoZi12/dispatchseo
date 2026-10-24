@@ -51,7 +51,7 @@ export const STOCK_PHRASE_LEN = 5; // 5-word shingles
 export const STOCK_PHRASE_LIMIT = 3; // >3 shared across half the corpus
 export const CORPUS_SIZE = 8; // recent guides to compare against
 
-const WORD = /[a-z0-9']+/g;
+const WORD = /[\p{L}\p{M}\p{N}']+/gu;
 
 export function tokenize(text: string): string[] {
   return (text.toLowerCase().match(WORD) ?? []).filter(Boolean);

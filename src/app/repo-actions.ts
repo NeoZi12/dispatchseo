@@ -52,9 +52,48 @@ export async function setContentPathHint(formData: FormData): Promise<void> {
   const path = raw ? normalizeContentPathHint(raw) : null;
   if (raw && path === null) throw new Error("Use a plain folder path, like content/blog.");
 
+  // Naming a folder on a hosted-blog project is the way back to the repo
+  // route: the owner is saying "there IS a blog here after all".
+  const { publishTarget } = await import("@/lib/projects");
+  const backToRepo = path && publishTarget(project) === "hosted";
   const { error } = await db()
     .from("projects")
-    .update({ content_path_hint: path })
+    .update({ content_path_hint: path, ...(backToRepo ? { publish_target: "github" } : {}) })
+    .eq("id", project.id);
+  if (error) throw new Error("We couldn't save that just now. Try again in a moment.");
+
+  revalidatePath("/settings");
+}
+
+/** Hosted blog (migration 0065): the call-to-action under every article.
+ *  Same rule as the set_hosted_blog MCP tool: the URL must be on the site's
+ *  own domain, or the box becomes a free outbound link on their blog. */
+export async function setHostedBlog(formData: FormData): Promise<void> {
+  await assertAuthed();
+  const project = await getActiveProject();
+  await assertProjectOwned(project.id);
+
+  const url = String(formData.get("hosted_cta_url") ?? "").trim();
+  const label = String(formData.get("hosted_cta_label") ?? "").trim().slice(0, 60);
+  const { isProjectUrl } = await import("@/lib/url-guard");
+  if (url && !isProjectUrl(url, project.domain)) throw new Error("The button must link to a page on your own site.");
+
+  const { normalizeTheme, isHex, readableAccent } = await import("@/lib/hosted-theme");
+  const current = normalizeTheme(project.hosted_theme);
+  const accent = String(formData.get("hosted_accent") ?? "").trim().toLowerCase();
+  const mode = String(formData.get("hosted_mode") ?? "") === "dark" ? "dark" : "light";
+  const logo = String(formData.get("hosted_logo") ?? "").trim();
+  if (logo && !/^https?:\/\//.test(logo)) throw new Error("The logo must be a full https:// image address.");
+  const theme = {
+    accent: accent && isHex(accent) ? readableAccent(accent, mode) : current.accent,
+    mode,
+    logo: logo || null,
+    source: "owner" as const,
+  };
+
+  const { error } = await db()
+    .from("projects")
+    .update({ hosted_cta_url: url || null, hosted_cta_label: label || null, hosted_theme: theme })
     .eq("id", project.id);
   if (error) throw new Error("We couldn't save that just now. Try again in a moment.");
 

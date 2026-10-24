@@ -292,7 +292,7 @@ export default async function OnboardingPage({
   // the qualifier, and chatgpt has no connector yet - preselecting any of them
   // would check a radio that cannot be submitted.
   const prefillAi =
-    qualified?.ai_choice && isWizardAiChoice(qualified.ai_choice) ? qualified.ai_choice : null;
+    qualified?.ai_choice && isWizardAiChoice(qualified.ai_choice, { allowHosted: cloud }) ? qualified.ai_choice : null;
   // The same two answers, in the shape the setup path's `site` step reads:
   // its one-line summary ("WordPress site · written by the Claude app ·
   // change"), and the branch the rail's dot count follows before a project

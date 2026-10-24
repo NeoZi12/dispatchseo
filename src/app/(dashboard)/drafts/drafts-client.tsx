@@ -19,7 +19,7 @@ import { CopyButton } from "@/components/client";
 /** The three routes this screen can be looking at. Mirrors publishRoute in
  *  draft-status.ts - "blocked" never reaches here as a distinct case, because
  *  a blocked project simply cannot publish. */
-export type PublishRoute = "wordpress" | "repo" | "manual" | "blocked";
+export type PublishRoute = "wordpress" | "repo" | "hosted" | "manual" | "blocked";
 
 export type DraftRow = {
   id: string;

@@ -551,38 +551,10 @@ export function AddSiteDialog({
                   ))}
                 </div>
               </fieldset>
-              <fieldset className="block">
-                <legend className="mb-1.5 block text-sm font-medium text-neutral-300">
-                  Which AI will do the writing?
-                </legend>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {(
-                    [
-                      ["claude-web", "Claude app"],
-                      ["claude-code", "Claude Code"],
-                      ["codex", "Codex"],
-                      ["cursor", "Cursor"],
-                    ] as const
-                  ).map(([value, label]) => (
-                    <label
-                      key={value}
-                      className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 transition-colors hover:border-neutral-600 has-[:checked]:border-violet-500"
-                    >
-                      <input
-                        type="radio"
-                        name="ai_choice"
-                        value={value}
-                        required
-                        className="h-4 w-4 accent-violet-500"
-                      />
-                      {label}
-                    </label>
-                  ))}
-                </div>
-                <span className="mt-1.5 block text-xs text-neutral-500">
-                  ChatGPT isn&apos;t available yet.
-                </span>
-              </fieldset>
+              {/* No AI question on cloud since the 2026-10-22 pivot: DispatchSEO
+                  writes the articles itself (createProjectCore stores
+                  ai_choice=hosted whatever is posted). */}
+              <input type="hidden" name="ai_choice" value="hosted" />
             </>
           ) : null}
 

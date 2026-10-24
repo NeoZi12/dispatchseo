@@ -1,4 +1,5 @@
 import { requireDashboard } from "@/lib/auth-gate";
+import { redirectIfHosted } from "../mode";
 import { db } from "@/lib/db";
 import { requireOnboarded } from "@/lib/onboarding-gate";
 import { getActiveProject } from "@/lib/active-project";
@@ -54,6 +55,9 @@ export const dynamic = "force-dynamic";
 
 export default async function KeywordsPage() {
   await requireDashboard();
+  // Hosted writer: this screen belongs to the agent workflow; the hosted
+  // dashboard covers it on /results.
+  await redirectIfHosted("/results");
   await requireOnboarded();
 
   const project = await getActiveProject();

@@ -27,6 +27,7 @@ import {
   getProjectBySlug,
   publishTarget,
   fetchProjectToken,
+  writerMode,
   type Project,
 } from "@/lib/projects";
 import { credsForProject } from "@/lib/dataforseo";
@@ -130,7 +131,7 @@ async function loadCounts(projectId: string): Promise<SetupCounts> {
   const [
     site_profile, conventions, suggestions, approved, keywords, rank_checks,
     pages, pages_live, pages_with_pr, drafts, drafts_published, drafts_finished, drafts_accepted,
-    drafts_blocked_setup, gsc_rows,
+    drafts_blocked_setup, gsc_rows, writer_held,
   ] = await Promise.all([
     headCount("site_profile", projectId),
     headCount("conventions", projectId),
@@ -150,11 +151,14 @@ async function loadCounts(projectId: string): Promise<SetupCounts> {
     headCount("article_drafts", projectId, (q) => q.in("status", ["accepted", "finished", "published"])),
     headCount("article_drafts", projectId, (q) => q.eq("status", "blocked_setup")),
     headCount("gsc_stats", projectId),
+    // A held first article (WRITER_HOLD_FIRST) is the hosted branch's one
+    // owner action; 0 on a database without writer_runs (headCount swallows).
+    headCount("writer_runs", projectId, (q) => q.eq("status", "held")),
   ]);
   return {
     site_profile, conventions, suggestions, approved, keywords, rank_checks,
     pages, pages_live, pages_with_pr, drafts, drafts_published, drafts_finished, drafts_accepted,
-    drafts_blocked_setup, gsc_rows,
+    drafts_blocked_setup, gsc_rows, writer_held,
   };
 }
 
@@ -191,6 +195,7 @@ function projectSnapshot(p: Project): SetupProjectSnapshot {
     domain: p.domain,
     publish_target: publishTarget(p),
     ai_choice: p.ai_choice ?? null,
+    writer_mode: writerMode(p),
     agent: p.agent ?? null,
     github_installation_id: p.github_installation_id ?? null,
     github_repo: p.github_repo ?? null,

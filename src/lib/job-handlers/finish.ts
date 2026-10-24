@@ -1,8 +1,9 @@
 import { db } from "@/lib/db";
-import { getProjectById } from "@/lib/projects";
+import { getProjectById, type Project } from "@/lib/projects";
 import { publishRoute } from "./draft-status";
 import { finishArticle, schemaScript } from "@/lib/article-render";
 import { enqueue } from "@/lib/jobs";
+import { dryDraftBlocked, parkDryDraft } from "./dry-guard";
 import type { Job } from "@/lib/jobs";
 
 // Turns an accepted draft into a page that is ready to go out.
@@ -22,6 +23,81 @@ import type { Job } from "@/lib/jobs";
  *  own day. Early enough to be "today's article", late enough that a European
  *  or American reader sees it in the morning rather than overnight. */
 const DEFAULT_PUBLISH_HOUR = 9;
+
+export type FinishableDraft = {
+  id: string;
+  title: string;
+  slug: string;
+  meta_description: string | null;
+  primary_keyword: string | null;
+  markdown: string;
+  faq: { question: string; answer: string }[] | null;
+  sources: { url: string; title?: string }[] | null;
+};
+
+/**
+ * The deterministic half, reusable: the same draft rendered for a given
+ * route. The hosted publish handler calls this too, because a draft finished
+ * for the repo route (canonical https://site/<slug>) and then switched to
+ * the hosted blog has to be re-rendered for https://site/blog/<slug> - the
+ * structured data and the self-link check both name the page's address.
+ */
+export async function renderDraftForRoute(
+  project: Project,
+  row: FinishableDraft,
+  route: ReturnType<typeof publishRoute>,
+  publishedAt: string,
+) {
+  // The page inventory feeds internal linking. A project whose site has never
+  // been crawled simply gets no internal links - worth having the article
+  // without them rather than refusing to publish over a missing nicety.
+  const { data: digestRow } = await db()
+    .from("site_digests")
+    .select("link_candidates")
+    .eq("project_id", project.id)
+    .maybeSingle();
+  const pages = Array.isArray((digestRow as { link_candidates?: unknown } | null)?.link_candidates)
+    ? ((digestRow as { link_candidates: { url: string; title: string; keywords?: string[] }[] })
+        .link_candidates)
+    : [];
+
+  // Where the page will live. WordPress knows its own origin; the hosted
+  // blog serves from the origin the site actually answers on (www or apex,
+  // learned from its homepage); the repo route is the bare domain.
+  // Hosted: the origin the site serves from. Every other route exactly as
+  // before the hosted blog existed: wp_url whenever one is stored.
+  const siteUrl =
+    route === "hosted"
+      ? (project.hosted_origin ?? `https://${project.domain}`)
+      : (project.wp_url ?? `https://${project.domain}`);
+
+  return finishArticle({
+    submission: {
+      title: row.title,
+      slug: row.slug,
+      metaDescription: row.meta_description ?? "",
+      primaryKeyword: row.primary_keyword ?? "",
+      markdown: row.markdown,
+      faq: row.faq ?? [],
+      sources: row.sources ?? [],
+    },
+    siteUrl,
+    siteName: project.name,
+    pages,
+    // The hosted blog serves the article under /blog, so its canonical url,
+    // structured data and self-link check must name that path.
+    ownSlug: route === "hosted" ? `blog/${encodeURIComponent(row.slug)}` : row.slug,
+    publishedAt,
+    // The byline. A real person the owner named (Settings > Author, or the
+    // set_author MCP tool) is a Person, with their page when they gave one.
+    // Without one the byline is the site itself - and a site is an
+    // Organization: claiming a Person named "Acme Store" is a
+    // fabricated-author signal, the one thing Google names as deception.
+    ...(project.author_name?.trim()
+      ? { authorName: project.author_name.trim(), authorType: "Person" as const, authorUrl: project.author_url ?? undefined }
+      : { authorType: "Organization" as const }),
+  });
+}
 
 export async function runFinishJob(job: Job): Promise<void> {
   const draftId = String(job.payload.draftId ?? "");
@@ -48,6 +124,7 @@ export async function runFinishJob(job: Job): Promise<void> {
     faq: { question: string; answer: string }[] | null;
     sources: { url: string; title?: string }[] | null;
     status: string;
+    validation: unknown;
   };
 
   // ALLOWLIST, not a blocklist: only a draft that is actually on its way to
@@ -58,39 +135,11 @@ export async function runFinishJob(job: Job): Promise<void> {
   // blocklist here once let a pending finish job resurrect a draft the owner
   // had discarded minutes after submitting it.
   if (row.status !== "submitted" && row.status !== "accepted") return;
+  if (dryDraftBlocked(row.validation)) return parkDryDraft(row.id, row.validation);
 
-  // The page inventory feeds internal linking. A project whose site has never
-  // been crawled simply gets no internal links - worth having the article
-  // without them rather than refusing to publish over a missing nicety.
-  const { data: digestRow } = await db()
-    .from("site_digests")
-    .select("link_candidates")
-    .eq("project_id", project.id)
-    .maybeSingle();
-  const pages = Array.isArray((digestRow as { link_candidates?: unknown } | null)?.link_candidates)
-    ? ((digestRow as { link_candidates: { url: string; title: string; keywords?: string[] }[] })
-        .link_candidates)
-    : [];
-
-  const siteUrl = project.wp_url ?? `https://${project.domain}`;
   const now = new Date().toISOString();
-
-  const finished = finishArticle({
-    submission: {
-      title: row.title,
-      slug: row.slug,
-      metaDescription: row.meta_description ?? "",
-      primaryKeyword: row.primary_keyword ?? "",
-      markdown: row.markdown,
-      faq: row.faq ?? [],
-      sources: row.sources ?? [],
-    },
-    siteUrl,
-    siteName: project.name,
-    pages,
-    ownSlug: row.slug,
-    publishedAt: now,
-  });
+  const route = publishRoute(project);
+  const finished = await renderDraftForRoute(project, row, route, now);
 
   // The cover points at OUR cover route, not the customer's site: the publish
   // handler fetches it and uploads the bytes to their media library, so a URL
@@ -121,7 +170,8 @@ export async function runFinishJob(job: Job): Promise<void> {
   //             drafts screen shows as a setup card. NOT a failure: throwing
   //             here would burn five retries and email an owner about their
   //             own unfinished onboarding (see draft-status.ts)
-  const route = publishRoute(project);
+  // (route decided above, before the article was finished - its canonical
+  // url depends on it)
 
   // WHERE THE STRUCTURED DATA GOES, and why it depends on the route.
   //
@@ -156,9 +206,9 @@ export async function runFinishJob(job: Job): Promise<void> {
     .eq("id", row.id);
   if (error) throw new Error(`could not save the finished article: ${error.message}`);
 
-  // Both publishing routes go out on the owner's hour. Manual and blocked
+  // The publishing routes go out on the owner's hour. Manual and blocked
   // stop here - one has nowhere to go by choice, the other by circumstance.
-  if (route !== "wordpress" && route !== "repo") return;
+  if (route !== "wordpress" && route !== "repo" && route !== "hosted") return;
 
   await enqueue({
     projectId: project.id,

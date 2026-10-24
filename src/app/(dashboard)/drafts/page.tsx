@@ -1,4 +1,5 @@
 import { requireDashboard } from "@/lib/auth-gate";
+import { redirectIfHosted } from "../mode";
 import { db } from "@/lib/db";
 import { getActiveProjectOrNull } from "@/lib/active-project";
 import { blockedReason, publishRoute } from "@/lib/job-handlers/draft-status";
@@ -70,6 +71,9 @@ type Raw = {
 
 export default async function DraftsPage() {
   await requireDashboard();
+  // Hosted writer: this screen belongs to the agent workflow; the hosted
+  // dashboard covers it on /articles.
+  await redirectIfHosted("/articles");
   const project = await getActiveProjectOrNull();
 
   if (!project) {
@@ -116,7 +120,7 @@ export default async function DraftsPage() {
   const route = publishRoute(project);
   // Both routes that actually publish. The repo route reached this screen as a
   // dead end until our server started opening the pull requests itself.
-  const canPublish = route === "wordpress" || route === "repo";
+  const canPublish = route === "wordpress" || route === "repo" || route === "hosted";
   // The owner asked us to finish articles and hand them over rather than post
   // them anywhere. Nothing publishes a manual draft, so the screen has to say
   // that instead of showing it queued behind a publisher that will never run.

@@ -33,7 +33,8 @@ export type CronJob =
   | "serp-collect"
   | "jobs"
   | "weekly-opportunities"
-  | "deploy-check";
+  | "deploy-check"
+  | "autopilot";
 
 // How long after the last run a job counts as "not running" - generous
 // enough that scheduler jitter (Vercel Hobby ~1h, GitHub Actions delays)
@@ -43,6 +44,10 @@ export type CronJob =
 // no entry here on purpose - see RETIRED_JOBS below.)
 const STALE_HOURS: Record<string, number> = {
   "daily-ranks": 36,
+  // The hosted writer's daily scheduler (api/cron/autopilot, 05:30 UTC on
+  // Vercel and in docker/cron/crontab). Same daily margin as daily-ranks: if
+  // it stops, every hosted site stops getting articles and nothing else says so.
+  autopilot: 36,
   // The article queue drain, scheduled every 10 minutes in both
   // .github/workflows/jobs.yml and docker/cron/crontab. Idle ticks report as
   // claim-only, so this clock is only ever advanced by a tick that actually
@@ -270,6 +275,12 @@ function isOpenPrDeferral(reasons: readonly string[]): boolean {
 
 export function isUrgentCronFailure(job: string, errors: string[]): boolean {
   if (baseJobName(job) === "deploy-check") return true;
+  // The autopilot stopping itself (src/lib/autopilot/pause.ts) happens ONCE -
+  // a paused project is never re-evaluated - so the "two consecutive failures"
+  // grace would swallow it for good. It is also exactly what the owner must
+  // hear about: their site's articles stopped on our call. resumeWriter logs
+  // an ok row for the same job, which clears it.
+  if (baseJobName(job) === "autopilot-pause") return true;
   return errors.some((e) => URGENT_FAILURE.test(e));
 }
 

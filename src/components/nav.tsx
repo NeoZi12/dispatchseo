@@ -7,6 +7,7 @@ import { createPortal } from "react-dom";
 import posthog from "posthog-js";
 import { posthogReady } from "@/lib/posthog-client";
 import { DispatchMark } from "@/components/logo";
+import { FOCUS_RING } from "@/components/ui/styles";
 
 // Vercel-style navigation: an icon sidebar on desktop (Sidebar), a slide-out
 // drawer behind a hamburger on mobile (MobileNav), and the centered
@@ -281,9 +282,42 @@ const GROUPS: NavGroup[] = [
   },
 ];
 
+// A hosted-writer project (our server writes and publishes) gets three
+// screens, not sixteen: the report, the articles, the results. Everything
+// else it controls lives in Settings. Agent projects keep GROUPS above.
+export type NavMode = "hosted" | "agent";
+
+function ReportIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <rect x="3.5" y="3.5" width="17" height="17" rx="2.5" />
+      <path d="M8 16v-3M12 16V8M16 16v-5" />
+    </svg>
+  );
+}
+
+const HOSTED_GROUPS: NavGroup[] = [
+  {
+    label: null,
+    links: [
+      { href: "/dashboard", label: "Overview", Icon: ReportIcon },
+      { href: "/articles", label: "Articles", Icon: PagesIcon },
+      { href: "/analytics", label: "Analytics", Icon: AnalyticsIcon },
+      // Interactive tool pages; on Starter this is the page that says
+      // they come with Growth and Scale.
+      { href: "/tools", label: "Tools", Icon: ToolsIcon },
+    ],
+  },
+];
+
+function groupsFor(mode: NavMode): NavGroup[] {
+  return mode === "hosted" ? HOSTED_GROUPS : GROUPS;
+}
+
 // Flat view of the same links - the mobile scroller and the topbar title
 // resolve against this, so the groups stay a desktop-sidebar concern.
 const LINKS: NavLink[] = GROUPS.flatMap((g) => g.links);
+const HOSTED_LINKS: NavLink[] = HOSTED_GROUPS.flatMap((g) => g.links);
 
 const SETTINGS: NavLink = { href: "/settings", label: "Settings", Icon: SettingsIcon };
 
@@ -293,6 +327,8 @@ const SETTINGS: NavLink = { href: "/settings", label: "Settings", Icon: Settings
 // account with no site yet - which is exactly the person most likely to have
 // something to tell us.
 const FEEDBACK: NavLink = { href: "/feedback", label: "Feedback", Icon: FeedbackIcon };
+// Hosted mode has no System group, so Docs joins the pinned rows.
+const DOCS: NavLink = { href: "/docs", label: "Docs", Icon: DocsIcon, external: true };
 
 function BillingIcon({ className }: IconProps) {
   return (
@@ -322,7 +358,7 @@ const BILLING: NavLink = { href: "/billing", label: "Billing", Icon: BillingIcon
 // dead one goes amber next to the banner already explaining it.
 const PLAN_TONES: Record<PlanTone, string> = {
   trial: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
-  plan: "border-neutral-700 bg-neutral-800/70 text-neutral-300",
+  plan: "border-line bg-surface-2 text-ink-muted",
   warn: "border-amber-500/30 bg-amber-500/10 text-amber-300",
 };
 
@@ -332,7 +368,7 @@ export type PlanChip = { label: string; tone: PlanTone };
 function PlanPill({ plan }: { plan: PlanChip }) {
   return (
     <span
-      className={`ml-auto shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium leading-none ${PLAN_TONES[plan.tone]}`}
+      className={`ml-auto shrink-0 rounded-md border px-1.5 py-0.5 text-[11px] font-medium leading-none ${PLAN_TONES[plan.tone]}`}
     >
       {plan.label}
     </span>
@@ -352,13 +388,20 @@ function isActive(href: string, pathname: string) {
   return href === "/dashboard" ? pathname === "/dashboard" : pathname.startsWith(href);
 }
 
+// Hosted mode has four screens, not sixteen, so its sidebar uses the room:
+// bigger icons and labels, taller rows (owner, 2026-10-24).
+const ROW = { normal: "gap-3 px-3 py-2 text-[14px]", big: "gap-3.5 px-3.5 py-2.5 text-[15.5px]" };
+const ICON = { normal: "h-[18px] w-[18px]", big: "h-[22px] w-[22px]" };
+
 function SidebarLink({
   link,
   pathname,
   trailing,
+  big = false,
 }: {
   link: NavLink;
   pathname: string;
+  big?: boolean;
   // Right-aligned adornment for the row - the plan pill on Billing today. Only
   // honored on internal links; the external ones already end in their own
   // open-in-new-tab arrow.
@@ -374,9 +417,9 @@ function SidebarLink({
         href={link.href}
         target="_blank"
         rel="noopener noreferrer"
-        className="flex items-center gap-3.5 rounded-lg px-3.5 py-2.5 text-[15px] text-neutral-400 transition-colors hover:bg-neutral-900 hover:text-neutral-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-400"
+        className={`flex items-center rounded-lg ${ROW[big ? "big" : "normal"]} text-ink-muted transition-colors hover:bg-surface hover:text-ink ${FOCUS_RING}`}
       >
-        <link.Icon className="h-5 w-5 shrink-0 text-neutral-500" />
+        <link.Icon className={`${ICON[big ? "big" : "normal"]} shrink-0 text-ink-faint`} />
         {link.label}
         <svg
           viewBox="0 0 24 24"
@@ -385,7 +428,7 @@ function SidebarLink({
           strokeWidth="1.7"
           strokeLinecap="round"
           strokeLinejoin="round"
-          className="ml-auto h-3.5 w-3.5 text-neutral-600"
+          className="ml-auto h-3.5 w-3.5 text-ink-faint/70"
           aria-hidden="true"
         >
           <path d="M7 17 17 7M9 7h8v8" />
@@ -397,13 +440,13 @@ function SidebarLink({
     <Link
       href={link.href}
       aria-current={active ? "page" : undefined}
-      className={`flex items-center gap-3.5 rounded-lg px-3.5 py-2.5 text-[15px] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-400 ${
+      className={`relative flex items-center rounded-lg ${ROW[big ? "big" : "normal"]} transition-colors ${FOCUS_RING} ${
         active
-          ? "bg-neutral-800 font-medium text-white"
-          : "text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200"
+          ? "bg-surface-2 font-medium text-ink before:absolute before:inset-y-2 before:-left-3 before:w-0.5 before:rounded-full before:bg-accent"
+          : "text-ink-muted hover:bg-surface hover:text-ink"
       }`}
     >
-      <link.Icon className={`h-5 w-5 shrink-0 ${active ? "text-white" : "text-neutral-500"}`} />
+      <link.Icon className={`${ICON[big ? "big" : "normal"]} shrink-0 ${active ? "text-accent" : "text-ink-faint"}`} />
       {link.label}
       {trailing}
     </Link>
@@ -420,7 +463,7 @@ function SidebarLink({
 // so on a shared computer the next person to sign in would otherwise be
 // identify()'d on top of this person's still-linked PostHog identity
 // (PostHogIdentify fires on every dashboard mount but never resets first).
-function LogoutLink() {
+function LogoutLink({ big = false }: { big?: boolean }) {
   return (
     <a
       href="/logout"
@@ -429,9 +472,9 @@ function LogoutLink() {
         // in that case, and reset() on it throws, which would break logout.
         if (posthogReady()) posthog.reset();
       }}
-      className="flex items-center gap-3.5 rounded-lg px-3.5 py-2.5 text-[15px] text-neutral-400 transition-colors hover:bg-neutral-900 hover:text-neutral-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-400"
+      className={`flex items-center rounded-lg ${ROW[big ? "big" : "normal"]} text-ink-muted transition-colors hover:bg-surface hover:text-ink ${FOCUS_RING}`}
     >
-      <LogoutIcon className="h-5 w-5 shrink-0 text-neutral-500" />
+      <LogoutIcon className={`${ICON[big ? "big" : "normal"]} shrink-0 text-ink-faint`} />
       Log out
     </a>
   );
@@ -443,7 +486,7 @@ function LogoutLink() {
 // Billing both survive a zero-project account, so those stay.
 function NoSiteNote() {
   return (
-    <p className="px-3.5 py-3 text-sm leading-relaxed text-neutral-500">
+    <p className="px-3 py-3 text-sm leading-relaxed text-ink-faint">
       No site yet.{" "}
       <Link
         href="/onboarding?new=1"
@@ -456,66 +499,85 @@ function NoSiteNote() {
   );
 }
 
+// The grouped links for the active project's mode. Sentence-case group
+// names in a quiet tone: they orient, they don't shout.
+function NavGroups({ mode, pathname }: { mode: NavMode; pathname: string }) {
+  return (
+    <>
+      {groupsFor(mode).map((group, i) => (
+        <div key={group.label ?? "top"} className={`flex flex-col ${mode === "hosted" ? "gap-1" : "gap-0.5"}`}>
+          {group.label ? (
+            <p className={`px-3 pb-1.5 text-[12px] font-medium text-ink-faint ${i > 0 ? "pt-6" : ""}`}>{group.label}</p>
+          ) : null}
+          {group.links.map((l) => (
+            <SidebarLink key={l.href} link={l} pathname={pathname} big={mode === "hosted"} />
+          ))}
+        </div>
+      ))}
+    </>
+  );
+}
+
+// Account-level rows, pinned under the scroll area so they can never be
+// clipped off the bottom of a short screen.
+function PinnedLinks({
+  mode,
+  pathname,
+  billing,
+  plan,
+}: {
+  mode: NavMode;
+  pathname: string;
+  billing: boolean;
+  plan: PlanChip | null;
+}) {
+  return (
+    <div className="flex shrink-0 flex-col gap-0.5 border-t border-line-soft px-3 py-3">
+      {mode === "hosted" ? <SidebarLink link={DOCS} pathname={pathname} big /> : null}
+      <SidebarLink link={FEEDBACK} pathname={pathname} big={mode === "hosted"} />
+      {billing ? (
+        <SidebarLink link={BILLING} pathname={pathname} big={mode === "hosted"} trailing={plan ? <PlanPill plan={plan} /> : undefined} />
+      ) : null}
+      <SidebarLink link={SETTINGS} pathname={pathname} big={mode === "hosted"} />
+      <LogoutLink big={mode === "hosted"} />
+    </div>
+  );
+}
+
 export function Sidebar({
   billing = false,
   hasProject = true,
   plan = null,
+  mode = "agent",
 }: {
   billing?: boolean;
   hasProject?: boolean;
+  /** Which nav the active project gets (layout reads it via mode.ts). */
+  mode?: NavMode;
   // Starter / Growth / Scale / Free trial. null on self-host, on a deployment
   // with billing unconfigured, and for an account that never subscribed.
   plan?: PlanChip | null;
 }) {
   const pathname = usePathname();
   return (
-    <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-neutral-800/80 md:flex">
+    <aside className={`sticky top-0 hidden h-screen ${mode === "hosted" ? "w-64" : "w-60"} shrink-0 flex-col border-r border-line-soft bg-canvas md:flex`}>
       <div className="flex h-14 shrink-0 items-center px-4">
+        {/* .dispatch-logo: the radio keys up (a quick wobble) on hover. */}
         <Link
           href="/dashboard"
-          className="flex items-center gap-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-400"
+          className={`dispatch-logo flex items-center gap-2 rounded-md ${FOCUS_RING}`}
         >
-          <DispatchMark className="h-7 w-auto" />
-          <span className="font-semibold tracking-tight">DispatchSEO</span>
+          <DispatchMark className={mode === "hosted" ? "h-8 w-auto" : "h-7 w-auto"} />
+          <span className={`font-semibold tracking-tight ${mode === "hosted" ? "text-[17px]" : ""}`}>DispatchSEO</span>
         </Link>
       </div>
       {/* The groups scroll on short viewports (min-h-0 lets flex actually
           shrink this); Settings lives OUTSIDE the scroll area so it can
           never be clipped off the bottom of the screen. */}
-      <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 pt-3">
-        {hasProject ? (
-          GROUPS.map((group, i) => (
-            <div key={group.label ?? "top"} className="flex flex-col gap-1.5">
-              {group.label ? (
-                <p
-                  className={`px-3.5 pb-1 text-[11px] font-medium uppercase tracking-wider text-neutral-600 ${
-                    i > 0 ? "pt-5" : ""
-                  }`}
-                >
-                  {group.label}
-                </p>
-              ) : null}
-              {group.links.map((l) => (
-                <SidebarLink key={l.href} link={l} pathname={pathname} />
-              ))}
-            </div>
-          ))
-        ) : (
-          <NoSiteNote />
-        )}
+      <nav className={`min-h-0 flex-1 overflow-y-auto px-3 pb-3 ${mode === "hosted" ? "pt-5" : "pt-3"}`}>
+        {hasProject ? <NavGroups mode={mode} pathname={pathname} /> : <NoSiteNote />}
       </nav>
-      <div className="shrink-0 border-t border-neutral-800/80 px-3 py-3">
-        <SidebarLink link={FEEDBACK} pathname={pathname} />
-        {billing ? (
-          <SidebarLink
-            link={BILLING}
-            pathname={pathname}
-            trailing={plan ? <PlanPill plan={plan} /> : undefined}
-          />
-        ) : null}
-        <SidebarLink link={SETTINGS} pathname={pathname} />
-        <LogoutLink />
-      </div>
+      <PinnedLinks mode={mode} pathname={pathname} billing={billing} plan={plan} />
     </aside>
   );
 }
@@ -530,9 +592,11 @@ export function MobileNav({
   billing = false,
   hasProject = true,
   plan = null,
+  mode = "agent",
 }: {
   billing?: boolean;
   hasProject?: boolean;
+  mode?: NavMode;
   plan?: PlanChip | null;
 }) {
   const pathname = usePathname();
@@ -573,7 +637,7 @@ export function MobileNav({
         onClick={() => setOpen(true)}
         aria-label="Open navigation menu"
         aria-expanded={open}
-        className="-ml-1.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-300 transition-colors hover:bg-neutral-900 hover:text-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-400"
+        className={`-ml-1.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink ${FOCUS_RING}`}
       >
         <MenuIcon className="h-5 w-5" />
       </button>
@@ -592,9 +656,9 @@ export function MobileNav({
             onClick={() => setOpen(false)}
             className="dispatch-fade-in absolute inset-0 h-full w-full cursor-default bg-black/60 backdrop-blur-[1px]"
           />
-          <div className="dispatch-slide-in absolute inset-y-0 left-0 flex w-[17rem] max-w-[85vw] flex-col border-r border-neutral-800 bg-neutral-950 shadow-2xl shadow-black/60">
+          <div className="dispatch-slide-in absolute inset-y-0 left-0 flex w-[17rem] max-w-[85vw] flex-col border-r border-line bg-canvas shadow-2xl shadow-black/60">
             <div className="flex h-14 shrink-0 items-center justify-between gap-2 px-4">
-              <Link href="/dashboard" className="flex items-center gap-2">
+              <Link href="/dashboard" className="dispatch-logo flex items-center gap-2">
                 <DispatchMark className="h-7 w-auto" />
                 <span className="font-semibold tracking-tight">DispatchSEO</span>
               </Link>
@@ -602,7 +666,7 @@ export function MobileNav({
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label="Close navigation menu"
-                className="-mr-1.5 flex h-9 w-9 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-neutral-900 hover:text-neutral-200"
+                className={`-mr-1.5 flex h-9 w-9 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink ${FOCUS_RING}`}
               >
                 <CloseIcon className="h-5 w-5" />
               </button>
@@ -610,39 +674,9 @@ export function MobileNav({
             {/* Same groups as the desktop sidebar, and Settings likewise pinned
                 outside the scroll area so it can't be clipped off the bottom. */}
             <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 pt-1">
-              {hasProject ? (
-                GROUPS.map((group, i) => (
-                  <div key={group.label ?? "top"} className="flex flex-col gap-1.5">
-                    {group.label ? (
-                      <p
-                        className={`px-3.5 pb-1 text-[11px] font-medium uppercase tracking-wider text-neutral-600 ${
-                          i > 0 ? "pt-5" : ""
-                        }`}
-                      >
-                        {group.label}
-                      </p>
-                    ) : null}
-                    {group.links.map((l) => (
-                      <SidebarLink key={l.href} link={l} pathname={pathname} />
-                    ))}
-                  </div>
-                ))
-              ) : (
-                <NoSiteNote />
-              )}
+              {hasProject ? <NavGroups mode={mode} pathname={pathname} /> : <NoSiteNote />}
             </nav>
-            <div className="shrink-0 border-t border-neutral-800/80 px-3 py-3">
-              <SidebarLink link={FEEDBACK} pathname={pathname} />
-              {billing ? (
-          <SidebarLink
-            link={BILLING}
-            pathname={pathname}
-            trailing={plan ? <PlanPill plan={plan} /> : undefined}
-          />
-        ) : null}
-              <SidebarLink link={SETTINGS} pathname={pathname} />
-              <LogoutLink />
-            </div>
+            <PinnedLinks mode={mode} pathname={pathname} billing={billing} plan={plan} />
           </div>
         </div>,
             document.body,
@@ -653,12 +687,12 @@ export function MobileNav({
 }
 
 // Centered current-page title in the topbar, Vercel-style.
-export function PageTitle() {
+export function PageTitle({ mode = "agent" }: { mode?: NavMode }) {
   const pathname = usePathname();
-  const match = [...LINKS, ...EXTRA_TITLES]
+  const match = [...(mode === "hosted" ? HOSTED_LINKS : LINKS), ...EXTRA_TITLES]
     .filter((l) => isActive(l.href, pathname))
     .sort((a, b) => b.href.length - a.href.length)[0];
   return (
-    <span className="text-sm font-medium text-neutral-200">{match?.label ?? ""}</span>
+    <span className="text-sm font-medium text-ink">{match?.label ?? ""}</span>
   );
 }

@@ -27,10 +27,12 @@ export async function submitQualifier(_prev: QualifyState, formData: FormData): 
 
   const siteKind = String(formData.get("site_kind") ?? "").trim();
   const domain = String(formData.get("domain") ?? "").trim();
-  const ai = String(formData.get("ai") ?? "").trim();
+  // Cloud is the hosted writer since 2026-10-23: the owner brings no AI, so
+  // the form no longer asks and every answer is recorded as "hosted".
+  const ai = "hosted";
 
   if (!isSiteKind(siteKind)) return { siteKind, domain, ai, error: "Pick what kind of site it is." };
-  if (!isAiChoice(ai)) return { siteKind, domain, ai, error: "Pick which AI you use." };
+  if (!isAiChoice(ai)) return { siteKind, domain, ai, error: "Something went wrong - reload and try again." };
   // The domain is optional. When given, a cheap shape check before we spend a
   // fetch on it. Deliberately loose: an exotic but real TLD must not be
   // refused by a regex, so anything with a dot and no spaces gets through to

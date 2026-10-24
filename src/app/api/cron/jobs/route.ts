@@ -66,6 +66,9 @@ const HANDLERS: Record<string, () => Promise<Handler>> = {
   finish: async () => (await import("@/lib/job-handlers/finish")).runFinishJob,
   publish: async () => (await import("@/lib/job-handlers/publish")).runPublishJob,
   verify: async () => (await import("@/lib/job-handlers/verify")).runVerifyJob,
+  // One stage of a hosted-writer run (src/lib/writer/) - the pivot of
+  // 2026-10-22, where our server writes the article instead of the owner's agent.
+  write: async () => (await import("@/lib/job-handlers/write")).runWriteJob,
 };
 
 export async function GET(req: Request): Promise<Response> {

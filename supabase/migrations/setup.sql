@@ -503,7 +503,7 @@ alter table suggestions
 alter table suggestions drop constraint if exists suggestions_source_check;
 alter table suggestions
   add constraint suggestions_source_check
-  check (source in ('research', 'trend-scan', 'manual'));
+  check (source in ('research', 'trend-scan', 'manual', 'refresh', 'autopilot', 'owner'));
 
 -- ============ 0015_site_launched_at.sql ============
 -- 0015: age-based publishing pace.
@@ -1535,7 +1535,7 @@ alter table domain_rating_history enable row level security;
 alter table suggestions drop constraint if exists suggestions_source_check;
 alter table suggestions
   add constraint suggestions_source_check
-  check (source in ('research', 'trend-scan', 'manual', 'refresh'));
+  check (source in ('research', 'trend-scan', 'manual', 'refresh', 'autopilot', 'owner'));
 
 -- ============ 0053_builder_cursor_key.sql ============
 -- The instance-level credential slot for Cursor's builder.
@@ -2107,4 +2107,229 @@ create table if not exists keyword_research_cache (
 
 -- Service-role only, like every operational table (RLS on, zero policies).
 alter table keyword_research_cache enable row level security;
+
+-- ============ 0064_writer_pipeline.sql ============
+-- 0064: the hosted writer pipeline (pivot of 2026-10-22).
+--
+-- DispatchSEO stops waiting for the customer's own coding agent to write the
+-- article. Our server researches, writes, verifies and hands the article to
+-- the existing finish -> publish -> verify chain (article_drafts + jobs,
+-- migrations 0055/0056). Three tables:
+--
+--   writer_runs        one row per article attempt. The run walks a fixed list
+--                      of stages (pick, research, plan, write, verify); every
+--                      stage is one `write` job in the jobs queue, so a crash
+--                      resumes at the stage it died in instead of re-paying the
+--                      whole article.
+--   writer_fact_sheets the research cache. A keyword's fact sheet (facts with
+--                      the exact passage they came from, plus the pages they
+--                      were read from) is not tenant-specific, so one row per
+--                      (keyword, market) serves every site for a while.
+--   model_calls        the cost ledger. Every model call, whichever vendor,
+--                      lands here with its token counts and price, so the
+--                      per-article cost is a SUM, not a guess.
+--
+-- Plain vanilla-Postgres objects only - the docker stack replays setup.sql.
+
+create table if not exists writer_runs (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null default '00000000-0000-4000-8000-000000000001'
+    references projects (id) on delete cascade,
+  -- The queued idea this run fulfils, when there is one. A run can also be
+  -- started from a bare keyword (owner's "suggest a topic", or a smoke test).
+  suggestion_id uuid references suggestions (id) on delete set null,
+  keyword text,
+  title_hint text,
+
+  -- pick | research | plan | write | verify | done
+  stage text not null default 'pick',
+  -- running | held | done | failed
+  --   held   = the article exists as a draft but was NOT queued to publish;
+  --            somebody (the operator, during the early customers) releases it
+  status text not null default 'running',
+  -- Every stage writes its output under its own key, so the next stage reads
+  -- it from here rather than from a return value, and a dashboard can show the
+  -- research ledger weeks later.
+  stage_outputs jsonb not null default '{}'::jsonb,
+  -- How many times the write stage has been re-entered (ledger / review / gate
+  -- send it back). Bounded in code; stored so a retry after a crash does not
+  -- forget it was already on its last loop.
+  rewrites integer not null default 0,
+  draft_id uuid references article_drafts (id) on delete set null,
+  error text,
+  cost_usd numeric(10, 4) not null default 0,
+
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists writer_runs_project_created_idx
+  on writer_runs (project_id, created_at desc);
+
+-- One live run per idea. Without this, a cron that fires twice writes the
+-- same article twice and pays for it twice.
+create unique index if not exists writer_runs_active_suggestion_idx
+  on writer_runs (suggestion_id)
+  where suggestion_id is not null and status in ('running', 'held');
+
+alter table writer_runs enable row level security;
+
+create table if not exists writer_fact_sheets (
+  keyword text not null,              -- lower-cased, trimmed
+  location_code int not null,
+  language_code text not null,
+  sheet jsonb not null,               -- { facts: [{ claim, quote, url }], sources: [{ url, title }] }
+  cost_usd numeric(10, 4) not null default 0,
+  fetched_at timestamptz not null default now(),
+  primary key (keyword, location_code, language_code)
+);
+
+alter table writer_fact_sheets enable row level security;
+
+create table if not exists model_calls (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null default '00000000-0000-4000-8000-000000000001'
+    references projects (id) on delete cascade,
+  run_id uuid references writer_runs (id) on delete set null,
+  slot text not null,                 -- judge | extractor | planner | writer
+  provider text not null,             -- anthropic | openai | typesafe | dry-run
+  model text not null,
+  input_tokens integer not null default 0,
+  output_tokens integer not null default 0,
+  cost_microusd integer not null default 0,
+  latency_ms integer not null default 0,
+  ok boolean not null default true,
+  error text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists model_calls_project_created_idx
+  on model_calls (project_id, created_at desc);
+create index if not exists model_calls_run_idx
+  on model_calls (run_id);
+
+alter table model_calls enable row level security;
+
+comment on table writer_runs is
+  'Hosted writer pipeline: one row per article attempt, advanced one stage per `write` job.';
+comment on table model_calls is
+  'Per-call model spend ledger for the hosted writer. Sum by run_id for the per-article cost.';
+
+-- ============ 0065_hosted_blog.sql ============
+-- 0065: the hosted blog.
+--
+-- A code-built site with no blog used to park every article as blocked_setup
+-- ("tell us the folder"). Now it gets one: DispatchSEO serves the site's /blog
+-- itself (src/lib/hosted-blog.ts, /hosted/<slug>/blog/...), and the site
+-- forwards /blog to us with a one-line rewrite we open as a pull request.
+-- publish_target gains the value 'hosted' (text column, no constraint; code
+-- change only - see 0055 for why targets are not an enum).
+--
+-- Plain vanilla-Postgres objects only.
+
+alter table projects add column if not exists hosted_cta_url text;
+alter table projects add column if not exists hosted_cta_label text;
+-- The rewrite pull request we opened, and when /blog on the site's own domain
+-- was last seen answering with our marker header (so the setup card can say
+-- "merged and live" without guessing).
+alter table projects add column if not exists hosted_rewrite_pr_url text;
+alter table projects add column if not exists hosted_rewrite_live_at timestamptz;
+
+comment on column projects.hosted_cta_url is
+  'Hosted blog: where the call-to-action on every article points. Null = the site root.';
+
+-- The look of the hosted blog, read once from the site's own homepage when
+-- the hosted route is switched on (theme colour, logo, accent, font) and
+-- editable by the owner. Null = the default theme.
+alter table projects add column if not exists hosted_theme jsonb;
+
+-- The public key the hosted routes are addressed by (/hosted/<key>/blog).
+-- NEVER the project slug: slugs are reused after a project is deleted (the
+-- next signup whose domain starts the same way gets it), and a merged
+-- forwarding rule in the old customer's repo would then serve the new
+-- tenant's articles on the old customer's domain. A random key is minted
+-- when the hosted route is switched on and never reassigned.
+alter table projects add column if not exists hosted_key text;
+create unique index if not exists projects_hosted_key_idx on projects (hosted_key) where hosted_key is not null;
+-- The origin the site actually serves from (https://www.example.com when the
+-- apex redirects there), learned from the homepage fetch; canonical urls,
+-- the sitemap and page records use it. Null = https://<domain>.
+alter table projects add column if not exists hosted_origin text;
+-- When a hosted article went live (the drafts table had no publish date;
+-- updated_at moves on every edit and is the wrong thing to sort or date by).
+alter table article_drafts add column if not exists published_at timestamptz;
+
+-- ============ 0066_autopilot.sql ============
+-- 0066: the autopilot.
+--
+-- A cloud project no longer needs a coding agent: DispatchSEO researches the
+-- keywords, writes the articles and publishes them on a weekly cadence set by
+-- the plan (src/lib/autopilot/*, /api/cron/autopilot). The bring-your-own-
+-- agent path stays, untouched, for existing projects and every self-host.
+--
+-- Plain vanilla-Postgres objects only.
+
+-- Who writes: 'hosted' (our server) or 'agent' (the owner's AI over MCP).
+-- Default 'agent' so every existing row - and every self-host install - keeps
+-- exactly the behaviour it had; only new cloud projects are created 'hosted'.
+alter table projects add column if not exists writer_mode text not null default 'agent';
+
+-- The pause switch. Set by the owner, or by the autopilot itself when Search
+-- Console shows the site collapsing (src/lib/autopilot/pause.ts). Null =
+-- running. Only the owner ever clears it: a pause that lifted itself would
+-- resume writing into the very problem that paused it.
+alter table projects add column if not exists writer_paused_at timestamptz;
+alter table projects add column if not exists writer_pause_reason text;
+-- When the owner last resumed it. The collapse rule stays quiet for 28 days
+-- after a resume (the window it reads still holds the collapse the owner just
+-- acknowledged), and the zero-impression rule only counts articles published
+-- after it - otherwise the very next daily run would pause the site again on
+-- the evidence the owner already looked at.
+alter table projects add column if not exists writer_resumed_at timestamptz;
+
+-- The byline. Set = the article schema names a Person; null = the site's
+-- Organization, as before.
+alter table projects add column if not exists author_name text;
+alter table projects add column if not exists author_bio text;
+alter table projects add column if not exists author_url text;
+
+-- When autopilot keyword research last ran (the cron re-runs it weekly), and
+-- when the scheduler expects to start the next article (informational: the
+-- dashboard shows it, nothing reads it to decide).
+alter table projects add column if not exists last_research_at timestamptz;
+alter table projects add column if not exists next_article_at timestamptz;
+
+comment on column projects.writer_mode is
+  'hosted = DispatchSEO researches, writes and publishes on a weekly cadence; agent = the owner''s AI drives everything over MCP.';
+
+-- The scheduler and the report count a project's approved guides on every
+-- run; the existing (project_id, created_at) index does not cover it.
+create index if not exists suggestions_project_status_type_idx
+  on suggestions (project_id, status, type);
+
+-- suggestions.source gains 'autopilot' (ideas research approved on its own)
+-- and 'owner' (a topic the owner suggested on a hosted project, which passes
+-- the same judge gate). Same drop-and-re-add dance as 0052; 0014 and 0052
+-- carry this SAME final list so the setup.sql replay never re-validates a
+-- narrower vocabulary against rows that use the new values (see 0013/0014).
+alter table suggestions drop constraint if exists suggestions_source_check;
+alter table suggestions
+  add constraint suggestions_source_check
+  check (source in ('research', 'trend-scan', 'manual', 'refresh', 'autopilot', 'owner'));
+
+-- Merge keys into projects.content_prefs in ONE statement. The blob is shared
+-- by the template editor (house_rules, archetypes, blocks) and the autopilot
+-- (blocked_topics, profile_locked); a read-merge-write from two saves landing
+-- together could drop one of them. jsonb || is atomic per row. Callers fall
+-- back to read-merge-write when this function does not exist yet. Not
+-- security definer: it runs as the caller, and projects has RLS on with no
+-- policies, so only the service role can change a row through it.
+create or replace function merge_content_prefs(p_project_id uuid, p_patch jsonb)
+returns void
+language sql
+as $$
+  update projects
+     set content_prefs = coalesce(content_prefs, '{}'::jsonb) || p_patch
+   where id = p_project_id;
+$$;
 

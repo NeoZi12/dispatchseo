@@ -5,6 +5,7 @@ import { DispatchMark } from "@/components/logo";
 import { ProjectSwitcher } from "@/components/project-switcher";
 import { ModeSwitch } from "@/components/mode-switch";
 import { AgentHeaderSwitch } from "@/components/agent-header-switch";
+import { ArrivalMode } from "@/components/ui/arrival-mode";
 import { DEFAULT_AGENT, projectAgent } from "@/lib/agents";
 import { getActiveProjectOrNull, scopedProjects } from "@/lib/active-project";
 import { isCloudMode } from "@/lib/cloud";
@@ -19,6 +20,8 @@ import { getSubscription, planBadge, planNotice, sitesRemaining } from "@/lib/bi
 import { githubCostGate } from "@/lib/github-cost-gate";
 import { REPO_NOTICE_COOKIE, decodeRepoNotice } from "@/lib/repo-notice";
 import { PostHogIdentify } from "@/components/posthog-identify";
+import { getSetupSummary, setupGaps, writerMode } from "./mode";
+import { HostedSetupBar } from "./setup-bar";
 
 // Shared shell for every dashboard screen. Auth is checked per page (the
 // requireDashboard gate in auth-gate.ts) - this layout is presentation only. force-dynamic
@@ -124,8 +127,17 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // read Home's hero makes (getSetupStepCached is keyed on two strings so the
   // two calls dedupe within the request [R19]); cheap pass only - no GitHub or
   // Google call on a page render [R14]. Self-host never computes a step.
+  // Hosted writer projects get the short nav, no agent/mode switches, and a
+  // one-line "finish setup" bar driven by the autopilot report instead of the
+  // agent setup path (whose steps don't apply to them).
+  const hosted = active != null && writerMode(active) === "hosted";
+  const hostedGap = hosted
+    ? await getSetupSummary(active)
+        .then((s) => setupGaps(s).filter((g) => !g.done && g.href))
+        .catch(() => [])
+    : [];
   const setupStep =
-    billing && active
+    billing && active && !hosted
       ? // A failed read hides the bar; it must never take every page down.
         await getSetupStepCached(active.slug, requestOrigin(await headers())).catch(() => null)
       : null;
@@ -147,9 +159,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
         } as React.CSSProperties)
       : undefined;
   return (
-    <div className="flex min-h-screen bg-neutral-950 text-neutral-100" style={dispatcherTint}>
+    <div className="flex min-h-screen bg-canvas text-ink" style={dispatcherTint}>
+      {/* Arrival pace: full on first load, quick on in-app navigation. */}
+      <ArrivalMode />
       {user && <PostHogIdentify userId={user.id} email={user.email} />}
-      <Sidebar billing={billing} hasProject={active != null} plan={badge} />
+      <Sidebar billing={billing} hasProject={active != null} plan={badge} mode={hosted ? "hosted" : "agent"} />
       <div className="flex min-w-0 flex-1 flex-col">
         {/* One row on every size. Desktop keeps the three-up grid (switcher /
             centered title / mode). Mobile can't: at 390px the centered title
@@ -157,10 +171,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
             page's own h1 already names the screen - and the hamburger takes
             its place on the left. The wordmark also goes; the mark alone links
             home and the drawer carries the full brand. */}
-        <header className="sticky top-0 z-20 border-b border-neutral-800/80 bg-neutral-950/90 backdrop-blur">
+        <header className="sticky top-0 z-20 border-b border-line-soft bg-canvas/90 backdrop-blur">
           <div className="flex h-14 items-center gap-2 px-4 sm:px-6 md:grid md:grid-cols-[1fr_auto_1fr]">
             <div className="flex min-w-0 flex-1 items-center gap-1.5 md:flex-none md:gap-2">
-              <MobileNav billing={billing} hasProject={active != null} plan={badge} />
+              <MobileNav billing={billing} hasProject={active != null} plan={badge} mode={hosted ? "hosted" : "agent"} />
               <Link href="/dashboard" className="shrink-0 md:hidden" aria-label="DispatchSEO home">
                 <DispatchMark className="h-7 w-auto" />
               </Link>
@@ -175,7 +189,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
               )}
             </div>
             <div className="hidden md:block">
-              <PageTitle />
+              <PageTitle mode={hosted ? "hosted" : "agent"} />
             </div>
             <div className="flex shrink-0 items-center justify-end gap-2">
               {/* Agent first, then mode: "who builds" reads before "how much
@@ -186,14 +200,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
                   statuses, an open key form, the post-switch reminder) is
                   about ONE project - carrying it across would show project
                   A's reminder while B is active. */}
-              {active && (
+              {active && !hosted && (
                 <AgentHeaderSwitch
                   key={active.slug}
                   current={projectAgent(active).id}
                   slug={active.slug}
                 />
               )}
-              {active && <ModeSwitch mode={active.mode} slug={active.slug} />}
+              {active && !hosted && <ModeSwitch mode={active.mode} slug={active.slug} />}
             </div>
           </div>
         </header>
@@ -204,6 +218,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <PlanLapsedBanner notice={notice} />
         ) : repoNotice ? (
           <RepoCleanupBanner repo={repoNotice.repo} warnings={repoNotice.warnings} />
+        ) : hosted ? (
+          hostedGap.length ? (
+            <HostedSetupBar title={hostedGap[0].title} href={hostedGap[0].href} remaining={hostedGap.length} />
+          ) : null
         ) : billing ? (
           active && setupStep && setupStep.id !== "complete" ? (
             <SetupPageBar

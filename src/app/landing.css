@@ -134,7 +134,12 @@ html:has(.ld) { scroll-behavior: smooth; }
    holds the width; the visible word sits on top and fades/slides when it
    changes, so the slab never jumps and the line never reflows. */
 .ld .hero .hl-rot { display: inline-block; position: relative; white-space: nowrap; text-align: left; vertical-align: baseline; transition: width 0.32s cubic-bezier(0.3, 0.9, 0.4, 1); }
-.ld .hero .rw-probes { position: absolute; left: 0; top: 0; visibility: hidden; pointer-events: none; white-space: nowrap; }
+/* width 0 + overflow hidden: the probes still lay out at their full one-line
+   width (inline-blocks under nowrap shrink to max-content, never to the 0px
+   box) so getBoundingClientRect reads true word widths, but the clip keeps
+   their ~2,000px row out of the page's scroll width. Unclipped it made / 2717px
+   wide at a 1360px viewport. */
+.ld .hero .rw-probes { position: absolute; left: 0; top: 0; width: 0; overflow: hidden; visibility: hidden; pointer-events: none; white-space: nowrap; }
 .ld .hero .rw-probes > span { display: inline-block; margin-right: 2em; }
 .ld .hero .rw-word { display: inline-block; transition: opacity 0.24s ease, transform 0.24s ease; }
 .ld .hero .rw-out { opacity: 0; transform: translateY(-0.35em); }
