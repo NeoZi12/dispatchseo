@@ -342,8 +342,32 @@ export function stripQuestionLead(keyword: string | null | undefined): string {
   return k;
 }
 
+/** Up to three multi-word headings of the site's home page (the digest's
+ *  link_candidates entry whose path is "/"), as research seeds. Single words
+ *  seed the whole language ("software"); a heading that is a sentence (6+
+ *  words) is a slogan, not a topic. */
+export function homePageHeadings(linkCandidates: unknown): string[] {
+  if (!Array.isArray(linkCandidates)) return [];
+  const home = (linkCandidates as { url?: string; keywords?: unknown }[]).find((c) => {
+    try {
+      return typeof c?.url === "string" && new URL(c.url).pathname.replace(/\/+$/, "") === "";
+    } catch {
+      return false;
+    }
+  });
+  if (!home || !Array.isArray(home.keywords)) return [];
+  return (home.keywords as unknown[])
+    .filter((k): k is string => typeof k === "string")
+    .map((k) => k.replace(/[:：|·•\-–—]+.*$/u, "").trim())
+    .filter((k) => {
+      const words = k.split(/\s+/).filter(Boolean);
+      return words.length >= 2 && words.length <= 5 && k.length >= 4;
+    })
+    .slice(0, 3);
+}
+
 async function seedsFor(project: Project, profile: SiteProfile): Promise<string[]> {
-  const [gscRes, approvedRes, trackedRes] = await Promise.all([
+  const [gscRes, approvedRes, trackedRes, digestRes] = await Promise.all([
     db().from("gsc_stats").select("top_queries").eq("project_id", project.id).order("date", { ascending: false }).limit(1).maybeSingle(),
     db()
       .from("suggestions")
@@ -365,7 +389,12 @@ async function seedsFor(project: Project, profile: SiteProfile): Promise<string[
       .eq("project_id", project.id)
       .eq("status", "tracking")
       .order("search_volume", { ascending: false, nullsFirst: false })
-      .limit(4),
+      .limit(24),
+    // The site's own words: the headings of its home page, from the digest
+    // the site scan keeps. They are in the site's language whatever language
+    // the profile was written in, and they name the audience the site talks
+    // to ("רואי חשבון", "יועצי מס") - the seeds a human would type first.
+    db().from("site_digests").select("link_candidates").eq("project_id", project.id).maybeSingle(),
   ]);
   const queries = (((gscRes.data as { top_queries: { query: string; impressions: number }[] | null } | null)?.top_queries ?? []) as { query: string; impressions: number }[])
     .slice()
@@ -398,8 +427,20 @@ async function seedsFor(project: Project, profile: SiteProfile): Promise<string[
     const words = normalizeKeyword(t ?? "").split(" ").filter(Boolean);
     return words.length > 1 || words.some((w) => siteTerms.has(w));
   });
-  const tracked = ((trackedRes.data ?? []) as { keyword: string }[]).map((r) => r.keyword);
-  const ordered = [...queries, ...tracked, ...profile.categories.filter((c) => profileSeeds.includes(c)), ...heads, ...profile.tags.filter((t) => profileSeeds.includes(t))];
+  // One tracked keyword per topic (its first word after any question lead),
+  // best volume first: Paperbot's top four by volume were four date
+  // calculators, and the seeds never reached what the site is for.
+  const tracked: string[] = [];
+  const topics = new Set<string>();
+  for (const r of (trackedRes.data ?? []) as { keyword: string }[]) {
+    const first = stripQuestionLead(r.keyword).split(/\s+/).filter(Boolean)[0] ?? "";
+    if (!first || topics.has(first)) continue;
+    topics.add(first);
+    tracked.push(r.keyword);
+    if (tracked.length >= 5) break;
+  }
+  const ownWords = homePageHeadings((digestRes.data as { link_candidates?: unknown } | null)?.link_candidates).slice(0, 1);
+  const ordered = [...queries, ...tracked, ...ownWords, ...profile.categories.filter((c) => profileSeeds.includes(c)), ...heads, ...profile.tags.filter((t) => profileSeeds.includes(t))];
   const out: string[] = [];
   const seen = new Set<string>();
   for (const s of ordered) {
