@@ -40,7 +40,7 @@ const GRID = "sm:grid-cols-[10rem_minmax(0,1fr)_5rem_5.5rem_1rem]";
 const css = (v: Record<string, string | number>) => v as React.CSSProperties;
 
 
-/** "Sort: Newest | Most clicks | Best on Google" - links, so it works
+/** "Sort: Newest | Oldest | Most clicks" - links, so it works
  *  without JavaScript, survives a reload and keeps the other params. */
 export function SortChips({
   base,

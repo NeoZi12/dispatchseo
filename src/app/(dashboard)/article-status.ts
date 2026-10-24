@@ -116,12 +116,13 @@ export function longDate(iso: string | null): string {
 }
 
 /** The article list's sort orders, in plain words (?sort= in the URL). Three
- *  on purpose: the ones an owner actually asks - what's new, what works,
- *  what ranks. */
+ *  on purpose: what's new, what's old, what works. ("Best on Google" by
+ *  position came out 2026-10-24 at the owner's ask - a position is a noisy
+ *  number on a young site; it can come back when the ranks mean something.) */
 export const ARTICLE_SORTS = [
   { key: "newest", label: "Newest" },
+  { key: "oldest", label: "Oldest" },
   { key: "clicks", label: "Most clicks" },
-  { key: "best", label: "Best on Google" },
 ] as const;
 export type ArticleSort = (typeof ARTICLE_SORTS)[number]["key"];
 
@@ -130,7 +131,7 @@ export function parseSort(v: string | undefined): ArticleSort {
 }
 
 /** Articles that aren't live have no Google numbers, so under "Most clicks"
- *  and "Best on Google" they sort after every live one, newest first. */
+ *  they sort after every live one, newest first. */
 export function sortArticles<T extends Pick<AutopilotArticle, "createdAt" | "status" | "clicks28d" | "position">>(list: T[], sort: ArticleSort): T[] {
   const t = (a: T) => Date.parse(a.createdAt);
   const newest = (a: T, b: T) => t(b) - t(a);
@@ -144,7 +145,7 @@ export function sortArticles<T extends Pick<AutopilotArticle, "createdAt" | "sta
   };
   const out = [...list];
   if (sort === "clicks") return out.sort(by((a) => a.clicks28d, -1));
-  if (sort === "best") return out.sort(by((a) => a.position, 1));
+  if (sort === "oldest") return out.sort((a, b) => t(a) - t(b));
   return out.sort(newest);
 }
 
