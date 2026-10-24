@@ -153,7 +153,12 @@ export function isPrivateIp(ip: string): boolean {
  *  modern site, most of the bytes; dropping them first keeps the parse cap
  *  for content. The HTML-to-text pass drops them again later - harmless. */
 function stripNoise(html: string): string {
-  return html.replace(/<(script|style|noscript|template)\b[\s\S]*?<\/\1\s*>/gi, "");
+  // The linear indexOf scanner, never a backtracking regex: this runs over
+  // the whole capped body (up to 1.5 MB) and a page full of unclosed
+  // <script openers would make a lazy regex quadratic.
+  let out = html;
+  for (const tag of ["script", "style", "noscript", "template"]) out = stripBlocks(out, `<${tag}`, `</${tag}>`);
+  return out;
 }
 
 // Undici types its body as the stream/web ReadableStream, which is the same
