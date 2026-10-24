@@ -42,7 +42,7 @@ export type SchedulerOutcome =
 export async function approvedIdeaCount(projectId: string): Promise<number> {
   const [{ data: rows }, { data: busy }] = await Promise.all([
     db().from("suggestions").select("id").eq("project_id", projectId).eq("type", "guide").eq("status", "approved").limit(500),
-    db().from("writer_runs").select("suggestion_id").eq("project_id", projectId).in("status", ["running", "held"]).not("suggestion_id", "is", null),
+    db().from("writer_runs").select("suggestion_id").eq("project_id", projectId).eq("status", "running").not("suggestion_id", "is", null),
   ]);
   const taken = new Set(((busy ?? []) as { suggestion_id: string }[]).map((r) => r.suggestion_id));
   return ((rows ?? []) as { id: string }[]).filter((r) => !taken.has(r.id)).length;
@@ -101,11 +101,6 @@ async function queueCrawl(project: Project, now: Date): Promise<boolean | "walle
   return Boolean(job);
 }
 
-async function hasHeldRun(projectId: string): Promise<boolean> {
-  const { count } = await db().from("writer_runs").select("id", { count: "exact", head: true }).eq("project_id", projectId).eq("status", "held");
-  return (count ?? 0) > 0;
-}
-
 async function hasPublishedHostedArticle(projectId: string): Promise<boolean> {
   const { count } = await db()
     .from("article_drafts")
@@ -135,10 +130,6 @@ export async function runScheduler(
   // Operator configuration, not the owner's: reported once per cron run by
   // the route (loudly), skipped quietly per project here.
   if (missingCredentials().length) return { skipped: "the writer has no model credentials on this deploy" };
-  // A held first article waits for the owner's read; writing more on top of
-  // an article they have not approved yet is exactly what holding prevents.
-  // Not forever: autopilot/hold.ts releases a hold 48 hours after it began.
-  if (await hasHeldRun(project.id)) return { skipped: "an article is held for a quality read; it publishes itself within 48 hours" };
   // The hosted blog: the FIRST article may go out before /blog forwards (it
   // is how the owner sees the blog at all). After that, more pages on an
   // address nobody can reach from the site is spend with no return.
@@ -253,7 +244,7 @@ async function returnSlotAfterInfraFailure(project: Project, now: Date): Promise
 }
 
 /**
- * A hosted article started by hand (the write_article MCP tool), held to the
+ * A hosted article started by hand (the write_article MCP tool), bound to the
  * same atomic slot as the daily scheduler. writerStartGate checks quota and
  * spacing, but two calls racing both passed it and both started a paid run
  * (audit B12, TOCTOU). Here the slot is claimed with a compare-and-set on the

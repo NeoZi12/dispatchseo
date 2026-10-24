@@ -2654,11 +2654,12 @@ export async function disconnectWordPressSite() {
 export type DraftActionState = { error?: string; ok?: string } | null;
 
 /**
- * Publish this one now, rather than at the hour the project publishes at.
+ * Publish this one now.
  *
  * There is no hold-for-approval mode: an accepted article publishes on its own
- * schedule, so this button exists for the owner who does not want to wait, and
- * for the one whose article parked while they finished connecting their site.
+ * as soon as it is finished, so this button exists to retry one whose publish
+ * failed, and for the owner whose article parked while they finished
+ * connecting their site.
  */
 export async function approveDraft(draftId: string): Promise<DraftActionState> {
   await assertAuthed();

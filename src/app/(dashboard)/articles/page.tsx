@@ -29,7 +29,7 @@ const FILTERS: Array<{ key: string; label: string; statuses: AutopilotArticleSta
   { key: "all", label: "All", statuses: null, empty: "No articles yet" },
   { key: "live", label: "Live", statuses: ["published"], empty: "Nothing live yet" },
   { key: "progress", label: "In progress", statuses: ["writing", "verifying", "scheduled"], empty: "Nothing in progress right now" },
-  { key: "waiting", label: "Waiting for you", statuses: ["held", "needs_setup"], empty: "Nothing waiting on you" },
+  { key: "waiting", label: "Waiting for you", statuses: ["needs_setup"], empty: "Nothing waiting on you" },
   { key: "stopped", label: "Stopped", statuses: ["failed"], empty: "Nothing stopped" },
 ];
 

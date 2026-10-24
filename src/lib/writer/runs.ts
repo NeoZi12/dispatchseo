@@ -20,7 +20,7 @@ import { writerStartGate } from "@/lib/autopilot/usage";
 
 export const STAGES = ["pick", "research", "plan", "write", "verify", "done"] as const;
 export type Stage = (typeof STAGES)[number];
-export type RunStatus = "running" | "held" | "done" | "failed";
+export type RunStatus = "running" | "done" | "failed";
 
 export type WriterRun = {
   id: string;
@@ -163,7 +163,7 @@ export async function suggestionIdsInFlight(projectId: string): Promise<string[]
     .from("writer_runs")
     .select("suggestion_id")
     .eq("project_id", projectId)
-    .in("status", ["running", "held"])
+    .eq("status", "running")
     .not("suggestion_id", "is", null);
   return ((data ?? []) as { suggestion_id: string }[]).map((r) => r.suggestion_id);
 }

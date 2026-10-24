@@ -3,11 +3,11 @@
 // Client component for weight: rendered into the HTML on the server as
 // always, but the RSC payload carries the articles and their facts (data)
 // rather than every row's full markup tree. The server actions it calls
-// (publish, retry) pass through as references.
+// (retry) pass through as references.
 import Link from "next/link";
 import { useState } from "react";
 import type { AutopilotArticle } from "@/lib/autopilot/report";
-import { releaseArticle, retryArticle } from "@/app/autopilot-actions";
+import { retryArticle } from "@/app/autopilot-actions";
 import {
   ARTICLE_SORTS,
   ARTICLE_STATUS,
@@ -248,8 +248,6 @@ function Glance({ a, glance, slug, paused }: { a: AutopilotArticle; glance: Arti
             Open the article
             <ExternalIcon />
           </a>
-        ) : a.status === "held" && a.runId ? (
-          <ActionForm action={releaseArticle} slug={slug} submitLabel="Publish now" hidden={{ run_id: a.runId }} className="[&_p:empty]:hidden" />
         ) : a.status === "needs_setup" ? (
           <Link href="/settings?section=publishing" className={buttonClass("primary", "md")}>
             Choose where articles go

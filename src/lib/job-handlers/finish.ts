@@ -16,13 +16,9 @@ import type { Job } from "@/lib/jobs";
 // worth having: the expensive, judgement-heavy half runs on the customer's own
 // subscription, and the mechanical half runs on ours for a fraction of a cent.
 //
-// After this the draft is "finished" and a publish job is queued for the hour
-// the owner chose.
-
-/** Default publish slot when a project has not set one: 09:00 in the site's
- *  own day. Early enough to be "today's article", late enough that a European
- *  or American reader sees it in the morning rather than overnight. */
-const DEFAULT_PUBLISH_HOUR = 9;
+// After this the draft is "finished" and a publish job is queued to run at
+// once - there is no publishing hour; an article goes out as soon as it is
+// written.
 
 export type FinishableDraft = {
   id: string;
@@ -102,10 +98,6 @@ export async function renderDraftForRoute(
 export async function runFinishJob(job: Job): Promise<void> {
   const draftId = String(job.payload.draftId ?? "");
   if (!draftId) throw new Error("finish job is missing its draft");
-  // Set by the owner releasing a held article ("Publish now"): the publish
-  // job is due at once, not at the next publishing hour - the first release
-  // on ClockedCode (2026-10-24) sat queued for tomorrow 09:00 UTC otherwise.
-  const publishNow = job.payload.publishNow === true;
 
   const project = await getProjectById(job.project_id);
   if (!project) throw new Error("project no longer exists");
@@ -210,7 +202,7 @@ export async function runFinishJob(job: Job): Promise<void> {
     .eq("id", row.id);
   if (error) throw new Error(`could not save the finished article: ${error.message}`);
 
-  // The publishing routes go out on the owner's hour. Manual and blocked
+  // The publishing routes go out straight away. Manual and blocked
   // stop here - one has nowhere to go by choice, the other by circumstance.
   if (route !== "wordpress" && route !== "repo" && route !== "hosted") return;
 
@@ -218,27 +210,7 @@ export async function runFinishJob(job: Job): Promise<void> {
     projectId: project.id,
     kind: "publish",
     payload: { draftId: row.id },
-    runAfter: publishNow ? new Date() : nextPublishSlot(project.publish_hour ?? DEFAULT_PUBLISH_HOUR),
+    runAfter: new Date(),
     idempotencyKey: `publish:${row.id}`,
   });
-}
-
-/**
- * The next occurrence of `hour` in UTC.
- *
- * Deliberately UTC rather than the site's local timezone: we do not reliably
- * know a customer's timezone yet, and inventing one would put articles out at
- * an hour nobody chose. UTC is at least predictable and documented, and the
- * pacing rule (one guide per UTC day) is already expressed in the same clock,
- * so the two cannot drift apart. When a real timezone is captured at setup,
- * this is the one function that changes.
- */
-function nextPublishSlot(hour: number): Date {
-  const safeHour = Number.isFinite(hour) ? Math.min(23, Math.max(0, Math.floor(hour))) : DEFAULT_PUBLISH_HOUR;
-  const now = new Date();
-  const slot = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), safeHour, 0, 0, 0),
-  );
-  if (slot.getTime() <= now.getTime()) slot.setUTCDate(slot.getUTCDate() + 1);
-  return slot;
 }

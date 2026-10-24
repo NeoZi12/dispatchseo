@@ -166,29 +166,6 @@ export async function suggestTopicAction(_prev: ActionState, fd: FormData): Prom
   return state(true, `Added "${r.title}" to the queue.`);
 }
 
-/** A held article: send it on to publish. Holds are the site's first
- *  article (when the deploy holds it for a read) or a daily publish cap. */
-export async function releaseArticle(_prev: ActionState, fd: FormData): Promise<ActionState> {
-  const o = await ownedProject(fd);
-  if ("refused" in o) return o.refused;
-  const runId = text(fd, "run_id");
-  if (!runId) return state(false, "That article can't be published from here.");
-  const [{ getWriterRun }, { releaseWriterRun }] = await Promise.all([
-    import("@/lib/writer/runs"),
-    import("@/lib/writer/stages"),
-  ]);
-  const run = await getWriterRun(o.project.id, runId);
-  if (!run) return state(false, "That article is no longer on this site.");
-  if (run.status !== "held") return state(false, "That article is already on its way.");
-  try {
-    await releaseWriterRun(run);
-  } catch {
-    return state(false, "We couldn't release it just now. Try again in a moment.");
-  }
-  refresh();
-  return state(true, "Publishing. It goes live in the next few minutes.");
-}
-
 // startWriterRun's refusals are written for agents and name MCP tools. Every
 // one an owner can meet gets an explicit translation; anything unrecognised
 // falls back to a neutral sentence rather than leaking the agent wording.

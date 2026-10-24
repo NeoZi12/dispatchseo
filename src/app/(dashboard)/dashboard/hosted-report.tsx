@@ -25,14 +25,13 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { ArticleList, SortChips } from "@/components/ui/article-list";
 import { ArticleRowsSkeleton } from "@/components/ui/skeleton";
 import { MonthBoard, type CalCard } from "@/components/ui/month-board";
-import { ARTICLE_STATUS, articleHref, articleStep, dayDate, holdText, inProgress, parseSort, shortDate, sortArticles, statusLabel, stepLine } from "../article-status";
+import { ARTICLE_STATUS, articleHref, articleStep, dayDate, inProgress, parseSort, shortDate, sortArticles, statusLabel, stepLine } from "../article-status";
 import { loadGlances } from "../articles/article-data";
 import { setupGaps } from "../mode";
 import { TOPIC_LIMITS } from "@/lib/autopilot/controls";
 import type { CronHealth } from "@/lib/cron-alerts";
 import { siteIssueLine } from "@/lib/autopilot/friendly";
 import type { OperatorSite } from "@/lib/autopilot/operator";
-import { operatorReleaseArticle } from "./operator-actions";
 
 // The hosted-mode Home, modelled on Polar's overview: the numbers are the
 // main event, and everything is readable in three seconds.
@@ -74,15 +73,6 @@ type Message = { title: string; sub: string | null; link?: { href: string; label
 // them. Only things the owner can act on qualify - "an article is being
 // written" is news the scene already shows (it's typing).
 function messageOf(r: AutopilotReport, gaps: ReturnType<typeof setupGaps>): Message | null {
-  const held = r.articles.find((a) => a.status === "held");
-  if (held) {
-    const h = holdText(held.holdReason);
-    return {
-      title: h.first ? "Your first article is written, held for a quality read." : "An article is ready and waiting.",
-      sub: h.text,
-      link: { href: "/articles?status=waiting", label: "Read it" },
-    };
-  }
   if (r.articles.some((a) => a.status === "needs_setup")) {
     return {
       title: "An article is finished, with nowhere to publish.",
@@ -191,7 +181,7 @@ export async function HostedReport({
    *  out. Before 2026-10-24 the hosted Home rendered none of them, so a site
    *  whose articles had stopped looked exactly like a healthy quiet week. */
   siteIssues?: CronHealth[];
-  /** Every hosted site's issues and held articles, for the operator only
+  /** Every hosted site's issues, for the operator only
    *  (OPERATOR_USER_IDS); null for everyone else. */
   operatorSites?: OperatorSite[] | null;
   /** Journey + Google's daily series (overview-data.ts), loaded alongside
@@ -292,7 +282,7 @@ export async function HostedReport({
         </Callout>
       ) : null}
 
-      {operatorSites ? <OperatorStrip sites={operatorSites} currentSlug={project.slug} /> : null}
+      {operatorSites ? <OperatorStrip sites={operatorSites} /> : null}
 
       <SiteIssues issues={siteIssues.filter((h) => !(r.paused && h.job.startsWith("autopilot-pause--")))} />
 
@@ -546,15 +536,14 @@ function SiteIssues({ issues }: { issues: CronHealth[] }) {
 
 /** The operator's view across every hosted site (OPERATOR_USER_IDS only;
  *  see autopilot/operator.ts). Raw error text on purpose - this reader
- *  debugs it. Each held article links to its own page (?site= lets the
- *  operator open a tenant's article read-only) and can be released here. */
-function OperatorStrip({ sites, currentSlug }: { sites: OperatorSite[]; currentSlug: string }) {
+ *  debugs it. */
+function OperatorStrip({ sites }: { sites: OperatorSite[] }) {
   return (
     <Card as="section" aria-labelledby="ops-title" className="border-l-2 border-l-warn">
       <CardHeader
         id="ops-title"
         title="All sites"
-        description={sites.length ? `${sites.length} ${sites.length === 1 ? "site needs" : "sites need"} a look. Only operators see this.` : "Every hosted site is healthy and nothing is held. Only operators see this."}
+        description={sites.length ? `${sites.length} ${sites.length === 1 ? "site needs" : "sites need"} a look. Only operators see this.` : "Every hosted site is healthy. Only operators see this."}
       />
       {sites.length ? (
         <ul className="mt-4 divide-y divide-line-soft">
@@ -567,18 +556,6 @@ function OperatorStrip({ sites, currentSlug }: { sites: OperatorSite[]; currentS
                 <p key={i.job} className="break-words text-[13px] text-ink-muted">
                   <span className="font-mono text-ink-faint">{i.job}</span> {i.error}
                 </p>
-              ))}
-              {site.held.map((h) => (
-                <div key={h.runId} className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">
-                  <span className="min-w-0 text-ink">
-                    Held: {h.title}
-                    {h.releasesAt ? <span className="text-ink-faint"> (publishes itself {shortDate(h.releasesAt)})</span> : null}
-                  </span>
-                  <Link href={`/articles/${h.draftId ?? h.runId}${site.slug === currentSlug ? "" : `?site=${encodeURIComponent(site.slug)}`}`} className={LINK}>
-                    Read it
-                  </Link>
-                  <ActionForm action={operatorReleaseArticle} slug={currentSlug} submitLabel="Publish now" size="sm" variant="secondary" hidden={{ run_id: h.runId, project_id: site.projectId }} className="[&_p:empty]:hidden" />
-                </div>
               ))}
             </li>
           ))}

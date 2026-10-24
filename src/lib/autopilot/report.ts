@@ -8,7 +8,6 @@ import { aggregatePageTraffic, aggregateQueries, normalizePageUrl, type GscPageS
 import { getProjectById, publishTarget, writerMode, type Project } from "@/lib/projects";
 import { deltaPct } from "./math";
 import { blockedTopicsOf } from "./prefs";
-import { holdReleasesAt } from "./hold";
 import { weekUsage } from "./scheduler";
 
 // The autopilot report: the ONE data shape the hosted dashboard renders and
@@ -19,7 +18,6 @@ import { weekUsage } from "./scheduler";
 export type AutopilotArticleStatus =
   | "writing"
   | "verifying"
-  | "held"
   | "scheduled"
   | "published"
   | "failed"
@@ -52,16 +50,11 @@ export type AutopilotArticle = {
   error: string | null;
   /** The writer run's own status, when there is a run: "failed" is the only
    *  state a retry makes sense from (a rejected draft's run is "done"). */
-  runStatus: "running" | "held" | "done" | "failed" | null;
+  runStatus: "running" | "done" | "failed" | null;
   /** Why a failed run failed (stage_outputs.failure_kind): "content" = the
    *  writer set the idea aside on purpose, so "Try again" would only pay for
    *  the same refusal; "infra" = a vendor fault; null = neither recorded. */
   failureKind: "infra" | "content" | null;
-  /** Why a held run is held (stage_outputs.verify.handoff.reason): the
-   *  first-article read, or a publish cap. */
-  holdReason: string | null;
-  /** When a held run publishes itself (held + 48h, autopilot/hold.ts). */
-  holdReleasesAt: string | null;
   /** The pull request a repo-route article went out as, and whether it is
    *  merged. An open one is "waiting for a merge on GitHub" - the article
    *  page shows the link instead of "Publishing" forever (audit H1). */
@@ -128,7 +121,6 @@ type RunRow = {
   cost_usd: number | string;
   created_at: string;
   updated_at: string;
-  hold_reason: string | null;
   failure_kind: string | null;
 };
 
@@ -177,11 +169,9 @@ function gsc28Folded(projectId: string) {
 }
 const CHART_DAYS = 90;
 
-/** The status one article shows, from its run and its draft (spec A5). A held
- *  run outranks the draft (a held draft sits at 'submitted'); otherwise the
- *  draft, once it exists, is the truth. */
+/** The status one article shows, from its run and its draft (spec A5). Once a
+ *  draft exists it is the truth; before that, the run is. */
 export function articleStatus(run: Pick<RunRow, "status" | "stage"> | null, draft: Pick<DraftRow, "status"> | null): AutopilotArticleStatus {
-  if (run?.status === "held") return "held";
   if (draft) {
     switch (draft.status) {
       case "published": return "published";
@@ -216,7 +206,7 @@ export async function getAutopilotReport(projectId: string): Promise<AutopilotRe
     weekUsage(project.id, now),
     db()
       .from("writer_runs")
-      .select("id, suggestion_id, keyword, title_hint, stage, status, draft_id, error, cost_usd, created_at, updated_at, hold_reason:stage_outputs->verify->handoff->>reason, failure_kind:stage_outputs->>failure_kind")
+      .select("id, suggestion_id, keyword, title_hint, stage, status, draft_id, error, cost_usd, created_at, updated_at, failure_kind:stage_outputs->>failure_kind")
       .eq("project_id", project.id)
       .order("created_at", { ascending: false })
       .limit(DRAFT_LIMIT + 20),
@@ -283,8 +273,6 @@ export async function getAutopilotReport(projectId: string): Promise<AutopilotRe
       error: d.status === "rejected" ? "The article failed the quality gate." : null,
       runStatus: runStatusOf(run),
       failureKind: failureKindOf(run),
-      holdReason: run?.status === "held" ? run.hold_reason : null,
-      holdReleasesAt: run?.status === "held" ? holdReleasesAt(run.updated_at) : null,
       prUrl: d.pr_url,
       prMerged: Boolean(d.pr_merged_at),
     };
@@ -314,8 +302,6 @@ export async function getAutopilotReport(projectId: string): Promise<AutopilotRe
       error: r.status === "failed" ? r.error : null,
       runStatus: runStatusOf(r),
       failureKind: failureKindOf(r),
-      holdReason: r.status === "held" ? r.hold_reason : null,
-      holdReleasesAt: r.status === "held" ? holdReleasesAt(r.updated_at) : null,
       prUrl: null,
       prMerged: false,
     });
@@ -348,8 +334,6 @@ export async function getAutopilotReport(projectId: string): Promise<AutopilotRe
       error: null,
       runStatus: null,
       failureKind: null,
-      holdReason: null,
-      holdReleasesAt: null,
       prUrl: null,
       prMerged: false,
     });
@@ -417,7 +401,7 @@ function failureKindOf(run: Pick<RunRow, "status" | "failure_kind"> | null): Aut
 
 function runStatusOf(run: Pick<RunRow, "status"> | null): AutopilotArticle["runStatus"] {
   const s = run?.status;
-  return s === "running" || s === "held" || s === "done" || s === "failed" ? s : null;
+  return s === "running" || s === "done" || s === "failed" ? s : null;
 }
 
 async function ideaSummary(projectId: string): Promise<Omit<AutopilotReport["ideas"], "lastResearchAt">> {
@@ -430,7 +414,7 @@ async function ideaSummary(projectId: string): Promise<Omit<AutopilotReport["ide
       .eq("status", "approved")
       .order("created_at", { ascending: true })
       .limit(100),
-    db().from("writer_runs").select("suggestion_id").eq("project_id", projectId).in("status", ["running", "held"]).not("suggestion_id", "is", null),
+    db().from("writer_runs").select("suggestion_id").eq("project_id", projectId).eq("status", "running").not("suggestion_id", "is", null),
   ]);
   if (rowsError || busyError) throw new Error(`could not read the idea queue: ${(rowsError ?? busyError)!.message}`);
   const taken = new Set(((busy ?? []) as { suggestion_id: string }[]).map((r) => r.suggestion_id));

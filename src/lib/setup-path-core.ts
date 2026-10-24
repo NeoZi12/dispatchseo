@@ -79,9 +79,6 @@ export type SetupCounts = {
    *  "published" [R3]. */
   drafts_accepted: number;
   drafts_blocked_setup: number; gsc_rows: number;
-  /** Hosted-writer runs parked as `held` (WRITER_HOLD_FIRST): the first
-   *  article waits for the owner's read. Optional: absent = none. */
-  writer_held?: number;
 };
 
 export type SetupHealth = {
@@ -848,22 +845,10 @@ function conversationChain(x: Ctx): Draft | null {
 }
 
 /** The hosted-writer chain: after connect there is nothing left for the
- *  owner to do but wait for the first article (and read it, when the deploy
- *  holds a site's first one). Research, the profile and the writing all run
+ *  owner to do but wait for the first article. Research, the profile and the writing all run
  *  on the server's own schedule (src/lib/autopilot). */
 function hostedChain(x: Ctx): Draft | null {
   const { c, publish } = x;
-  if ((c.writer_held ?? 0) > 0 && !publishedDone(x)) {
-    return {
-      id: "first_article", kind: "do", phase: "first-article",
-      title: "Read your first article",
-      why: "It's written and checked. We hold a site's first one so you can read it before it goes live.",
-      instructions: [{ text: "Open Articles, read it, then press Publish." }],
-      primary: { kind: "link", label: "Open Articles", href: "/articles" },
-      evidence: "This turns green on its own the moment it's live.",
-      polls: true,
-    };
-  }
   if (c.drafts === 0) {
     return wait(
       "first_article", "first-article",

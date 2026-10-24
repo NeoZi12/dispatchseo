@@ -131,7 +131,7 @@ async function loadCounts(projectId: string): Promise<SetupCounts> {
   const [
     site_profile, conventions, suggestions, approved, keywords, rank_checks,
     pages, pages_live, pages_with_pr, drafts, drafts_published, drafts_finished, drafts_accepted,
-    drafts_blocked_setup, gsc_rows, writer_held,
+    drafts_blocked_setup, gsc_rows,
   ] = await Promise.all([
     headCount("site_profile", projectId),
     headCount("conventions", projectId),
@@ -151,14 +151,11 @@ async function loadCounts(projectId: string): Promise<SetupCounts> {
     headCount("article_drafts", projectId, (q) => q.in("status", ["accepted", "finished", "published"])),
     headCount("article_drafts", projectId, (q) => q.eq("status", "blocked_setup")),
     headCount("gsc_stats", projectId),
-    // A held first article (WRITER_HOLD_FIRST) is the hosted branch's one
-    // owner action; 0 on a database without writer_runs (headCount swallows).
-    headCount("writer_runs", projectId, (q) => q.eq("status", "held")),
   ]);
   return {
     site_profile, conventions, suggestions, approved, keywords, rank_checks,
     pages, pages_live, pages_with_pr, drafts, drafts_published, drafts_finished, drafts_accepted,
-    drafts_blocked_setup, gsc_rows, writer_held,
+    drafts_blocked_setup, gsc_rows,
   };
 }
 

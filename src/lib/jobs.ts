@@ -4,8 +4,7 @@ import { db } from "./db";
 //
 // Three things in the new article flow are too slow for an HTTP request and
 // too important to drop: crawling a customer's site, turning an accepted draft
-// into finished HTML, and flipping a WordPress draft live at the hour its
-// owner chose. Each becomes a row here, and a cron drains them.
+// into finished HTML, and publishing it. Each becomes a row here, and a cron drains them.
 //
 // The claim mechanism is lifted from serp_tasks (0042/dataforseo-tasks.ts)
 // rather than invented, because that pattern is already carrying real traffic

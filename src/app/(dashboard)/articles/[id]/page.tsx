@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { requireDashboard } from "@/lib/auth-gate";
 import { getActiveProject } from "@/lib/active-project";
 import type { AutopilotArticle } from "@/lib/autopilot/report";
-import { releaseArticle, retryArticle } from "@/app/autopilot-actions";
+import { retryArticle } from "@/app/autopilot-actions";
 import { ActionForm } from "@/components/ui/action-form";
 import { ExternalIcon } from "@/components/ui/article-list";
 import { buttonClass } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import { OverviewChart } from "@/components/ui/overview-chart";
 import { PipelineSteps } from "@/components/ui/pipeline-steps";
 import { StatusPill } from "@/components/ui/status-pill";
 import { cx, FOCUS_RING } from "@/components/ui/styles";
-import { ARTICLE_STATUS, articleStep, fmtInt, holdText, longDate, statusLabel, stepLine, waitingOnMerge } from "../../article-status";
+import { ARTICLE_STATUS, articleStep, fmtInt, longDate, statusLabel, stepLine, waitingOnMerge } from "../../article-status";
 import { loadReport, redirectIfAgent } from "../../mode";
 import { loadGoneUrls, loadLedger, loadPageDays, type Check, type Ledger, type PageDay } from "../article-data";
 import { normalizePageUrl } from "@/lib/metrics";
@@ -25,7 +25,7 @@ export const dynamic = "force-dynamic";
 
 // One article, read top to bottom in the order an owner asks about it: what
 // it looks like (the cover), what it is (title, the search it's for), the
-// one thing to do with it (open it, or publish / fix / retry it), then six
+// one thing to do with it (open it, or fix / retry it), then six
 // facts - when it went out, where it sits on Google, who clicked, how it
 // scored, what it read, what it checked. The angle is one line under them;
 // Google's daily chart and the claim-by-claim fact check come last, the
@@ -39,8 +39,8 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
   const auth = await requireDashboard();
   // Ids are UUIDs, but decode anyway: a param can arrive percent-encoded.
   const id = decodeURIComponent((await params).id);
-  // ?site=<slug>: the operator opening another tenant's held article from the
-  // "All sites" strip (autopilot/operator.ts). Read-only - every action form
+  // ?site=<slug>: the operator opening another tenant's article (see
+  // autopilot/operator.ts). Read-only - every action form
   // below posts to the ACTIVE project and refuses anything else - and only
   // for an id in OPERATOR_USER_IDS; anyone else gets their own site, exactly
   // as without the parameter.
@@ -171,12 +171,7 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
         </Callout>
       ) : null}
 
-      {a.status === "held" ? (
-        <Callout tone="warn" title={holdText(a.holdReason).first ? "Held for a quality read" : "Held back before publishing"}>
-          {holdText(a.holdReason).text}
-          {a.holdReleasesAt ? ` It goes out on its own on ${longDate(a.holdReleasesAt)}.` : null}
-        </Callout>
-      ) : a.status === "needs_setup" ? (
+      {a.status === "needs_setup" ? (
         <Callout tone="warn" title="Finished, with nowhere to publish">
           Choose where articles go and it goes out straight away.
         </Callout>
@@ -237,9 +232,6 @@ function PrimaryAction({ a, slug, paused }: { a: AutopilotArticle; slug: string;
         <ExternalIcon className="h-4 w-4" />
       </a>
     );
-  }
-  if (a.status === "held" && a.runId) {
-    return <ActionForm action={releaseArticle} slug={slug} submitLabel="Publish now" size="lg" hidden={{ run_id: a.runId }} className="[&_p:empty]:hidden" />;
   }
   if (a.status === "needs_setup") {
     return (

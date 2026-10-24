@@ -2,7 +2,6 @@ import { checkCron } from "@/lib/cron-auth";
 import { reportCronRun } from "@/lib/cron-alerts";
 import { db } from "@/lib/db";
 import { claimDue, complete, failJob, queueHealth, MAX_ATTEMPTS, type Job } from "@/lib/jobs";
-import { releaseStaleHolds } from "@/lib/autopilot/hold";
 
 // Drains the background work queue (src/lib/jobs.ts, migration 0056).
 //
@@ -79,23 +78,6 @@ export async function GET(req: Request): Promise<Response> {
 
   const result: Record<string, unknown> = {};
   let hadError = false;
-
-  // Held articles past their 48-hour read window publish themselves (see
-  // autopilot/hold.ts). Before the claim, so the finish job each release
-  // queues can be picked up by this very tick.
-  let released = 0;
-  try {
-    const holds = await releaseStaleHolds();
-    released = holds.released.length;
-    if (released) result.holds_released = released;
-    if (holds.failed.length) {
-      hadError = true;
-      result.holds = { error: `could not release ${holds.failed.length} held article(s): ${holds.failed[0]}` };
-    }
-  } catch (e) {
-    hadError = true;
-    result.holds = { error: e instanceof Error ? e.message : String(e) };
-  }
 
   // Small batch per tick on purpose. The cron runs often; a big batch just
   // means one slow job (a 150-page crawl) starves everything behind it and
@@ -197,7 +179,7 @@ export async function GET(req: Request): Promise<Response> {
   // worth counting against the staleness clock, same reasoning as the other
   // claim-marker crons. A tick that found wedged rows is a real outcome, never
   // claim-only - the claim marker would hide its error from the banner.
-  await reportCronRun("jobs", result, hadError, jobs.length === 0 && queue.wedged === 0 && released === 0);
+  await reportCronRun("jobs", result, hadError, jobs.length === 0 && queue.wedged === 0);
   return Response.json(result, { status: hadError ? 500 : 200 });
 }
 

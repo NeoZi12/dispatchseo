@@ -472,9 +472,8 @@ until the page is confirmed live.
 
 ### `approve_draft`
 
-Publish a finished article right now instead of at the site's usual
-publishing hour. Owner-gated: an accepted article already publishes on
-its own, so an autonomous run has no reason to call this. It's also how
+Publish a finished article right now. Owner-gated: an accepted article
+already publishes on its own within minutes, so an autonomous run has no reason to call this. It's also how
 you release an article that parked as `blocked_setup`, once the owner has
 connected their site.
 
@@ -1727,18 +1726,6 @@ sameness results, and the gate report.
   <Field name="limit" type="number">Up to 50, default 20.</Field>
 </Fields>
 
-### `release_writer_run`
-
-Releases a held run - a site's first hosted article when the deploy sets
-`WRITER_HOLD_FIRST=1` (held for a quality read), or an article that
-landed while the site was at its daily publish cap. It publishes at once,
-not at the next publishing hour. A held run that nobody releases
-publishes itself 48 hours after it was held.
-
-<Fields>
-  <Field name="run_id" type="string" required="true">The held run.</Field>
-</Fields>
-
 ### `set_hosted_blog`
 
 For a site whose /blog DispatchSEO serves (publish target `hosted`, chosen
@@ -1806,7 +1793,7 @@ that - the same functions the dashboard calls. See
 The dashboard's report in one read: mode, pause state and reason, plan
 and articles per week, `nextArticleAt`, this week's count against the
 quota, the last 50 articles (status, stage, cost, gain, 28-day clicks and
-impressions; `holdReleasesAt` on a held one, and `prUrl` / `prMerged` on a
+impressions; `prUrl` / `prMerged` on a
 repo article - an open, unmerged `prUrl` means it waits for a merge on
 GitHub), Search Console traffic and top queries, the next queued ideas
 (with `lastResearchAt`), what setup is missing (including

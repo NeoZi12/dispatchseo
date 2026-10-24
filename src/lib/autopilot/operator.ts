@@ -1,8 +1,6 @@
-import { db } from "@/lib/db";
 import { isCloudMode } from "@/lib/cloud";
 import { criticalCronIssues, getCronHealth, jobProjectSlug, type CronHealth } from "@/lib/cron-alerts";
 import { listProjects, writerMode } from "@/lib/projects";
-import { holdReleasesAt } from "./hold";
 
 // The operator's "All sites" strip (audit 2026-10-24, C1).
 //
@@ -11,7 +9,7 @@ import { holdReleasesAt } from "./hold";
 // tenants on cloud - correctly. That left the operator with no surface at
 // all for "site X's articles stopped" short of querying the database. So the
 // operator's own Home grows one strip: every hosted site with a critical
-// issue or a held article, each linking to the article that needs reading.
+// issue.
 //
 // Who is the operator: a cloud user id listed in OPERATOR_USER_IDS
 // (comma-separated). Unset = nobody, fail closed - this strip reads across
@@ -38,20 +36,10 @@ export type OperatorSite = {
   name: string;
   domain: string;
   issues: Array<{ job: string; error: string }>;
-  held: Array<{ runId: string; draftId: string | null; title: string; heldAt: string; releasesAt: string | null; reason: string | null }>;
 };
 
 export async function operatorOverview(): Promise<OperatorSite[]> {
-  const [projects, health, heldRes] = await Promise.all([
-    listProjects(),
-    getCronHealth(),
-    db()
-      .from("writer_runs")
-      .select("id, project_id, keyword, title_hint, draft_id, updated_at, reason:stage_outputs->verify->handoff->>reason")
-      .eq("status", "held")
-      .order("updated_at", { ascending: true })
-      .limit(100),
-  ]);
+  const [projects, health] = await Promise.all([listProjects(), getCronHealth()]);
   const hosted = projects.filter((p) => writerMode(p) === "hosted");
   const bySlug = new Map<string, CronHealth[]>();
   const instance: CronHealth[] = [];
@@ -65,14 +53,6 @@ export async function operatorOverview(): Promise<OperatorSite[]> {
     }
     bySlug.set(slug, [...(bySlug.get(slug) ?? []), h]);
   }
-  const held = (heldRes.data ?? []) as { id: string; project_id: string; keyword: string | null; title_hint: string | null; draft_id: string | null; updated_at: string; reason: string | null }[];
-  const draftIds = held.map((r) => r.draft_id).filter((x): x is string => Boolean(x));
-  const titles = new Map<string, string>();
-  if (draftIds.length) {
-    const { data } = await db().from("article_drafts").select("id, title").in("id", draftIds);
-    for (const d of (data ?? []) as { id: string; title: string }[]) titles.set(d.id, d.title);
-  }
-
   const out: OperatorSite[] = [];
   if (instance.length) {
     out.push({
@@ -81,22 +61,11 @@ export async function operatorOverview(): Promise<OperatorSite[]> {
       name: "Instance",
       domain: "every site",
       issues: instance.map((h) => ({ job: h.job, error: (h.errors[0] ?? (h.stale ? "overdue" : "failed")).slice(0, 300) })),
-      held: [],
     });
   }
   for (const p of hosted) {
     const issues = (bySlug.get(p.slug) ?? []).map((h) => ({ job: h.job, error: (h.errors[0] ?? (h.stale ? "overdue" : "failed")).slice(0, 300) }));
-    const mine = held
-      .filter((r) => r.project_id === p.id)
-      .map((r) => ({
-        runId: r.id,
-        draftId: r.draft_id,
-        title: (r.draft_id && titles.get(r.draft_id)) || r.title_hint || r.keyword || "Untitled",
-        heldAt: r.updated_at,
-        releasesAt: holdReleasesAt(r.updated_at),
-        reason: r.reason,
-      }));
-    if (issues.length || mine.length) out.push({ projectId: p.id, slug: p.slug, name: p.name, domain: p.domain, issues, held: mine });
+    if (issues.length) out.push({ projectId: p.id, slug: p.slug, name: p.name, domain: p.domain, issues });
   }
   return out;
 }

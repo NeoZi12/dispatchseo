@@ -1622,14 +1622,14 @@ export function CloudOnboardingWizard(props: {
               {/* The human gate is in a different place per route, so the copy
                   has to be. With a repo it is the pull request: an article is
                   written, and a person merges it. Without one there is no PR to
-                  merge - the article publishes itself at the site's publish
-                  hour - so the gate moves earlier, to approving the idea. Two
+                  merge - the article publishes itself as soon as it passes
+                  the gate - so the gate moves earlier, to approving the idea. Two
                   routes, one sentence each, rather than one sentence that is
                   wrong for half the customers. */}
               <p className="mt-1 text-sm text-neutral-400">
                 {publish === "github"
                   ? "Claude researches and builds on its own, but nothing goes live without you. You approve ideas and merge finished pull requests right from the dashboard."
-                  : "Your AI researches ideas and writes on its own, but no idea is written until you approve it on the Queue screen. Finished articles publish on their own at the hour you choose."}
+                  : "Your AI researches ideas and writes on its own, but no idea is written until you approve it on the Queue screen. Finished articles publish on their own as soon as they pass the quality check."}
               </p>
               <p className="mt-2 text-sm text-neutral-400">A few minutes of your attention a week.</p>
             </button>

@@ -52,7 +52,6 @@ import { credentialWarnings, isDryRun, missingCredentials } from "@/lib/writer/m
 import { getWriterRun, listWriterRuns, startWriterRun } from "@/lib/writer/runs";
 import { startHostedRunClaimed } from "@/lib/autopilot/scheduler";
 import { writerMode as projectWriterMode, writerProvider as projectWriterProvider } from "@/lib/projects";
-import { releaseWriterRun } from "@/lib/writer/stages";
 import { listAgentTasks, submitAgentTask } from "@/lib/writer/agent-tasks";
 import {
   getAutopilotReport,
@@ -1369,9 +1368,9 @@ const mcpHandler = createMcpHandler(
       {
         title: "Publish a draft now",
         description:
-          "Owner-gated: publish a finished article immediately instead of waiting for " +
-          "the site's usual publishing hour. Use ONLY when the owner asked for it in " +
-          "this conversation - an accepted article already publishes on its own, so an " +
+          "Owner-gated: publish a finished article immediately. Use ONLY when the owner " +
+          "asked for it in this conversation - an accepted article already publishes on " +
+          "its own within minutes, so an " +
           "autonomous run has no reason to call this. Also the way to release an article " +
           "that parked as blocked_setup, once the owner has connected their site.",
         inputSchema: {
@@ -4641,27 +4640,6 @@ const mcpHandler = createMcpHandler(
       },
     );
 
-    server.registerTool(
-      "release_writer_run",
-      {
-        title: "Release a held writer run",
-        description:
-          "A site's first hosted-writer article is held for a quality read when the deploy sets " +
-          "WRITER_HOLD_FIRST=1 (status 'held'); a publish cap can hold one too. A held article " +
-          "publishes itself 48 hours after it was held. This releases it now: it finishes and " +
-          "publishes at once, not at the next publishing hour.",
-        inputSchema: { run_id: z.string().uuid() },
-      },
-      async ({ run_id }) => {
-        const p = currentProject();
-        const run = await getWriterRun(p.id, run_id);
-        if (!run) return fail("No such writer run on this project.");
-        if (run.status !== "held") return fail(`That run is ${run.status}, not held.`);
-        await releaseWriterRun(run);
-        return ok({ run_id: run.id, status: "done", draft_id: run.draft_id });
-      },
-    );
-
     // --- Hosted writer, agent provider (operator-only, 0069) ------------------
     //
     // The door a Claude Code session on the OPERATOR's subscription uses to
@@ -4741,8 +4719,8 @@ const mcpHandler = createMcpHandler(
           "Everything the hosted dashboard shows for this site in one read: writer mode, pause " +
           "state (with the reason when it paused itself), plan and articles per week, when the next " +
           "article starts, this week's count against the quota, the last 50 articles with status " +
-          "(writing / verifying / held / scheduled / published / failed / needs_setup), cost and " +
-          "28-day clicks (a held article carries holdReleasesAt - it publishes itself then; a repo " +
+          "(writing / verifying / scheduled / published / failed / needs_setup), cost and " +
+          "28-day clicks (a repo " +
           "article carries prUrl/prMerged - open and unmerged means it waits for a merge on GitHub), " +
           "Search Console traffic, the next queued ideas, what setup is missing (setup.rewritePrUrl = " +
           "the forwarding PR to merge; setup.siteUnreadable = describe the site with set_brand), the " +

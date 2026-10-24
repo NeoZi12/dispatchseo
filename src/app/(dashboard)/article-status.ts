@@ -10,7 +10,6 @@ export const ARTICLE_STATUS: Record<AutopilotArticleStatus, { label: string; ton
   writing: { label: "Writing now", tone: "active", live: true },
   verifying: { label: "Checking facts", tone: "active", live: true },
   scheduled: { label: "Publishing", tone: "active" },
-  held: { label: "Waiting for you", tone: "warn", attention: true },
   needs_setup: { label: "Needs setup", tone: "warn", attention: true },
   published: { label: "Live", tone: "ok" },
   failed: { label: "Stopped", tone: "danger" },
@@ -48,22 +47,6 @@ export function fmtInt(n: number): string {
 
 export function fmtUsd(n: number): string {
   return `$${n.toFixed(2)}`;
-}
-
-/** Why a held article is held, in the owner's words. The writer records an
- *  internal reason (stage_outputs.verify.handoff.reason); these are the ones
- *  it writes today, with a neutral fallback for anything new. */
-export function holdText(reason: string | null): { first: boolean; text: string } {
-  const r = (reason ?? "").toLowerCase();
-  if (r.includes("first article")) {
-    // The hold is for OUR quality read (WRITER_HOLD_FIRST), and it ends by
-    // itself: autopilot/hold.ts releases it 48 hours after it was held. The
-    // copy must never suggest the owner has to act for it to go out.
-    return { first: true, text: "Held for a quality read; it publishes itself within 48 hours. You can also publish it now. Everything after it publishes on its own." };
-  }
-  if (r.includes("today")) return { first: false, text: "Your site already took its articles for today, so this one was held back. It publishes itself within 48 hours, or publish it now." };
-  if (r.includes("waiting to publish")) return { first: false, text: "Other articles were still on their way out, so this one was held back. It publishes itself within 48 hours, or publish it now." };
-  return { first: false, text: "This one was held back before publishing. It publishes itself within 48 hours, or publish it now." };
 }
 
 /** Which PIPELINE step (components/ui/pipeline-steps) an in-progress article

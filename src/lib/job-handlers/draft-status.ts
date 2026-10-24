@@ -130,13 +130,12 @@ export function blockedReason(project: Project): string {
  * "Publish now", made true. Shared by the dashboard button and the
  * approve_draft MCP tool so the two can never disagree.
  *
- * The subtlety this exists for: the finish handler already queued a publish
- * job for this draft at the site's usual publishing hour, under the same
- * idempotency key. A plain enqueue() then returns null - the dedupe doing its
- * job - and the scheduled job keeps its scheduled hour, which turns the one
- * button that says "now" into a silent no-op in its commonest case. So when
- * the key is already held by a pending job, that job is pulled forward
- * instead.
+ * The subtlety this exists for: the finish handler may already have queued a
+ * publish job for this draft under the same idempotency key (still pending,
+ * or waiting out a retry backoff). A plain enqueue() then returns null - the
+ * dedupe doing its job - and that job keeps its run_after, which would turn
+ * the one button that says "now" into a silent no-op. So when the key is
+ * already held by a pending job, that job is pulled forward instead.
  */
 export async function publishDraftNow(projectId: string, draftId: string): Promise<void> {
   const job = await enqueue({

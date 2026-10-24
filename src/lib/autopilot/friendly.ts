@@ -78,7 +78,7 @@ export function siteIssueLine(h: CronHealth): { title: string; detail: string } 
     if (/wordpress|wp-json|rest_/i.test(why)) {
       return { title: "An article couldn't reach WordPress", detail: "We couldn't post it after several tries. Check your WordPress connection on Settings." };
     }
-    return { title: "An article got stuck on its way out", detail: "It failed several times in a row. Open Articles to see which one; it is safe to press Publish now to try again." };
+    return { title: "An article got stuck on its way out", detail: "It failed several times in a row. Open Articles to see which one; the next publish attempt retries it on its own." };
   }
   return { title: "Something in the background failed", detail: friendlyError(first) ?? FALLBACK };
 }

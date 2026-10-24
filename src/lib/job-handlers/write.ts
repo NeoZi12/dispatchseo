@@ -104,7 +104,7 @@ export async function runWriteJob(job: Job): Promise<void> {
     }
     // Continue only when THIS worker advanced the run. A lost compare-and-set
     // means another worker owns it; a stage that ended the run (failed,
-    // held, done) or re-ran itself in place is finished with this handler.
+    // done) or re-ran itself in place is finished with this handler.
     if (run.lastAdvance !== "won" || run.status !== "running" || run.stage === "done" || run.stage === current) return;
     if (Date.now() + ESTIMATE_MS[run.stage] > deadline) return; // the queued job takes it from here
     run.lastAdvance = undefined;
