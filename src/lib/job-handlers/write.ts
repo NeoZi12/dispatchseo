@@ -2,6 +2,8 @@ import { db } from "@/lib/db";
 import { MAX_ATTEMPTS, type Job } from "@/lib/jobs";
 import { failRun, getWriterRun, queueStage, saveScratch, VENDOR_FAILURE_RE, type Stage, type WriterRun } from "@/lib/writer/runs";
 import { parkIdea, runStage } from "@/lib/writer/stages";
+import { isAgentTaskFailed, isAwaitingAgent } from "@/lib/writer/models";
+import { closeRunTasks, parkOnAgent, waitingOnAgent } from "@/lib/writer/agent-tasks";
 
 
 // One hosted-writer run, as many stages as fit in one handler.
@@ -25,6 +27,13 @@ import { parkIdea, runStage } from "@/lib/writer/stages";
 //     nothing behind it, holding its idea's lock forever.
 //   - Each stage gets the handler's deadline, so every model call sizes
 //     itself to the time actually left.
+//
+// The agent provider (operator-only, 0069) adds a fourth outcome besides
+// advance / fail / retry: PARK. A stage that throws AwaitingAgent has queued
+// tasks for the subscription writer; the run stays running at that stage,
+// the job completes normally (no attempt spent, nothing queued for the next
+// stage), and the chain stops. The last answer re-queues the stage as a
+// `resume` job, which replays it with every answer memoized.
 
 /** Under the jobs route's 240s handler deadline, with room for the final
  *  save and enqueue. */
@@ -51,11 +60,31 @@ export async function runWriteJob(job: Job): Promise<void> {
     if (run.stage !== "done") await queueStage(run.project_id, run.id, run.stage);
     return;
   }
+  const waiting = waitingOnAgent(run);
+  if (job.payload.resume) {
+    // Dropped in memory so the stage's own full saves erase it too, even if
+    // a late park marker landed after the answer that queued this job.
+    if (waiting) run.stage_outputs = { ...run.stage_outputs, waiting_on_agent: null };
+  } else if (waiting && waiting.stage === run.stage) {
+    // A parked run's fallback job (queued by the stage before it, for a
+    // chain that then parked) or a duplicate: the stage would only queue the
+    // same tasks again. The answers re-queue it as a resume job.
+    return;
+  }
   for (;;) {
     const current = run.stage;
     try {
       await runStage(run, deadline);
     } catch (err) {
+      if (isAwaitingAgent(err)) {
+        await parkOnAgent(run, current, err.keys);
+        return;
+      }
+      if (isAgentTaskFailed(err)) {
+        await failRun(run, err.message, 0, "content");
+        await closeRunTasks(run.id, "the run failed");
+        return;
+      }
       // Only the job's OWN stage spends this job's attempts. A chained later
       // stage has its own pending job with all its attempts left, so its
       // failure must not end the run on this job's count.

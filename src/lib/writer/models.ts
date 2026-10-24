@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { db } from "@/lib/db";
 
 // The model layer of the hosted writer: four generative slots, one judge,
@@ -47,9 +48,19 @@ import { db } from "@/lib/db";
 // DRY RUN: with WRITER_DRY_RUN=1 no vendor is called; each call supplies a
 // canned answer through `dry`, so the whole pipeline runs end to end on a
 // machine with no keys. That is how it is smoke-tested.
+//
+// AGENT PROVIDER (operator-only, 0069): with `provider: "agent"` a generative
+// call is not sent to a vendor at all. It becomes a writer_tasks row and the
+// call throws AwaitingAgent; the stage parks (job-handlers/write.ts), a
+// Claude Code session on the operator's subscription answers the task over
+// MCP, and the stage REPLAYS from the top - this time the same call finds its
+// answer memoized under stage_outputs.agent_answers.<key> and returns it at
+// cost 0. Replay is the whole design, so the key is a hash of the prompt
+// itself: an identical call is the same task, a changed one is a new task.
+// The judge never takes this path (Jev stays server-side, ~$0.004/article).
 
 export type Slot = "judge" | "extractor" | "planner" | "writer" | "patcher";
-export type Provider = "anthropic" | "openai" | "typesafe" | "dry-run";
+export type Provider = "anthropic" | "openai" | "typesafe" | "dry-run" | "subscription";
 
 type ModelSpec = {
   provider: Provider;
@@ -161,6 +172,9 @@ export type GenerateInput = {
   json?: boolean;
   temperature?: number;
   deadline?: number;
+  /** projects.writer_provider via writerProvider(): "agent" hands the call to
+   *  the operator's subscription session instead of the API. */
+  provider?: "api" | "agent";
 };
 
 export type GenerateResult = { text: string; provider: Provider; model: string; costUsd: number };
@@ -184,6 +198,10 @@ export async function generate(input: GenerateInput): Promise<GenerateResult> {
     await ledger(input.projectId, input.runId, input.slot, DRY, zeroUsage(), 0, null);
     return { text, provider: "dry-run", model: "dry-run", costUsd: 0 };
   }
+  // Before the vendor loop, never inside it: an AwaitingAgent thrown here
+  // must reach the stage untouched, not be caught as a failed candidate and
+  // ledgered as an error.
+  if (input.provider === "agent") return generateViaAgent(input);
   const candidates = slotSpecs(input.slot);
   const errors: string[] = [];
   for (const [i, spec] of candidates.entries()) {
@@ -218,6 +236,147 @@ export async function generate(input: GenerateInput): Promise<GenerateResult> {
     }
   }
   throw new Error(`every ${input.slot} model failed - ${errors.join("; ")}`);
+}
+
+// --- The agent provider -------------------------------------------------------
+
+/** Thrown by generate() when the subscription session has not answered this
+ *  call yet. NOT a failure: the stage handler parks the run on it (waiting,
+ *  no attempt spent) and the last answer to arrive re-queues the stage. Every
+ *  catch between generate() and the stage must rethrow it - see
+ *  isAwaitingAgent. `keys` lets a stage that issued several calls at once
+ *  (research's per-page extraction) report the whole batch. */
+export class AwaitingAgent extends Error {
+  readonly keys: string[];
+  constructor(key: string | string[]) {
+    const keys = Array.isArray(key) ? key : [key];
+    super(`waiting on the subscription writer for ${keys.length} task${keys.length === 1 ? "" : "s"}`);
+    this.name = "AwaitingAgent";
+    this.keys = keys;
+  }
+}
+
+/** By name as well as by class: a bundler that duplicates this module would
+ *  make instanceof lie, and mistaking a wait for a fault burns a job attempt
+ *  per wait. */
+export function isAwaitingAgent(err: unknown): err is AwaitingAgent {
+  return err instanceof AwaitingAgent || (err as { name?: string } | null)?.name === "AwaitingAgent";
+}
+
+/** The subscription writer answered a JSON call with something that does
+ *  not parse, after its retry. A content failure of the run (it costs the
+ *  slot, nothing is retried): replaying the same memoized answer can only
+ *  fail the same way. */
+export class AgentTaskFailed extends Error {
+  constructor(readonly slot: string) {
+    super(`the subscription writer returned no valid JSON for ${slot}`);
+    this.name = "AgentTaskFailed";
+  }
+}
+export function isAgentTaskFailed(err: unknown): err is AgentTaskFailed {
+  return err instanceof AgentTaskFailed || (err as { name?: string } | null)?.name === "AgentTaskFailed";
+}
+
+const SUBSCRIPTION: ModelSpec = { provider: "subscription", model: "claude-code", inputPerM: 0, outputPerM: 0, cacheReadFraction: 0, maxOutput: 0 };
+
+/** sha256 over every part that shapes the answer, NUL-separated so two
+ *  different splits of the same text can never collide. */
+export function agentKey(input: Pick<GenerateInput, "slot" | "system" | "cachedRules" | "cachedPrefix" | "user" | "json">): string {
+  return createHash("sha256")
+    .update([input.slot, input.system, input.cachedRules ?? "", input.cachedPrefix ?? "", input.user, input.json ? "json" : "text"].join("\u0000"))
+    .digest("hex");
+}
+
+/** The instructions the agent is served for a task: the rules block, then
+ *  the call's own system prompt - the order the API path sends them in. */
+export function agentInstructions(input: Pick<GenerateInput, "system" | "cachedRules">): string {
+  return [input.cachedRules, input.system].filter(Boolean).join("\n\n");
+}
+
+/** What the slot's API model could have produced, in characters (~4 per
+ *  token), so the agent sizes its answer to what the stage expects. */
+export function maxOutputChars(slot: Exclude<Slot, "judge">): number {
+  return slotSpecs(slot)[0].maxOutput * 4;
+}
+
+// Answers only ever get ADDED to a run, so a cached hit is always valid and a
+// miss simply re-reads: no invalidation, and a warm serverless process that
+// served the parked pass cannot hand the resumed pass a stale "not yet".
+const answerCache = new Map<string, Map<string, string>>();
+
+/** The memoized answer for (run, key), or undefined. Reads
+ *  stage_outputs.agent_answers first (where submit_writer_task merges it),
+ *  then the task row itself: a stage save that raced the merge with an older
+ *  copy of stage_outputs can drop the memo, never the row. */
+export async function getAgentAnswer(runId: string, key: string): Promise<string | undefined> {
+  const cached = answerCache.get(runId)?.get(key);
+  if (cached !== undefined) return cached;
+  const { data, error } = await db().from("writer_runs").select("answers:stage_outputs->agent_answers").eq("id", runId).maybeSingle();
+  if (error) throw new Error(`could not read the subscription writer's answers: ${error.message}`);
+  const answers = (data as { answers?: unknown } | null)?.answers;
+  const map = new Map<string, string>();
+  if (answers && typeof answers === "object" && !Array.isArray(answers)) {
+    for (const [k, v] of Object.entries(answers as Record<string, unknown>)) if (typeof v === "string") map.set(k, v);
+  }
+  if (!map.has(key)) {
+    const { data: task } = await db().from("writer_tasks").select("answer").eq("run_id", runId).eq("key", key).eq("status", "done").maybeSingle();
+    const answer = (task as { answer: string | null } | null)?.answer;
+    if (typeof answer === "string") map.set(key, answer);
+  }
+  if (answerCache.size > 200) answerCache.clear(); // a long-lived process must not grow without bound
+  answerCache.set(runId, map);
+  return map.get(key);
+}
+
+/** Has the subscription writer already answered exactly this call? Lets a
+ *  caller tell a resume replay from a first attempt without making the call. */
+export async function agentAnswerExists(input: GenerateInput): Promise<boolean> {
+  if (input.provider !== "agent" || !input.runId || isDryRun()) return false;
+  return (await getAgentAnswer(input.runId, agentKey(input))) !== undefined;
+}
+
+async function generateViaAgent(input: GenerateInput): Promise<GenerateResult> {
+  if (!input.runId) throw new Error("the subscription writer needs a run to queue its task on");
+  const key = agentKey(input);
+  const answer = await getAgentAnswer(input.runId, key);
+  if (answer !== undefined) {
+    if (input.json && parseJson(answer) === undefined) {
+      // submit_writer_task only stores JSON that parses, so this is a row
+      // edited by hand or an older parser: same verdict as the submit path.
+      await db().from("writer_tasks").update({ status: "failed", error: "stored answer is not valid JSON" }).eq("run_id", input.runId).eq("key", key);
+      throw new AgentTaskFailed(input.slot);
+    }
+    // Zero tokens here: submit_writer_task already ledgered the answer's
+    // size when it arrived, and every replay of the stage reads it again.
+    await ledger(input.projectId, input.runId, input.slot, SUBSCRIPTION, zeroUsage(), 0, null);
+    return { text: answer, provider: "subscription", model: "claude-code", costUsd: 0 };
+  }
+  const { error } = await db()
+    .from("writer_tasks")
+    .upsert(
+      {
+        project_id: input.projectId,
+        run_id: input.runId,
+        key,
+        slot: input.slot,
+        instructions: agentInstructions(input),
+        research: input.cachedPrefix ?? null,
+        user_prompt: input.user,
+        json: Boolean(input.json),
+        status: "queued",
+      },
+      // A replay that finds the task already queued (or a parallel twin)
+      // must not reset its attempts or its re-prompt.
+      { onConflict: "run_id,key", ignoreDuplicates: true },
+    );
+  if (error) throw new Error(`could not queue the subscription writer's ${input.slot} task (is migration 0069 applied?): ${error.message}`);
+  throw new AwaitingAgent(key);
+}
+
+/** The ledger row for an answer as it arrives: tokens estimated from its
+ *  length (the subscription reports none), cost 0 by definition. */
+export async function ledgerSubscriptionAnswer(projectId: string, runId: string | null, slot: Exclude<Slot, "judge">, chars: number): Promise<void> {
+  await ledger(projectId, runId, slot, SUBSCRIPTION, { ...zeroUsage(), outputTokens: Math.ceil(chars / 4) }, 0, null);
 }
 
 async function callAnthropic(spec: ModelSpec, input: GenerateInput): Promise<RawResult> {

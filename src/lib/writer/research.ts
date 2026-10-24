@@ -45,7 +45,7 @@ import { spacelessLang } from "@/lib/article-validate";
 export const SERP_DEPTH = 20;
 export const PAGES_WANTED = 4;
 const FETCH_WAVE = 4;
-const PAGE_TEXT_CAP = 16_000;
+export const PAGE_TEXT_CAP = 16_000;
 /** Facts the sheet carries into every prompt. Past this the plan and write
  *  prompts grow (and are re-sent by every patch) for facts no section uses. */
 export const MAX_SHEET_FACTS = 60;
@@ -141,7 +141,7 @@ type Extracted = { claim: string; quote: string; kind: string };
 const KINDS = new Set(["stat", "price", "step", "pitfall", "definition", "example", "opinion", "spec"]);
 
 export async function extractFacts(
-  ctx: { projectId: string; runId: string; deadline: number },
+  ctx: { projectId: string; runId: string; deadline: number; provider?: "api" | "agent" },
   keyword: string,
   intent: Intent,
   page: FetchedPage,
@@ -149,6 +149,7 @@ export async function extractFacts(
   const dry = isDryRun();
   const { text, costUsd } = await generate({
     slot: "extractor",
+    provider: ctx.provider,
     projectId: ctx.projectId,
     runId: ctx.runId,
     json: true,

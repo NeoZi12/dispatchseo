@@ -1,11 +1,11 @@
 import { db } from "@/lib/db";
 import { enqueue } from "@/lib/jobs";
-import { getProjectById, type Project } from "@/lib/projects";
+import { getProjectById, writerProvider, type Project } from "@/lib/projects";
 import { loadSiteProfile } from "@/lib/site-profile";
 import { normalizeContentPrefs } from "@/lib/content-prefs";
 import { validateArticle, type ValidationReport } from "@/lib/article-validate";
 import { compareToCorpus, extractFromMarkdown, tokenize, type CorpusEntry } from "@/lib/similarity";
-import { generate, judge, isDryRun, parseJson, yes, no, scoreOf, type Answer, type Question } from "./models";
+import { AwaitingAgent, agentAnswerExists, agentKey, generate, judge, isAwaitingAgent, isDryRun, parseJson, yes, no, scoreOf, type Answer, type GenerateInput, type Question } from "./models";
 
 import {
   assembleSheet,
@@ -19,6 +19,7 @@ import {
   readPages,
   sheetForSite,
   PAGES_WANTED,
+  PAGE_TEXT_CAP,
   type FetchedPage,
   type Intent,
   type SerpInputs,
@@ -145,7 +146,7 @@ export async function runStage(run: WriterRun, deadline: number): Promise<void> 
   await STAGE_FNS[run.stage]({ project, run, deadline });
 }
 
-const ctxOf = ({ project, run, deadline }: Ctx) => ({ projectId: project.id, runId: run.id, deadline });
+const ctxOf = ({ project, run, deadline }: Ctx) => ({ projectId: project.id, runId: run.id, deadline, provider: writerProvider(project) });
 /** The queued job for the next stage is a fallback behind the chaining
  *  handler: it must not fire while this handler may still run the stage. */
 const fallbackAfter = (c: Ctx) => new Date(c.deadline + 60_000);
@@ -354,6 +355,12 @@ async function research(c: Ctx): Promise<void> {
           return { facts: fl.kept, costUsd: ex.costUsd + fl.costUsd };
         }),
       );
+      // Agent provider: every page's task is queued by now (allSettled waited
+      // for all of them), so ONE wait carries the whole batch and the
+      // subscription session answers it in one wake. The pages that did
+      // resolve replay from the memo when the stage resumes.
+      const waits = perPage.flatMap((r) => (r.status === "rejected" && isAwaitingAgent(r.reason) ? r.reason.keys : []));
+      if (waits.length) throw new AwaitingAgent(waits);
       perPage.forEach((r, i) => {
         if (r.status === "rejected") {
           extractionRejected = true;
@@ -373,9 +380,26 @@ async function research(c: Ctx): Promise<void> {
       // Lazily, in rank order: read until PAGES_WANTED pages are readable,
       // extract them, and only when they still give fewer than the minimum
       // sources read two more - three rounds at most, never past the list.
+      // Agent provider: each round's pages are SAVED before extraction and
+      // reused when the stage replays. The extraction task's key is a hash of
+      // the page text, and a re-fetched page rarely comes back byte-identical
+      // (a timestamp, a rotating ad line): without this, every resume would
+      // queue fresh tasks for the same pages and the run would never finish.
+      const agent = writerProvider(project) === "agent";
+      const reads: Awaited<ReturnType<typeof readPages>>[] = agent && Array.isArray(run.stage_outputs.agent_reads) ? [...(run.stage_outputs.agent_reads as Awaited<ReturnType<typeof readPages>>[])] : [];
       let next = 0;
       for (let round = 0; round < 3 && next < urls.length; round++) {
-        const read = await readPages(urls, { start: next, want: round === 0 ? PAGES_WANTED : 2, lang, deadline: c.deadline });
+        let read = reads[round];
+        if (!read) {
+          read = await readPages(urls, { start: next, want: round === 0 ? PAGES_WANTED : 2, lang, deadline: c.deadline });
+          if (agent) {
+            // Only what extraction reads: the prompt sees the first
+            // PAGE_TEXT_CAP characters, so the quote check needs no more.
+            read = { ...read, pages: read.pages.map((pg) => ({ ...pg, text: pg.text.slice(0, PAGE_TEXT_CAP) })) };
+            reads[round] = read;
+            await saveScratch(run, "agent_reads", reads);
+          }
+        }
         next = read.next;
         unread.push(...read.unread);
         if (read.pages.length) await extractAll(read.pages);
@@ -418,6 +442,9 @@ async function research(c: Ctx): Promise<void> {
     }
   }
 
+  // The saved page texts served their purpose (replay); the sheet carries
+  // what later stages need, so they are not dragged through every save.
+  if (run.stage_outputs.agent_reads !== undefined) run.stage_outputs = { ...run.stage_outputs, agent_reads: undefined };
   await advanceRun(run, { key: "research", value: { sheet, brief, unread } }, "plan", {}, cost, fallbackAfter(c));
 }
 
@@ -474,6 +501,7 @@ async function plan(c: Ctx): Promise<void> {
 
   const { text, costUsd } = await generate({
     slot: "planner",
+    provider: writerProvider(project),
     projectId: project.id,
     runId: run.id,
     json: true,
@@ -656,6 +684,7 @@ async function write(c: Ctx): Promise<void> {
 
   const { text, costUsd } = await generate({
     slot: "writer",
+    provider: writerProvider(project),
     projectId: project.id,
     runId: run.id,
     temperature: 0.8,
@@ -787,7 +816,43 @@ async function verify(c: Ctx): Promise<void> {
     return true;
   };
 
-  for (let pass = Number(run.stage_outputs.verify_passes ?? 0); ; pass++) {
+  // Agent provider: the issues a patch was asked to fix are saved with the
+  // spent attempt (pending_patch), and a replay patches from THOSE instead of
+  // re-checking. The judge is not deterministic: re-checking the same draft
+  // can word an issue differently, which changes the patch prompt, which is
+  // a new task - the answer already paid for would be thrown away and the
+  // attempt counted twice. The replay's attempt is not counted again.
+  const agent = writerProvider(project) === "agent";
+  // API runs never carry the agent-only keys.
+  const clearPending = agent ? { pending_patch: null } : {};
+  const appliedPatches = (): string[] => (Array.isArray(run.stage_outputs.applied_patches) ? (run.stage_outputs.applied_patches as string[]) : []);
+  const pendingOf = (): { issues: Issue[] } | null => {
+    const v = run.stage_outputs.pending_patch as { issues?: unknown } | null | undefined;
+    return agent && v && Array.isArray(v.issues) ? { issues: v.issues as Issue[] } : null;
+  };
+  // A pending patch belongs to the pass that saved it (verify_passes was
+  // already bumped past it), so the replay runs as that pass again.
+  for (let pass = Number(run.stage_outputs.verify_passes ?? 0) - (pendingOf() ? 1 : 0); ; pass++) {
+    const pending = pendingOf();
+    if (pending) {
+      const call = patchCall(c, sheet, brief, p, draft, pending.issues);
+      const key = agentKey(call.input);
+      let patchedDraft: Draft;
+      try {
+        // Usually the memoized answer (the agent replied, the stage resumed);
+        // if it is not there yet the task is still queued and this rethrows
+        // the wait - either way the attempt was counted when it was saved.
+        patchedDraft = await call.finish((await generate(call.input)).text);
+      } catch (err) {
+        if (isAwaitingAgent(err)) throw err;
+        const message = err instanceof Error ? err.message : String(err);
+        if (!(await save({ pending_patch: null, warnings: [...warningsOf(run), { at: new Date().toISOString(), stage: "verify", message: `patch attempt ${attempts} failed: ${message}`.slice(0, 500) }] }))) return;
+        continue;
+      }
+      draft = patchedDraft;
+      if (!(await save({ pending_patch: null, applied_patches: [...appliedPatches(), key] }))) return;
+      continue;
+    }
     const checked = await runChecks(c, sheet, brief, p, draft);
     cost += checked.costUsd;
     // Code fixes first. A wrong citation number was already swapped by
@@ -837,28 +902,41 @@ async function verify(c: Ctx): Promise<void> {
       await save({ verify_passes: pass + 1 });
       throw new Error("not enough time left in this tick to patch; retrying");
     }
-    attempts += 1;
-    if (!(await save({ verify_passes: pass + 1 }, run.rewrites + 1))) return;
+    // The memo check: an answered call that was never APPLIED is a resume
+    // replay, not a new attempt (pending_patch normally catches the replay
+    // above; this covers a run whose marker did not land). An answered call
+    // that WAS applied and comes round again (a patch that changed nothing,
+    // re-judged the same) is a real attempt: counting it is what still
+    // ends that loop at MAX_PATCHES.
+    const call = patchCall(c, sheet, brief, p, draft, checked.issues);
+    const key = agent ? agentKey(call.input) : null;
+    const replayed = key !== null && !appliedPatches().includes(key) && (await agentAnswerExists(call.input));
+    if (!replayed) attempts += 1;
+    if (!(await save({ verify_passes: pass + 1, ...(agent ? { pending_patch: { issues: checked.issues } } : {}) }, replayed ? run.rewrites : run.rewrites + 1))) return;
     let patched: { draft: Draft; costUsd: number };
     try {
-      patched = await patchSections(c, sheet, brief, p, draft, checked.issues);
+      const { text, costUsd: patchCost } = await generate(call.input);
+      patched = { draft: await call.finish(text), costUsd: patchCost };
     } catch (err) {
+      // A wait is not a failed patch: the attempt stays spent (it will be
+      // answered), the pending marker stays, the stage parks.
+      if (isAwaitingAgent(err)) throw err;
       const message = err instanceof Error ? err.message : String(err);
       if (PATCH_INFRA_RE.test(message)) {
         // Not billed and not the article's fault: hand the attempt back,
         // and let the job retry the stage.
-        attempts -= 1;
-        await save({ warnings: [...warningsOf(run), { at: new Date().toISOString(), stage: "verify", message: `patch: ${message}`.slice(0, 500) }] }).catch(() => false);
+        if (!replayed) attempts -= 1;
+        await save({ ...clearPending, warnings: [...warningsOf(run), { at: new Date().toISOString(), stage: "verify", message: `patch: ${message}`.slice(0, 500) }] }).catch(() => false);
         throw err;
       }
       // Spent: the next pass re-checks the same draft and, if attempts are
       // left, patches again; otherwise it parks.
-      if (!(await save({ warnings: [...warningsOf(run), { at: new Date().toISOString(), stage: "verify", message: `patch attempt ${attempts} failed: ${message}`.slice(0, 500) }] }))) return;
+      if (!(await save({ ...clearPending, warnings: [...warningsOf(run), { at: new Date().toISOString(), stage: "verify", message: `patch attempt ${attempts} failed: ${message}`.slice(0, 500) }] }))) return;
       continue;
     }
     cost += patched.costUsd;
     draft = patched.draft;
-    if (!(await save({}))) return;
+    if (!(await save({ ...clearPending, ...(key ? { applied_patches: [...appliedPatches(), key] } : {}) }))) return;
   }
 }
 
@@ -980,6 +1058,9 @@ async function judgeClaims(c: Ctx, sheet: FactSheet, brief: SiteBrief, units: { 
           },
         });
       } catch (err) {
+        // The judge never takes the agent path today; if it ever does, a
+        // wait must park the stage, not mark the claim "not judged".
+        if (isAwaitingAgent(err)) throw err;
         const message = err instanceof Error ? err.message : String(err);
         // A vendor that is down fails every claim alike: rethrow, so the
         // stage retries (and ends as infra) instead of shipping an article
@@ -1303,7 +1384,10 @@ function gainSection(p: Plan, sections: { heading: string }[]): string | null {
  *  fixed); only a length issue reaches every section. Non-blocking notes
  *  never reach the patcher - they stay in the record - and FAQ items never
  *  do either (verify drops a failing one in code). */
-async function patchSections(c: Ctx, sheet: FactSheet, brief: SiteBrief, p: Plan, draft: Draft, allIssues: Issue[]): Promise<{ draft: Draft; costUsd: number }> {
+/** The patch as data (the generate() input) plus how to splice its answer
+ *  back - split so verify can ask whether the agent already answered this
+ *  exact call before it counts an attempt. */
+function patchCall(c: Ctx, sheet: FactSheet, brief: SiteBrief, p: Plan, draft: Draft, allIssues: Issue[]): { input: GenerateInput; finish: (text: string) => Promise<Draft> } {
   const { project, run } = c;
   const issues = allIssues.filter((i) => i.blocking && i.faq === undefined);
   const sections = splitSections(draft.markdown);
@@ -1313,8 +1397,9 @@ async function patchSections(c: Ctx, sheet: FactSheet, brief: SiteBrief, p: Plan
   const targets = new Set(issues.map(placed));
   const toPatch = sections.filter((s) => needsAll || targets.has(s.heading));
   const label = (h: string) => (h === "" ? "intro" : h);
-  const { text, costUsd } = await generate({
+  const input: GenerateInput = {
     slot: "patcher",
+    provider: writerProvider(project),
     projectId: project.id,
     runId: run.id,
     json: true,
@@ -1330,7 +1415,20 @@ async function patchSections(c: Ctx, sheet: FactSheet, brief: SiteBrief, p: Plan
       `\n\nSECTIONS TO REWRITE:\n` +
       toPatch.map((s) => `### ${s.heading || "(intro)"}\n${s.text}`).join("\n\n"),
     dry: () => JSON.stringify({ sections: Object.fromEntries(toPatch.map((s) => [s.heading, s.text + "\n\nPatched in a dry run with one concrete step to take next."])) }),
-  });
+  };
+  return { input, finish: (text) => splicePatch(text, c, sheet, brief, draft, sections, toPatch) };
+}
+
+async function splicePatch(
+  text: string,
+  c: Ctx,
+  sheet: FactSheet,
+  brief: SiteBrief,
+  draft: Draft,
+  sections: ReturnType<typeof splitSections>,
+  toPatch: ReturnType<typeof splitSections>,
+): Promise<Draft> {
+  const { project } = c;
   const parsed = parseJson<{ sections?: Record<string, unknown> }>(text);
   if (!parsed?.sections || typeof parsed.sections !== "object") throw new Error("patch: the patcher returned no sections");
   const got = parsed.sections;
@@ -1351,7 +1449,7 @@ async function patchSections(c: Ctx, sheet: FactSheet, brief: SiteBrief, p: Plan
   });
   if (changed === 0) throw new Error("patch: the patcher returned none of the sections it was asked for");
   const md = postProcessDraft(joinSections(next), sheet, brief, project, await ownPagesOf(project, brief));
-  return { draft: { markdown: md.markdown, faq: md.faq.length ? md.faq : draft.faq, faqHeading: md.faqHeading ?? draft.faqHeading }, costUsd };
+  return { markdown: md.markdown, faq: md.faq.length ? md.faq : draft.faq, faqHeading: md.faqHeading ?? draft.faqHeading };
 }
 
 // --- handoff -------------------------------------------------------------------

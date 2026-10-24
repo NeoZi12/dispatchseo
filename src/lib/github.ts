@@ -330,6 +330,29 @@ export async function dispatchToolBuild(
   }
 }
 
+// Wakes the site repo's seo-writer-agent workflow (operator-only, the hosted
+// writer's subscription provider - see src/lib/writer/agent-tasks.ts) the
+// moment a stage parks on tasks for it. Same credential resolution and
+// never-throw contract as dispatchToolBuild: a missed wake costs at most an
+// hour, because the workflow also polls hourly. Wake-up only; the workflow
+// reads the tasks from the MCP.
+export async function dispatchWriterTask(repo: RepoRef, runId: string): Promise<ToolBuildDispatch> {
+  const target = refRepo(repo);
+  if (!target) return { dispatched: false, reason: "no-repo" };
+  if (!(await tokenForRef(repo))) return { dispatched: false, reason: "no-token" };
+  try {
+    const res = await fetch(`${API}/repos/${target}/dispatches`, {
+      method: "POST",
+      headers: { ...(await headers(repo)), "Content-Type": "application/json" },
+      body: JSON.stringify({ event_type: "seo-writer-task", client_payload: { run_id: runId } }),
+      signal: AbortSignal.timeout(10000),
+    });
+    return res.ok ? { dispatched: true } : { dispatched: false, reason: "github-error" };
+  } catch {
+    return { dispatched: false, reason: "github-error" };
+  }
+}
+
 // Shared plumbing for the dashboard's fire-a-workflow buttons (Scan now,
 // Get takes). Unlike dispatchToolBuild these report the outcome - each
 // button gives live feedback and there is no sweep to catch a missed

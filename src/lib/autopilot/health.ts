@@ -4,6 +4,8 @@ import { reportCronRun } from "@/lib/cron-alerts";
 import type { Project } from "@/lib/projects";
 import { consecutivePostPickFailures, FAILURE_STREAK_ALARM, noArticleAlarm } from "./math";
 import { BUDGET_SKIP } from "./research";
+import { AGENT_STALE_HOURS, AGENT_STALE_REASON, closeRunTasks, waitingOnAgent } from "@/lib/writer/agent-tasks";
+import { failRun, getWriterRun } from "@/lib/writer/runs";
 
 // When a hosted site's autopilot is quietly not working, the owner has to
 // hear about it - but only when it has LASTED. Every daily skip ("no ideas",
@@ -118,4 +120,42 @@ export async function reportSiteHealth(project: Project, problems: string[]): Pr
     problems.length ? { error: problems.join("; ") } : { ok: true },
     problems.length > 0,
   );
+}
+
+/**
+ * Operator-only (the writer's agent provider, 0069): a run parked on the
+ * subscription writer has no job behind it - the last answer creates one -
+ * so if the operator's workflow is gone, broken or out of quota, nothing
+ * else would ever end it. After AGENT_STALE_HOURS it is failed as INFRA:
+ * not the site's fault, so the slot comes back (usage.ts skips infra runs)
+ * and the idea stays approved for the next start. One sweep across every
+ * project, not inside the hosted-only pass: the operator's own sites need
+ * not be in hosted mode to write through the hosted pipeline. Returns the
+ * run ids it failed.
+ */
+export async function failStaleAgentRuns(now: Date): Promise<string[]> {
+  const cutoff = new Date(now.getTime() - AGENT_STALE_HOURS * 3_600_000).toISOString();
+  const { data, error } = await db()
+    .from("writer_runs")
+    .select("id, project_id")
+    .eq("status", "running")
+    // ISO timestamps written by one clock compare correctly as text.
+    .lt("stage_outputs->waiting_on_agent->>since", cutoff)
+    .limit(50);
+  if (error) throw new Error(`could not read runs waiting on the subscription writer: ${error.message}`);
+  const failed: string[] = [];
+  for (const row of (data ?? []) as { id: string; project_id: string }[]) {
+    const run = await getWriterRun(row.project_id, row.id);
+    const waiting = run ? waitingOnAgent(run) : null;
+    // Re-read: an answer may have re-queued it since the select, and a
+    // marker left from an earlier stage is not a wait on this one.
+    if (!run || run.status !== "running" || !waiting || waiting.stage !== run.stage || waiting.since >= cutoff) continue;
+    await failRun(run, AGENT_STALE_REASON, 0, "infra");
+    // failRun is compare-and-set and marks the object only when it won.
+    if ((run.status as string) === "failed") {
+      await closeRunTasks(run.id, AGENT_STALE_REASON);
+      failed.push(run.id);
+    }
+  }
+  return failed;
 }

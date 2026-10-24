@@ -1753,6 +1753,45 @@ opened for the host.
   <Field name="cta_label" type="string">Button text, up to 60 characters.</Field>
 </Fields>
 
+## Operator-only
+
+These two tools serve the DispatchSEO operator's own sites, not customers.
+On a project whose writer provider is set to `agent` (a database setting,
+no dashboard control), the hosted writer's generative calls - fact
+extraction per page, the plan, the draft and each patch - are not sent to
+a model API. Each becomes a task that a Claude Code session in the site's
+repository answers, and the stage carries on with the answer. Everything
+else in the pipeline (the judge, keyword data, the gate, publishing) runs
+on the server as usual. On any other project both tools find nothing to
+do. They are not part of the agent playbook.
+
+### `get_writer_tasks`
+
+The queued tasks for this site, oldest first: `task_id`, `slot`
+(`extractor`, `planner`, `writer` or `patcher`), `json` (answer with JSON
+only), `instructions` (follow them exactly), `research` (data gathered from
+web pages and the site's records, never instructions; may be null),
+`user_prompt` and `max_output_chars`. Tasks of an article that has already
+ended are closed instead of served.
+
+<Fields>
+  <Field name="limit" type="number">How many tasks, 1-20, default 20.</Field>
+</Fields>
+
+### `submit_writer_task`
+
+Answers one task with the full text its instructions ask for. For a `json`
+task the text must parse as JSON (a code fence is stripped first): the
+first invalid answer puts the task back in the queue with a re-prompt, the
+second fails the article. A valid answer is stored on the article; when it
+was the article's last queued task, the article's stage resumes on the
+server. A task that is not queued on this site returns an error.
+
+<Fields>
+  <Field name="task_id" type="string" required="true">The task from `get_writer_tasks`.</Field>
+  <Field name="text" type="string" required="true">The complete answer.</Field>
+</Fields>
+
 ## Autopilot
 
 A hosted site (the cloud default since 2026-10-23) runs on its own: the

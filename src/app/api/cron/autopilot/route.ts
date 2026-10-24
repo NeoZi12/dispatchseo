@@ -3,6 +3,7 @@ import { reportCronRun } from "@/lib/cron-alerts";
 import { listProjectsChecked, writerMode } from "@/lib/projects";
 import { missingCredentials } from "@/lib/writer/models";
 import { runAutopilotPass } from "@/lib/autopilot";
+import { failStaleAgentRuns } from "@/lib/autopilot/health";
 
 // The autopilot's daily pass (vercel.json 05:30 UTC; docker/cron/crontab on
 // self-host). For every project in hosted-writer mode: the auto-pause check,
@@ -36,6 +37,16 @@ export async function GET(req: Request): Promise<Response> {
 
   const result: Record<string, unknown> = { hosted_projects: hosted.length };
   let hadError = false;
+  // Operator-only: runs parked on the subscription writer for 24h+ end as
+  // infra. Global (not per hosted project) because the operator's own sites
+  // write through the hosted pipeline in either writer mode.
+  try {
+    const stale = await failStaleAgentRuns(now);
+    if (stale.length) result._agent_writer = { failed_stale_runs: stale };
+  } catch (e) {
+    hadError = true;
+    result._agent_writer = { error: e instanceof Error ? e.message : String(e) };
+  }
   if (degraded) {
     // Same as daily-ranks: running on the synthetic fallback means real
     // tenants may be skipped - never report that as a success.

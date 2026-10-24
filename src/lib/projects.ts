@@ -195,6 +195,13 @@ export type Project = {
   /** Informational: when the scheduler expects to start the next article. */
   next_article_at: string | null;
 
+  /** Migration 0069, operator-only: 'agent' = the hosted writer's four
+   *  generative calls are answered by a Claude Code session on the operator's
+   *  subscription (writer_tasks), not the Anthropic API. Flipped by SQL only.
+   *  NULLABLE: absent on a DB that hasn't run 0069 and on the COLS_PRE_0069
+   *  tier. Read it through writerProvider(). */
+  writer_provider: string | null;
+
   created_at: string;
 };
 
@@ -293,8 +300,22 @@ export const DEFAULT_PROJECT_ID = "00000000-0000-4000-8000-000000000001";
 // dashboard hands this slug straight back to every server action.
 const FALLBACK_PROJECT_SLUG = "default";
 
+/** Which engine answers the hosted writer's generative calls. Anything but an
+ *  explicit 'agent' (absence pre-0069 included) is the API: the subscription
+ *  path parks a run until an operator-side workflow answers it, which no
+ *  customer project has, so it must never be the fallback. */
+export function writerProvider(p: Pick<Project, "writer_provider">): "api" | "agent" {
+  return p.writer_provider === "agent" ? "agent" : "api";
+}
+
 // mcp_token deliberately excluded - only fetchProjectToken exposes it.
 const COLS =
+  "id, slug, name, domain, gsc_site_url, github_repo, content_mode, content_path_hint, dataforseo_login, dataforseo_password, keyword_source, serpapi_key, powerups_skipped, location_code, language_code, mode, auto_approve, auto_approve_tools, auto_build_guides, auto_build_tools, auto_merge, last_trend_scan_at, site_launched_at, pipeline_installed_at, pipeline_verified, content_prefs, gsc_oauth_refresh_token, github_installation_id, github_app_installed_at, install_progress, onboarding_screen, owner_user_id, agent, internal_linking, publish_target, wp_url, wp_username, wp_app_password, wp_connected_at, wp_seo_plugin, wp_capabilities, publish_hour, ai_choice, chat_last_seen_at, agent_last_seen_at, agent_credential_at, setup_connected_at, setup_deferred, hosted_cta_url, hosted_cta_label, hosted_rewrite_pr_url, hosted_rewrite_live_at, hosted_theme, hosted_key, hosted_origin, writer_mode, writer_paused_at, writer_pause_reason, writer_resumed_at, author_name, author_bio, author_url, last_research_at, next_article_at, writer_provider, created_at";
+
+// Pre-0069 (writer provider): writer_provider is absent. Newest, so dropped
+// first; such a DB reads as "every project writes on the API", which is what
+// every project did before the subscription provider existed.
+const COLS_PRE_0069 =
   "id, slug, name, domain, gsc_site_url, github_repo, content_mode, content_path_hint, dataforseo_login, dataforseo_password, keyword_source, serpapi_key, powerups_skipped, location_code, language_code, mode, auto_approve, auto_approve_tools, auto_build_guides, auto_build_tools, auto_merge, last_trend_scan_at, site_launched_at, pipeline_installed_at, pipeline_verified, content_prefs, gsc_oauth_refresh_token, github_installation_id, github_app_installed_at, install_progress, onboarding_screen, owner_user_id, agent, internal_linking, publish_target, wp_url, wp_username, wp_app_password, wp_connected_at, wp_seo_plugin, wp_capabilities, publish_hour, ai_choice, chat_last_seen_at, agent_last_seen_at, agent_credential_at, setup_connected_at, setup_deferred, hosted_cta_url, hosted_cta_label, hosted_rewrite_pr_url, hosted_rewrite_live_at, hosted_theme, hosted_key, hosted_origin, writer_mode, writer_paused_at, writer_pause_reason, writer_resumed_at, author_name, author_bio, author_url, last_research_at, next_article_at, created_at";
 
 // Pre-0066 (autopilot): the writer_mode / pause / author / schedule columns
@@ -377,6 +398,9 @@ async function selectProjects<T>(
     Boolean(e && e.message.includes("does not exist"));
   const first = await run(COLS);
   if (!missingCol(first.error)) return first;
+  // Drop 0069's writer_provider first (reads as the API provider).
+  const providerless = await run(COLS_PRE_0069);
+  if (!missingCol(providerless.error)) return providerless;
   // Drop 0066's autopilot columns first, then 0065's hosted-blog columns,
   // then 0062's setup-path set.
   const pilotless = await run(COLS_PRE_0066);
@@ -504,6 +528,7 @@ function envFallbackProject(): Project {
     author_url: null,
     last_research_at: null,
     next_article_at: null,
+    writer_provider: null,
     created_at: new Date(0).toISOString(),
   };
 }

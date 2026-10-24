@@ -152,6 +152,11 @@ const PROBES: Probe[] = [
   { migration: "0065_hosted_blog", table: "projects", column: "hosted_cta_url" },
   { migration: "0066_autopilot", table: "projects", column: "writer_mode" },
   { migration: "0067_model_calls_cache_tokens", table: "model_calls", column: "cache_read_tokens" },
+  // 0069 adds a projects column and a table; probe both so a half-applied
+  // migration is still caught (merge_run_output has a read-merge-write
+  // fallback, so the function alone is not worth a probe).
+  { migration: "0069_writer_provider_agent", table: "projects", column: "writer_provider" },
+  { migration: "0069_writer_provider_agent", table: "writer_tasks", column: "key" },
 ];
 
 // Migrations that genuinely CANNOT be probed through this mechanism, with the

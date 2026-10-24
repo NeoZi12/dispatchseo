@@ -13,6 +13,10 @@ import { writerStartGate } from "@/lib/autopilot/usage";
 // platform kills - is either made to throw (so the queue retries) or ends the
 // run. A run that is 'running' with no job is invisible to everything and
 // holds its idea's lock forever; that is the one state nothing may create.
+// One deliberate exception: a run PARKED on the subscription writer (the
+// agent provider, writer/agent-tasks.ts) has no job until its last task is
+// answered; stage_outputs.waiting_on_agent marks it, and the autopilot
+// health pass fails it as infra after 24 hours, so it cannot wait forever.
 
 export const STAGES = ["pick", "research", "plan", "write", "verify", "done"] as const;
 export type Stage = (typeof STAGES)[number];
