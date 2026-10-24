@@ -104,6 +104,8 @@ export type Plan = {
   meta_description: string;
   sections: { heading: string; reader_outcome: string; fact_ids: string[]; format: string }[];
   faq_questions: string[];
+  /** The one table the article opens with, under the TL;DR. */
+  glance_table?: string;
   target_words: number;
   skip?: string;
 };
@@ -363,6 +365,7 @@ async function plan(c: Ctx): Promise<void> {
         meta_description: "120-155 characters, states the concrete benefit",
         sections: [{ heading: "phrased as the reader's question or the outcome, never a topic noun", reader_outcome: "what the reader can DO or DECIDE after this section", fact_ids: ["f1"], format: "prose|steps|table|checklist" }],
         faq_questions: ["ONLY from QUESTIONS PEOPLE ALSO ASK, 0-5, omit any the sections already answer"],
+        glance_table: "one line: what the side-by-side table under the TL;DR shows - its columns and its rows, built from the facts (the bottom line a reader gets without reading a paragraph)",
         target_words: 1200,
         skip: "ONLY if this article cannot honestly beat page one with these facts and this site: one sentence why. Otherwise omit.",
       }) +
@@ -456,7 +459,7 @@ async function plan(c: Ctx): Promise<void> {
 // --- write ---------------------------------------------------------------------
 
 const WRITER_RULES = `RULES - every one of them is a reason an article gets demoted or ignored when broken:
-- Open with the answer in two or three sentences, specific enough to act on without scrolling. No scene-setting, no "in this guide", no definition the reader already knows.
+- THE OPENING, in this exact order, because readers look before they read: (1) directly under the H1, a blockquote that starts with "> **TL;DR:**" - two or three short sentences holding the answer and the one rule or number that decides it, with the keyword in them naturally; (2) then, still before the first H2, the article's single highest-value visual as a markdown table: the bottom line side by side (options against what decides between them with a verdict row; or symptom against fix; or step against what you should see), every cell short, every figure from the facts; (3) only then the sections. A reader who stops after the TL;DR and the table must already know what to do; the sections are for the one who wants the reasoning. No scene-setting, no "in this guide", no definition the reader already knows.
 - Every section gives the reader something to DO or DECIDE: a step, a threshold, a recommendation with its condition ("if you ship under 50 orders a month, choose X because…"). Delete any sentence that would be true of any article on any topic.
 - One concrete worked example with real figures from the facts beats three abstract tips. Name things: products, plans, prices, settings, from the facts or the site brief.
 - Take positions. Where sources disagree or hedge, say which option you would pick for which reader and why, and include a short "when this is the wrong choice" passage.
@@ -489,7 +492,7 @@ async function write(c: Ctx): Promise<void> {
       archetypeContract(p.archetype),
     user:
       `Keyword: ${sheet.keyword}\nTarget length: about ${p.target_words} words (the page-one median; never pad to reach it).\n\nPLAN:\n${JSON.stringify(
-        { angle: p.angle, reader: p.reader, intent_contract: p.intent_contract, gain: p.gain, archetype: p.archetype, title: p.title, sections: p.sections, faq_questions: p.faq_questions },
+        { angle: p.angle, reader: p.reader, intent_contract: p.intent_contract, gain: p.gain, archetype: p.archetype, title: p.title, glance_table: p.glance_table, sections: p.sections, faq_questions: p.faq_questions },
         null,
         1,
       )}\n\nWrite the article now.`,
@@ -624,7 +627,18 @@ async function runChecks(c: Ctx, sheet: FactSheet, brief: SiteBrief, p: Plan, dr
   const sameness = compareToCorpus(extractFromMarkdown(full, new Set(tokenize(sheet.keyword))), await corpusEntries(project.id), "final");
   for (const f of sameness.flags) issues.push({ section: f.kind === "opening" ? "" : null, note: `${f.detail} (against ${f.against}) - rewrite so it does not echo that post`, blocking: true });
 
-  // 5. Banned phrases.
+  // 5. The opening shape: TL;DR callout first, then one table, before any H2.
+  //    Readers look before they read (owner rule, 2026-10-24); a miss patches
+  //    the intro section ("" is the text above the first H2).
+  {
+    const intro = full.split(/^## /m)[0].replace(/^# [^\n]*\n/, "").trim();
+    const tldrFirst = /^>\s*\*\*TL;DR/i.test(intro) || /^>/.test(intro);
+    const tableInIntro = /^\|.*\|\s*$\n^\|\s*:?-{3,}/m.test(intro);
+    if (!tldrFirst) issues.push({ section: "", note: "the article must open, directly under the title, with a blockquote that starts \"> **TL;DR:**\" - two or three short sentences with the answer and the one rule or number that decides it", blocking: true });
+    if (!tableInIntro) issues.push({ section: "", note: `right after the TL;DR and before the first section heading, add the one side-by-side markdown table that shows the bottom line (${p.glance_table ?? "options against what decides between them, with a verdict row"})`, blocking: true });
+  }
+
+  // 6. Banned phrases.
   const banned = bannedPhraseHits(full);
   if (banned.length) issues.push({ section: null, note: `replace these phrases, which read as generated text: ${banned.join(", ")}`, blocking: banned.length >= 2 });
 
@@ -932,5 +946,5 @@ function dryArticle(sheet: FactSheet, brief: SiteBrief, p: Plan): string {
   const faq = p.faq_questions.length
     ? `\n## Frequently asked questions\n\n${p.faq_questions.map((q) => `**${q}**\n\nA dry-run answer about ${kw}, long enough to read as a real answer rather than a placeholder, adding one detail the body did not say.`).join("\n\n")}\n`
     : "";
-  return `# ${p.title}\n\nDry run ${stamp}: this article answers the question behind ${kw} directly in its first lines, because that is what a reader and a search engine both look for first. ${para("opening")}\n\n${sections}${faq}`;
+  return `# ${p.title}\n\n> **TL;DR:** Dry run ${stamp}: the answer to ${kw} in two short sentences, with the one rule that decides it. Read the table, then the sections only if you want the reasoning.\n\n| Option | What decides it | Verdict |\n|---|---|---|\n| Option A | Dry-run criterion one | Pick this when the first case applies |\n| Option B | Dry-run criterion two | Pick this otherwise |\n\nDry run ${stamp}: this article answers the question behind ${kw} directly in its first lines, because that is what a reader and a search engine both look for first. ${para("opening")}\n\n${sections}${faq}`;
 }

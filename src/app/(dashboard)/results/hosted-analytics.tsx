@@ -95,7 +95,7 @@ export async function HostedAnalytics() {
           <OverviewChart
             daily={packDays(o.daily)}
             published={published}
-            publishedCapped={(report?.articles.length ?? 0) >= 50}
+            publishedCapped={report?.articlesTruncated ?? false}
           />
 
           <section aria-label="Last 28 days" className="arrive-up" style={at(880)}>

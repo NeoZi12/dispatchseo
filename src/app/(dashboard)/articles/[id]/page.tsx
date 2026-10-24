@@ -12,23 +12,25 @@ import { packDays } from "@/components/ui/overview-pack";
 import { OverviewChart } from "@/components/ui/overview-chart";
 import { PipelineSteps } from "@/components/ui/pipeline-steps";
 import { StatusPill } from "@/components/ui/status-pill";
-import { cx } from "@/components/ui/styles";
-import { ARTICLE_STATUS, articleStep, holdText, longDate, statusLabel, stepLine } from "../../article-status";
+import { cx, FOCUS_RING } from "@/components/ui/styles";
+import { ARTICLE_STATUS, articleStep, fmtInt, holdText, longDate, statusLabel, stepLine } from "../../article-status";
 import { loadReport, redirectIfAgent } from "../../mode";
-import { loadGoneUrls, loadLedger, loadPageDays, loadStepTimes, type Ledger } from "../article-data";
+import { loadGoneUrls, loadLedger, loadPageDays, type Check, type Ledger, type PageDay } from "../article-data";
 import { normalizePageUrl } from "@/lib/metrics";
 
 export const dynamic = "force-dynamic";
 
-// One article, everything about it, Polar-style: what it is and the one
-// thing to do with it (open it, or publish / fix / retry it), how it does on
-// Google (the same overview card as Home, for this page alone: people, times
-// shown, spot now and best), how it was made (the research ledger and its
-// sources), and when each step happened. Only real data: the per-page
-// numbers are Google's daily top-100 pages, the step dates the writer's own
-// model-call log.
+// One article, read top to bottom in the order an owner asks about it: what
+// it looks like (the cover), what it is (title, the search it's for), the
+// one thing to do with it (open it, or publish / fix / retry it), then six
+// facts - when it went out, where it sits on Google, who clicked, how it
+// scored, what it read, what it checked. The angle is one line under them;
+// Google's daily chart and the claim-by-claim fact check come last, the
+// check folded shut. Only real data: the per-page numbers are Google's daily
+// top-100 pages, the score and claims the draft's own validation.
 
 const at = (ms: number, i = 0) => ({ "--at": `${ms}ms`, "--i": i }) as React.CSSProperties;
+const DAY = 86_400_000;
 
 export default async function ArticlePage({ params }: { params: Promise<{ id: string }> }) {
   await requireDashboard();
@@ -42,10 +44,12 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
   const a = report?.articles.find((x) => x.draftId === id || x.runId === id);
   if (!report || !a) notFound();
 
-  const [days, ledger, steps, goneUrls] = await Promise.all([
-    a.url ? loadPageDays(project.id, a.url).catch(() => []) : Promise.resolve([]),
-    loadLedger(project.id, a.draftId),
-    loadStepTimes(project.id, a.runId),
+  // "page:<id>" articles predate autopilot: no draft, so no ledger and no
+  // cover (loadLedger returns null for them without querying).
+  const hasDraft = Boolean(a.draftId) && !a.draftId.startsWith("page:");
+  const [days, ledger, goneUrls] = await Promise.all([
+    a.url ? loadPageDays(project.id, a.url).catch(() => [] as PageDay[]) : Promise.resolve([] as PageDay[]),
+    hasDraft ? loadLedger(project.id, a.draftId) : Promise.resolve(null),
     a.url ? loadGoneUrls(project.id) : Promise.resolve(new Set<string>()),
   ]);
   // Known not to load any more: say so, and don't send anyone to it.
@@ -54,9 +58,18 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
   const step = articleStep(a);
   const live = a.status === "published";
   const paused = Boolean(report.paused);
+  const pill = gone ? (
+    <StatusPill tone="neutral" className="text-[14px]">
+      Gone
+    </StatusPill>
+  ) : (
+    <StatusPill tone={s.tone} live={s.live} className="text-[14px]">
+      {statusLabel(a)}
+    </StatusPill>
+  );
 
   return (
-    <div className="mx-auto max-w-5xl space-y-12">
+    <div className="mx-auto max-w-5xl space-y-10">
       <Link href="/articles" className="arrive-up inline-flex items-center gap-1.5 text-[13px] font-medium text-ink-muted hover:text-ink">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
           <path d="M15 18l-6-6 6-6" />
@@ -64,46 +77,55 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
         All articles
       </Link>
 
-      {/* ---- what it is, and the one thing to do with it ---- */}
-      <header className="-mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start lg:gap-12">
-        <div className="arrive-up min-w-0" style={at(40)}>
-          {gone ? (
-            <StatusPill tone="neutral" className="text-[14px]">
-              Gone
-            </StatusPill>
+      {/* ---- the cover, what it is, and the one thing to do with it ---- */}
+      <header className="-mt-4 grid gap-6 lg:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] lg:items-center lg:gap-10">
+        <div className="arrive-in" style={at(0)}>
+          {hasDraft && ledger?.cover ? (
+            // A plain <img>: the route is dynamic and same-origin. alt is
+            // empty on purpose - the title sits right beside it.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={`/api/cover/${encodeURIComponent(a.draftId)}`}
+              alt=""
+              width={1200}
+              height={630}
+              decoding="async"
+              className="block aspect-[1200/630] w-full rounded-2xl bg-surface-2 object-cover ring-1 ring-line-soft"
+            />
           ) : (
-            <StatusPill tone={s.tone} live={s.live} className="text-[14px]">
-              {statusLabel(a)}
-            </StatusPill>
+            <div className="flex aspect-[1200/630] w-full items-center justify-center rounded-2xl border border-dashed border-line bg-surface-2/50">{pill}</div>
           )}
-          <h1 className="mt-3 text-balance text-[1.9rem] font-semibold leading-[1.15] tracking-tight text-ink sm:text-[2.4rem]">{a.title}</h1>
-          <div className="mt-4 space-y-1 text-[15px] text-ink-muted">
-            {a.keyword ? (
-              <p>
-                Written for the search <span className="font-medium text-ink">&ldquo;{a.keyword}&rdquo;</span>
-              </p>
-            ) : null}
-            <p>{whenLine(a)}</p>
-          </div>
         </div>
-        <div className="arrive-up flex flex-col items-start gap-3 lg:items-end" style={at(120)}>
-          {gone ? null : <PrimaryAction a={a} slug={project.slug} paused={paused} />}
-          {live && !gone ? (
-            <a
-              href={`https://www.google.com/search?q=${encodeURIComponent(a.keyword ?? a.title)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-[14px] font-medium text-ink-muted underline decoration-line underline-offset-[4px] hover:text-ink"
-            >
-              See it on Google
-              <ExternalIcon />
-            </a>
+
+        <div className="arrive-up min-w-0" style={at(80)}>
+          {pill}
+          <h1 className="mt-3 text-balance text-[1.75rem] font-semibold leading-[1.15] tracking-tight text-ink sm:text-[2.15rem]">{a.title}</h1>
+          {a.keyword ? (
+            <p className="mt-3 text-[15px] text-ink-muted">
+              Written for the search <span className="font-medium text-ink">&ldquo;{a.keyword}&rdquo;</span>
+            </p>
+          ) : null}
+          {!gone ? (
+            <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3">
+              <PrimaryAction a={a} slug={project.slug} paused={paused} />
+              {live ? (
+                <a
+                  href={`https://www.google.com/search?q=${encodeURIComponent(a.keyword ?? a.title)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-[14px] font-medium text-ink-muted underline decoration-line underline-offset-[4px] hover:text-ink"
+                >
+                  See it on Google
+                  <ExternalIcon />
+                </a>
+              ) : null}
+            </div>
           ) : null}
         </div>
       </header>
 
       {step != null ? (
-        <section aria-label="Where it is now" className="arrive-up rounded-2xl border border-accent/25 bg-accent-soft/40 p-5 sm:p-7" style={at(200)}>
+        <section aria-label="Where it is now" className="arrive-up rounded-2xl border border-accent/25 bg-accent-soft/40 p-5 sm:p-7" style={at(160)}>
           <PipelineSteps current={step} labels />
           <p className="mt-4 text-[15px] leading-relaxed text-ink">{stepLine(step)}</p>
         </section>
@@ -130,19 +152,8 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
         </Callout>
       ) : null}
 
-      {/* ---- how it does on Google ---- */}
-      {live ? (
-        days.length ? (
-          <OverviewChart daily={packDays(days)} page />
-        ) : (
-          <section className="arrive-up rounded-2xl border border-dashed border-line px-6 py-10 text-center" style={at(200)}>
-            <p className="text-[16px] font-medium text-ink">Not on Google yet</p>
-            <p className="mx-auto mt-2 max-w-md text-[14px] leading-relaxed text-ink-muted">
-              New pages usually take a few days to a few weeks to show up. Google&apos;s numbers also run two to three days behind. This fills in on its own.
-            </p>
-          </section>
-        )
-      ) : null}
+      {/* ---- the facts ---- */}
+      <Facts a={a} days={days} ledger={ledger} />
 
       {a.source === "agent" ? (
         // Published before autopilot: no research ledger, no writer steps -
@@ -156,24 +167,27 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
             Google numbers are tracked the same way as everything since.
           </p>
         </section>
-      ) : (
-        <>
-          {/* ---- how it was made ---- */}
-          {ledger || a.gain ? <HowItWasMade ledger={ledger} gain={a.gain} /> : null}
+      ) : ledger?.angle || a.gain ? (
+        <Angle angle={ledger?.angle ?? null} gain={a.gain} />
+      ) : null}
 
-          {/* ---- when each step happened ---- */}
-          <Timeline a={a} steps={steps} />
-        </>
-      )}
+      {/* ---- how it does on Google ---- */}
+      {live ? (
+        days.length ? (
+          <OverviewChart daily={packDays(days)} page />
+        ) : (
+          <section className="arrive-up rounded-2xl border border-dashed border-line px-6 py-10 text-center" style={at(300)}>
+            <p className="text-[16px] font-medium text-ink">Not on Google yet</p>
+            <p className="mx-auto mt-2 max-w-md text-[14px] leading-relaxed text-ink-muted">
+              New pages usually take a few days to a few weeks to show up. Google&apos;s numbers also run two to three days behind. This fills in on its own.
+            </p>
+          </section>
+        )
+      ) : null}
+
+      {a.source !== "agent" && ledger && (ledger.checks.length || ledger.sources.length) ? <FactCheck ledger={ledger} /> : null}
     </div>
   );
-}
-
-function whenLine(a: AutopilotArticle): string {
-  if (a.status === "published") return `Published ${longDate(a.publishedAt ?? a.createdAt)}`;
-  if (articleStep(a) != null) return `Being written since ${longDate(a.createdAt)}`;
-  if (ARTICLE_STATUS[a.status].attention) return `Waiting since ${longDate(a.createdAt)}`;
-  return `Started ${longDate(a.createdAt)}, then stopped`;
 }
 
 /** The one unmistakable button: open it if it's live, otherwise the action
@@ -203,154 +217,210 @@ function PrimaryAction({ a, slug, paused }: { a: AutopilotArticle; slug: string;
   return null;
 }
 
-function HowItWasMade({ ledger, gain }: { ledger: Ledger | null; gain: string | null }) {
-  const pct = ledger && ledger.claims > 0 ? Math.round((ledger.supported / ledger.claims) * 100) : null;
-  return (
-    <section aria-labelledby="made-title" className="arrive-up space-y-5" style={at(300)}>
-      <h2 id="made-title" className="text-[1.4rem] font-semibold tracking-tight text-ink">
-        How it was made
-      </h2>
-      <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_17rem]">
-        <div className="space-y-5 rounded-2xl border border-line-soft bg-surface p-5 sm:p-6">
-          {ledger?.angle ? <Made label="The angle">{ledger.angle}</Made> : null}
-          {gain ? <Made label="What it adds that Google's top results don't">{gain}</Made> : null}
-          {pct != null ? (
-            <Made label="Fact check">
-              <span className="tabular-nums">
-                {ledger!.supported} of {ledger!.claims}
-              </span>{" "}
-              claims matched a quoted source.
-              <span className="mt-2.5 block h-2 overflow-hidden rounded-full bg-surface-3" aria-hidden="true">
-                <span className="arrive-grow block h-full rounded-full bg-ok" style={{ width: `${pct}%`, ...at(600) }} />
-              </span>
-              {ledger!.maxOverlap != null ? (
-                <span className="mt-2 block text-[13px] text-ink-muted">
-                  At most {Math.round(ledger!.maxOverlap * 100)}% of its wording matches any one source.
-                </span>
-              ) : null}
-            </Made>
-          ) : null}
-        </div>
-        {ledger?.score != null ? <ScoreRing score={ledger.score} /> : null}
-      </div>
+/** Six facts, one frame, hairlines between: a label, a value, at most one
+ *  quiet line under it. Articles from before autopilot have no draft, so
+ *  they get the three Google ones only. */
+function Facts({ a, days, ledger }: { a: AutopilotArticle; days: PageDay[]; ledger: Ledger | null }) {
+  const live = a.status === "published";
+  const cutoff = Date.now() - 28 * DAY;
+  const recent = days.filter((d) => Date.parse(`${d.date.slice(0, 10)}T00:00:00Z`) >= cutoff);
+  const clicks = recent.reduce((n, d) => n + d.clicks, 0);
+  const impressions = recent.reduce((n, d) => n + d.impressions, 0);
+  const lastPos = [...days].reverse().find((d) => d.position != null)?.position ?? null;
+  const pos = a.position ?? lastPos;
+  const onGoogle = Boolean(a.url) && (days.length > 0 || pos != null);
+  const hosts = ledger ? [...new Set(ledger.sources.map((src) => src.host))] : [];
+  const score = ledger?.score != null ? Math.max(0, Math.min(100, Math.round(ledger.score))) : null;
 
-      {ledger && ledger.sources.length ? (
-        <div className="rounded-2xl border border-line-soft bg-surface">
-          <p className="border-b border-line-soft px-5 py-3.5 text-[14px] font-medium text-ink sm:px-6">
-            Sources it read <span className="font-normal text-ink-faint">{ledger.sources.length}</span>
-          </p>
-          <ul className="divide-y divide-line-soft">
-            {ledger.sources.map((src, i) => (
-              <li key={src.url} className="arrive-up" style={{ ...at(500, i), "--step": "40ms" } as React.CSSProperties}>
-                <a href={src.url} target="_blank" rel="noopener noreferrer" className="group flex items-center gap-3.5 px-5 py-3.5 transition-colors hover:bg-surface-2/50 sm:px-6">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(src.host)}&sz=32`} alt="" aria-hidden="true" width={18} height={18} className="h-[18px] w-[18px] shrink-0 rounded-sm" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[14px] text-ink group-hover:text-accent">{src.title ?? src.host}</span>
-                    {src.title ? <span className="block truncate text-[12.5px] text-ink-faint">{src.host}</span> : null}
-                  </span>
-                  <ExternalIcon className="h-3.5 w-3.5 shrink-0 text-ink-faint" />
-                </a>
-              </li>
-            ))}
-          </ul>
-        </div>
+  return (
+    <dl
+      aria-label="At a glance"
+      className={cx(
+        "arrive-up grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-line-soft bg-line-soft sm:grid-cols-3",
+        // An odd tile out on a phone spans the row rather than leaving a hole.
+        "[&>*:last-child:nth-child(odd)]:col-span-2 sm:[&>*:last-child:nth-child(odd)]:col-span-1",
+      )}
+      style={at(200)}
+    >
+      <Fact
+        label="Published"
+        value={live ? longDate(a.publishedAt ?? a.createdAt) : statusLabel(a)}
+        sub={live ? null : `Started ${longDate(a.createdAt)}`}
+      />
+      <Fact label="Spot on Google" value={pos != null ? `#${Math.max(1, Math.round(pos))}` : "Not on Google yet"} small={pos == null} />
+      <Fact
+        label="Clicks, last 28 days"
+        value={onGoogle ? fmtInt(clicks) : "None yet"}
+        small={!onGoogle}
+        sub={onGoogle ? `Shown ${fmtInt(impressions)} ${impressions === 1 ? "time" : "times"}` : null}
+      />
+      {a.source === "agent" ? null : (
+        <>
+          <Fact
+            label="Quality score"
+            value={
+              score != null ? (
+                <>
+                  {score}
+                  <span className="ml-0.5 text-[0.95rem] font-medium text-ink-faint">/100</span>
+                </>
+              ) : (
+                "Not scored yet"
+              )
+            }
+            small={score == null}
+          />
+          <Fact
+            label="Sources"
+            value={ledger?.sources.length ? fmtInt(ledger.sources.length) : "None yet"}
+            small={!ledger?.sources.length}
+            sub={hosts.length ? hosts.join(", ") : null}
+          />
+          <Fact
+            label="Facts checked"
+            value={
+              ledger?.claims ? (
+                <>
+                  {fmtInt(ledger.supported)}
+                  <span className="text-[0.95rem] font-medium text-ink-faint"> of {fmtInt(ledger.claims)}</span>
+                </>
+              ) : (
+                "Not checked yet"
+              )
+            }
+            small={!ledger?.claims}
+            sub={ledger?.claims ? "matched a source" : null}
+          />
+        </>
+      )}
+    </dl>
+  );
+}
+
+function Fact({ label, value, sub, small = false }: { label: string; value: React.ReactNode; sub?: string | null; small?: boolean }) {
+  return (
+    <div className="min-w-0 bg-surface px-4 py-4 sm:px-5 sm:py-5">
+      <dt className="text-[13px] text-ink-muted">{label}</dt>
+      <dd
+        className={cx(
+          "mt-1.5 truncate font-semibold leading-tight tracking-tight tabular-nums",
+          small ? "text-[1.05rem] text-ink-muted" : "text-[1.3rem] text-ink sm:text-[1.5rem]",
+        )}
+      >
+        {value}
+      </dd>
+      {sub ? (
+        <dd className="mt-1 truncate text-[12.5px] text-ink-faint" title={sub}>
+          {sub}
+        </dd>
+      ) : null}
+    </div>
+  );
+}
+
+/** The plan's angle in one line, and what it adds that page one lacks. */
+function Angle({ angle, gain }: { angle: string | null; gain: string | null }) {
+  return (
+    <section aria-label="Angle" className="arrive-up max-w-3xl border-l-2 border-line pl-4" style={at(280)}>
+      <p className="text-[13px] text-ink-muted">Angle</p>
+      <p className="mt-1 line-clamp-2 text-[15px] leading-relaxed text-ink">{angle ?? gain}</p>
+      {angle && gain ? (
+        <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-ink-muted">
+          <span className="text-ink-faint">What it adds: </span>
+          {gain}
+        </p>
       ) : null}
     </section>
   );
 }
 
-function Made({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <p className="text-[13px] text-ink-muted">{label}</p>
-      <div className="mt-1 text-[15px] leading-relaxed text-ink">{children}</div>
-    </div>
-  );
+const VERDICT: Record<Check["verdict"], { word: string; tone: string; path: string }> = {
+  supports: { word: "Matched a source", tone: "text-ok", path: "M5 12.5l4.5 4.5L19 7.5" },
+  contradicts: { word: "A source disagrees", tone: "text-danger", path: "M7 7l10 10M17 7L7 17" },
+  says_nothing: { word: "No source says this", tone: "text-ink-faint", path: "M7 12h10" },
+};
+
+/** Writer markdown in a claim, flattened to the sentence a reader sees. */
+function plainClaim(text: string): string {
+  return text
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/\[\d+\]/g, "")
+    .replace(/\*\*|__|`/g, "")
+    .replace(/^[-*#>\s]+/, "")
+    .replace(/\s+([.,;:!?])/g, "$1")
+    .trim();
 }
 
-/** The quality gate's score as a ring that draws itself in. */
-function ScoreRing({ score }: { score: number }) {
-  const v = Math.max(0, Math.min(100, Math.round(score)));
+/** Every checked claim and the sources read, folded shut: there when you
+ *  want to audit it, out of the way when you don't. */
+function FactCheck({ ledger }: { ledger: Ledger }) {
+  const n = ledger.checks.length;
   return (
-    <div className="flex flex-col items-center justify-center rounded-2xl border border-line-soft bg-surface p-6 text-center">
-      <div className="relative h-32 w-32">
-        <svg viewBox="0 0 120 120" className="h-full w-full -rotate-90" aria-hidden="true">
-          <circle cx="60" cy="60" r="50" fill="none" stroke="var(--color-surface-3)" strokeWidth="10" />
-          <circle
-            cx="60"
-            cy="60"
-            r="50"
-            fill="none"
-            stroke={v >= 80 ? "var(--color-ok)" : v >= 60 ? "var(--color-warn)" : "var(--color-danger)"}
-            strokeWidth="10"
-            strokeLinecap="round"
-            pathLength={100}
-            strokeDasharray={`${v} 100`}
-            className="arrive-in"
-            style={at(500)}
-          />
-        </svg>
-        <p className="absolute inset-0 flex items-center justify-center text-[2rem] font-semibold tabular-nums text-ink">{v}</p>
+    <details className="group arrive-up rounded-2xl border border-line-soft bg-surface" style={at(360)}>
+      <summary
+        className={cx(
+          "flex cursor-pointer list-none items-center justify-between gap-4 rounded-2xl px-5 py-4 transition-colors hover:bg-surface-2/50 group-open:rounded-b-none sm:px-6 [&::-webkit-details-marker]:hidden",
+          FOCUS_RING,
+        )}
+      >
+        <span className="text-[15px] font-medium text-ink">
+          {n ? `Fact check (${fmtInt(n)} ${n === 1 ? "claim" : "claims"})` : `Sources (${fmtInt(ledger.sources.length)})`}
+        </span>
+        <span className="flex items-center gap-3 text-[13px] text-ink-muted">
+          {n ? <span className="tabular-nums">{fmtInt(ledger.checks.filter((c) => c.verdict === "supports").length)} matched</span> : null}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 text-ink-faint transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true">
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </span>
+      </summary>
+
+      <div className="border-t border-line-soft">
+        {n ? (
+          <ol className="divide-y divide-line-soft">
+            {ledger.checks.map((c, i) => {
+              const v = VERDICT[c.verdict];
+              return (
+                <li key={i} className="flex gap-3 px-5 py-3.5 sm:px-6">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={cx("mt-[3px] h-4 w-4 shrink-0", v.tone)} aria-hidden="true">
+                    <path d={v.path} />
+                  </svg>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[14px] leading-relaxed text-ink">
+                      <span className="sr-only">{v.word}: </span>
+                      {plainClaim(c.claim)}
+                    </p>
+                    {c.source ? (
+                      <a href={c.source.url} target="_blank" rel="noopener noreferrer" className="mt-0.5 inline-flex max-w-full items-center gap-1 text-[12.5px] text-ink-faint hover:text-accent">
+                        <span className="truncate">{c.source.host}</span>
+                        <ExternalIcon className="h-3 w-3 shrink-0" />
+                      </a>
+                    ) : c.verdict !== "supports" ? (
+                      <p className="mt-0.5 text-[12.5px] text-ink-faint">{v.word}</p>
+                    ) : null}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        ) : null}
+
+        {ledger.sources.length ? (
+          <div className={cx("px-5 py-4 sm:px-6", n ? "border-t border-line-soft bg-canvas/40" : "")}>
+            {n ? <p className="text-[13px] text-ink-muted">Sources it read</p> : null}
+            <ul className={cx("flex flex-wrap gap-x-5 gap-y-2", n ? "mt-2.5" : "")}>
+              {ledger.sources.map((src) => (
+                <li key={src.url} className="min-w-0 max-w-full">
+                  <a href={src.url} target="_blank" rel="noopener noreferrer" title={src.title ?? src.url} className="inline-flex max-w-full items-center gap-2 text-[13.5px] text-ink hover:text-accent">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(src.host)}&sz=32`} alt="" aria-hidden="true" width={16} height={16} className="h-4 w-4 shrink-0 rounded-sm" />
+                    <span className="truncate">{src.host}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
-      <p className="mt-3 text-[14px] font-medium text-ink">Quality score</p>
-      <p className="text-[13px] text-ink-muted">out of 100</p>
-    </div>
-  );
-}
-
-/** When each step happened, top to bottom. A date shows only when we know
- *  it; a step that's done without one just reads done. */
-function Timeline({ a, steps }: { a: AutopilotArticle; steps: Awaited<ReturnType<typeof loadStepTimes>> }) {
-  const live = a.status === "published";
-  const step = articleStep(a);
-  const items: Array<{ label: string; at: string | null }> = [
-    { label: "Topic picked", at: steps.started ?? a.createdAt },
-    { label: "Researched", at: steps.research },
-    { label: "Planned", at: steps.plan },
-    { label: "Written", at: steps.write },
-    { label: "Facts checked", at: steps.check },
-    { label: "Published", at: a.publishedAt },
-  ];
-  // Where the article is on this list: everything before is done.
-  const current = live ? items.length : step != null ? step + 1 : (() => {
-    let last = 0;
-    items.forEach((it, i) => it.at && (last = i));
-    return last + 1;
-  })();
-  const stopped = a.status === "failed";
-  const waiting = ARTICLE_STATUS[a.status].attention;
-  return (
-    <section aria-labelledby="timeline-title" className="arrive-up space-y-5" style={at(380)}>
-      <h2 id="timeline-title" className="text-[1.4rem] font-semibold tracking-tight text-ink">
-        Timeline
-      </h2>
-      <ol className="rounded-2xl border border-line-soft bg-surface px-5 py-5 sm:px-6">
-        {items.map((it, i) => {
-          const done = i < current;
-          const now = i === current && !live;
-          const tone = done ? "bg-ok" : now ? (stopped ? "bg-danger" : waiting ? "bg-warn" : "bg-accent") : "bg-surface-3";
-          return (
-            <li key={it.label} className="relative flex gap-4 pb-5 last:pb-0">
-              {i < items.length - 1 ? (
-                <span aria-hidden="true" className={cx("absolute left-[5px] top-4 h-[calc(100%-6px)] w-0.5 rounded-full", done ? "bg-ok/50" : "bg-surface-3")} />
-              ) : null}
-              <span aria-hidden="true" className={cx("relative mt-1.5 h-3 w-3 shrink-0 rounded-full", tone, now && !stopped ? "dispatch-calm" : "")} />
-              <div className="min-w-0">
-                <p className={cx("text-[15px]", done || now ? "font-medium text-ink" : "text-ink-faint")}>
-                  {it.label}
-                  {now ? (
-                    <span className="ml-2 text-[13px] font-normal text-ink-muted">
-                      {stopped ? "stopped here" : waiting ? "waiting for you" : "in progress"}
-                    </span>
-                  ) : null}
-                </p>
-                {done && it.at ? <p className="text-[13px] text-ink-muted">{longDate(it.at)}</p> : null}
-              </div>
-            </li>
-          );
-        })}
-      </ol>
-    </section>
+    </details>
   );
 }

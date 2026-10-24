@@ -75,6 +75,19 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "new",
     text:
+      "Articles open with the answer: a TL;DR right under the cover, then the one side-by-side " +
+      "table that shows the bottom line, and only then the sections for whoever wants the reasoning.",
+  },
+  {
+    kind: "improved",
+    text:
+      "An article's page in the dashboard now leads with its cover, title and live link, then " +
+      "the facts that matter: when it went live, its spot on Google, clicks, quality score, sources " +
+      "and how many claims matched a source. The fact-check ledger is folded underneath.",
+  },
+  {
+    kind: "new",
+    text:
       "New cloud sites run on autopilot. DispatchSEO picks the keywords your site can win, " +
       "writes the articles and publishes them on your plan's schedule - one a week on Starter, " +
       "two on Growth, three on Scale - with no AI of your own to connect. You set the brand, " +

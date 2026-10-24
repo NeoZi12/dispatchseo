@@ -64,6 +64,9 @@ export type AutopilotReport = {
   nextArticleAt: string | null;
   thisWeek: { published: number; inFlight: number; quota: number };
   articles: AutopilotArticle[];
+  /** True only when the list really is a slice (the query or display cap
+   *  was hit), so a headline may say "N+"; otherwise N is the real count. */
+  articlesTruncated: boolean;
   traffic: {
     days: Array<{ date: string; clicks: number; impressions: number }>;
     clicks28d: number;
@@ -323,6 +326,7 @@ export async function getAutopilotReport(projectId: string): Promise<AutopilotRe
     nextArticleAt: project.writer_paused_at ? null : project.next_article_at,
     thisWeek: { published: usage.published, inFlight: usage.inFlight, quota: plan.articlesPerWeek },
     articles: articles.slice(0, ARTICLE_LIMIT),
+    articlesTruncated: articles.length > ARTICLE_LIMIT || drafts.length >= DRAFT_LIMIT,
     traffic: { days, clicks28d, impressions28d, deltaClicksPct: prev28.length >= 14 ? deltaPct(clicks28d, prevClicks) : null, topQueries },
     ideas,
     setup: { ...setup, profile: profile.fromDb },

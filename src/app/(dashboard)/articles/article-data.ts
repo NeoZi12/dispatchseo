@@ -35,6 +35,10 @@ export type ArticleGlance = {
 
 export type PageDay = { date: string; clicks: number; impressions: number; position: number | null };
 
+/** One checked claim: the sentence, what its best source passage said
+ *  about it, and that source when it is one we kept. */
+export type Check = { claim: string; verdict: "supports" | "contradicts" | "says_nothing"; source: Source | null };
+
 export type Ledger = {
   angle: string | null;
   score: number | null;
@@ -42,7 +46,14 @@ export type Ledger = {
   supported: number;
   maxOverlap: number | null;
   sources: Source[];
+  checks: Check[];
+  /** /api/cover/<id> draws this draft (it 404s for rejected or discarded
+   *  ones, so the page shows a placeholder instead of a broken image). */
+  cover: boolean;
 };
+
+// The cover route's own allowlist (src/app/api/cover/[draftId]/route.tsx).
+const COVER_STATUSES = new Set(["accepted", "finished", "published", "blocked_setup"]);
 
 const HISTORY_DAYS = 400;
 
@@ -90,8 +101,12 @@ function dayFor(pages: GscPageStat[], key: string): { clicks: number; impression
 
 async function ledgerRows(projectId: string, draftIds: string[]) {
   if (!draftIds.length) return [];
-  const { data } = await db().from("article_drafts").select("id, validation, sources").eq("project_id", projectId).in("id", draftIds);
-  return (data ?? []) as Array<{ id: string; validation: unknown; sources: unknown }>;
+  // "page:<id>" rows (articles from before autopilot) have no draft, and
+  // the id isn't a uuid: never let one into the filter.
+  draftIds = draftIds.filter((id) => id && !id.startsWith("page:"));
+  if (!draftIds.length) return [];
+  const { data } = await db().from("article_drafts").select("id, status, validation, sources").eq("project_id", projectId).in("id", draftIds);
+  return (data ?? []) as Array<{ id: string; status: string | null; validation: unknown; sources: unknown }>;
 }
 
 function sourcesOf(raw: unknown): Source[] {
@@ -210,17 +225,33 @@ export async function loadLedger(projectId: string, draftId: string): Promise<Le
   const v = (row.validation ?? {}) as {
     score?: number;
     plan?: { angle?: string };
-    writer?: { ledger?: Array<{ verdict?: string }>; overlap?: Array<{ fraction?: number }> };
+    writer?: { ledger?: Array<{ claim?: string; verdict?: string; source?: number | null }>; overlap?: Array<{ fraction?: number }> };
   };
   const ledger = Array.isArray(v.writer?.ledger) ? v.writer!.ledger! : [];
   const overlap = Array.isArray(v.writer?.overlap) ? v.writer!.overlap!.map((o) => Number(o.fraction ?? 0)) : [];
+  const sources = sourcesOf(row.sources);
+  // A claim's source is the research sheet's 1-based number, and the draft's
+  // sources column is that sheet in order - so look it up by position in the
+  // RAW column (sourcesOf drops unusable rows, which would shift indices).
+  const raw = Array.isArray(row.sources) ? (row.sources as Array<{ url?: string }>) : [];
+  const byUrl = new Map(sources.map((src) => [src.url, src]));
+  const checks: Check[] = ledger
+    .filter((l) => typeof l.claim === "string" && l.claim.trim())
+    .map((l) => {
+      const n = typeof l.source === "number" ? l.source : 0;
+      const url = n >= 1 ? raw[n - 1]?.url : undefined;
+      const verdict = l.verdict === "supports" || l.verdict === "contradicts" ? l.verdict : "says_nothing";
+      return { claim: l.claim!, verdict, source: url ? (byUrl.get(String(url)) ?? null) : null };
+    });
   return {
     angle: v.plan?.angle ?? null,
     score: typeof v.score === "number" ? v.score : null,
     claims: ledger.length,
     supported: ledger.filter((l) => l.verdict === "supports").length,
     maxOverlap: overlap.length ? Math.max(...overlap) : null,
-    sources: sourcesOf(row.sources),
+    sources,
+    checks,
+    cover: COVER_STATUSES.has(String(row.status ?? "")),
   };
 }
 

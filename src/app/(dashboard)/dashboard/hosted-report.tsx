@@ -280,7 +280,7 @@ export async function HostedReport({
       <OverviewChart
         daily={packDays(google.daily.length ? google.daily : r.traffic.days)}
         published={published}
-        publishedCapped={r.articles.length >= 50}
+        publishedCapped={r.articlesTruncated}
         connectAction={
           r.setup.google ? undefined : (
             <Link href="/google" className={buttonClass("primary", "md")}>
