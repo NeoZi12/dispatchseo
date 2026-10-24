@@ -102,6 +102,10 @@ export async function renderDraftForRoute(
 export async function runFinishJob(job: Job): Promise<void> {
   const draftId = String(job.payload.draftId ?? "");
   if (!draftId) throw new Error("finish job is missing its draft");
+  // Set by the owner releasing a held article ("Publish now"): the publish
+  // job is due at once, not at the next publishing hour - the first release
+  // on ClockedCode (2026-10-24) sat queued for tomorrow 09:00 UTC otherwise.
+  const publishNow = job.payload.publishNow === true;
 
   const project = await getProjectById(job.project_id);
   if (!project) throw new Error("project no longer exists");
@@ -214,7 +218,7 @@ export async function runFinishJob(job: Job): Promise<void> {
     projectId: project.id,
     kind: "publish",
     payload: { draftId: row.id },
-    runAfter: nextPublishSlot(project.publish_hour ?? DEFAULT_PUBLISH_HOUR),
+    runAfter: publishNow ? new Date() : nextPublishSlot(project.publish_hour ?? DEFAULT_PUBLISH_HOUR),
     idempotencyKey: `publish:${row.id}`,
   });
 }

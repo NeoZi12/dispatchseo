@@ -831,7 +831,8 @@ async function handoff(c: Ctx, draft: Draft, p: Plan, report: ValidationReport, 
 
 export async function releaseWriterRun(run: WriterRun): Promise<void> {
   if (run.status !== "held" || !run.draft_id) throw new Error("that run is not held");
-  await enqueue({ projectId: run.project_id, kind: "finish", payload: { draftId: run.draft_id }, idempotencyKey: `finish:${run.draft_id}` });
+  // The owner just read it and said publish: no waiting for the daily slot.
+  await enqueue({ projectId: run.project_id, kind: "finish", payload: { draftId: run.draft_id, publishNow: true }, idempotencyKey: `finish:${run.draft_id}` });
   await db().from("writer_runs").update({ status: "done", updated_at: new Date().toISOString() }).eq("id", run.id);
 }
 

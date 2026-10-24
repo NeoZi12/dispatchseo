@@ -135,7 +135,7 @@ export async function runVerifyJob(job: Job): Promise<void> {
 
   await db()
     .from("article_drafts")
-    .update({ status: "published", updated_at: now })
+    .update({ status: "published", published_at: now, updated_at: now })
     .eq("id", draftId);
 }
 
@@ -297,7 +297,7 @@ async function verifyRepoArticle(job: Job, draftId: string): Promise<void> {
 
     await db()
       .from("article_drafts")
-      .update({ status: "published", published_url: url, updated_at: now })
+      .update({ status: "published", published_at: now, published_url: url, updated_at: now })
       .eq("id", draftId);
     return;
   }
