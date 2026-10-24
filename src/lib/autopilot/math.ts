@@ -98,7 +98,10 @@ export function upcomingStarts(input: CadenceInput & { n: number }): Date[] {
   // candidate (nothing starts twice in a day).
   const past = input.now.getUTCHours() > 5 || (input.now.getUTCHours() === 5 && input.now.getUTCMinutes() >= 40);
   let day = new Date(utcDay(input.now).getTime() + (past ? DAY_MS : 0));
-  let week = weekStartUtc(day);
+  // The week of NOW, not of the first candidate day: countThisWeek counts
+  // this week's starts, so a projection that begins on next Monday (Sunday
+  // after the run) must reset it at once.
+  let week = weekStartUtc(input.now);
   let count = input.countThisWeek;
   let last = input.lastStartedAt ? utcDay(new Date(input.lastStartedAt)) : null;
   for (let guard = 0; out.length < n && guard < 400; guard++, day = new Date(day.getTime() + DAY_MS)) {

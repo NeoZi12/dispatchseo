@@ -76,6 +76,9 @@ const MAX_JUDGE_CALLS = 9;
  *  spending all nine calls refusing them would leave the rung most likely to
  *  find its topics with nothing to judge with. */
 const PROPOSAL_JUDGE_CALLS = 2;
+/** Rung 1 keeping fewer candidates than this, then coming up short, is what
+ *  makes a market "thin" (the outcome's `thin`). */
+const THIN_RUNG1_KEPT = 10;
 
 /** A candidate on its way through the ladder. `proposed`: it came from the
  *  model's rung-4 proposals, not from DataForSEO's seed expansion.
@@ -107,12 +110,18 @@ export type ResearchOutcome =
       /** The deepest rung of the thin-market ladder this run reached: 1 the
        *  normal bar, 2 volume 20, 3 volume 10, 4 model-proposed queries. */
       rung: 1 | 2 | 3 | 4;
-      /** rung >= 3: the site's market has few searched keywords. */
+      /** The ladder widened (rung 2 or 3 ran) because rung 1 came up short
+       *  from a small pool (under THIN_RUNG1_KEPT candidates): the site's
+       *  market has few searched keywords. A big market that only ran out of
+       *  judge calls is not thin. */
       thin: boolean;
       /** Rung 4: proposals that survived screening and were measured. */
       proposed?: number;
       /** Rung 4 failed (model or DataForSEO); rungs 1-3's ideas still queued. */
       proposeError?: string;
+      /** The judge failed partway through rungs 1-3; what it had already
+       *  passed and refused is still queued and stored, rung 4 is skipped. */
+      judgeError?: string;
       /** One owner-facing sentence when thin (thinNote). */
       note?: string;
       costUsd: number;
@@ -278,22 +287,43 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
 
   let { kept, dropped } = filterCandidates(raw, filterCtx);
   const dataforseoCalls = MAX_JUDGE_CALLS - PROPOSAL_JUDGE_CALLS;
-  await judgePool(kept, dataforseoCalls);
-  const widenings: Array<{ rung: 2 | 3; minVolume: number }> = [
-    { rung: 2, minVolume: WIDEN_MIN_VOLUME },
-    { rung: 3, minVolume: WIDEN2_MIN_VOLUME },
-  ];
-  for (const w of widenings) {
-    if (passed.length >= needed || raw.length === 0 || batches >= dataforseoCalls) break;
-    ({ kept, dropped } = filterCandidates(raw, { ...filterCtx, kdCeiling: kdCeiling + WIDEN_KD_BY, minVolume: w.minVolume }));
-    rung = w.rung;
+  const rung1Kept = kept.length;
+  let widened = false;
+  let judgeError: string | undefined;
+  try {
     await judgePool(kept, dataforseoCalls);
+    const widenings: Array<{ rung: 2 | 3; minVolume: number }> = [
+      { rung: 2, minVolume: WIDEN_MIN_VOLUME },
+      { rung: 3, minVolume: WIDEN2_MIN_VOLUME },
+    ];
+    for (const w of widenings) {
+      if (passed.length >= needed || raw.length === 0 || batches >= dataforseoCalls) break;
+      // Ideas already passed this run are not inserted yet, so the database's
+      // topics alone would let a wider rung queue a near-duplicate of one.
+      ({ kept, dropped } = filterCandidates(raw, {
+        ...filterCtx,
+        takenKeywords: new Set([...filterCtx.takenKeywords, ...passed.map((c) => normalizeKeyword(c.keyword))]),
+        existingTexts: [...filterCtx.existingTexts, ...passed.map((c) => c.keyword)],
+        kdCeiling: kdCeiling + WIDEN_KD_BY,
+        minVolume: w.minVolume,
+      }));
+      rung = w.rung;
+      widened = true;
+      await judgePool(kept, dataforseoCalls);
+    }
+  } catch (e) {
+    // A judge failure partway through keeps what it already decided: the
+    // passed ideas are queued and the refusals stored below, as usual. Only
+    // a failure with nothing decided stays a loud, retried fault.
+    if (passed.length === 0 && failedJudge.length === 0) throw e;
+    judgeError = e instanceof Error ? e.message : String(e);
+    console.warn(`[autopilot] research judge failed for ${project.slug}, keeping ${passed.length} passed: ${judgeError}`);
   }
 
   // Rung 4: proposals from the site itself, measured, then judged.
   let proposed = 0;
   let proposeError: string | undefined;
-  if (passed.length < needed && batches < MAX_JUDGE_CALLS) {
+  if (!judgeError && passed.length < needed && batches < MAX_JUDGE_CALLS) {
     rung = 4;
     try {
       const r = await proposeQueries(project, profile, existing.texts, failedJudge);
@@ -400,7 +430,10 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
   }
 
   await stamp();
-  const thin = rung >= 3;
+  // Thin = rung 1 came up short from a small pool and the ladder had to
+  // widen (or there was no pool at all). A big market that merely spent its
+  // judge calls on rung 1 never widens, so it is never called thin.
+  const thin = (widened || raw.length === 0) && rung1Kept < THIN_RUNG1_KEPT;
   return {
     seeds,
     candidates: raw.length,
@@ -412,6 +445,7 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
     thin,
     ...(rung === 4 ? { proposed } : {}),
     ...(proposeError ? { proposeError } : {}),
+    ...(judgeError ? { judgeError } : {}),
     ...(thin ? { note: thinNote(project.language_code, rung, added.length) } : {}),
     costUsd: Math.round(costUsd * 10_000) / 10_000,
     dataforseoUsd: Math.round(dataforseoUsd * 10_000) / 10_000,
@@ -423,7 +457,7 @@ export function thinNote(languageCode: string, rung: number, added: number): str
   const lang = languageName(languageCode);
   if (added === 0) return `Few searched keywords exist in ${lang} for this site, and even the deeper search found nothing new this time; research tries again next week.`;
   if (rung >= 4) return `Few searched keywords exist in ${lang} for this site, so research went deeper and proposed topics from your site itself.`;
-  return `Few searched keywords exist in ${lang} for this site, so research went deeper, down to searches made about 10 times a month.`;
+  return `Few searched keywords exist in ${lang} for this site, so research went deeper, down to searches made about ${rung >= 3 ? WIDEN2_MIN_VOLUME : WIDEN_MIN_VOLUME} times a month.`;
 }
 
 function languageName(code: string): string {
@@ -554,31 +588,40 @@ function toCandidate(i: KeywordIdea): Candidate {
   };
 }
 
-/** "what is X" / "מה זה X" / "qué es X" ... -> "X". Longest match first. */
-const QUESTION_LEADS = [
-  "what is the", "what are the", "what is a", "what is an", "what is", "what are", "how to", "how do i", "how does", "why is", "why do",
-  "מה זה", "מה זאת", "מהו", "מהי", "איך", "למה", "מה הם",
-  "qué es", "que es", "qué son", "cómo", "como", "por qué",
-  "was ist", "was sind", "wie", "warum",
-  "qu'est-ce que", "qu'est-ce qu'", "c'est quoi", "comment", "pourquoi",
-  "cos'è", "cosa è", "cosa sono", "come",
-  "o que é", "o que são", "como",
-  "wat is", "wat zijn", "hoe",
-  "что такое", "как", "почему",
-  "什么是", "怎么", "为什么",
-  "とは", "なぜ",
-  "คืออะไร", "ทำไม",
-];
-export function stripQuestionLead(keyword: string | null | undefined): string {
+/** "what is X" / "מה זה X" / "qué es X" ... -> "X", keyed by language. Only
+ *  English and the site's own language are stripped: "como" is a question
+ *  word in Spanish and a real word elsewhere, and "wie" is German only. */
+const QUESTION_LEADS: Record<string, string[]> = {
+  en: ["what is the", "what are the", "what is a", "what is an", "what is", "what are", "how to", "how do i", "how does", "why is", "why do"],
+  he: ["מה זה", "מה זאת", "מהו", "מהי", "איך", "למה", "מה הם"],
+  es: ["qué es", "que es", "qué son", "cómo", "como", "por qué"],
+  de: ["was ist", "was sind", "wie", "warum"],
+  fr: ["qu'est-ce que", "qu'est-ce qu'", "c'est quoi", "comment", "pourquoi"],
+  it: ["cos'è", "cosa è", "cosa sono", "come"],
+  pt: ["o que é", "o que são", "como"],
+  nl: ["wat is", "wat zijn", "hoe"],
+  ru: ["что такое", "как", "почему"],
+  zh: ["什么是", "怎么", "为什么"],
+  ja: ["とは", "なぜ"],
+  th: ["คืออะไร", "ทำไม"],
+};
+/** Trailing question words, for the languages that put them at the end. */
+const QUESTION_TAILS: Record<string, RegExp> = { ja: /\s*とは\s*$/u, th: /\s*คืออะไร\s*$/u };
+
+export function stripQuestionLead(keyword: string | null | undefined, languageCode?: string | null): string {
+  const lang = (languageCode ?? "").toLowerCase().split(/[-_]/)[0];
+  // Longest match first, across the two lists.
+  const leads = [...QUESTION_LEADS.en, ...(lang && lang !== "en" ? (QUESTION_LEADS[lang] ?? []) : [])].sort((a, b) => b.length - a.length);
   let k = (keyword ?? "").trim().replace(/[?？]+$/, "").trim();
   for (let i = 0; i < 2; i++) {
     const lower = k.toLowerCase();
-    const lead = QUESTION_LEADS.find((q) => lower === q || lower.startsWith(q + " ") || (q.endsWith("'") && lower.startsWith(q)));
+    const lead = leads.find((q) => lower === q || lower.startsWith(q + " ") || (q.endsWith("'") && lower.startsWith(q)));
     if (!lead) break;
     k = k.slice(lead.length).trim();
   }
   // "X とは" / "X คืออะไร": the lead sits at the end in these languages.
-  k = k.replace(/\s*(とは|คืออะไร)\s*$/u, "").trim();
+  const tail = QUESTION_TAILS[lang];
+  if (tail) k = k.replace(tail, "").trim();
   return k;
 }
 
@@ -598,7 +641,7 @@ export function homePageHeadings(linkCandidates: unknown): string[] {
   if (!home || !Array.isArray(home.keywords)) return [];
   return (home.keywords as unknown[])
     .filter((k): k is string => typeof k === "string")
-    .map((k) => k.replace(/[:：|·•\-–—]+.*$/u, "").trim())
+    .map((k) => k.replace(/\s+[|·•\-–—]\s+.*$|[:：].*$/u, "").trim())
     .filter((k) => {
       const words = k.split(/\s+/).filter(Boolean);
       return words.length >= 2 && words.length <= 5 && k.length >= 4;
@@ -648,7 +691,7 @@ async function seedsFor(project: Project, profile: SiteProfile): Promise<string[
   // first research: 46 candidates, 45 off-topic). The question words come
   // off first, in the languages the writer serves.
   const heads = ((approvedRes.data ?? []) as { primary_keyword: string }[])
-    .map((r) => stripQuestionLead(r.primary_keyword).split(/\s+/).filter(Boolean).slice(0, 2).join(" "))
+    .map((r) => stripQuestionLead(r.primary_keyword, project.language_code).split(/\s+/).filter(Boolean).slice(0, 2).join(" "))
     .filter((h) => h.length >= 3);
   // What the site is seen for comes first: it is the strongest evidence of
   // what Google already trusts it on.
@@ -673,7 +716,7 @@ async function seedsFor(project: Project, profile: SiteProfile): Promise<string[
   const tracked: string[] = [];
   const topics = new Set<string>();
   for (const r of (trackedRes.data ?? []) as { keyword: string }[]) {
-    const first = stripQuestionLead(r.keyword).split(/\s+/).filter(Boolean)[0] ?? "";
+    const first = stripQuestionLead(r.keyword, project.language_code).split(/\s+/).filter(Boolean)[0] ?? "";
     if (!first || topics.has(first)) continue;
     topics.add(first);
     tracked.push(r.keyword);
@@ -705,7 +748,7 @@ async function seedsFor(project: Project, profile: SiteProfile): Promise<string[
  *  the exact check) and raw titles/keywords (for the near-duplicate check). */
 async function existingTopics(projectId: string): Promise<{ keywords: Set<string>; texts: string[] }> {
   const [sugg, pages, drafts] = await Promise.all([
-    db().from("suggestions").select("title, primary_keyword").eq("project_id", projectId).eq("type", "guide").limit(2000),
+    db().from("suggestions").select("title, primary_keyword").eq("project_id", projectId).eq("type", "guide").order("created_at", { ascending: false }).limit(2000),
     db().from("pages").select("title, primary_keyword").eq("project_id", projectId).limit(2000),
     db().from("article_drafts").select("title, primary_keyword").eq("project_id", projectId).neq("status", "discarded").limit(2000),
   ]);

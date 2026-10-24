@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { projectPlan } from "@/lib/billing";
+import { writeQueueOrder } from "@/lib/queue";
 import { suggestionIdsInFlight } from "@/lib/writer/runs";
 import type { Project } from "@/lib/projects";
 import { upcomingStarts, weekStartUtc } from "./math";
@@ -66,8 +67,21 @@ type Row = {
 const QUEUE_LIMIT = 200;
 const PARKED_LIMIT = 20;
 
+/** The newest "[writer did not build: ...]" line: parkIdea and
+ *  removeQueuedIdea both PREPEND theirs to the rationale, so the first line
+ *  is always the latest reason, however many earlier ones sit under it. */
+const PARK_LINE = /^\[writer did not build: ([^\]]+)\]\n?/;
 export function parkReason(rationale: string | null | undefined): string | null {
-  return (rationale ?? "").match(/^\[writer did not build: ([^\]]+)\]/)?.[1] ?? null;
+  return (rationale ?? "").trimStart().match(PARK_LINE)?.[1] ?? null;
+}
+
+/** The rationale with every leading park line removed - what it said before
+ *  the idea was set aside - or null when nothing else was there. The writer
+ *  reads the rationale, so a restored idea must not carry "set it aside". */
+export function stripParkReasons(rationale: string | null | undefined): string | null {
+  let r = (rationale ?? "").trimStart();
+  while (PARK_LINE.test(r)) r = r.replace(PARK_LINE, "").trimStart();
+  return r.trim() || null;
 }
 
 export async function getHostedQueue(project: Pick<Project, "id" | "next_article_at" | "writer_paused_at">, now = new Date()): Promise<HostedQueue> {
@@ -145,18 +159,30 @@ export async function getHostedQueue(project: Pick<Project, "id" | "next_article
   };
 }
 
-/** Takes one queued idea out (status "rejected"), so the writer never picks
- *  it. Only a guide still waiting in the queue: an idea a run already moved
- *  on is left alone. The MCP counterpart is update_suggestion with status
- *  "rejected". */
-/** "Set aside", not delete: the idea moves to the parked list with a reason
+/** Takes one queued idea out of the queue, so the writer never picks it.
+ *  "Set aside", not delete: the idea moves to the parked list with a reason
  *  the owner can read, and restoreQueuedIdea puts it back. Never rejected,
- *  which nothing on the hosted dashboard lists again. */
+ *  which nothing on the hosted dashboard lists again. Only a guide still
+ *  waiting in the queue: an idea a run already moved on is left alone. The
+ *  MCP counterpart is update_suggestion with status "parked". */
 export const SET_ASIDE_REASON = "[writer did not build: you set it aside]";
 export async function removeQueuedIdea(projectId: string, suggestionId: string): Promise<boolean> {
+  const { data: row, error: readError } = await db()
+    .from("suggestions")
+    .select("rationale")
+    .eq("id", suggestionId)
+    .eq("project_id", projectId)
+    .eq("type", "guide")
+    .eq("status", "approved")
+    .maybeSingle();
+  if (readError) throw new Error(readError.message);
+  if (!row) return false;
+  // Prepended, the way parkIdea (writer/stages.ts) does it: the research
+  // rationale under it survives, and restoreQueuedIdea strips the prefix.
+  const prior = (row as { rationale: string | null }).rationale ?? "";
   const { data, error } = await db()
     .from("suggestions")
-    .update({ status: "parked", rationale: SET_ASIDE_REASON, queue_position: null, decided_at: new Date().toISOString() })
+    .update({ status: "parked", rationale: `${SET_ASIDE_REASON}\n${prior}`.trim().slice(0, 4000), queue_position: null, decided_at: new Date().toISOString() })
     .eq("id", suggestionId)
     .eq("project_id", projectId)
     .eq("type", "guide")
@@ -167,11 +193,28 @@ export async function removeQueuedIdea(projectId: string, suggestionId: string):
   return Boolean(data);
 }
 
-/** Put a set-aside (parked) idea back in the queue, at the end. */
+/** Put a set-aside (parked) idea back in the queue, at the end. The MCP
+ *  counterpart is update_suggestion with status "approved" on a parked
+ *  guide. */
 export async function restoreQueuedIdea(projectId: string, suggestionId: string): Promise<boolean> {
+  const { data: row, error: readError } = await db()
+    .from("suggestions")
+    .select("rationale")
+    .eq("id", suggestionId)
+    .eq("project_id", projectId)
+    .eq("type", "guide")
+    .eq("status", "parked")
+    .maybeSingle();
+  if (readError) throw new Error(readError.message);
+  if (!row) return false;
   const { data, error } = await db()
     .from("suggestions")
-    .update({ status: "approved", queue_position: null, decided_at: new Date().toISOString() })
+    .update({
+      status: "approved",
+      rationale: stripParkReasons((row as { rationale: string | null }).rationale),
+      queue_position: null,
+      decided_at: new Date().toISOString(),
+    })
     .eq("id", suggestionId)
     .eq("project_id", projectId)
     .eq("type", "guide")
@@ -179,5 +222,27 @@ export async function restoreQueuedIdea(projectId: string, suggestionId: string)
     .select("id")
     .maybeSingle();
   if (error) throw new Error(error.message);
-  return Boolean(data);
+  if (!data) return false;
+  // A null queue_position alone is not "the end": the pick order is
+  // positions first, then created_at, so an old idea with no position would
+  // jump ahead of every newer unpositioned one. Dense positions with this id
+  // last make the end explicit. The status flip already happened, so a
+  // failed reorder is a warning, not a failure.
+  const { data: queued, error: queueError } = await db()
+    .from("suggestions")
+    .select("id")
+    .eq("project_id", projectId)
+    .eq("type", "guide")
+    .eq("status", "approved")
+    .neq("id", suggestionId)
+    .order("queue_position", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: true });
+  if (queueError) {
+    console.warn(`[autopilot] restored idea ${suggestionId} but could not read the queue to place it last: ${queueError.message}`);
+    return true;
+  }
+  const ids = ((queued ?? []) as { id: string }[]).map((r) => r.id);
+  const order = await writeQueueOrder(projectId, "guide", [...ids, suggestionId]);
+  if (!order.ok) console.warn(`[autopilot] restored idea ${suggestionId} but could not place it last: ${order.message}`);
+  return true;
 }

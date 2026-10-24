@@ -826,15 +826,18 @@ export const planPausedProjectSlugs = cache(async (): Promise<Set<string>> => {
 export async function projectPlan(
   projectId: string,
 ): Promise<{ tier: Tier | null; status: string; articlesPerWeek: number }> {
-  if (!isCloudMode()) return { tier: null, status: "self-host", articlesPerWeek: UNBILLED_ARTICLES_PER_WEEK };
-  if (!polarConfigured()) return { tier: null, status: "unbilled", articlesPerWeek: UNBILLED_ARTICLES_PER_WEEK };
+  // The operator's per-site number applies wherever a plan's number would:
+  // self-host, unbilled and ownerless rows too. Never where the answer is
+  // 0 for want of a live subscription - an override does not buy articles.
+  const override = await weeklyQuotaOverride(projectId);
+  if (!isCloudMode()) return { tier: null, status: "self-host", articlesPerWeek: override ?? UNBILLED_ARTICLES_PER_WEEK };
+  if (!polarConfigured()) return { tier: null, status: "unbilled", articlesPerWeek: override ?? UNBILLED_ARTICLES_PER_WEEK };
   const ownerId = await ownerUserIdForProject(projectId);
-  if (!ownerId) return { tier: null, status: "unbilled", articlesPerWeek: UNBILLED_ARTICLES_PER_WEEK };
+  if (!ownerId) return { tier: null, status: "unbilled", articlesPerWeek: override ?? UNBILLED_ARTICLES_PER_WEEK };
   const sub = await getSubscription(ownerId);
   if (!sub) return { tier: null, status: "none", articlesPerWeek: 0 };
   const tier: Tier = sub.status === "trialing" ? "starter" : sub.tier;
   if (!isActive(sub)) return { tier, status: sub.status, articlesPerWeek: 0 };
-  const override = await weeklyQuotaOverride(projectId);
   return { tier, status: sub.status, articlesPerWeek: override ?? articlesPerWeekFor(tier) };
 }
 

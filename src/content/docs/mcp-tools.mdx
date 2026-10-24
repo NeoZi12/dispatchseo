@@ -223,8 +223,8 @@ it from History.
     The suggestion to update.
   </Field>
   <Field name="status" type="string">
-    `pending`, `approved`, `rejected`, `in_progress`, or `done`.
-    Approving/rejecting stamps `decided_at`; `done` stamps
+    `pending`, `approved`, `rejected`, `in_progress`, `done`, or
+    `parked`. Approving/rejecting stamps `decided_at`; `done` stamps
     `completed_at`.
   </Field>
   <Field name="result_pr_url" type="string">
@@ -238,6 +238,11 @@ it from History.
 
 Returns the updated row, with a `note` when the approval was coerced to
 pending or when a tool build was (or wasn't) dispatched.
+
+On a hosted site's queue, `status:"parked"` on an approved guide sets it
+aside (the Queue screen's Set aside): it leaves the queue and shows under
+`parked` in `get_autopilot`. `status:"approved"` on a parked guide puts it
+back at the end of the queue (Put back), and is never coerced to pending.
 
 ### `reorder_queue`
 
@@ -1811,7 +1816,9 @@ kd, expected_start }` - `expected_start` is the UTC day (`yyyy-mm-dd`) it is
 expected to start under the weekly quota and spacing, null while paused or
 when the plan includes no articles. `parked` lists the ideas the writer set
 aside, with its `reason`. To take an idea out of the queue, call
-`update_suggestion` with status `rejected`.
+`update_suggestion` with status `parked`; status `approved` puts it back
+at the end. If the queue cannot be read, `upcoming` and `parked` are left
+out and the rest of the report still returns.
 
 ### `pause_writer`
 

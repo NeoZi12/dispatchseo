@@ -477,9 +477,11 @@ function bodyWithFaq(article: ArticleFileInput, sample: ParsedSample | null): st
     (f) => f && typeof f.question === "string" && typeof f.answer === "string" && f.question.trim() && f.answer.trim(),
   );
   if (faq.length === 0) return body;
-  const section = faq
-    .map((f) => `### ${f.question.trim().replace(/\s+/g, " ")}\n\n${f.answer.trim()}`)
-    .join("\n\n");
+  // The FAQ answers carry own-site links too: same rewrite as the body.
+  const section = relativizeOwnLinks(
+    faq.map((f) => `### ${f.question.trim().replace(/\s+/g, " ")}\n\n${f.answer.trim()}`).join("\n\n"),
+    article.siteDomain,
+  );
   return `${body}\n\n## ${(article.faqHeading ?? "").trim() || "Frequently asked questions"}\n\n${section}`;
 }
 

@@ -130,8 +130,10 @@ type Draft = { markdown: string; faq: { question: string; answer: string }[]; fa
  *  the intro, null = not placeable, which patches the intro); `faq` is the
  *  index of the FAQ item it lives in (that item is dropped in code);
  *  `length` marks a word-count problem, the one kind that patches every
- *  section. Non-blocking issues are recorded, never patched. */
-type Issue = { section: string | null; note: string; blocking: boolean; faq?: number; length?: boolean };
+ *  section. `code` names a check whose miss code can settle itself
+ *  ("internal-link": verify appends the link instead of parking).
+ *  Non-blocking issues are recorded, never patched. */
+type Issue = { section: string | null; note: string; blocking: boolean; faq?: number; length?: boolean; code?: "internal-link" };
 
 type Ctx = { project: Project; run: WriterRun; deadline: number };
 type StageFn = (ctx: Ctx) => Promise<void>;
@@ -890,6 +892,17 @@ async function verify(c: Ctx): Promise<void> {
       return handoff(c, draft, p, checked.report, record, cost);
     }
     if (attempts >= MAX_PATCHES) {
+      // The one miss code can settle: when the only thing still failing is
+      // the internal link (check 6b), a finished article is not parked for
+      // it - the link to the best related page goes in as a closing line.
+      const fallback = blocking.every((i) => i.code === "internal-link") ? brief.pages.find((pg) => !isHubPage(pg.url)) : undefined;
+      if (fallback) {
+        // " · SiteName" is the page's <title> suffix, not part of its name.
+        const label = (fallback.title.match(/^(.*\S)\s+·\s+[^·]+$/u)?.[1] ?? fallback.title).replace(/[[\]]/g, "").trim() || fallback.url;
+        draft = { ...draft, markdown: `${draft.markdown.replace(/\s+$/, "")}\n\n[${label}](${fallback.url})\n` };
+        const record = { ...checked.record, dropped_faq: dropped, marker_fixes: markerFixes, patch_attempts: attempts, passes: passes.length, internal_link_fallback: fallback.url };
+        return handoff(c, draft, p, checked.report, record, cost);
+      }
       // Content, not a fault: this keyword did not become an article the
       // gate accepts in the patches it was allowed. Park the idea.
       return parkIdea(run, run.suggestion_id, `still failing after ${MAX_PATCHES} patches: ${blocking.map((i) => i.note).join(" | ").slice(0, 800)}`, cost, {
@@ -1286,8 +1299,20 @@ async function runChecks(c: Ctx, sheet: FactSheet, brief: SiteBrief, p: Plan, in
   {
     const related = brief.pages.filter((pg) => !isHubPage(pg.url));
     if (related.length) {
-      const bare = (u: string) => u.replace(/\/+$/, "");
-      const linked = related.some((pg) => full.includes(`[S${pg.n}]`) || full.includes(`](${bare(pg.url)}`));
+      // A link counts by where it goes, not how it is spelled: http/https,
+      // www or not, a trailing slash, a query or a fragment, or a path
+      // relative to the site, all reach the same page.
+      const pageOf = (u: string): string | null => {
+        try {
+          const x = new URL(u, brief.url);
+          if (x.protocol !== "http:" && x.protocol !== "https:") return null;
+          return `${x.hostname.toLowerCase().replace(/^www\./, "")}${x.pathname.replace(/\/+$/, "")}`;
+        } catch {
+          return null;
+        }
+      };
+      const targets = new Set([...full.matchAll(/\]\(([^)\s]+)/g)].map((m) => pageOf(m[1])).filter((k): k is string => k !== null));
+      const linked = related.some((pg) => full.includes(`[S${pg.n}]`) || targets.has(pageOf(pg.url) ?? "\u0000"));
       if (!linked) {
         const best = related[0]; // brief order: most shared terms first
         const want = new Set(tokenize(best.title));
@@ -1298,6 +1323,7 @@ async function runChecks(c: Ctx, sheet: FactSheet, brief: SiteBrief, p: Plan, in
           section: where && where.n > 0 ? where.h : null,
           note: `add one inline internal link to this site's related page "${best.title}" (${best.url}) as a markdown link, in the sentence where a reader would want to go deeper - not the home page, not a section index`,
           blocking: true,
+          code: "internal-link",
         });
       }
     }

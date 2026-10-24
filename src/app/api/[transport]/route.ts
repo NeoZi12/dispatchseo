@@ -51,7 +51,7 @@ import { loadSiteProfile } from "@/lib/site-profile";
 import { credentialWarnings, isDryRun, missingCredentials } from "@/lib/writer/models";
 import { getWriterRun, listWriterRuns, startWriterRun } from "@/lib/writer/runs";
 import { startHostedRunClaimed } from "@/lib/autopilot/scheduler";
-import { getHostedQueue } from "@/lib/autopilot/queue";
+import { getHostedQueue, removeQueuedIdea, restoreQueuedIdea } from "@/lib/autopilot/queue";
 import { writerMode as projectWriterMode, writerProvider as projectWriterProvider } from "@/lib/projects";
 import { listAgentTasks, submitAgentTask } from "@/lib/writer/agent-tasks";
 import {
@@ -564,11 +564,14 @@ const mcpHandler = createMcpHandler(
           "and approving a rejected item restores it from History (re-enters its queue " +
           "unpositioned). Pass it ONLY when the site owner made the call in the current " +
           "conversation ('approve that one', 'reject it', 'restore the X idea') - never " +
-          "from autonomous workflow runs.",
+          "from autonomous workflow runs. Hosted queue (the /queue screen): status 'parked' on an " +
+          "approved guide sets it aside (out of the queue, kept with its reason, reversible); " +
+          "status 'approved' on a parked guide puts it back at the END of the queue, never coerced " +
+          "to pending.",
         inputSchema: {
           id: z.string().uuid().describe("The suggestion's id, as returned by get_suggestions."),
           status: z
-            .enum(["pending", "approved", "rejected", "in_progress", "done"])
+            .enum(["pending", "approved", "rejected", "in_progress", "done", "parked"])
             .optional()
             .describe(
               "The new status. Builders set 'in_progress' when they start and 'done' when the PR is open.",
@@ -587,6 +590,22 @@ const mcpHandler = createMcpHandler(
       },
       async ({ id, status, result_pr_url, decided_by }) => {
         const p = currentProject();
+        // Set aside / put back: the /queue screen's two buttons, over the
+        // same lib functions (autopilot/queue.ts), so both doors park with
+        // the same reason and restore to the same place.
+        if (status === "parked") {
+          let removed: boolean;
+          try {
+            removed = await removeQueuedIdea(p.id, id);
+          } catch (e) {
+            return fail(`Could not set it aside: ${e instanceof Error ? e.message : String(e)}`);
+          }
+          if (!removed) {
+            return fail("Only an approved guide of this project can be set aside - this id is not one (check get_autopilot's `upcoming`).");
+          }
+          const { data: row } = await db().from("suggestions").select("*").eq("id", id).eq("project_id", p.id).maybeSingle();
+          return ok({ note: "Set aside: out of the queue, listed under parked. Put it back with status 'approved'.", suggestion: row });
+        }
         // The human approval gate: an agent asking for "approved" lands as
         // "pending" instead, and the owner decides on the dashboard. Research
         // ideas are gated per type - guides by auto_approve, tools by
@@ -609,6 +628,19 @@ const mcpHandler = createMcpHandler(
             .eq("project_id", p.id)
             .maybeSingle();
           existing = row as { source?: string; status?: string; type?: string } | null;
+          // Putting back a set-aside guide is the owner's own queue, not a
+          // new research approval: no coercion, and it goes to the END.
+          if (existing?.status === "parked" && existing.type === "guide") {
+            let restored: boolean;
+            try {
+              restored = await restoreQueuedIdea(p.id, id);
+            } catch (e) {
+              return fail(`Could not put it back: ${e instanceof Error ? e.message : String(e)}`);
+            }
+            if (!restored) return fail("That idea is not set aside any more - re-read get_autopilot and try again.");
+            const { data: back } = await db().from("suggestions").select("*").eq("id", id).eq("project_id", p.id).maybeSingle();
+            return ok({ note: "Back in the queue, at the end.", suggestion: back });
+          }
           const trendSourced = existing?.source === "trend-scan";
           const flags = effectiveAutomations(p);
           const autoApproved =
@@ -4736,8 +4768,9 @@ const mcpHandler = createMcpHandler(
           // The /queue screen's list and dates ride along (parity): what the
           // writer will write next, in order, with expected start days, and
           // the ideas it set aside with the reason.
-          const [report, queue] = await Promise.all([getAutopilotReport(p.id), getHostedQueue(p)]);
-          return ok({ ...report, upcoming: queue.upcoming, parked: queue.parked });
+          // A failed queue read drops `upcoming`/`parked`; the report stands.
+          const [report, queue] = await Promise.all([getAutopilotReport(p.id), getHostedQueue(p).catch(() => null)]);
+          return ok(queue ? { ...report, upcoming: queue.upcoming, parked: queue.parked } : report);
         } catch (e) {
           return fail(`Could not build the autopilot report: ${e instanceof Error ? e.message : String(e)}`);
         }

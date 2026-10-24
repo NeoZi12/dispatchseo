@@ -187,7 +187,7 @@ export async function removeQueuedTopicAction(_prev: ActionState, fd: FormData):
 }
 
 /** Put a set-aside idea back at the end of the hosted queue (/queue). The
- *  MCP twin is update_suggestion with status "approved". */
+ *  MCP twin is update_suggestion with status "approved" on the parked guide. */
 export async function restoreQueuedTopicAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
   const o = await ownedProject(fd);
   if ("refused" in o) return o.refused;
