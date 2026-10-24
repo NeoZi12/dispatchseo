@@ -8,6 +8,7 @@ import { reportSiteHealth, siteHealthProblems } from "./health";
 import { reprobeRewriteWeekly } from "@/lib/hosted-rewrite";
 import { db } from "@/lib/db";
 import { projectPlan } from "@/lib/billing";
+import { DAY_MS } from "./math";
 
 /** Fewer approved guide ideas than the plan writes in a week. A read error
  *  says "not short": research then waits for its weekly turn as before. */
@@ -78,7 +79,11 @@ export async function runAutopilotPass(project: Project, now = new Date()): Prom
   // five a week, two queued ideas on a Saturday ran dry by Tuesday while the
   // next research sat six days out. runResearch itself tops up to the
   // plan's target and stamps the date, so an early run just moves the clock.
-  const short = stale ? false : await queueShort(project, now);
+  // The early run is floored at two days since the last one: setting ideas
+  // aside every morning must not buy keyword data every morning (each run is
+  // ~$0.15 of DataForSEO on the platform account).
+  const twoDaysOn = !project.last_research_at || now.getTime() - Date.parse(project.last_research_at) >= 2 * DAY_MS;
+  const short = stale || !twoDaysOn ? false : await queueShort(project, now);
   if (stale || short) {
     try {
       research = await runResearch(project, now);

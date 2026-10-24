@@ -314,6 +314,34 @@ function toCandidate(i: KeywordIdea): Candidate {
   };
 }
 
+/** "what is X" / "מה זה X" / "qué es X" ... -> "X". Longest match first. */
+const QUESTION_LEADS = [
+  "what is the", "what are the", "what is a", "what is an", "what is", "what are", "how to", "how do i", "how does", "why is", "why do",
+  "מה זה", "מה זאת", "מהו", "מהי", "איך", "למה", "מה הם",
+  "qué es", "que es", "qué son", "cómo", "como", "por qué",
+  "was ist", "was sind", "wie", "warum",
+  "qu'est-ce que", "qu'est-ce qu'", "c'est quoi", "comment", "pourquoi",
+  "cos'è", "cosa è", "cosa sono", "come",
+  "o que é", "o que são", "como",
+  "wat is", "wat zijn", "hoe",
+  "что такое", "как", "почему",
+  "什么是", "怎么", "为什么",
+  "とは", "なぜ",
+  "คืออะไร", "ทำไม",
+];
+export function stripQuestionLead(keyword: string): string {
+  let k = keyword.trim().replace(/[?？]+$/, "").trim();
+  for (let i = 0; i < 2; i++) {
+    const lower = k.toLowerCase();
+    const lead = QUESTION_LEADS.find((q) => lower === q || lower.startsWith(q + " ") || (q.endsWith("'") && lower.startsWith(q)));
+    if (!lead) break;
+    k = k.slice(lead.length).trim();
+  }
+  // "X とは" / "X คืออะไร": the lead sits at the end in these languages.
+  k = k.replace(/\s*(とは|คืออะไร)\s*$/u, "").trim();
+  return k;
+}
+
 async function seedsFor(project: Project, profile: SiteProfile): Promise<string[]> {
   const [gscRes, approvedRes] = await Promise.all([
     db().from("gsc_stats").select("top_queries").eq("project_id", project.id).order("date", { ascending: false }).limit(1).maybeSingle(),
@@ -333,8 +361,14 @@ async function seedsFor(project: Project, profile: SiteProfile): Promise<string[
     .slice(0, 3)
     .map((q) => q.query);
   // A "head" is the keyword's first two words: "crm for startups 2026" seeds
-  // "crm for", which Labs expands far wider than the full phrase would.
-  const heads = ((approvedRes.data ?? []) as { primary_keyword: string }[]).map((r) => r.primary_keyword.split(/\s+/).slice(0, 2).join(" "));
+  // "crm for", which Labs expands far wider than the full phrase would. A
+  // leading "what is" is not a head: "what is automation" would seed "what
+  // is", and Labs answers with every "what is X" in the country (Paperbot's
+  // first research: 46 candidates, 45 off-topic). The question words come
+  // off first, in the languages the writer serves.
+  const heads = ((approvedRes.data ?? []) as { primary_keyword: string }[])
+    .map((r) => stripQuestionLead(r.primary_keyword).split(/\s+/).filter(Boolean).slice(0, 2).join(" "))
+    .filter((h) => h.length >= 3);
   // What the site is seen for comes first: it is the strongest evidence of
   // what Google already trusts it on.
   // One-word profile tags and categories ("guides", "tips", "software") seed
