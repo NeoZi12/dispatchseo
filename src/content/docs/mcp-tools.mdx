@@ -1349,7 +1349,13 @@ a version behind. `blocked_on_review:true` isn't a failure either: the
 builder has waited a full schedule window behind an unmerged guide/tool
 PR, and only the owner merging or closing that PR (or `merge_pr`) lets
 it run again. `repeat_failure:true` means the same job also failed
-the real run before this one. The owner's dashboard and the alert emails
+the real run before this one. On a hosted (autopilot) site three
+per-site jobs matter most: `autopilot--<slug>` (the daily pass: a failure
+streak, an article not live after 48 hours, no article in 14 days, a spent
+keyword data budget), `autopilot-pause--<slug>` (it paused itself), and
+`articles--<slug>` (a finish, publish or verify job for one of its
+articles gave up; the next clean one clears it). The hosted Home shows
+the critical ones in plain words. The owner's dashboard and the alert emails
 only surface failures that are repeated, stale, or urgent (a broken
 deploy, dead credentials, an empty balance) - a one-off failed run shows
 here first and nowhere else, so finding one the dashboard doesn't show
@@ -1696,9 +1702,12 @@ or nothing (the oldest approved guide idea is written). Returns the
 `run_id` plus `warnings` for any optional key the deploy lacks (the
 slot runs on its fallback). Refuses when the idea is not this site's
 approved guide, when a run is already on it, or when the site is at its
-cap (2 runs in flight, 3 starts per UTC day). Fails with a `missing`
-list when the deploy has no Anthropic key; `WRITER_DRY_RUN=1` exercises
-the pipeline without any.
+cap (2 runs in flight, 3 starts per UTC day). On a hosted (autopilot)
+site it also takes the weekly slot the daily scheduler uses, atomically:
+it refuses past the plan's weekly quota or the two-day spacing, while the
+platform's keyword data budget is spent, and when another start for the
+site won the same moment. Fails with a `missing` list when the deploy has
+no Anthropic key; `WRITER_DRY_RUN=1` exercises the pipeline without any.
 
 <Fields>
   <Field name="suggestion_id" type="string">An approved guide idea.</Field>
@@ -1721,8 +1730,10 @@ sameness results, and the gate report.
 ### `release_writer_run`
 
 Releases a held run - a site's first hosted article when the deploy sets
-`WRITER_HOLD_FIRST=1`, or an article that landed while the site was at
-its daily publish cap: queues the finish job it skipped.
+`WRITER_HOLD_FIRST=1` (held for a quality read), or an article that
+landed while the site was at its daily publish cap. It publishes at once,
+not at the next publishing hour. A held run that nobody releases
+publishes itself 48 hours after it was held.
 
 <Fields>
   <Field name="run_id" type="string" required="true">The held run.</Field>
@@ -1756,9 +1767,16 @@ that - the same functions the dashboard calls. See
 The dashboard's report in one read: mode, pause state and reason, plan
 and articles per week, `nextArticleAt`, this week's count against the
 quota, the last 50 articles (status, stage, cost, gain, 28-day clicks and
-impressions), Search Console traffic and top queries, the next queued
-ideas, what setup is missing, the owner's brand, tone, blocked topics and
-byline, and this month's spend.
+impressions; `holdReleasesAt` on a held one, and `prUrl` / `prMerged` on a
+repo article - an open, unmerged `prUrl` means it waits for a merge on
+GitHub), Search Console traffic and top queries, the next queued ideas
+(with `lastResearchAt`), what setup is missing (including
+`setup.rewritePrUrl`, the forwarding pull request to merge for a hosted
+blog, and `setup.siteUnreadable`, when the site could not be read and the
+owner should describe it with `set_brand`), the owner's brand, tone,
+blocked topics and byline, and this month's spend. Article `error`
+strings are the writer's raw text; the dashboard shows a plain-words
+version.
 
 ### `pause_writer`
 

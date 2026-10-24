@@ -231,13 +231,38 @@ export async function retryArticle(_prev: ActionState, fd: FormData): Promise<Ac
   const run = await getWriterRun(project.id, runId);
   if (!run) return state(false, "That article is no longer on this site.");
   if (run.status !== "failed") return state(false, "That article didn't stop, so there is nothing to retry.");
+  // startWriterRun takes only approved ideas, and a run that ended in a park
+  // left its idea "parked" - so a retry the owner asked for must un-park it
+  // first, or it is refused as "set aside" every time. Only from parked: an
+  // idea the owner since rejected or published stays as it is.
+  let unparked = false;
+  if (run.suggestion_id) {
+    const { db } = await import("@/lib/db");
+    const { data } = await db()
+      .from("suggestions")
+      .update({ status: "approved" })
+      .eq("id", run.suggestion_id)
+      .eq("project_id", project.id)
+      .eq("status", "parked")
+      .select("id")
+      .maybeSingle();
+    unparked = Boolean(data);
+  }
   const started = await startWriterRun({
     projectId: project.id,
     suggestionId: run.suggestion_id,
     keyword: run.suggestion_id ? null : run.keyword,
     titleHint: run.title_hint,
   }).catch(() => ({ run: undefined, refused: "" }));
-  if (!started.run) return state(false, ownerRefusal(started.refused));
+  if (!started.run) {
+    // Refused (quota, spacing, plan): put the idea back where it was, so the
+    // scheduler does not pick up an idea the writer had set aside.
+    if (unparked && run.suggestion_id) {
+      const { db } = await import("@/lib/db");
+      await db().from("suggestions").update({ status: "parked" }).eq("id", run.suggestion_id).eq("project_id", project.id).eq("status", "approved");
+    }
+    return state(false, ownerRefusal(started.refused));
+  }
   refresh();
   return state(true, "Started again. Follow it on this page.");
 }

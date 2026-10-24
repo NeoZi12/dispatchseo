@@ -5,6 +5,7 @@ import { evaluateAutoPause } from "./pause";
 import { RESEARCH_EVERY_MS, runResearch, type ResearchOutcome } from "./research";
 import { runScheduler, type SchedulerOutcome } from "./scheduler";
 import { reportSiteHealth, siteHealthProblems } from "./health";
+import { reprobeRewriteWeekly } from "@/lib/hosted-rewrite";
 
 // The autopilot (2026-10-23 pivot): a hosted project's research, cadence and
 // brakes, with no agent anywhere. One daily pass per project, run by
@@ -66,6 +67,11 @@ export async function runAutopilotPass(project: Project, now = new Date()): Prom
       research = { error: `research: ${e instanceof Error ? e.message : String(e)}` };
     }
   }
+  // The hosted blog's forwarding rule, re-checked weekly (hosted-rewrite.ts):
+  // a rule the owner removed must not keep reading as live forever. Never
+  // fatal - a probe that throws leaves the stamp as it was.
+  await reprobeRewriteWeekly(project, now).catch(() => null);
+
   const researched = Boolean(research && !("skipped" in research));
   const scheduler = await runScheduler(project, now, { researchedThisRun: researched });
 

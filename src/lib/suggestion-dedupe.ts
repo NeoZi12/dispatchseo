@@ -16,7 +16,10 @@ import { db } from "./db";
 // the matching partial unique index as the race-proof backstop; this module is
 // what turns that into a readable answer instead of a 500.
 
-export const ACTIVE_SUGGESTION_STATUSES = ["pending", "approved", "in_progress"] as const;
+// "parked" (the writer gave up on it: unreadable page one, no facts, still
+// failing after patches) stays active for dedupe so research never re-adds the
+// same idea under a fresh row.
+export const ACTIVE_SUGGESTION_STATUSES = ["pending", "approved", "in_progress", "parked"] as const;
 
 export type DuplicateHit = { id: string; title: string; status: string };
 

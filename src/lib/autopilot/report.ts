@@ -8,6 +8,7 @@ import { aggregatePageTraffic, aggregateQueries, normalizePageUrl, type GscPageS
 import { getProjectById, publishTarget, writerMode, type Project } from "@/lib/projects";
 import { deltaPct } from "./math";
 import { blockedTopicsOf } from "./prefs";
+import { holdReleasesAt } from "./hold";
 import { weekUsage } from "./scheduler";
 
 // The autopilot report: the ONE data shape the hosted dashboard renders and
@@ -52,9 +53,20 @@ export type AutopilotArticle = {
   /** The writer run's own status, when there is a run: "failed" is the only
    *  state a retry makes sense from (a rejected draft's run is "done"). */
   runStatus: "running" | "held" | "done" | "failed" | null;
+  /** Why a failed run failed (stage_outputs.failure_kind): "content" = the
+   *  writer set the idea aside on purpose, so "Try again" would only pay for
+   *  the same refusal; "infra" = a vendor fault; null = neither recorded. */
+  failureKind: "infra" | "content" | null;
   /** Why a held run is held (stage_outputs.verify.handoff.reason): the
    *  first-article read, or a publish cap. */
   holdReason: string | null;
+  /** When a held run publishes itself (held + 48h, autopilot/hold.ts). */
+  holdReleasesAt: string | null;
+  /** The pull request a repo-route article went out as, and whether it is
+   *  merged. An open one is "waiting for a merge on GitHub" - the article
+   *  page shows the link instead of "Publishing" forever (audit H1). */
+  prUrl: string | null;
+  prMerged: boolean;
 };
 
 export type AutopilotReport = {
@@ -74,13 +86,26 @@ export type AutopilotReport = {
     deltaClicksPct: number | null;
     topQueries: Array<{ query: string; clicks: number; impressions: number; position: number }>;
   };
-  ideas: { approved: number; nextTitles: string[] };
+  ideas: {
+    approved: number;
+    nextTitles: string[];
+    /** When research last ran (projects.last_research_at). With approved 0,
+     *  a recent run means "no winnable keywords found yet", not "not run". */
+    lastResearchAt: string | null;
+  };
   setup: {
     google: boolean;
     publish: "github" | "wordpress" | "hosted" | "manual" | "none";
     hostedLive: boolean | null;
     profile: boolean;
     keywordSource: boolean;
+    /** The forwarding pull request we opened (hosted blog), "manual" when
+     *  the host needs the owner's own rule, null when none. */
+    rewritePrUrl: string | null;
+    /** The crawl gave up on the site (a bot wall, a login, a site that
+     *  answers nothing to a server) and no profile exists: only the owner
+     *  can describe the site now (Settings > Site). */
+    siteUnreadable: boolean;
   };
   controls: {
     brand: { name: string; tagline: string; short: string; long: string; categories: string[] };
@@ -102,7 +127,9 @@ type RunRow = {
   error: string | null;
   cost_usd: number | string;
   created_at: string;
+  updated_at: string;
   hold_reason: string | null;
+  failure_kind: string | null;
 };
 
 type DraftRow = {
@@ -114,6 +141,8 @@ type DraftRow = {
   published_at: string | null;
   created_at: string;
   cost_usd: number | string;
+  pr_url: string | null;
+  pr_merged_at: string | null;
   plan: { gain?: { type?: string; where?: string } } | null;
 };
 
@@ -187,13 +216,13 @@ export async function getAutopilotReport(projectId: string): Promise<AutopilotRe
     weekUsage(project.id, now),
     db()
       .from("writer_runs")
-      .select("id, suggestion_id, keyword, title_hint, stage, status, draft_id, error, cost_usd, created_at, hold_reason:stage_outputs->verify->handoff->>reason")
+      .select("id, suggestion_id, keyword, title_hint, stage, status, draft_id, error, cost_usd, created_at, updated_at, hold_reason:stage_outputs->verify->handoff->>reason, failure_kind:stage_outputs->>failure_kind")
       .eq("project_id", project.id)
       .order("created_at", { ascending: false })
       .limit(DRAFT_LIMIT + 20),
     db()
       .from("article_drafts")
-      .select("id, title, primary_keyword, status, published_url, published_at, created_at, cost_usd, plan:validation->plan")
+      .select("id, title, primary_keyword, status, published_url, published_at, created_at, cost_usd, pr_url, pr_merged_at, plan:validation->plan")
       .eq("project_id", project.id)
       .neq("status", "discarded")
       .order("created_at", { ascending: false })
@@ -253,7 +282,11 @@ export async function getAutopilotReport(projectId: string): Promise<AutopilotRe
       position: t?.avgPosition == null ? null : Math.round(t.avgPosition * 10) / 10,
       error: d.status === "rejected" ? "The article failed the quality gate." : null,
       runStatus: runStatusOf(run),
+      failureKind: failureKindOf(run),
       holdReason: run?.status === "held" ? run.hold_reason : null,
+      holdReleasesAt: run?.status === "held" ? holdReleasesAt(run.updated_at) : null,
+      prUrl: d.pr_url,
+      prMerged: Boolean(d.pr_merged_at),
     };
   });
   for (const r of runs) {
@@ -280,7 +313,11 @@ export async function getAutopilotReport(projectId: string): Promise<AutopilotRe
       position: null,
       error: r.status === "failed" ? r.error : null,
       runStatus: runStatusOf(r),
+      failureKind: failureKindOf(r),
       holdReason: r.status === "held" ? r.hold_reason : null,
+      holdReleasesAt: r.status === "held" ? holdReleasesAt(r.updated_at) : null,
+      prUrl: null,
+      prMerged: false,
     });
   }
   // Articles from before autopilot: every guide the site's coding agent
@@ -310,7 +347,11 @@ export async function getAutopilotReport(projectId: string): Promise<AutopilotRe
       position: t?.avgPosition == null ? null : Math.round(t.avgPosition * 10) / 10,
       error: null,
       runStatus: null,
+      failureKind: null,
       holdReason: null,
+      holdReleasesAt: null,
+      prUrl: null,
+      prMerged: false,
     });
   }
   // Newest first by the date that matters: when it went live, else when it
@@ -328,8 +369,8 @@ export async function getAutopilotReport(projectId: string): Promise<AutopilotRe
     articles: articles.slice(0, ARTICLE_LIMIT),
     articlesTruncated: articles.length > ARTICLE_LIMIT || drafts.length >= DRAFT_LIMIT,
     traffic: { days, clicks28d, impressions28d, deltaClicksPct: prev28.length >= 14 ? deltaPct(clicks28d, prevClicks) : null, topQueries },
-    ideas,
-    setup: { ...setup, profile: profile.fromDb },
+    ideas: { ...ideas, lastResearchAt: project.last_research_at ?? null },
+    setup: { ...setup, profile: profile.fromDb, siteUnreadable: setup.siteUnreadable && !profile.fromDb },
     controls: {
       brand: {
         name: profile.profile.name || project.name,
@@ -369,12 +410,17 @@ function earlierArticles(projectId: string): Promise<EarlierPage[]> {
   )();
 }
 
+function failureKindOf(run: Pick<RunRow, "status" | "failure_kind"> | null): AutopilotArticle["failureKind"] {
+  if (run?.status !== "failed") return null;
+  return run.failure_kind === "content" || run.failure_kind === "infra" ? run.failure_kind : null;
+}
+
 function runStatusOf(run: Pick<RunRow, "status"> | null): AutopilotArticle["runStatus"] {
   const s = run?.status;
   return s === "running" || s === "held" || s === "done" || s === "failed" ? s : null;
 }
 
-async function ideaSummary(projectId: string): Promise<AutopilotReport["ideas"]> {
+async function ideaSummary(projectId: string): Promise<Omit<AutopilotReport["ideas"], "lastResearchAt">> {
   const [{ data: rows, error: rowsError }, { data: busy, error: busyError }] = await Promise.all([
     db()
       .from("suggestions")
@@ -408,18 +454,40 @@ async function setupSummary(project: Project): Promise<Omit<AutopilotReport["set
         : target === "manual" && writerMode(project) === "hosted"
           ? "none"
           : target;
-  const [gscRows, creds] = await Promise.all([
+  const [gscRows, creds, unreadable] = await Promise.all([
     project.gsc_oauth_refresh_token
       ? Promise.resolve(1)
       : db().from("gsc_stats").select("id", { count: "exact", head: true }).eq("project_id", project.id).then((r) => r.count ?? 0),
     credsForProject(project, { skipBudgetGate: true }).catch(() => null),
+    crawlGaveUp(project.id),
   ]);
   return {
     google: Boolean(project.gsc_site_url) && gscRows > 0,
     publish,
     hostedLive: target === "hosted" ? Boolean(project.hosted_rewrite_live_at) : null,
     keywordSource: creds != null,
+    rewritePrUrl: target === "hosted" ? (project.hosted_rewrite_pr_url ?? null) : null,
+    siteUnreadable: unreadable,
   };
+}
+
+/** No crawl digest, and the newest crawl job gave up (attempts spent). A
+ *  failed read answers false: the card is a nudge, never a false alarm. */
+async function crawlGaveUp(projectId: string): Promise<boolean> {
+  const [{ data: digest, error: dErr }, { data: job, error: jErr }] = await Promise.all([
+    db().from("site_digests").select("project_id").eq("project_id", projectId).maybeSingle(),
+    db()
+      .from("jobs")
+      .select("finished_at, error, attempts")
+      .eq("project_id", projectId)
+      .eq("kind", "crawl")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  if (dErr || jErr || digest) return false;
+  const j = job as { finished_at: string | null; error: string | null; attempts: number } | null;
+  return Boolean(j?.finished_at && j.error);
 }
 
 /** Model spend (model_calls) plus platform-billed DataForSEO spend for this

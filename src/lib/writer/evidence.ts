@@ -3,6 +3,15 @@
 // banned phrases, the site brief's rendering. Kept pure so every rule can be
 // unit-tested with plain strings - and so the judge is only ever asked
 // questions code cannot answer.
+//
+// LANGUAGE: every word-level function takes the article's language code.
+// Thai, Japanese, Chinese, Khmer, Lao and Burmese put no spaces between
+// words, so a regex reads a whole sentence as one "word": shingles never
+// match, dedupe never merges, claim matching finds nothing. Those scripts
+// go through the quality gate's own Intl.Segmenter helper, so the writer and
+// the gate cut words the same way.
+
+import { segmentWords, spacelessLang } from "../article-validate";
 
 export type Fact = {
   id: string;
@@ -36,8 +45,10 @@ export type SiteBrief = {
   url: string;
   about: string;
   tone: string;
-  /** The site's own pages that relate to the keyword: citable as [S1]… */
-  pages: { n: number; url: string; title: string; why: string }[];
+  /** The site's own pages that relate to the keyword: citable as [S1]…
+   *  `snippet` is what the crawl knows about the page beyond its title (its
+   *  keywords), the passage an [S<n>] claim is judged against. */
+  pages: { n: number; url: string; title: string; why: string; snippet?: string }[];
   /** Search Console queries this site already gets impressions for. */
   queries: { query: string; impressions: number; position: number }[];
   /** Keyword already ranks on an existing page of this site. */
@@ -59,8 +70,9 @@ export type FactSheet = {
 
 // --- Tokens, shingles, overlap -----------------------------------------------
 
-export function tokens(text: string): string[] {
-  return (text.toLowerCase().match(/[\p{L}\p{M}\p{N}]+(?:['’][\p{L}\p{M}\p{N}]+)*/gu) ?? []);
+export function tokens(text: string, lang?: string | null): string[] {
+  const lower = text.toLowerCase();
+  return segmentWords(lower, lang) ?? lower.match(/[\p{L}\p{M}\p{N}]+(?:['’][\p{L}\p{M}\p{N}]+)*/gu) ?? [];
 }
 
 /** FNV-1a over a joined n-gram: small, stable, fast. */
@@ -75,8 +87,8 @@ function hash(s: string): number {
 
 export const SHINGLE_N = 8;
 
-export function shingleHashes(text: string, n = SHINGLE_N): number[] {
-  const t = tokens(text);
+export function shingleHashes(text: string, n = SHINGLE_N, lang?: string | null): number[] {
+  const t = tokens(text, lang);
   const out = new Set<number>();
   for (let i = 0; i + n <= t.length; i++) out.add(hash(t.slice(i, i + n).join(" ")));
   return [...out];
@@ -85,9 +97,13 @@ export function shingleHashes(text: string, n = SHINGLE_N): number[] {
 /** Fraction of the draft's shingles found in one source, and the longest
  *  verbatim run in words. Quoted spans ("…") are excluded from the draft
  *  side: an attributed quote is allowed to match its source. */
-export function overlapWith(draft: string, sourceShingles: number[], n = SHINGLE_N): { fraction: number; longestRun: number } {
-  const unquoted = draft.replace(/"[^"\n]{20,}"/g, " ").replace(/“[^”\n]{20,}”/g, " ");
-  const t = tokens(unquoted);
+export function overlapWith(draft: string, sourceShingles: number[], n = SHINGLE_N, lang?: string | null): { fraction: number; longestRun: number } {
+  const unquoted = draft
+    .replace(/"[^"\n]{20,}"/g, " ")
+    .replace(/“[^”\n]{20,}”/g, " ")
+    .replace(/「[^」\n]{8,}」/g, " ")
+    .replace(/«[^»\n]{20,}»/g, " ");
+  const t = tokens(unquoted, lang);
   if (t.length < n) return { fraction: 0, longestRun: 0 };
   const src = new Set(sourceShingles);
   let hits = 0;
@@ -104,9 +120,9 @@ export function overlapWith(draft: string, sourceShingles: number[], n = SHINGLE
   return { fraction: hits / total, longestRun: longest };
 }
 
-export function jaccard(a: string, b: string): number {
-  const A = new Set(tokens(a));
-  const B = new Set(tokens(b));
+export function jaccard(a: string, b: string, lang?: string | null): number {
+  const A = new Set(tokens(a, lang));
+  const B = new Set(tokens(b, lang));
   if (A.size === 0 || B.size === 0) return 0;
   let inter = 0;
   for (const x of A) if (B.has(x)) inter++;
@@ -115,39 +131,149 @@ export function jaccard(a: string, b: string): number {
 
 // --- Claims and figures ------------------------------------------------------
 
-/** Sentences that assert something checkable: a figure, a citation marker,
- *  or a reporting verb after a name. Everything else is the writer's own
- *  reasoning and is judged for usefulness, not truth. */
-export function claimSentences(markdown: string): string[] {
-  const prose = markdown
-    .replace(/```[\s\S]*?```/g, " ")
-    .replace(/^#+ .*$/gm, " ")
-    .replace(/\]\([^)]*\)/g, "]")
-    .replace(/\|/g, " . ");
-  const sentences = prose.split(/(?<=[.!?])\s+|\n+/).map((s) => s.trim()).filter((s) => s.length > 20);
-  const out: string[] = [];
-  for (const s of sentences) {
-    const hasFigure = /(?<![\w/.-])(?:[$€£₪]\s?\d|\d[\d,.]*\s?%|\d{2,})(?![\w/.-])/.test(s.replace(/\b(19|20)\d{2}\b/g, ""));
-    const hasCite = /\[\d+\]|\[S\d+\]/.test(s);
-    const hasReport = /\b(?:according to|found that|reports?|recommends?|requires?|study|survey|research shows|data shows)\b/i.test(s);
-    if (hasFigure || hasCite || hasReport) out.push(s.slice(0, 400));
-  }
-  return [...new Set(out)].slice(0, 60);
+/** One checkable unit of an article: a sentence, or a whole table row.
+ *  `raw` is an exact substring of the markdown, so a fix (a swapped citation
+ *  marker) can be spliced back in code; `text` is what the judge reads. */
+export type ClaimUnit = {
+  text: string;
+  raw: string;
+  /** Citation markers in the unit, as written: "3" for [3], "S2" for [S2]. */
+  cites: string[];
+  table: boolean;
+  figures: string[];
+};
+
+const MARKER_RE = /\[(S?\d+)\]/g;
+
+export function citesIn(text: string): string[] {
+  return [...new Set([...text.matchAll(MARKER_RE)].map((m) => m[1]))];
 }
 
-/** Figures worth checking: two or more digits, or a percent or currency
- *  sign. Years stand alone are structure ("in 2026"), URLs are stripped,
- *  commas are dropped so 1,200 and 1200 compare equal, citation markers are
- *  not figures. Matching uses digit boundaries so 150 is not found inside
- *  1500. */
-export function figuresIn(markdown: string): string[] {
-  const body = markdown
+/** Every sentence (and table row) that asserts something checkable: a
+ *  figure, a citation marker, or - in English - a reporting verb. Everything
+ *  else is the writer's own reasoning and is judged for usefulness, not
+ *  truth. Table rows are judged WHOLE with the header row prepended: split
+ *  on its pipes, "~5-15K tokens on invocation [2]" is a fragment no passage
+ *  can support or refute. Headings are structure, not claims. Uncapped:
+ *  the caller decides how many it judges and records the rest. */
+export function claimUnits(markdown: string, lang?: string | null): ClaimUnit[] {
+  const english = !lang || /^en\b/i.test(lang);
+  // Ten characters of Thai or Japanese carry what twenty of English do.
+  const minChars = spacelessLang(lang) ? 8 : 20;
+  const lines = markdown.replace(CODE_FENCE_BT_RE, (m) => m.replace(/[^\n]/g, " ")).replace(CODE_FENCE_TILDE_RE, (m) => m.replace(/[^\n]/g, " ")).split("\n");
+  const out: ClaimUnit[] = [];
+  const seen = new Set<string>();
+  const push = (raw: string, text: string, table: boolean) => {
+    if (!raw || seen.has(raw)) return;
+    const display = text.replace(/\]\([^)\n]*\)/g, "]").trim();
+    if (display.length <= minChars) return;
+    const figures = figuresIn(display, lang);
+    const cites = citesIn(raw);
+    // Reporting verbs are an English list; other languages are covered by
+    // their figures and markers (a non-English "study found" with neither is
+    // the writer's own framing, judged by the rubric instead).
+    const report = english && /\b(?:according to|found that|reports?|recommends?|requires?|study|survey|research shows|data shows)\b/i.test(display);
+    if (figures.length === 0 && cites.length === 0 && !report) return;
+    seen.add(raw);
+    out.push({ text: display.slice(0, 600), raw, cites, table, figures });
+  };
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\s{0,3}#{1,6}\s/.test(line)) continue;
+    if (/^\s*\|/.test(line)) {
+      // A table: header, separator, rows. Rows carry the header so the judge
+      // knows what each cell means.
+      const block: string[] = [];
+      while (i < lines.length && /^\s*\|/.test(lines[i])) block.push(lines[i++]);
+      i--;
+      const sepAt = block.findIndex((l) => /^\s*\|?\s*:?-{3,}/.test(l));
+      const header = sepAt > 0 ? block[0] : "";
+      const rows = sepAt > 0 ? block.slice(sepAt + 1) : block;
+      const cells = (l: string) => l.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim()).join(" | ");
+      for (const row of rows) push(row.trim(), header ? `Table columns: ${cells(header)}. Row: ${cells(row)}` : cells(row), true);
+      continue;
+    }
+    // Sentences end at . ! ? followed by space, or right after the
+    // full-width stops of Chinese and Japanese (no space follows those).
+    for (const piece of line.split(/(?<=[.!?])\s+|(?<=[。！？])/)) {
+      const raw = piece.trim();
+      push(raw, raw.replace(/^(?:>\s*)+|^\s*(?:[-*+]|\d+\.)\s+/g, ""), false);
+    }
+  }
+  return out;
+}
+
+/** The judged text of every claim, kept for callers that only need strings. */
+export function claimSentences(markdown: string, lang?: string | null): string[] {
+  return claimUnits(markdown, lang).map((u) => u.text);
+}
+
+/** Every decimal-digit block's zero, so Thai ๒๙, Arabic-Indic ٢٩ and
+ *  full-width ２９ all compare as 29. */
+const DIGIT_ZEROS = [0x30, 0x660, 0x6f0, 0x7c0, 0x966, 0x9e6, 0xa66, 0xae6, 0xb66, 0xbe6, 0xc66, 0xce6, 0xd66, 0xde6, 0xe50, 0xed0, 0xf20, 0x1040, 0x1090, 0x17e0, 0x1810, 0x1946, 0x19d0, 0xff10];
+
+export function normalizeDigits(s: string): string {
+  return s
+    .replace(/\p{Nd}/gu, (ch) => {
+      const cp = ch.codePointAt(0)!;
+      for (const z of DIGIT_ZEROS) if (cp >= z && cp < z + 10) return String(cp - z);
+      return ch;
+    })
+    .replace(/％/g, "%");
+}
+
+/** Currency signs and the codes a source may write instead. ¥ and 円 are one
+ *  currency for matching; "$29" may be stated as "USD 29" or "US$29". */
+const CURRENCIES: string[][] = [
+  ["$", "US$", "USD"],
+  ["€", "EUR"],
+  ["£", "GBP"],
+  ["₪", "ILS", "NIS"],
+  ["฿", "THB", "บาท"],
+  ["¥", "円", "JPY", "CNY", "RMB"],
+  ["₹", "INR", "Rs"],
+];
+const CUR_PRE = "(?:US\\$|A\\$|C\\$|[$€£₪฿¥₹])";
+const CUR_POST = "(?:円|€|₪|฿|¥|บาท)";
+const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Prose ready for figure matching: digits normalised, URLs, citation
+ *  markers and numeric HTML entities out (the sanitizer writes &#123; for a
+ *  brace and escapes import/export the same way - an entity's code point is
+ *  never a figure), thousands separators dropped so 1,200 and 1200 agree. */
+function figureText(text: string): string {
+  return normalizeDigits(text)
+    .replace(/&#(?:\d+|x[0-9a-f]+);/gi, " ")
     .replace(/\]\([^)]*\)/g, "]")
     .replace(/https?:\/\/\S+/g, " ")
     .replace(/\[S?\d+\]/g, " ")
-    .replace(/,(?=\d{3}\b)/g, "");
+    .replace(/(?<=\d),(?=\d{3}(?!\d))/g, "");
+}
+
+/** Figures worth checking: versions (v2.1.232), money in any listed
+ *  currency (prefix or suffix), percentages, decimals, and any number of two
+ *  or more digits, in any script's digits. A year standing alone is
+ *  structure ("in 2026"). A digit run glued to letters on its left is a
+ *  name (H264, GPT4), not a figure; letters on its right are a unit (30mg). */
+export function figuresIn(markdown: string, lang?: string | null): string[] {
+  const body = figureText(markdown);
+  // Thai, Japanese, Chinese, Khmer, Lao and Burmese glue numbers straight to
+  // the words around them ("ราคา29บาท", "価格は29円"): any letter on the left
+  // would drop every price. There only a Latin letter marks a name (H264).
+  const left = spacelessLang(lang) ? "A-Za-z" : "\\p{L}";
+  const re = new RegExp(
+    `(?<![${left}\\d.])(?:` +
+      `[vV]\\d+(?:\\.\\d+){1,3}` +
+      `|${CUR_PRE}\\s?\\d+(?:\\.\\d+)?` +
+      `|\\d+(?:\\.\\d+){2,3}` +
+      `|\\d+(?:\\.\\d+)?\\s?(?:%|${CUR_POST})` +
+      `|\\d+\\.\\d+` +
+      `|\\d{2,}` +
+      `)(?!\\.?\\d)`,
+    "gu",
+  );
   const found = new Set<string>();
-  for (const m of body.matchAll(/(?<![\d.])(?:[$€£₪]\s?\d[\d.]*|\d[\d.]*\s?%|\d{2,}(?:\.\d+)?)(?![\d.])/g)) {
+  for (const m of body.matchAll(re)) {
     const f = m[0].replace(/\s/g, "");
     if (/^(19|20)\d{2}$/.test(f)) continue;
     found.add(f);
@@ -155,19 +281,39 @@ export function figuresIn(markdown: string): string[] {
   return [...found];
 }
 
+/** Does the haystack state this figure? Money must carry the SAME currency
+ *  (sign or code) next to the same amount - "$29" is never satisfied by a
+ *  bare "29" elsewhere on the page, which is how a price used to borrow a
+ *  page count. Digit boundaries everywhere: 150 is not inside 1500. */
 export function figureAppearsIn(figure: string, haystack: string): boolean {
-  const clean = haystack.replace(/,(?=\d{3}\b)/g, "");
-  const esc = figure.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/^\\\$/, "[$€£₪]?\\s?");
-  return new RegExp(`(?<![\\d.])${esc}(?![\\d.])`).test(clean);
+  const hay = figureText(haystack);
+  const f = figure.replace(/\s/g, "");
+  const tail = "(?!\\.?\\d)";
+  const head = "(?<![\\d.])";
+  const money = f.match(new RegExp(`^(${CUR_PRE})(\\d+(?:\\.\\d+)?)$`, "u")) ?? f.match(new RegExp(`^()(\\d+(?:\\.\\d+)?)(${CUR_POST})$`, "u"));
+  if (money) {
+    const sign = money[1] || money[3];
+    const group = CURRENCIES.find((g) => g.includes(sign)) ?? [sign];
+    const syms = `(?:${group.map(esc).join("|")})`;
+    const amount = esc(money[2].replace(/\.0+$/, "")) + "(?:\\.0+)?";
+    return new RegExp(`${syms}\\s?${amount}${tail}|${head}${amount}\\s?${syms}`, "iu").test(hay);
+  }
+  const pct = f.match(/^(\d+(?:\.\d+)?)%$/);
+  if (pct) return new RegExp(`${head}${esc(pct[1])}\\s?(?:%|percent\\b|per cent\\b)`, "iu").test(hay);
+  const version = f.match(/^[vV]?(\d+(?:\.\d+){1,3})$/);
+  if (version && version[1].includes(".") && (/^[vV]/.test(f) || version[1].split(".").length > 2)) {
+    return new RegExp(`(?<![\\d.])[vV]?${esc(version[1])}${tail}`, "u").test(hay);
+  }
+  return new RegExp(`${head}${esc(f)}${tail}`, "u").test(hay);
 }
 
 /** Top-k passages by token overlap with a claim: the candidates the judge
  *  decides between, so it never reads the whole sheet per claim. */
-export function bestQuotesFor(claim: string, facts: Fact[], k = 3): Fact[] {
-  const c = new Set(tokens(claim));
+export function bestQuotesFor(claim: string, facts: Fact[], k = 3, lang?: string | null): Fact[] {
+  const c = new Set(tokens(claim, lang));
   return facts
     .map((f) => {
-      const q = tokens(f.quote + " " + f.claim);
+      const q = tokens(f.quote + " " + f.claim, lang);
       let hits = 0;
       for (const t of q) if (c.has(t)) hits++;
       return { f, score: hits / Math.sqrt(q.length + 1) };
@@ -226,7 +372,7 @@ export function renderSheet(sheet: FactSheet, brief: SiteBrief | null): string {
   }
   if (brief?.pages.length) {
     lines.push("", "THIS SITE'S OWN PAGES (cite as [S<n>], link inline where they genuinely help):");
-    for (const p of brief.pages) lines.push(`[S${p.n}] ${p.title} - ${p.url} (${p.why})`);
+    for (const p of brief.pages) lines.push(`[S${p.n}] ${p.title} - ${p.url} (${p.why}${p.snippet ? `; about: ${p.snippet}` : ""})`);
   }
   lines.push("", "FACTS (each with the verbatim passage it came from):");
   for (const f of sheet.facts) {
@@ -278,8 +424,8 @@ export function classifyHost(host: string, url: string): string {
 
 export const SKIP_HOSTS = /(^|\.)(youtube\.com|youtu\.be|facebook\.com|twitter\.com|x\.com|instagram\.com|tiktok\.com|pinterest\.com|linkedin\.com|amazon\.[a-z.]+|quora\.com|reddit\.com)$/i;
 
-export function normalizeTopic(heading: string, keywordTokens: Set<string>): string {
-  return tokens(heading)
+export function normalizeTopic(heading: string, keywordTokens: Set<string>, lang?: string | null): string {
+  return tokens(heading, lang)
     .filter((t) => t.length > 2 && !keywordTokens.has(t) && !STOP.has(t))
     .sort()
     .join(" ");
@@ -296,15 +442,36 @@ export function targetWords(sources: Source[]): number {
 }
 
 export function slugify(s: string, fallback = ""): string {
+  // NFKD only to drop Latin accents (é -> e), then NFC again: left
+  // decomposed, Hangul becomes loose jamo and Thai/Devanagari marks detach.
+  // The 80-character cut is by grapheme, never inside a base+mark cluster
+  // (a Thai or Hindi slug cut mid-cluster ends in a stray vowel sign).
   const clean = (v: string) =>
-    v
-      .toLowerCase()
-      .normalize("NFKD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^\p{L}\p{N}\p{M}]+/gu, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 80);
+    graphemeSlice(
+      v
+        .toLowerCase()
+        .normalize("NFKD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .normalize("NFC")
+        .replace(/[^\p{L}\p{N}\p{M}]+/gu, "-")
+        .replace(/^-+|-+$/g, ""),
+      80,
+    ).replace(/-+$/g, "");
   return clean(s) || clean(fallback) || `article-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function graphemeSlice(v: string, max: number): string {
+  if (v.length <= max) return v;
+  if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
+    let out = "";
+    for (const g of new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(v)) {
+      if (out.length + g.segment.length > max) break;
+      out += g.segment;
+    }
+    return out;
+  }
+  // No Segmenter: cut by code point and drop any marks left without a base.
+  return Array.from(v).slice(0, max).join("").replace(/\p{M}+$/u, "");
 }
 
 /** [n] and [S<n>] markers become visible inline links on the published page:
@@ -367,6 +534,26 @@ export function parseFaq(markdown: string): { body: string; faq: { question: str
   return { body: joinSections(sections.slice(0, -1)).trimEnd() + "\n", faq, heading: last.heading };
 }
 
+/** The FAQ heading in the article's language. The writer is told to use
+ *  it; when it does not, parseFaq still finds the FAQ by shape. */
+const FAQ_HEADINGS: Record<string, string> = {
+  en: "Frequently asked questions",
+  he: "שאלות נפוצות",
+  ar: "الأسئلة الشائعة",
+  fr: "Questions fréquentes",
+  de: "Häufige Fragen",
+  es: "Preguntas frecuentes",
+  pt: "Perguntas frequentes",
+  it: "Domande frequenti",
+  ja: "よくある質問",
+  th: "คำถามที่พบบ่อย",
+  zh: "常见问题",
+};
+
+export function faqHeadingFor(lang: string | null | undefined): string {
+  return FAQ_HEADINGS[(lang ?? "").toLowerCase().split(/[-_]/)[0]] ?? FAQ_HEADINGS.en;
+}
+
 export function renderFaq(faq: { question: string; answer: string }[], heading = "Frequently asked questions"): string {
   if (faq.length === 0) return "";
   return `\n## ${heading}\n\n${faq.map((f) => `**${f.question}**\n\n${f.answer}`).join("\n\n")}\n`;
@@ -410,22 +597,30 @@ function withProseOnly(markdown: string, fn: (prose: string) => string): string 
  *  not name (img onerror, svg onload, unquoted hrefs, data: URLs, {expr}). */
 const TAG_RE = /<\/?(?!https?:\/\/)[a-zA-Z!?][^<>]*>/g;
 
-/** Strip tags until nothing changes, then escape any "<" still followed by a
- *  letter: a nested "<<b>script>" survives one pass as "<script>", and a
- *  stray "<" that never closes is not a tag but must not become one later. */
+/** Strip tags until nothing changes, then escape EVERY "<" that is left
+ *  (markdown autolinks aside): a nested "<<b>script>" survives one pass as
+ *  "<script>", a stray "<" that never closes is not a tag but must not become
+ *  one later - and MDX refuses to compile a "<" before a digit, "$", space or
+ *  ">" too ("under <5%", "<$20", "a < b", "<>"), which killed customer builds.
+ *  "&lt;" renders as "<" everywhere. */
 function stripTagsToFixedPoint(text: string): string {
   let prev: string;
   do {
     prev = text;
     text = text.replace(TAG_RE, "");
   } while (text !== prev);
-  return text.replace(/<(?=\/?[a-zA-Z!?])(?!https?:\/\/)/g, "&lt;");
+  return text.replace(/<(?!https?:\/\/)/g, "&lt;");
 }
 
 export function sanitizeWriterMarkdown(markdown: string): string {
   return withProseOnly(markdown, (prose) =>
     prose
       .replace(/<!--[\s\S]*?-->/g, "")
+      // MDX 2+ dropped CommonMark's <https://...> autolinks: it reads one as a
+      // JSX tag and the customer's build fails. Rewritten to [url](url) before
+      // the link judgment below, so the destination rules (and restrictLinks'
+      // allowlist after this) see it like any other link.
+      .replace(/<(https?:\/\/[^<>\s\[\]]+)>/gi, (m, url: string) => `[${url}](${url})`)
       // Links first, so an <a href="javascript:..."> collapses to its label
       // before the generic tag strip would leave the label alone anyway.
       // A raw <a> becomes a markdown link when its href is http(s) (so the
@@ -465,21 +660,38 @@ export function sanitizeWriterMarkdown(markdown: string): string {
   );
 }
 
+/** The comparable form of a site URL: host without www, path without a
+ *  trailing slash, no query or fragment. */
+export function pageKey(url: string): string | null {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    return `${u.hostname.replace(/^www\./, "").toLowerCase()}${u.pathname.replace(/\/+$/, "") || "/"}`;
+  } catch {
+    return null;
+  }
+}
+
 /** Every way markdown can carry a link, reduced to the allowed set: exact
- *  research-source URLs and the site's own domain. Everything else becomes
- *  its label or disappears. A ranking page with injected text must not be
- *  able to place a link on the customer's site. Runs the sanitizer first so
- *  the link rules below only ever see http(s) links in clean prose. */
-export function restrictLinks(markdown: string, allowedUrls: Set<string>, ownDomain: string): string {
+ *  research-source and brief URLs, and own-domain pages that EXIST (the
+ *  site's crawled inventory and pages table, as pageKey()s). Everything else
+ *  becomes its label or disappears. A ranking page with injected text must
+ *  not be able to place a link on the customer's site, and the writer must
+ *  not invent one there either: "/pricing-guide" on the site's own domain
+ *  is a 404 the customer publishes. Runs the sanitizer first so the link
+ *  rules below only ever see http(s) links in clean prose. */
+export function restrictLinks(markdown: string, allowedUrls: Set<string>, ownDomain: string, ownPages: Set<string> = new Set()): string {
   // Judged on the PARSED URL, never on the text: the protocol must be
-  // http(s) and the hostname must be the site's own, or the exact string
-  // must be a research source. A string the URL parser rejects is not a
-  // link we place anywhere.
+  // http(s) and the hostname the site's own AND the page a known one, or
+  // the exact string must be a research source. A string the URL parser
+  // rejects is not a link we place anywhere.
   const allowed = (url: string) => {
     if (allowedUrls.has(url) || allowedUrls.has(url.replace(/\/$/, ""))) return true;
     try {
       const u = new URL(url);
-      return (u.protocol === "http:" || u.protocol === "https:") && sameDomain(u.hostname, ownDomain);
+      if ((u.protocol !== "http:" && u.protocol !== "https:") || !sameDomain(u.hostname, ownDomain)) return false;
+      const key = pageKey(url);
+      return key !== null && ownPages.has(key);
     } catch {
       return false;
     }
@@ -488,8 +700,11 @@ export function restrictLinks(markdown: string, allowedUrls: Set<string>, ownDom
     .replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (m, url: string, label: string) => (allowed(url) ? `[${label}](${url})` : label))
     .replace(/^\s*\[[^\]]+\]:\s*\S+.*$/gm, "")
     .replace(/\[([^\]]*)\]\((https?:\/\/[^)\s]+)(?:\s+"[^"]*")?\)/g, (m, label: string, url: string) => (allowed(url) ? `[${label}](${url})` : label))
-    .replace(/<(https?:\/\/[^>\s]+)>/g, (m, url: string) => (allowed(url) ? `<${url}>` : ""))
-    .replace(/(^|[^(<"'\]])(https?:\/\/[^\s)<>"']+)/g, (m, pre: string, url: string) => (allowed(url) ? m : pre));
+    .replace(/<(https?:\/\/[^>\s]+)>/g, (m, url: string) => (allowed(url) ? `[${url}](${url})` : ""))
+    // Not right after "[": that is the label of a link the rule above already
+    // judged - an autolink becomes [url](url), and reading its label as a
+    // bare URL would swallow the "](" and break the link.
+    .replace(/(^|[^(<"'\[\]])(https?:\/\/[^\s)<>"']+)/g, (m, pre: string, url: string) => (allowed(url) ? m : pre));
 }
 
 /** Split an article into its H2 sections, keeping the intro as "". */

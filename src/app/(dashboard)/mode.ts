@@ -4,6 +4,7 @@ import { getActiveProjectOrNull } from "@/lib/active-project";
 import { getAutopilotReport, type AutopilotReport } from "@/lib/autopilot/report";
 import { publishTarget, writerMode as projectWriterMode, type Project } from "@/lib/projects";
 import { db } from "@/lib/db";
+import { isCloudMode } from "@/lib/cloud";
 
 // Which dashboard a project gets. 'hosted' = our server writes and publishes
 // (the calm report); 'agent' = the owner's own coding agent drives it (every
@@ -47,7 +48,8 @@ export const loadReport = cache(async (projectId: string): Promise<AutopilotRepo
   }
 });
 
-type SetupFacts = Pick<AutopilotReport["setup"], "google" | "publish" | "hostedLive"> & { profile?: boolean };
+type SetupFacts = Pick<AutopilotReport["setup"], "google" | "publish" | "hostedLive"> &
+  Partial<Pick<AutopilotReport["setup"], "rewritePrUrl" | "siteUnreadable" | "keywordSource">> & { profile?: boolean };
 
 export type SetupGap = { key: string; title: string; detail: string; href: string | null; done: boolean; blocksPublishing: boolean };
 
@@ -65,14 +67,29 @@ export function setupGaps(s: SetupFacts): SetupGap[] {
     },
   ];
   if (s.publish === "hosted") {
-    items.push({
-      key: "forwarding",
-      title: "Point your /blog at us",
-      detail: "Add the forwarding rule to your site so your domain's /blog shows the articles.",
-      href: "/settings?section=publishing",
-      done: s.hostedLive !== false,
-      blocksPublishing: true,
-    });
+    // With a forwarding pull request open, the one thing to do is merge it -
+    // say so and link straight to it (audit H3: owners read "point your blog
+    // at us", went to Settings, and never found the PR we had opened).
+    const pr = s.rewritePrUrl && s.rewritePrUrl !== "manual" ? s.rewritePrUrl : null;
+    items.push(
+      pr
+        ? {
+            key: "forwarding",
+            title: "Merge the forwarding pull request",
+            detail: "We opened a pull request in your repo that points your domain's /blog at your articles. Merge it and the blog is live within minutes of the deploy.",
+            href: pr,
+            done: s.hostedLive !== false,
+            blocksPublishing: true,
+          }
+        : {
+            key: "forwarding",
+            title: "Point your /blog at us",
+            detail: "Add the forwarding rule to your site so your domain's /blog shows the articles.",
+            href: "/settings?section=publishing",
+            done: s.hostedLive !== false,
+            blocksPublishing: true,
+          },
+    );
   }
   items.push({
     key: "google",
@@ -83,12 +100,39 @@ export function setupGaps(s: SetupFacts): SetupGap[] {
     blocksPublishing: false,
   });
   if (s.profile !== undefined) {
+    items.push(
+      s.siteUnreadable && !s.profile
+        ? {
+            // The crawl gave up (a bot wall, a login): waiting does nothing,
+            // and research and the writer both need the profile.
+            key: "profile",
+            title: "Describe your site",
+            detail: "We couldn't read your homepage; describe your site in Settings > Site and the first article starts from that.",
+            href: "/settings",
+            done: false,
+            blocksPublishing: false,
+          }
+        : {
+            key: "profile",
+            title: "Read your site",
+            detail: "We're reading your homepage to learn what you sell and who for. Nothing to do.",
+            href: null,
+            done: s.profile,
+            blocksPublishing: false,
+          },
+    );
+  }
+  // No keyword data source: research cannot find a single topic. Only the
+  // full report knows this (undefined = not known here, no row).
+  if (s.keywordSource === false) {
     items.push({
-      key: "profile",
-      title: "Read your site",
-      detail: "We're reading your homepage to learn what you sell and who for. Nothing to do.",
-      href: null,
-      done: s.profile,
+      key: "keywords",
+      title: "Keyword data",
+      detail: isCloudMode()
+        ? "Keyword research isn't available for this site yet. Nothing to do on your side; we're on it."
+        : "Connect a DataForSEO account in Settings so research can find topics for this site.",
+      href: isCloudMode() ? null : "/settings",
+      done: false,
       blocksPublishing: false,
     });
   }
@@ -112,5 +156,10 @@ export const getSetupSummary = cache(async (project: Project): Promise<SetupFact
     // A failed count hides the gap rather than inventing one.
     google = error ? true : (count ?? 0) > 0;
   }
-  return { publish, google, hostedLive: target === "hosted" ? Boolean(project.hosted_rewrite_live_at) : null };
+  return {
+    publish,
+    google,
+    hostedLive: target === "hosted" ? Boolean(project.hosted_rewrite_live_at) : null,
+    rewritePrUrl: target === "hosted" ? (project.hosted_rewrite_pr_url ?? null) : null,
+  };
 });

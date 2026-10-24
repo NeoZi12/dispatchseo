@@ -190,7 +190,14 @@ export async function runPublishJob(job: Job): Promise<void> {
     url: published.link,
     datePublished: nowIso,
     dateModified: nowIso,
-    authorName: project.name,
+    // The same byline rule finish.ts applies to every other route: a person
+    // the owner named (Settings / set_author) is a Person; otherwise the site
+    // itself, as an Organization. This used to pass the SITE NAME with
+    // buildSchema's default type Person - "Person: Acme Store", the
+    // fabricated-author signal finish.ts exists to avoid.
+    ...(project.author_name?.trim()
+      ? { authorName: project.author_name.trim(), authorType: "Person" as const, authorUrl: project.author_url ?? undefined }
+      : { authorName: project.name, authorType: "Organization" as const }),
     siteName: project.name,
     siteUrl: project.wp_url ?? `https://${project.domain}`,
     imageUrl: coverImageUrl,

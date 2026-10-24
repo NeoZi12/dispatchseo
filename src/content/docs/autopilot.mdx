@@ -26,7 +26,14 @@ Once you finish setup, three things happen without you:
    around your categories (and, once Google Search Console has data, around
    the searches you already show up for). It keeps up to six ideas queued.
 
-The first article usually starts the next morning.
+The first article usually starts the next morning. If we can't read your
+homepage (some sites block servers, or sit behind a login), the dashboard
+asks you to describe your site on **Settings > Site** instead, and the
+first article starts from your description.
+
+Your site's first article may be held for a quality read by our team
+before it goes out. It's never stuck there: a held article publishes itself
+within 48 hours, and you can also publish it yourself straight away.
 
 ## How topics are picked
 
@@ -50,6 +57,12 @@ The ones left are ranked by how much traffic they can realistically bring
 (searches a month, discounted by difficulty), and the best go to the front
 of the queue. Research runs again once a week.
 
+If nothing passes, research widens once: five more points of difficulty
+and at least 20 searches a month instead of 50. If that still finds
+nothing, the dashboard says "No winnable keywords found yet" and research
+tries again the next week. Suggesting a topic yourself is the fastest way
+past that.
+
 ## How often it publishes
 
 | Plan | Articles a week |
@@ -66,6 +79,10 @@ There is no daily option, on purpose. A young site that suddenly publishes
 every day looks like a content farm to Google, and a steady pace does
 better.
 
+An article that stops because of a problem on our side (a supplier
+outage, our keyword data budget for the day) doesn't count against your
+week, and the next try isn't held back by the two-day spacing.
+
 ## How each article is written
 
 For every article the server reads the pages that rank on page one for
@@ -77,8 +94,29 @@ close to any page-one article or to your own earlier posts. An article that
 can't beat page one isn't written at all.
 
 Then it publishes the same way as before. You get a pull request on your
-repo (merged for you), a post on your WordPress site, or a page on the
-blog we host at yoursite.com/blog.
+repo (merged for you on automatic publishing once its checks pass), a post
+on your WordPress site, or a page on the blog we host at
+yoursite.com/blog. An article only shows as **Live** once its page loads
+on your site and shows the article itself. A pull request that is still
+open shows as **Waiting for a merge**, with a link to it, and the
+dashboard warns you if any article hasn't gone live within two days.
+
+We start tracking an article's keyword on Google once the article is
+live, and check rankings weekly.
+
+### The hosted blog
+
+If your repo has no blog folder, we host the blog for you and open one
+pull request in your repo that forwards yoursite.com/blog to it. Until
+that pull request is merged, the dashboard shows a **Merge the forwarding
+pull request** card linking straight to it. Your first article goes out
+either way; after that, new articles wait until /blog forwards, because a
+page nobody can reach from your site does you no good. We re-check the
+forwarding every week. If your site's host isn't one we can open a pull
+request for, **Settings > Publishing** shows the one rule to add yourself.
+
+If articles have nowhere to go yet, the dashboard asks you to **Choose
+where articles go**, and nothing is written until you do.
 
 ## When it pauses itself
 
@@ -93,9 +131,17 @@ help:
   have been indexed for three weeks or more, and none of them has a single
   impression.
 
-When it pauses, the dashboard tells you which one happened. Articles that
-were already written still publish. It doesn't start again by itself. Look
-at Search Console first, then press **Resume** when you're ready.
+When it pauses, the dashboard tells you which one happened, and we email
+you. Articles that were already written still publish. It doesn't start
+again by itself. Look at Search Console first, then press **Resume
+autopilot** on your dashboard's Home when you're ready.
+
+## When something goes wrong
+
+Home shows a short note when something needs a look: articles that keep
+stopping, one that hasn't gone live in two days, keyword research that
+can't run. Problems on our side say so and fix themselves; for the rest,
+the note says what to do. A single blip doesn't show up at all.
 
 You can also pause it yourself at any time from the dashboard.
 

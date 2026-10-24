@@ -21,7 +21,8 @@ export type WeekUsage = {
   published: number;
   inFlight: number;
   /** Runs this week that failed after pick: they spent real money, so they
-   *  use a slot (otherwise a failing pipeline retries all week for free). */
+   *  use a slot (otherwise a failing pipeline retries all week for free).
+   *  Infra failures (ours, not the article's) are excluded. */
   failed: number;
   lastStartedAt: string | null;
 };
@@ -65,14 +66,14 @@ export async function weekUsage(projectId: string, now: Date): Promise<WeekUsage
       // pick (spent a slot). Runs that produced a draft are counted above.
       db()
         .from("writer_runs")
-        .select("status, stage")
+        .select("status, stage, failure_kind:stage_outputs->>failure_kind")
         .in("project_id", ids)
         .is("draft_id", null)
         .gte("created_at", since),
       // Spacing counts every run that got past pick, failed ones included: a
       // failing pipeline must not start a fresh (paid) run every morning. A
       // run that died AT pick spent next to nothing and must not delay a try.
-      db().from("writer_runs").select("created_at, status, stage").in("project_id", ids).order("created_at", { ascending: false }).limit(10),
+      db().from("writer_runs").select("created_at, status, stage, failure_kind:stage_outputs->>failure_kind").in("project_id", ids).order("created_at", { ascending: false }).limit(10),
       db()
         .from("article_drafts")
         .select("created_at")
@@ -84,12 +85,18 @@ export async function weekUsage(projectId: string, now: Date): Promise<WeekUsage
     ]);
     if (draftsRes.error || runsRes.error) return ZERO;
     const drafts = (draftsRes.data ?? []) as { status: string }[];
-    const runs = (runsRes.data ?? []) as { status: string; stage: string }[];
+    const runs = (runsRes.data ?? []) as { status: string; stage: string; failure_kind: string | null }[];
     const published = drafts.filter((d) => d.status === "published").length;
     const running = runs.filter((r) => r.status === "running").length;
-    const failed = runs.filter((r) => r.status === "failed" && r.stage !== "pick").length;
-    const recent = ((lastRunsRes.data ?? []) as { created_at: string; status: string; stage: string }[]).filter(
-      (r) => !(r.status === "failed" && r.stage === "pick"),
+    // A run stopped by OUR side (failure_kind "infra": DataForSEO ceiling,
+    // a model vendor outage, a stage the queue gave up on) is not the
+    // customer's article: charging it to their week meant a vendor outage on
+    // Monday cost a Starter site its only article of the week (audit C2).
+    // It neither counts against the quota nor delays the next try.
+    const ours = (r: { status: string; failure_kind: string | null }) => r.status === "failed" && r.failure_kind === "infra";
+    const failed = runs.filter((r) => r.status === "failed" && r.stage !== "pick" && !ours(r)).length;
+    const recent = ((lastRunsRes.data ?? []) as { created_at: string; status: string; stage: string; failure_kind: string | null }[]).filter(
+      (r) => !(r.status === "failed" && r.stage === "pick") && !ours(r),
     );
     const lastStartedAt =
       [recent[0]?.created_at, (lastDraftRes.data as { created_at: string } | null)?.created_at]

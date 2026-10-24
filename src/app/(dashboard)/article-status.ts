@@ -56,11 +56,14 @@ export function fmtUsd(n: number): string {
 export function holdText(reason: string | null): { first: boolean; text: string } {
   const r = (reason ?? "").toLowerCase();
   if (r.includes("first article")) {
-    return { first: true, text: "A site's first article waits for your read before it goes live. Everything after it publishes on its own." };
+    // The hold is for OUR quality read (WRITER_HOLD_FIRST), and it ends by
+    // itself: autopilot/hold.ts releases it 48 hours after it was held. The
+    // copy must never suggest the owner has to act for it to go out.
+    return { first: true, text: "Held for a quality read; it publishes itself within 48 hours. You can also publish it now. Everything after it publishes on its own." };
   }
-  if (r.includes("today")) return { first: false, text: "Your site already took its articles for today, so this one was held back. Publish it now or leave it for later." };
-  if (r.includes("waiting to publish")) return { first: false, text: "Other articles were still on their way out, so this one was held back. Publish it when you're ready." };
-  return { first: false, text: "This one was held back before publishing. Publish it when you're ready." };
+  if (r.includes("today")) return { first: false, text: "Your site already took its articles for today, so this one was held back. It publishes itself within 48 hours, or publish it now." };
+  if (r.includes("waiting to publish")) return { first: false, text: "Other articles were still on their way out, so this one was held back. It publishes itself within 48 hours, or publish it now." };
+  return { first: false, text: "This one was held back before publishing. It publishes itself within 48 hours, or publish it now." };
 }
 
 /** Which PIPELINE step (components/ui/pipeline-steps) an in-progress article
@@ -95,8 +98,17 @@ export function inProgress<T extends Pick<AutopilotArticle, "status" | "stage">>
  *  "In progress" (owner, 2026-10-24: one plain word, everywhere an article
  *  is in flight); which step it's on is said by stepLine() and the stepper,
  *  where there's room for it. */
-export function statusLabel(a: Pick<AutopilotArticle, "status" | "stage">): string {
+export function statusLabel(a: Pick<AutopilotArticle, "status" | "stage"> & Partial<Pick<AutopilotArticle, "prUrl" | "prMerged">>): string {
+  // A repo article whose pull request is still open is not "in progress" on
+  // our side - it waits on a merge, and saying so is the difference between
+  // an owner who merges and one who waits forever (audit H1).
+  if (waitingOnMerge(a)) return "Waiting for a merge";
   return articleStep(a) == null ? ARTICLE_STATUS[a.status].label : "In progress";
+}
+
+/** A scheduled repo article whose pull request is open and unmerged. */
+export function waitingOnMerge(a: Pick<AutopilotArticle, "status"> & Partial<Pick<AutopilotArticle, "prUrl" | "prMerged">>): boolean {
+  return a.status === "scheduled" && Boolean(a.prUrl) && !a.prMerged;
 }
 
 const STEP_LINE = [

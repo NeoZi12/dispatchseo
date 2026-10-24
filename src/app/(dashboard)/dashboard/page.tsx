@@ -86,6 +86,7 @@ import { loadSetupCardProps } from "@/lib/setup-card-props";
 import { cleanFlagText, cleanGscFlag } from "@/lib/flag-text";
 import AiVisibilitySection from "./ai-visibility-section";
 import { HostedReport } from "./hosted-report";
+import { isOperator, operatorOverview } from "@/lib/autopilot/operator";
 import { loadOverviewData } from "./overview-data";
 import { loadReport, writerMode } from "../mode";
 
@@ -330,7 +331,7 @@ export default async function Home({
   // [R8]; the Google OAuth callback lands here directly (returnTo=dashboard).
   searchParams: Promise<{ gh?: string; msg?: string; connected?: string; error?: string; sort?: string }>;
 }) {
-  await requireDashboard();
+  const auth = await requireDashboard();
   await requireOnboarded();
 
   const project = await getActiveProject();
@@ -339,11 +340,29 @@ export default async function Home({
   // merges) applies. Agent projects fall through to the full Home unchanged.
   if (writerMode(project) === "hosted") {
     const flags = await searchParams;
+    // The site's own critical issues, ALWAYS scoped to this site's slug (on
+    // self-host too: the hosted Home speaks for one site). A failed read
+    // hides the panel - it never takes Home down.
+    const operator = isOperator(auth.user?.id);
+    const [report, overview, siteHealth, operatorSites] = await Promise.all([
+      loadReport(project.id),
+      loadOverviewData(project).catch(() => null),
+      // Only the autopilot's own job families. A site switched from agent
+      // mode keeps its old seo-daily--<slug> etc. rows, which go "stale" the
+      // day the workflows stop - a permanent false alarm about a pipeline
+      // this site no longer runs.
+      getCronHealth(project.slug)
+        .then((h) => criticalCronIssues(h).filter((x) => /^(autopilot|autopilot-pause|articles)--/.test(x.job)))
+        .catch(() => []),
+      operator ? operatorOverview().catch(() => null) : Promise.resolve(null),
+    ]);
     return (
       <HostedReport
         project={project}
-        // The report and the overview's Google data load side by side.
-        {...await Promise.all([loadReport(project.id), loadOverviewData(project).catch(() => null)]).then(([report, overview]) => ({ report, overview }))}
+        report={report}
+        overview={overview}
+        siteIssues={siteHealth}
+        operatorSites={operatorSites}
         now={Date.now()}
         flags={{ msg: cleanFlagText(flags.msg), gsc: cleanGscFlag(flags.connected, flags.error), sort: flags.sort ?? null }}
       />

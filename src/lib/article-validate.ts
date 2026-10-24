@@ -142,18 +142,39 @@ const WORD_RE = /[\p{L}\p{M}\p{N}]+(?:['’-][\p{L}\p{M}\p{N}]+)*/gu;
 const SPACELESS_LANGS = new Set(["th", "ja", "zh", "km", "lo", "my"]);
 let segmenterLang: string | null = null;
 
-function wordsOf(text: string): string[] {
-  if (segmenterLang && typeof Intl !== "undefined" && "Segmenter" in Intl) {
-    try {
-      const seg = new Intl.Segmenter(segmenterLang, { granularity: "word" });
-      const out: string[] = [];
-      for (const s of seg.segment(text)) if (s.isWordLike) out.push(s.segment);
-      return out;
-    } catch {
-      // fall through to the regex
+/** The base code ("th" from "th-TH") when the language is written without
+ *  spaces between words, else null. */
+export function spacelessLang(lang: string | null | undefined): string | null {
+  const base = (lang ?? "").toLowerCase().split(/[-_]/)[0];
+  return SPACELESS_LANGS.has(base) ? base : null;
+}
+
+const segmenters = new Map<string, Intl.Segmenter>();
+
+/** Words of a text in a spaceless script, via Intl.Segmenter; null when the
+ *  language uses spaces (or the runtime has no Segmenter), so the caller
+ *  keeps its own regex. Shared with the hosted writer (src/lib/writer/),
+ *  whose overlap shingles, fact dedupe and claim matching must cut words the
+ *  same way this gate counts them. */
+export function segmentWords(text: string, lang: string | null | undefined): string[] | null {
+  const base = spacelessLang(lang);
+  if (!base || typeof Intl === "undefined" || !("Segmenter" in Intl)) return null;
+  try {
+    let seg = segmenters.get(base);
+    if (!seg) {
+      seg = new Intl.Segmenter(base, { granularity: "word" });
+      segmenters.set(base, seg);
     }
+    const out: string[] = [];
+    for (const s of seg.segment(text)) if (s.isWordLike) out.push(s.segment);
+    return out;
+  } catch {
+    return null;
   }
-  return text.match(WORD_RE) ?? [];
+}
+
+function wordsOf(text: string): string[] {
+  return (segmenterLang ? segmentWords(text, segmenterLang) : null) ?? text.match(WORD_RE) ?? [];
 }
 
 // Strips everything that would inflate a word count without being real prose:
@@ -577,8 +598,7 @@ export function validateArticle(
   submission: ArticleSubmission,
   context: ValidationContext = {},
 ): ValidationReport {
-  const langBase = (context.lang ?? "").toLowerCase().split(/[-_]/)[0];
-  segmenterLang = SPACELESS_LANGS.has(langBase) ? langBase : null;
+  segmenterLang = spacelessLang(context.lang);
   try {
     return validateArticleInner(submission, context);
   } finally {
@@ -1158,10 +1178,15 @@ function validateArticleInner(submission: ArticleSubmission, context: Validation
           return { passed: true, title: "FAQ entries are real Q&A pairs", detail: "No FAQ was submitted.", fix: "" };
         }
         const issues: string[] = [];
+        // Question marks by script: "？" (Chinese, Japanese), "؟" (Arabic,
+        // Persian, Urdu). Thai, Lao, Khmer and Burmese write questions with
+        // a particle and no mark at all, so the mark is not required there -
+        // a Thai FAQ used to fail this check on every single item.
+        const noMark = /^(th|lo|km|my)$/.test((context.lang ?? "").toLowerCase().split(/[-_]/)[0]);
         faq.forEach((f, i) => {
           const q = (f.question ?? "").trim();
           const a = (f.answer ?? "").trim();
-          if (!q.endsWith("?")) issues.push(`FAQ #${i + 1} question does not end in "?": "${q.slice(0, 60)}"`);
+          if (!noMark && !/[?？؟]$/.test(q)) issues.push(`FAQ #${i + 1} question does not end in "?": "${q.slice(0, 60)}"`);
           const answerWords = wordsOf(a).length;
           if (answerWords < 8) issues.push(`FAQ #${i + 1} answer is only ${answerWords} word(s) - too thin to be a real answer`);
         });

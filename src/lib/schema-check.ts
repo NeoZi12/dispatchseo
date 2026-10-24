@@ -151,6 +151,7 @@ const PROBES: Probe[] = [
   { migration: "0064_writer_pipeline", table: "writer_runs", column: "stage_outputs" },
   { migration: "0065_hosted_blog", table: "projects", column: "hosted_cta_url" },
   { migration: "0066_autopilot", table: "projects", column: "writer_mode" },
+  { migration: "0067_model_calls_cache_tokens", table: "model_calls", column: "cache_read_tokens" },
 ];
 
 // Migrations that genuinely CANNOT be probed through this mechanism, with the
@@ -192,6 +193,12 @@ export const UNPROBEABLE: Record<string, string> = {
   // app-side checks in submit_article (which do the same test before every
   // insert) still hold the line; this index only backstops the race.
   "0059_blocked_setup_is_live":
+    "partial unique index rebuild - artifact is in pg_indexes, not queryable via PostgREST",
+  // Rebuilds 0043's live-keyword index so 'parked' ideas count as live.
+  // Unapplied, a parked keyword can be re-queued by research (one wasted
+  // research read per week per such keyword) - the old index still stops
+  // every other duplicate.
+  "0068_autopilot_hardening":
     "partial unique index rebuild - artifact is in pg_indexes, not queryable via PostgREST",
 };
 

@@ -28,7 +28,7 @@ const API = "https://api.github.com";
 // picks the credential.
 export type RepoRef =
   | string
-  | { github_repo: string | null; github_installation_id?: number | null; slug?: string | null }
+  | { github_repo: string | null; github_installation_id?: number | null; slug?: string | null; id?: string | null }
   | null
   | undefined;
 
@@ -37,9 +37,19 @@ export type RepoRef =
  * PAT the self-host wizard stores in instance_settings)?
  *
  * Self-host: always - one owner, one token, every project is theirs. Cloud:
- * only the projects named in GH_MERGE_TOKEN_PROJECTS (comma-separated slugs),
- * which are the operator's own sites from before the GitHub App existed. Every
- * other tenant authenticates through its own App installation or not at all.
+ * only the projects named in GH_MERGE_TOKEN_PROJECTS (comma-separated project
+ * IDS), which are the operator's own sites from before the GitHub App existed.
+ * Every other tenant authenticates through its own App installation or not at
+ * all.
+ *
+ * KEYED BY PROJECT ID (audit 2026-10-24, B12). A slug is a name: deleted
+ * projects free theirs, and a tenant who creates a site whose slug matches an
+ * allowlisted one (after the operator renamed or deleted the original) would
+ * inherit the instance PAT and every repo it reaches. An id is never reused.
+ * Transitional: a non-UUID entry is still read as a slug, for refs that carry
+ * no id and for the env value as it stands today - replace every entry with
+ * the project's id and the slug path goes quiet on its own (a ref with an id
+ * is matched ONLY by id once any UUID entry is present).
  *
  * This closes a real hole: a cloud tenant can set github_repo to any string
  * (set_github_repo, or a hand-posted form field), and until this check the
@@ -47,15 +57,19 @@ export type RepoRef =
  * no installation - which would have let them commit, dispatch and merge in
  * whichever repos that PAT can reach. Fail closed: unset means nobody.
  */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function instanceTokenAllowedFor(ref: RepoRef): boolean {
   if (!isCloudMode()) return true;
-  const slug = typeof ref === "string" || !ref ? null : (ref.slug ?? null);
-  if (!slug) return false;
+  if (typeof ref === "string" || !ref) return false;
   const allowed = (process.env.GH_MERGE_TOKEN_PROJECTS ?? "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  return allowed.includes(slug);
+  const ids = allowed.filter((a) => UUID.test(a)).map((a) => a.toLowerCase());
+  const slugs = allowed.filter((a) => !UUID.test(a));
+  if (ref.id && ids.length) return ids.includes(ref.id.toLowerCase());
+  return Boolean(ref.slug) && slugs.includes(ref.slug!);
 }
 
 function refRepo(ref: RepoRef): string | null {

@@ -737,12 +737,15 @@ export async function serpResearch(
   creds: DataforseoCreds,
   locationCode: number = LOCATION_CODE,
   languageCode: string = LANGUAGE_CODE,
+  /** Results to buy. The writer asks for 20: bot walls and skipped hosts
+   *  (video, forums) left it 2 readable pages out of 10 on 2026-10-24. */
+  depth = 10,
 ): Promise<SerpResearch> {
   const json = await post<{
     cost: number;
     tasks: Array<{ result?: Array<{ items?: AdvancedItem[] }> }>;
   }>("/serp/google/organic/live/advanced", [
-    { keyword, location_code: locationCode, language_code: languageCode, depth: 10 },
+    { keyword, location_code: locationCode, language_code: languageCode, depth },
   ], creds);
   const items = json.tasks?.[0]?.result?.[0]?.items ?? [];
   const peopleAlsoAsk: string[] = [];

@@ -50,6 +50,8 @@ import { setProjectAgent } from "@/lib/agent-settings";
 import { loadSiteProfile } from "@/lib/site-profile";
 import { credentialWarnings, isDryRun, missingCredentials } from "@/lib/writer/models";
 import { getWriterRun, listWriterRuns, startWriterRun } from "@/lib/writer/runs";
+import { startHostedRunClaimed } from "@/lib/autopilot/scheduler";
+import { writerMode as projectWriterMode } from "@/lib/projects";
 import { releaseWriterRun } from "@/lib/writer/stages";
 import {
   getAutopilotReport,
@@ -4553,8 +4555,9 @@ const mcpHandler = createMcpHandler(
           "a quoted passage, checks originality against page one and the site's own posts, runs " +
           "the quality gate and queues it to publish - no customer-side AI involved. Pass a " +
           "suggestion_id from get_suggestions (approved guides), or a bare keyword. With " +
-          "neither, the oldest approved guide idea is written. Returns the run id; follow it " +
-          "with get_writer_runs.",
+          "neither, the oldest approved guide idea is written. On an autopilot site it takes the " +
+          "weekly article slot (refused past the weekly quota or two-day spacing). Returns the run " +
+          "id; follow it with get_writer_runs.",
         inputSchema: {
           suggestion_id: z.string().uuid().optional().describe("An approved guide idea to write."),
           keyword: z.string().min(2).max(120).optional().describe("Write about this keyword instead of a queued idea."),
@@ -4570,7 +4573,14 @@ const mcpHandler = createMcpHandler(
             hint: "Set the keys in the backend's environment, or WRITER_DRY_RUN=1 to exercise the pipeline without a model.",
           });
         }
-        const started = await startWriterRun({ projectId: p.id, suggestionId: suggestion_id, keyword, titleHint: title_hint });
+        // A hosted site's article claims the same atomic slot the daily
+        // scheduler does, so two calls racing can never both start a paid
+        // run past the quota (the gate alone was check-then-act). Agent-mode
+        // sites have no weekly slot and keep the plain start.
+        const started =
+          projectWriterMode(p) === "hosted"
+            ? await startHostedRunClaimed(p, { suggestionId: suggestion_id, keyword, titleHint: title_hint })
+            : await startWriterRun({ projectId: p.id, suggestionId: suggestion_id, keyword, titleHint: title_hint });
         if (!started.run) return fail(started.refused);
         const run = started.run;
         return ok({
@@ -4635,9 +4645,10 @@ const mcpHandler = createMcpHandler(
       {
         title: "Release a held writer run",
         description:
-          "A site's first hosted-writer article is held for a human read when the deploy sets " +
-          "WRITER_HOLD_FIRST=1 (status 'held'). This queues it to finish and publish on the " +
-          "owner's usual schedule.",
+          "A site's first hosted-writer article is held for a quality read when the deploy sets " +
+          "WRITER_HOLD_FIRST=1 (status 'held'); a publish cap can hold one too. A held article " +
+          "publishes itself 48 hours after it was held. This releases it now: it finishes and " +
+          "publishes at once, not at the next publishing hour.",
         inputSchema: { run_id: z.string().uuid() },
       },
       async ({ run_id }) => {
@@ -4665,7 +4676,10 @@ const mcpHandler = createMcpHandler(
           "state (with the reason when it paused itself), plan and articles per week, when the next " +
           "article starts, this week's count against the quota, the last 50 articles with status " +
           "(writing / verifying / held / scheduled / published / failed / needs_setup), cost and " +
-          "28-day clicks, Search Console traffic, the next queued ideas, what setup is missing, the " +
+          "28-day clicks (a held article carries holdReleasesAt - it publishes itself then; a repo " +
+          "article carries prUrl/prMerged - open and unmerged means it waits for a merge on GitHub), " +
+          "Search Console traffic, the next queued ideas, what setup is missing (setup.rewritePrUrl = " +
+          "the forwarding PR to merge; setup.siteUnreadable = describe the site with set_brand), the " +
           "owner's brand/tone/blocked topics/author, and this month's spend.",
         inputSchema: {},
       },

@@ -240,7 +240,17 @@ export type FilterContext = {
   takenKeywords: Set<string>;
   /** Titles and keywords to near-duplicate check against. */
   existingTexts: string[];
+  /** Override of MIN_VOLUME for research's one widened retry. */
+  minVolume?: number;
 };
+
+/** Research's one widened pass when the normal filter keeps nothing (audit
+ *  H9): a young site in a small niche often has no keyword at volume 50 under
+ *  its KD ceiling, and "nothing, retry next week" forever is a stalled
+ *  customer. Five more KD points and volume 20 is still a winnable,
+ *  searched keyword - and it is applied once, never compounded. */
+export const WIDEN_KD_BY = 5;
+export const WIDEN_MIN_VOLUME = 20;
 
 export type DropReason = "volume" | "kd" | "language" | "blocked" | "duplicate" | "near-duplicate";
 
@@ -301,7 +311,7 @@ export function filterCandidates(
   const kept: Candidate[] = [];
   const keptTexts: string[] = [];
   for (const c of seen.values()) {
-    if (!(c.volume >= MIN_VOLUME)) { dropped.volume++; continue; }
+    if (!(c.volume >= (ctx.minVolume ?? MIN_VOLUME))) { dropped.volume++; continue; }
     // Unknown KD is not "easy": DataForSEO leaves it empty on thin data, and
     // a young site cannot afford to guess.
     if (c.kd === null || c.kd > ctx.kdCeiling) { dropped.kd++; continue; }
@@ -389,11 +399,16 @@ export function withinResumeGrace(resumedAt: string | null, now: Date): boolean 
 }
 
 /** Leading failed runs, newest first, ignoring runs refused at pick (those
- *  never cost a real article and say nothing about the pipeline). */
-export function consecutivePostPickFailures(runs: Array<{ status: string; stage: string }>): number {
+ *  never cost a real article and say nothing about the pipeline) and topics
+ *  the writer PARKED on purpose (failure_kind "content": too few readable
+ *  sources, already ranks, no gain to add). A park is the gate working, not
+ *  the pipeline breaking - counting it put "the last 2 articles failed" on a
+ *  site whose writer was doing exactly its job. */
+export function consecutivePostPickFailures(runs: Array<{ status: string; stage: string; failure_kind?: string | null }>): number {
   let n = 0;
   for (const r of runs) {
     if (r.status === "failed" && r.stage === "pick") continue;
+    if (r.status === "failed" && r.failure_kind === "content") continue;
     if (r.status !== "failed") break;
     n++;
   }

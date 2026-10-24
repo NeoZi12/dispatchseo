@@ -20,6 +20,8 @@ import {
   normalizeKeyword,
   passesJudge,
   sentenceTitle,
+  WIDEN_KD_BY,
+  WIDEN_MIN_VOLUME,
   type Candidate,
   type JudgedCandidate,
 } from "./math";
@@ -80,9 +82,29 @@ export type ResearchOutcome =
       judged: number;
       added: Array<{ id: string; keyword: string; volume: number; kd: number | null; fit: number }>;
       rejected: number;
+      /** The normal filter kept nothing and the one widened pass ran. */
+      widened?: boolean;
       costUsd: number;
       dataforseoUsd: number;
     };
+
+/** Prefix of the skip reason when the platform's DAILY DataForSEO ceiling is
+ *  reached: temporary by construction (UTC midnight), so never loud. */
+export const DAILY_CEILING_SKIP = "DataForSEO ceiling reached; retrying tomorrow";
+
+/**
+ * Why the platform-billed keyword data is unavailable to this site right
+ * now, or null when it is available (or the site brings its own account, or
+ * this is self-host). Shared by research and the scheduler, which checks it
+ * BEFORE claiming a slot so a run is never started into a spent budget.
+ */
+export async function keywordDataBlocked(project: Project): Promise<string | null> {
+  if (!isCloudMode() || project.dataforseo_login) return null;
+  if (await credsForProject(project)) return null;
+  const budget = await platformBudgetGate(project.id);
+  if (budget.allowed) return null; // no platform account at all: a setup state, said elsewhere
+  return /daily ceiling/i.test(budget.reason) ? DAILY_CEILING_SKIP : `${BUDGET_SKIP} for this month`;
+}
 
 /** The quiet preconditions, shared with the scheduler and the MCP tool. */
 export async function researchReadiness(project: Project): Promise<{ ready: true } | { ready: false; skipped: string }> {
@@ -107,12 +129,11 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
   const creds = await credsForProject(project);
   if (!creds) {
     // Told apart from "no source at all": a spent budget is temporary and
-    // becomes loud if it lasts (health.ts), a missing source is setup.
-    if (isCloudMode() && !project.dataforseo_login) {
-      const budget = await platformBudgetGate(project.id);
-      if (!budget.allowed) return { skipped: `${BUDGET_SKIP} for this month` };
-    }
-    return { skipped: "no keyword source" };
+    // becomes loud if it lasts (health.ts), a missing source is setup - and
+    // the daily ceiling (resets at midnight) apart from the monthly budget
+    // (resets on the 1st), because "retrying tomorrow" is only true of one.
+    const blocked = await keywordDataBlocked(project);
+    return { skipped: blocked ?? "no keyword source" };
   }
   const { profile, fromDb, error: profileError } = await loadSiteProfile(project);
   if (profileError) return { skipped: `could not read the site profile: ${profileError}` };
@@ -132,7 +153,9 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
     return { skipped: "the idea queue is already full" };
   }
 
-  const seeds = await seedsFor(project, profile);
+  // Fewer seeds when few ideas are needed: every seed is two Labs calls, and
+  // topping a queue up by one idea never needed eight of them.
+  const seeds = (await seedsFor(project, profile)).slice(0, Math.min(MAX_SEEDS, 2 + needed));
   if (seeds.length === 0) return { skipped: "nothing to research from yet (the profile has no categories or tags)" };
 
   // Expand every seed through both Labs endpoints. A seed that fails is
@@ -164,13 +187,21 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
   // on its own may land approved. Unknown DR reads as DR 0 (kd-zones does).
   const kdCeiling = kdZones(dr?.dr ?? null).autoApprove;
   const existing = await existingTopics(project.id);
-  const { kept, dropped } = filterCandidates(raw, {
+  const filterCtx = {
     kdCeiling,
     languageCode: project.language_code,
     blockedTopics: blockedTopicsOf(project),
     takenKeywords: existing.keywords,
     existingTexts: existing.texts,
-  });
+  };
+  let { kept, dropped } = filterCandidates(raw, filterCtx);
+  // Nothing survived the normal bar: widen ONCE (math.ts WIDEN_*). Same raw
+  // rows, no extra DataForSEO call - only the two thresholds move.
+  let widened = false;
+  if (kept.length === 0 && raw.length > 0) {
+    ({ kept, dropped } = filterCandidates(raw, { ...filterCtx, kdCeiling: kdCeiling + WIDEN_KD_BY, minVolume: WIDEN_MIN_VOLUME }));
+    widened = true;
+  }
 
   // Judge best-first in Jev-sized batches; stop as soon as enough passed.
   const passed: Array<Candidate & JudgedCandidate> = [];
@@ -218,23 +249,11 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
     added.push({ id: (data as { id: string }).id, keyword: c.keyword, volume: c.volume, kd: c.kd, fit: Math.round(c.fit * 100) / 100 });
   }
 
-  if (added.length) {
-    // Track them for rank checks; an existing row keeps its status (a keyword
-    // the owner paused stays paused).
-    const { error } = await db()
-      .from("keywords")
-      .upsert(
-        passed.slice(0, needed).filter((c) => added.some((a) => a.keyword === c.keyword)).map((c) => ({
-          project_id: project.id,
-          keyword: c.keyword,
-          search_volume: c.volume,
-          keyword_difficulty: c.kd,
-          intent: c.intent,
-        })),
-        { onConflict: "project_id,keyword", ignoreDuplicates: true },
-      );
-    if (error) console.error(`[autopilot] keyword tracking failed for ${project.slug}: ${error.message}`);
-  }
+  // NOT tracked for rank checks here (audit 2026-10-24, cost): a queued idea
+  // has no page, and a weekly paid SERP check of a keyword the site has not
+  // published for is money that buys "not ranking" every Monday. The keyword
+  // is tracked the moment its article goes live (autopilot/tracking.ts,
+  // called from the publish success paths).
   // Judged-and-refused keywords are kept as rejected ideas so the next run
   // excludes them (existingTopics reads every status) instead of paying Jev
   // to refuse them again every week. Rejected rows sit outside the live-
@@ -267,6 +286,7 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
     seeds,
     candidates: raw.length,
     dropped: { ...dropped, ...(failures.length ? { seed_failures: failures.length } : {}) },
+    ...(widened ? { widened: true } : {}),
     judged,
     added,
     rejected,
@@ -316,12 +336,31 @@ async function seedsFor(project: Project, profile: SiteProfile): Promise<string[
   const heads = ((approvedRes.data ?? []) as { primary_keyword: string }[]).map((r) => r.primary_keyword.split(/\s+/).slice(0, 2).join(" "));
   // What the site is seen for comes first: it is the strongest evidence of
   // what Google already trusts it on.
-  const ordered = [...queries, ...profile.categories, ...heads, ...profile.tags];
+  // One-word profile tags and categories ("guides", "tips", "software") seed
+  // Labs with the whole language's head terms - thousands of rows for any
+  // site, none of them winnable - so they are dropped unless the word is the
+  // site's own (its name or domain label: "notion" on notion.so is a real
+  // seed). Search Console queries and queued heads keep one-word seeds: they
+  // are evidence, not guesses.
+  const siteTerms = new Set(
+    [profile.name, project.domain.replace(/^www\./, "").split(".")[0]]
+      .flatMap((t) => normalizeKeyword(t ?? "").split(" "))
+      .filter((t) => t.length >= 3),
+  );
+  const profileSeeds = [...profile.categories, ...profile.tags].filter((t) => {
+    const words = normalizeKeyword(t ?? "").split(" ").filter(Boolean);
+    return words.length > 1 || words.some((w) => siteTerms.has(w));
+  });
+  const ordered = [...queries, ...profile.categories.filter((c) => profileSeeds.includes(c)), ...heads, ...profile.tags.filter((t) => profileSeeds.includes(t))];
   const out: string[] = [];
   const seen = new Set<string>();
   for (const s of ordered) {
-    const k = normalizeKeyword(s ?? "");
-    if (k.length < 3 || seen.has(k)) continue;
+    // Hyphen and space variants are one seed ("e-commerce" / "e commerce" /
+    // "ecommerce" would buy the same Labs rows three times).
+    const k = normalizeKeyword((s ?? "").replace(/[-_]+/g, " "));
+    const variant = k.replace(/\s+/g, "");
+    if (k.length < 3 || seen.has(k) || seen.has(variant)) continue;
+    seen.add(variant);
     // A Search Console query can be a whole pasted error message ("autocompact
     // is thrashing: the context refilled…", 40 words, real impressions). Labs
     // expands a head term, not a sentence: anything over six words is skipped.

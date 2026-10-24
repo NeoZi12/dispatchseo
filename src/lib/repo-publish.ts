@@ -119,7 +119,17 @@ const FURNITURE = [
   "security",
 ];
 
-const IGNORED_PREFIXES = ["node_modules/", ".github/", ".git/", ".dispatchseo/", "vendor/"];
+const IGNORED_PREFIXES = ["node_modules/", "vendor/"];
+
+/** Path segments that are never where a site's articles live, at any depth:
+ *  every dot-directory (.github, .changeset, .claude, .cursor, .dispatchseo -
+ *  tooling that happens to keep markdown) and docs/ (a project's own
+ *  documentation). A 2026-10 repo published its first article into
+ *  .changeset/ because changeset notes are a folder of short .md files
+ *  (audit C4). */
+function ignoredSegment(segment: string): boolean {
+  return segment.startsWith(".") || segment.toLowerCase() === "docs";
+}
 
 export type ContentDirCandidate = {
   /** Repo-relative directory, no trailing slash. */
@@ -127,7 +137,28 @@ export type ContentDirCandidate = {
   /** Repo-relative paths of the markdown files directly inside it. */
   files: string[];
   score: number;
+  /** The directory (or a parent) is NAMED for articles (blog, posts,
+   *  articles, news, guides, journal...). A candidate without a name has to
+   *  prove itself by its files' frontmatter (see qualifiesByFrontmatter)
+   *  before anything is committed into it. */
+  named: boolean;
 };
+
+/** Segments that alone qualify a directory as the articles folder. Narrower
+ *  than ARTICLE_SEGMENTS on purpose: "resources" or "stories" is often
+ *  marketing copy, and those must prove themselves by frontmatter. */
+const QUALIFYING_SEGMENTS = new Set(["blog", "blogs", "posts", "post", "_posts", "articles", "article", "news", "guides", "guide", "journal"]);
+
+function isNamedForArticles(dir: string): boolean {
+  return dir.split("/").some((seg) => QUALIFYING_SEGMENTS.has(seg.toLowerCase()));
+}
+
+/** At least two of these files open with frontmatter carrying a `title:` key:
+ *  the shape of a folder of posts, as opposed to a folder of notes, legal
+ *  pages or component docs. */
+export function qualifiesByFrontmatter(texts: string[]): boolean {
+  return texts.filter((t) => "title" in parseFrontmatter(t).raw).length >= 2;
+}
 
 function dirOf(path: string): string {
   const cut = path.lastIndexOf("/");
@@ -157,7 +188,8 @@ export function scoreContentDirs(paths: string[]): ContentDirCandidate[] {
   for (const path of paths) {
     const lower = path.toLowerCase();
     if (!lower.endsWith(".md") && !lower.endsWith(".mdx")) continue;
-    if (IGNORED_PREFIXES.some((p) => path.startsWith(p))) continue;
+    if (IGNORED_PREFIXES.some((p) => path.startsWith(p) || path.includes(`/${p}`))) continue;
+    if (path.split("/").slice(0, -1).some(ignoredSegment)) continue;
     const base = baseOf(path).toLowerCase();
     if (FURNITURE.some((f) => base.startsWith(f))) continue;
     const dir = dirOf(path);
@@ -171,7 +203,7 @@ export function scoreContentDirs(paths: string[]): ContentDirCandidate[] {
 
   let candidates: ContentDirCandidate[] = [];
   for (const [dir, files] of byDir) {
-    candidates.push({ dir, files: files.slice().sort(), score: files.length + nameBonus(dir) });
+    candidates.push({ dir, files: files.slice().sort(), score: files.length + nameBonus(dir), named: isNamedForArticles(dir) });
   }
   // BOUNDED before the pairwise pass below. A hostile (or merely enormous)
   // repo can present tens of thousands of one-file directories, and a
@@ -319,6 +351,9 @@ const DESCRIPTION_KEYS = [
 const DATE_KEYS = [
   "date",
   "pubDate",
+  // AstroPaper and its forks: a required z.date(); a post without it fails
+  // the content-collection build.
+  "pubDatetime",
   "publishedAt",
   "published",
   "publishDate",
@@ -388,7 +423,11 @@ export function buildArticleFile(sample: ParsedSample | null, article: ArticleFi
   // them - so the safe answer is whichever this repo already writes.
   const sampleDate = sample && dateKey in sample.raw ? sample.raw[dateKey] : null;
   const dateUnquoted = sampleDate !== null && !/^["']/.test(sampleDate);
-  push(dateKey, dateUnquoted ? article.dateIso : yamlDoubleQuote(article.dateIso));
+  // And its precision: a sample written as a full timestamp
+  // (pubDatetime: 2022-09-23T15:22:00Z) gets one, midnight UTC of the day.
+  const withTime = sampleDate !== null && /\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(sampleDate);
+  const dateValue = withTime ? `${article.dateIso}T00:00:00Z` : article.dateIso;
+  push(dateKey, dateUnquoted ? dateValue : yamlDoubleQuote(dateValue));
 
   const coverKey = sampleCoverKey(sample);
   if (coverKey && article.coverPath) push(coverKey, yamlDoubleQuote(article.coverPath));
@@ -703,7 +742,34 @@ export async function publishDraftToRepo(
     dirFiles = allPaths.filter((p) => dirOf(p) === hint && /\.mdx?$/i.test(p)).sort();
   }
   if (!dir) {
-    const best = candidates[0];
+    // A candidate must QUALIFY, not merely rank first: named for articles, or
+    // at least two of its files carry a frontmatter title (read from the
+    // repo, at most three files for each of the first four candidates).
+    // Ranking first among a repo's markdown used to be enough, which is how
+    // an article landed in a folder of changeset notes. Nothing qualifying
+    // means no-content-dir, and a hosted site then gets the hosted blog.
+    let best: ContentDirCandidate | null = null;
+    for (const c of candidates.slice(0, 4)) {
+      if (c.named) {
+        best = c;
+        break;
+      }
+      const texts: string[] = [];
+      for (const f of c.files.slice(-3)) {
+        const res = await gh(token, "GET", `/repos/${repo}/contents/${encodeURI(f)}?ref=${encodeURIComponent(baseBranch)}`);
+        if (res.status === 200 && typeof res.json?.content === "string") {
+          try {
+            texts.push(Buffer.from(res.json.content as string, "base64").toString("utf8"));
+          } catch {
+            // unreadable file: it simply does not count
+          }
+        }
+      }
+      if (qualifiesByFrontmatter(texts)) {
+        best = c;
+        break;
+      }
+    }
     if (!best) {
       return {
         ok: false,
@@ -743,12 +809,39 @@ export async function publishDraftToRepo(
   const dateIso = new Date().toISOString().slice(0, 10);
   const treeEntries: Record<string, unknown>[] = [];
 
-  // THE COVER, and the two conditions on it. A repo with no public/ has no
-  // convention for where an image goes, and a site whose posts carry no image
-  // field would never render one - in both cases committing a PNG is litter in
-  // someone else's repository. Every failure below simply drops the cover.
+  // THE COVER, and the conditions on it. A site whose posts carry no image
+  // field would never render one, and a repo with no public/ for the app
+  // that serves this folder has no convention for where an image goes - in
+  // both cases committing a PNG is litter in someone else's repository.
+  // Every failure below simply drops the cover.
+  //
+  // Where it goes follows the neighbour's own value:
+  //   relative (Astro's image() schema: "../../assets/hero.jpg")  next to
+  //            the file the sample points at, referenced by the same
+  //            relative path - a site-root "/images/..." string FAILS that
+  //            schema and breaks the build (audit H6);
+  //   anything else  <app>/public/images/dispatchseo/, where <app> is the
+  //            monorepo app (apps/<x>, packages/<x>) that owns the content
+  //            folder, or the repo root. A root public/ is not served by an
+  //            app under apps/, which is how a monorepo article shipped with a
+  //            cover pointing at nothing.
   let coverPath: string | null = null;
-  if (draft.cover_url && sampleCoverKey(sample) && allPaths.some((p) => p.startsWith("public/"))) {
+  const coverKey = sampleCoverKey(sample);
+  const sampleCover = coverKey && sample ? (sample.values[coverKey] ?? "") : "";
+  const relCover = /^\.\.?\//.test(sampleCover);
+  const appRoot = dir.match(/^((?:apps|packages)\/[^/]+)\//)?.[1] ?? "";
+  const publicPrefix = appRoot ? `${appRoot}/public/` : "public/";
+  let coverTarget: { repoPath: string; ref: string } | null = null;
+  if (draft.cover_url && coverKey) {
+    if (relCover) {
+      const relDir = sampleCover.slice(0, sampleCover.lastIndexOf("/")) || ".";
+      const repoPath = normalizeRepoPath(`${dir}/${relDir}/${slug}.png`);
+      if (repoPath) coverTarget = { repoPath, ref: `${relDir}/${slug}.png` };
+    } else if (allPaths.some((p) => p.startsWith(publicPrefix))) {
+      coverTarget = { repoPath: `${publicPrefix}images/dispatchseo/${slug}.png`, ref: `/images/dispatchseo/${slug}.png` };
+    }
+  }
+  if (draft.cover_url && coverTarget) {
     try {
       const { fetchCover } = await import("./job-handlers/publish");
       const image = await fetchCover(draft.cover_url);
@@ -763,12 +856,12 @@ export async function publishDraftToRepo(
         });
         if (blob.status === 201 && blob.json?.sha) {
           treeEntries.push({
-            path: `public/images/dispatchseo/${slug}.png`,
+            path: coverTarget.repoPath,
             mode: "100644",
             type: "blob",
             sha: String(blob.json.sha),
           });
-          coverPath = `/images/dispatchseo/${slug}.png`;
+          coverPath = coverTarget.ref;
         }
       }
     } catch {
@@ -816,10 +909,15 @@ export async function publishDraftToRepo(
   });
   if (tree.status !== 201 || !tree.json?.sha) return bad("tree create", tree.status);
 
+  // Who wrote it, truthfully: on a hosted-writer site our server did (there
+  // is no "owner's AI"), on an agent site the owner's own agent did.
+  const hostedWriter = project.writer_mode === "hosted";
   const commit = await gh(token, "POST", `/repos/${repo}/git/commits`, {
     message:
       `Add article: ${draft.title}\n\n` +
-      "Written by the owner's AI and handed in through DispatchSEO; committed by the DispatchSEO app.",
+      (hostedWriter
+        ? `Written by DispatchSEO for ${project.domain}; committed by the DispatchSEO app.`
+        : "Written by the owner's AI and handed in through DispatchSEO; committed by the DispatchSEO app."),
     tree: String(tree.json.sha),
     parents: [headSha],
   });
@@ -836,11 +934,15 @@ export async function publishDraftToRepo(
   const base = await backendBaseUrl();
   const body =
     `${draft.meta_description ?? ""}\n\n` +
-    "Written by your AI through DispatchSEO and handed in for publishing; this pull request was " +
-    "opened by the DispatchSEO app. Merge it to publish. If the build fails on this PR, your site " +
+    (hostedWriter
+      ? `Written by DispatchSEO for ${project.domain}; this pull request was opened by the DispatchSEO app. `
+      : "Written by your AI through DispatchSEO and handed in for publishing; this pull request was " +
+        "opened by the DispatchSEO app. ") +
+    "Merge it to publish. If the build fails on this PR, your site " +
     "expects extra fields in the article header - reply here or ask your developer; it is a " +
     "one-time fix.\n\n" +
-    `Review it on your dashboard: ${base}/drafts`;
+    // Hosted sites have no Drafts screen; their article lives on /articles.
+    `Review it on your dashboard: ${base}/${hostedWriter ? `articles/${draft.id}` : "drafts"}`;
 
   let prNumber: number | null = null;
   let prUrl = "";
@@ -905,6 +1007,19 @@ export async function publishDraftToRepo(
   });
 
   return { ok: true, prUrl, prNumber, repoPath, predictedUrls, merged };
+}
+
+/** "a/b/../c/./d.png" -> "a/c/d.png"; null when it climbs out of the repo. */
+function normalizeRepoPath(path: string): string | null {
+  const out: string[] = [];
+  for (const seg of path.split("/")) {
+    if (!seg || seg === ".") continue;
+    if (seg === "..") {
+      if (out.length === 0) return null;
+      out.pop();
+    } else out.push(seg);
+  }
+  return out.length ? out.join("/") : null;
 }
 
 /** The crawled pages of this site, for URL prediction. Empty when the site

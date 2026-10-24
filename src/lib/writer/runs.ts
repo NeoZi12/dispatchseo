@@ -270,25 +270,59 @@ export async function advanceRun(
   return true;
 }
 
+/** Why a run ended without an article, for everything that counts runs:
+ *  "infra" = a vendor or the platform failed (Anthropic/Jev/DataForSEO down,
+ *  the platform DataForSEO budget or ceiling said no, a stage that kept
+ *  throwing a VENDOR_FAILURE_RE error) - not the site's fault, so it never consumes the site's weekly
+
+ *  quota or counts as a pipeline failure; "content" = this keyword cannot
+ *  become an honest article (too few readable sources, no facts, no gain,
+ *  still failing after the patches) - the idea is parked (stages.ts
+ *  parkIdea), which is the system working, not breaking. */
+export type FailureKind = "infra" | "content";
+
+/** An error message that names a vendor or transport fault (429, 5xx, no
+ *  key, no credit, no network) rather than something the model or the
+ *  content did. One pattern for both readers: the verify stage's patch loop
+ *  (hand the attempt back) and the write handler's last-attempt verdict
+ *  (infra, or a failure that counts against the slot). */
+export const VENDOR_FAILURE_RE =
+  /(?:anthropic|typesafe) (?:401|403|429|5\d\d)|credit balance|overloaded|(?:ANTHROPIC|TYPESAFE)_API_KEY is not set|fetch failed|ECONNRESET|ENOTFOUND|EAI_AGAIN|no time left/i;
+
+
 /** A run that cannot continue. Terminal and deliberately NOT a thrown error:
  *  "nothing approved to write" or "no SERP provider" are states of the
  *  project, not faults in the queue, and must not burn five retries or page
  *  anyone. A fault (vendor down, bug) is thrown by the stage instead and the
  *  jobs queue retries it - and ends up here too once the retries run out
- *  (see job-handlers/write.ts), so the run never stays 'running' with no job. */
-export async function failRun(run: WriterRun, reason: string, costUsd = 0): Promise<void> {
-  const { error } = await db()
+ *  (see job-handlers/write.ts), so the run never stays 'running' with no job.
+ *  `kind` lands in stage_outputs.failure_kind (with any `extra` keys). */
+export async function failRun(run: WriterRun, reason: string, costUsd = 0, kind?: FailureKind, extra: Record<string, unknown> = {}): Promise<void> {
+  const outputs = kind || Object.keys(extra).length ? { ...run.stage_outputs, ...extra, ...(kind ? { failure_kind: kind } : {}) } : null;
+  // Keyed on stage + rewrites like advanceRun: a worker holding a stale copy
+  // (another worker advanced the run since) must not fail a run it no longer
+  // owns, nor overwrite the newer stage_outputs with its old ones.
+  const { data, error } = await db()
     .from("writer_runs")
     .update({
       status: "failed",
       error: reason.slice(0, 1000),
       cost_usd: Number((Number(run.cost_usd) + costUsd).toFixed(4)),
       updated_at: new Date().toISOString(),
+      ...(outputs ? { stage_outputs: outputs } : {}),
     })
     .eq("id", run.id)
-    .in("status", ["running"]);
+    .eq("stage", run.stage)
+    .eq("rewrites", run.rewrites)
+    .in("status", ["running"])
+    .select("id")
+    .maybeSingle();
   if (error) throw new Error(`could not mark the run failed: ${error.message}`);
+  if (!data) return;
+  if (outputs) run.stage_outputs = outputs;
+  run.status = "failed";
 }
+
 
 function isDuplicate(error: { code?: string; message: string }): boolean {
   return error.code === "23505" || /duplicate key value/i.test(error.message);

@@ -13,10 +13,13 @@ import { OverviewChart } from "@/components/ui/overview-chart";
 import { PipelineSteps } from "@/components/ui/pipeline-steps";
 import { StatusPill } from "@/components/ui/status-pill";
 import { cx, FOCUS_RING } from "@/components/ui/styles";
-import { ARTICLE_STATUS, articleStep, fmtInt, holdText, longDate, statusLabel, stepLine } from "../../article-status";
+import { ARTICLE_STATUS, articleStep, fmtInt, holdText, longDate, statusLabel, stepLine, waitingOnMerge } from "../../article-status";
 import { loadReport, redirectIfAgent } from "../../mode";
 import { loadGoneUrls, loadLedger, loadPageDays, type Check, type Ledger, type PageDay } from "../article-data";
 import { normalizePageUrl } from "@/lib/metrics";
+import { getProjectBySlug } from "@/lib/projects";
+import { isOperator } from "@/lib/autopilot/operator";
+import { friendlyError } from "@/lib/autopilot/friendly";
 
 export const dynamic = "force-dynamic";
 
@@ -32,12 +35,26 @@ export const dynamic = "force-dynamic";
 const at = (ms: number, i = 0) => ({ "--at": `${ms}ms`, "--i": i }) as React.CSSProperties;
 const DAY = 86_400_000;
 
-export default async function ArticlePage({ params }: { params: Promise<{ id: string }> }) {
-  await requireDashboard();
-  await redirectIfAgent("/drafts");
+export default async function ArticlePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ site?: string }> }) {
+  const auth = await requireDashboard();
   // Ids are UUIDs, but decode anyway: a param can arrive percent-encoded.
   const id = decodeURIComponent((await params).id);
-  const project = await getActiveProject();
+  // ?site=<slug>: the operator opening another tenant's held article from the
+  // "All sites" strip (autopilot/operator.ts). Read-only - every action form
+  // below posts to the ACTIVE project and refuses anything else - and only
+  // for an id in OPERATOR_USER_IDS; anyone else gets their own site, exactly
+  // as without the parameter.
+  const site = (await searchParams).site;
+  let project = await getActiveProject();
+  let asOperator = false;
+  if (site && site !== project.slug && isOperator(auth.user?.id)) {
+    const other = await getProjectBySlug(site);
+    if (other) {
+      project = other;
+      asOperator = true;
+    }
+  }
+  if (!asOperator) await redirectIfAgent("/drafts");
   const report = await loadReport(project.id);
   // Scoped to the active project by construction: the report only holds its
   // articles, so another site's id is simply not found.
@@ -105,7 +122,12 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
               Written for the search <span className="font-medium text-ink">&ldquo;{a.keyword}&rdquo;</span>
             </p>
           ) : null}
-          {!gone ? (
+          {asOperator ? (
+            <p className="mt-6 text-[13px] text-ink-muted">
+              Viewing {project.name} as the operator. Release it from the All sites strip on your Home.
+            </p>
+          ) : null}
+          {!gone && !asOperator ? (
             <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3">
               <PrimaryAction a={a} slug={project.slug} paused={paused} />
               {live ? (
@@ -127,7 +149,19 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
       {step != null ? (
         <section aria-label="Where it is now" className="arrive-up rounded-2xl border border-accent/25 bg-accent-soft/40 p-5 sm:p-7" style={at(160)}>
           <PipelineSteps current={step} labels />
-          <p className="mt-4 text-[15px] leading-relaxed text-ink">{stepLine(step)}</p>
+          <p className="mt-4 text-[15px] leading-relaxed text-ink">
+            {waitingOnMerge(a)
+              ? "It's written and checked, and waiting for a merge on GitHub. It goes live within minutes of the merge."
+              : a.prUrl && a.prMerged
+                ? "Its pull request is merged. It goes live as soon as your site's deploy finishes."
+                : stepLine(step)}
+          </p>
+          {a.prUrl ? (
+            <a href={a.prUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-[14px] font-medium text-accent underline decoration-accent/40 underline-offset-[3px] hover:decoration-accent">
+              {waitingOnMerge(a) ? "Open the pull request to merge it" : "Open the pull request"}
+              <ExternalIcon />
+            </a>
+          ) : null}
         </section>
       ) : null}
 
@@ -138,8 +172,9 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
       ) : null}
 
       {a.status === "held" ? (
-        <Callout tone="warn" title={holdText(a.holdReason).first ? "Your first article waits for your read" : "Held back before publishing"}>
+        <Callout tone="warn" title={holdText(a.holdReason).first ? "Held for a quality read" : "Held back before publishing"}>
           {holdText(a.holdReason).text}
+          {a.holdReleasesAt ? ` It goes out on its own on ${longDate(a.holdReleasesAt)}.` : null}
         </Callout>
       ) : a.status === "needs_setup" ? (
         <Callout tone="warn" title="Finished, with nowhere to publish">
@@ -147,7 +182,9 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
         </Callout>
       ) : a.status === "failed" ? (
         <Callout tone="danger" title="The writer stopped this one">
-          {a.error ?? "It couldn't finish with facts it could verify, so nothing was published."}
+          {/* Never the raw run error (that is get_writer_runs' job): the
+              owner gets the sentence friendly.ts maps it to. */}
+          {friendlyError(a.error) ?? "It couldn't finish with facts it could verify, so nothing was published."}
           {a.runStatus === "failed" && paused ? " Resume autopilot to try it again." : null}
         </Callout>
       ) : null}
@@ -211,7 +248,9 @@ function PrimaryAction({ a, slug, paused }: { a: AutopilotArticle; slug: string;
       </Link>
     );
   }
-  if (a.runStatus === "failed" && a.runId && !paused) {
+  // A content park was the writer saying no on purpose (off-topic, too few
+  // sources, still failing the fact check): a retry pays for the same no.
+  if (a.runStatus === "failed" && a.failureKind !== "content" && a.runId && !paused) {
     return <ActionForm action={retryArticle} slug={slug} submitLabel="Try again" size="lg" hidden={{ run_id: a.runId }} className="[&_p:empty]:hidden" />;
   }
   return null;

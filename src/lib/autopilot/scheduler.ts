@@ -9,7 +9,7 @@ import { rewriteLiveCached } from "@/lib/hosted-rewrite";
 import { publishTarget, writerMode, type Project } from "@/lib/projects";
 import { cadence } from "./math";
 import { generateSiteProfile } from "./profile";
-import { RESEARCH_EVERY_MS, runResearch, type ResearchOutcome } from "./research";
+import { keywordDataBlocked, RESEARCH_EVERY_MS, runResearch, type ResearchOutcome } from "./research";
 import { weekUsage } from "./usage";
 
 export { weekUsage, type WeekUsage } from "./usage";
@@ -75,9 +75,23 @@ async function claimSlot(project: Project, now: Date, next: Date): Promise<boole
   return Boolean(data);
 }
 
-/** Queue a crawl the way daily-ranks does (dated idempotency key). */
-async function queueCrawl(project: Project, now: Date): Promise<boolean> {
+/** Queue a crawl the way daily-ranks does (dated idempotency key). Not when
+ *  a crawl already gave up on this site in the last week: a bot wall or a
+ *  login does not lift overnight, and re-reading 150 pages a day into it
+ *  only repeats the failure. The Home card asks the owner to describe the
+ *  site instead (report.ts siteUnreadable), and the weekly retry stays. */
+async function queueCrawl(project: Project, now: Date): Promise<boolean | "walled"> {
   if (!project.domain) return false;
+  const { data: last } = await db()
+    .from("jobs")
+    .select("finished_at, error")
+    .eq("project_id", project.id)
+    .eq("kind", "crawl")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const gaveUp = last as { finished_at: string | null; error: string | null } | null;
+  if (gaveUp?.finished_at && gaveUp.error && now.getTime() - Date.parse(gaveUp.finished_at) < 7 * 86_400_000) return "walled";
   const job = await enqueue({
     projectId: project.id,
     kind: "crawl",
@@ -123,7 +137,8 @@ export async function runScheduler(
   if (missingCredentials().length) return { skipped: "the writer has no model credentials on this deploy" };
   // A held first article waits for the owner's read; writing more on top of
   // an article they have not approved yet is exactly what holding prevents.
-  if (await hasHeldRun(project.id)) return { skipped: "waiting for you to read the first article" };
+  // Not forever: autopilot/hold.ts releases a hold 48 hours after it began.
+  if (await hasHeldRun(project.id)) return { skipped: "an article is held for a quality read; it publishes itself within 48 hours" };
   // The hosted blog: the FIRST article may go out before /blog forwards (it
   // is how the owner sees the blog at all). After that, more pages on an
   // address nobody can reach from the site is spend with no return.
@@ -145,10 +160,21 @@ export async function runScheduler(
     if (!("written" in generated)) {
       // Only a missing digest is cured by reading the site; a thin model
       // answer is retried tomorrow without re-crawling 150 pages.
-      const queued = generated.skipped.includes("crawl digest") ? await queueCrawl(project, now) : false;
-      return { skipped: "profile pending", profile: { ...generated, crawl_queued: queued } };
+      const needsCrawl = generated.skipped.includes("crawl digest");
+      const queued = needsCrawl ? await queueCrawl(project, now) : false;
+      return {
+        // Setup, not a fault: quiet, and named so the run log says which.
+        skipped: queued === "walled" ? "setup incomplete: we couldn't read the site; the owner can describe it in Settings" : "profile pending",
+        profile: { ...generated, crawl_queued: queued === true },
+      };
     }
   }
+
+  // A run our side killed (failure_kind "infra") gives its slot back: the
+  // claim moved next_article_at two days out, and an outage is not a reason
+  // for the customer to wait two more days (audit C2). Only when the newest
+  // run is that failure, so a real article in between keeps its spacing.
+  await returnSlotAfterInfraFailure(project, now);
 
   const plan = await projectPlan(project.id);
   const usage = await weekUsage(project.id, now);
@@ -157,6 +183,12 @@ export async function runScheduler(
     await setNextArticleAt(project.id, verdict.nextAt);
     return { skipped: verdict.reason, next_article_at: verdict.nextAt?.toISOString() ?? null, profile: profileOutcome };
   }
+
+  // The keyword data a run needs, checked BEFORE the slot is claimed. A run
+  // started into a spent DataForSEO budget or ceiling dies at research with
+  // nothing to read - and used to take the week's slot with it (audit C2/H4).
+  const dfsBlocked = await keywordDataBlocked(project);
+  if (dfsBlocked) return { skipped: dfsBlocked, next_article_at: project.next_article_at, profile: profileOutcome };
 
   let research: ResearchOutcome | undefined;
   if ((await approvedIdeaCount(project.id)) === 0) {
@@ -175,7 +207,19 @@ export async function runScheduler(
 
   const previous = project.next_article_at;
   if (!(await claimSlot(project, now, verdict.nextAfter))) {
-    return { skipped: "another run already claimed today's article", research, profile: profileOutcome };
+    // Two causes, told apart so the run log does not cry "race" for the
+    // common one: next_article_at was already in the future when this pass
+    // read it (set while the old plan's quota was met - a mid-week upgrade
+    // applies from that date, see claimSlot), or another pass really did
+    // claim it in between.
+    const scheduledAhead = previous != null && Date.parse(previous) > now.getTime();
+    return {
+      skipped: scheduledAhead
+        ? `the next article is already scheduled for ${previous!.slice(0, 10)}; a plan change applies from that date`
+        : "another run already claimed today's article",
+      research,
+      profile: profileOutcome,
+    };
   }
   const started = await startWriterRun({ projectId: project.id, gated: true });
   if (!started.run) {
@@ -190,4 +234,58 @@ export async function runScheduler(
     research,
     profile: profileOutcome,
   };
+}
+
+/** See the call site: hand back the slot a run lost to OUR failure. */
+async function returnSlotAfterInfraFailure(project: Project, now: Date): Promise<void> {
+  if (!project.next_article_at || Date.parse(project.next_article_at) <= now.getTime()) return;
+  const { data } = await db()
+    .from("writer_runs")
+    .select("status, failure_kind:stage_outputs->>failure_kind")
+    .eq("project_id", project.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const last = data as { status: string; failure_kind: string | null } | null;
+  if (last?.status !== "failed" || last.failure_kind !== "infra") return;
+  await setNextArticleAt(project.id, now);
+  project.next_article_at = now.toISOString();
+}
+
+/**
+ * A hosted article started by hand (the write_article MCP tool), held to the
+ * same atomic slot as the daily scheduler. writerStartGate checks quota and
+ * spacing, but two calls racing both passed it and both started a paid run
+ * (audit B12, TOCTOU). Here the slot is claimed with a compare-and-set on the
+ * value this call read, so exactly one of any concurrent calls wins; the
+ * loser is refused, and a start that fails afterwards gives the slot back.
+ */
+export async function startHostedRunClaimed(
+  project: Project,
+  input: { suggestionId?: string | null; keyword?: string | null; titleHint?: string | null },
+  now = new Date(),
+): Promise<Awaited<ReturnType<typeof startWriterRun>>> {
+  const { writerStartGate } = await import("./usage");
+  const gated = await writerStartGate(project, {}, now);
+  if (gated) return { refused: gated };
+  const dfsBlocked = await keywordDataBlocked(project);
+  if (dfsBlocked) return { refused: `Not now: ${dfsBlocked}.` };
+  const plan = await projectPlan(project.id);
+  const usage = await weekUsage(project.id, now);
+  const verdict = cadence({ now, quota: plan.articlesPerWeek, countThisWeek: usage.count, lastStartedAt: usage.lastStartedAt });
+  if (!verdict.write) return { refused: "This site's next article can't start yet (weekly quota or two-day spacing)." };
+  const previous = project.next_article_at;
+  let q = db().from("projects").update({ next_article_at: verdict.nextAfter.toISOString() }).eq("id", project.id);
+  q = previous ? q.eq("next_article_at", previous) : q.is("next_article_at", null);
+  const { data, error } = await q.select("id").maybeSingle();
+  if (error) throw new Error(`could not claim the article slot: ${error.message}`);
+  if (!data) return { refused: "Another article for this site was started at the same moment. Check get_writer_runs." };
+  try {
+    const started = await startWriterRun({ projectId: project.id, gated: true, ...input });
+    if (!started.run) await setNextArticleAt(project.id, previous ? new Date(previous) : null);
+    return started;
+  } catch (e) {
+    await setNextArticleAt(project.id, previous ? new Date(previous) : null);
+    throw e;
+  }
 }

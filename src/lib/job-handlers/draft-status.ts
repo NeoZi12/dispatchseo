@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { enqueue } from "@/lib/jobs";
-import { publishTarget, type Project } from "@/lib/projects";
+import { publishTarget, writerMode, type Project } from "@/lib/projects";
 import { isCloudMode } from "@/lib/cloud";
 import { instanceTokenAllowedFor } from "@/lib/github";
 
@@ -53,8 +53,13 @@ export async function markBlockedSetup(draftId: string, extra: Record<string, un
 export function publishRoute(project: Project): "wordpress" | "repo" | "manual" | "hosted" | "blocked" {
   const target = publishTarget(project);
   // Deliberate terminal state, not a gap: this owner asked us to finish the
-  // article and hand it over, and has nowhere for us to post it.
-  if (target === "manual") return "manual";
+  // article and hand it over, and has nowhere for us to post it. Only for an
+  // agent-mode owner, whose own agent copies it over. A HOSTED site has no
+  // agent to hand anything to: "manual" there means nothing ever reaches the
+  // site, so it is a setup gap like no route at all - blocked, which also
+  // keeps the scheduler and research from spending on articles with nowhere
+  // to go (audit H8).
+  if (target === "manual") return writerMode(project) === "hosted" ? "blocked" : "manual";
   // We serve the blog ourselves (src/lib/hosted-blog.ts); nothing to connect,
   // so this route can never be blocked. Whether the site's /blog forwards to
   // us yet is a setup card, not a publishing precondition - the pages exist
@@ -84,6 +89,9 @@ export function publishRoute(project: Project): "wordpress" | "repo" | "manual" 
 /** The owner-facing sentence for a blocked draft, computed fresh every time it
  *  is shown. Used by the drafts screen and the MCP read tools. */
 export function blockedReason(project: Project): string {
+  if (publishTarget(project) === "manual" && writerMode(project) === "hosted") {
+    return "Choose where articles go (your GitHub repo, or a blog we host for you) on the Settings screen, and this article goes out on its own.";
+  }
   if (publishTarget(project) === "hosted") {
     // The hosted route cannot park a draft (nothing to connect); a blocked
     // draft here predates the switch and just needs its publish job.

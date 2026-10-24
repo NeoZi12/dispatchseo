@@ -7,6 +7,7 @@ import { findDuplicateSuggestion, isDuplicateKeyError } from "@/lib/suggestion-d
 import { isProjectUrl } from "@/lib/url-guard";
 import { jaccard } from "@/lib/writer/evidence";
 import { cleanTopicList, DUPLICATE_JACCARD, FIT_MIN, matchesBlockedTopic, normalizeKeyword, sentenceTitle } from "./math";
+import { friendlyError } from "./friendly";
 import { blockedTopicsOf } from "./prefs";
 import { judgeCandidates } from "./research";
 
@@ -191,12 +192,30 @@ export async function suggestTopic(projectId: string, text: string): Promise<Sug
   const blocked = matchesBlockedTopic(topic, blockedTopicsOf(project));
   if (blocked) return { rejected: `That falls under "${blocked}", which is on your topics-to-avoid list.` };
 
+  // A topic the writer PARKED (too few readable sources, already ranks, no
+  // gain to add - writer/stages.ts parkIdea) sits under the live-keyword
+  // unique index (0068), so inserting it again would only fail as "already
+  // queued". Say what actually happened instead.
+  const { data: parked } = await db()
+    .from("suggestions")
+    .select("title, rationale")
+    .eq("project_id", project.id)
+    .eq("type", "guide")
+    .eq("status", "parked")
+    .ilike("primary_keyword", topic.trim().replace(/[%_\\]/g, "\\$&"))
+    .limit(1)
+    .maybeSingle();
+  if (parked) {
+    const why = ((parked as { rationale: string | null }).rationale ?? "").match(/^\[writer did not build: ([^\]]+)\]/)?.[1];
+    return { rejected: `The writer already tried that topic and set it aside.${why ? ` ${friendlyError(why)}` : ""}` };
+  }
+
   const dup = await findDuplicateSuggestion(project.id, "guide", topic);
   if (dup.active) return { rejected: `It's already queued as "${dup.active.title}".` };
   if (dup.shipped) return { rejected: `You already have an article on it: "${dup.shipped.title}".` };
   const [{ data: pages }, { data: queued }] = await Promise.all([
     db().from("pages").select("title, primary_keyword").eq("project_id", project.id).limit(2000),
-    db().from("suggestions").select("title, primary_keyword").eq("project_id", project.id).eq("type", "guide").in("status", ["approved", "in_progress", "done"]).limit(2000),
+    db().from("suggestions").select("title, primary_keyword").eq("project_id", project.id).eq("type", "guide").in("status", ["approved", "in_progress", "done", "parked"]).limit(2000),
   ]);
   for (const r of [...((pages ?? []) as { title: string | null; primary_keyword: string | null }[]), ...((queued ?? []) as { title: string | null; primary_keyword: string | null }[])]) {
     const near = [r.primary_keyword, r.title].find((t) => t && jaccard(t, topic) >= DUPLICATE_JACCARD);

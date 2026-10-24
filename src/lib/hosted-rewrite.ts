@@ -85,6 +85,32 @@ export type RewritePlan =
   | { kind: "netlify"; path: string; content: string }
   | { kind: "manual" };
 
+/**
+ * Which directory of the repo is the deployed site. The root, normally. In a
+ * monorepo (no next.config / vercel.json / netlify.toml at the root) it is the
+ * one app under apps/ or packages/ that carries one - Vercel and Netlify read
+ * the config from the project's root directory, so a rewrite written at the
+ * monorepo root is never seen (audit C4). Several candidates: a conventional
+ * site name wins (web, site, www, landing, marketing, frontend), else no
+ * guess - "" with ambiguous=true, and the owner gets the manual snippet.
+ */
+export function siteAppRoot(paths: string[]): { root: string; ambiguous: boolean } {
+  const marker = /^(next\.config\.(js|mjs|ts|cjs)|vercel\.json|netlify\.toml)$/;
+  if (paths.some((p) => marker.test(p))) return { root: "", ambiguous: false };
+  const apps = new Set<string>();
+  for (const p of paths) {
+    const m = p.match(/^((?:apps|packages)\/[^/]+)\/([^/]+)$/);
+    if (m && marker.test(m[2])) apps.add(m[1]);
+  }
+  if (apps.size === 1) return { root: [...apps][0], ambiguous: false };
+  if (apps.size > 1) {
+    const named = [...apps].filter((a) => /\/(web|site|www|landing|marketing|frontend)$/.test(a));
+    if (named.length === 1) return { root: named[0], ambiguous: false };
+    return { root: "", ambiguous: true };
+  }
+  return { root: "", ambiguous: false };
+}
+
 /** Decide the file from the repo's root listing (and a public/ dir). */
 export function planRewrite(paths: string[], existing: { vercelJson: string | null; redirects: string | null }, backend: string, slug: string): RewritePlan {
   const has = (p: string) => paths.includes(p);
@@ -152,17 +178,44 @@ export async function switchToHostedBlog(project: Project): Promise<Project | nu
   return updated;
 }
 
-/** Does https://<domain>/blog already answer with a real page that is not
- *  ours? 200 without our marker header = the site has a blog we cannot see
- *  in the repo. 404 or our own marker = free. Unreachable = free on cloud
- *  (a new site that is not live yet), but NOT on self-host: a backend that
- *  cannot see the site from where it runs (a LAN box) has no business
- *  pointing the site's public /blog at itself. */
+/** Does https://<domain>/blog already answer with a real BLOG that is not
+ *  ours? 404 or our own marker = free. Unreachable = free on cloud (a new
+ *  site that is not live yet), but NOT on self-host: a backend that cannot
+ *  see the site from where it runs (a LAN box) has no business pointing the
+ *  site's public /blog at itself.
+ *
+ *  A 200 alone is not a blog (audit H2). Single-page apps and many hosted
+ *  site builders answer EVERY path with the same 200 shell, so "200 on /blog"
+ *  read as "they already have a blog" and the site was refused the hosted
+ *  blog it needed. So /blog must (a) differ from a random path that cannot
+ *  exist - same status and a body within 10% of the same length is a
+ *  catch-all, not a page - and (b) look like a blog index: at least three
+ *  links into /blog/<something>, or "blog" in its <title>. */
 export async function servesOwnBlog(project: Project): Promise<boolean> {
-  const res = await fetchProjectUrl(`${siteOrigin(project)}/blog`, project.domain, { timeoutMs: 6_000, userAgent: "DispatchSEO-Check/1.0" });
+  const origin = siteOrigin(project);
+  const init = { timeoutMs: 6_000, userAgent: "DispatchSEO-Check/1.0" };
+  const res = await fetchProjectUrl(`${origin}/blog`, project.domain, init);
   if (!res) return !isCloudMode();
   if (res.headers.get(HOSTED_HEADER) === "1") return false;
-  return res.status === 200;
+  if (res.status !== 200) return false;
+  const body = await res.text().catch(() => "");
+  const probe = await fetchProjectUrl(`${origin}/dispatchseo-probe-${randomBytes(6).toString("hex")}`, project.domain, init);
+  if (probe && probe.status === 200) {
+    const other = await probe.text().catch(() => "");
+    const a = body.length;
+    const b = other.length;
+    if (Math.abs(a - b) <= Math.max(a, b) * 0.1) return false; // catch-all
+  }
+  return looksLikeBlogIndex(body);
+}
+
+/** Exported for testing: the blog-index shape servesOwnBlog requires. */
+export function looksLikeBlogIndex(html: string): boolean {
+  const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "";
+  if (/\bblog\b/i.test(title)) return true;
+  const links = new Set<string>();
+  for (const m of html.matchAll(/href=["']([^"']*\/blog\/[^"'#?]+)["']/gi)) links.add(m[1].replace(/\/+$/, ""));
+  return links.size >= 3;
 }
 
 export async function openRewritePr(project: Project): Promise<{ url: string; merged: boolean; kind: RewritePlan["kind"] } | null> {
@@ -184,14 +237,23 @@ export async function openRewritePr(project: Project): Promise<{ url: string; me
   const treeRes = await githubApi(token, "GET", `/repos/${repo}/git/trees/${baseTree}?recursive=1`);
   const paths = ((treeRes.json?.tree as { path?: string; type?: string }[] | undefined) ?? []).filter((e) => e.type === "blob").map((e) => String(e.path ?? ""));
 
-  const read = async (path: string): Promise<string | null> => {
+  // The deployed app's own directory (a monorepo's apps/<x>), with paths
+  // made relative to it so planRewrite reasons about that app alone.
+  const app = siteAppRoot(paths);
+  const prefix = app.root ? `${app.root}/` : "";
+  const appPaths = prefix ? paths.filter((p) => p.startsWith(prefix)).map((p) => p.slice(prefix.length)) : paths;
+  const read = async (rel: string): Promise<string | null> => {
+    const path = `${prefix}${rel}`;
     if (!paths.includes(path)) return null;
     const res = await githubApi(token, "GET", `/repos/${repo}/contents/${encodeURI(path)}?ref=${encodeURIComponent(baseBranch)}`);
     const content = res.json?.content;
     return typeof content === "string" ? Buffer.from(content.replace(/\n/g, ""), "base64").toString("utf8") : null;
   };
   if (!project.hosted_key) return null;
-  const plan = planRewrite(paths, { vercelJson: await read("vercel.json"), redirects: (await read("public/_redirects")) ?? (await read("_redirects")) }, backend, project.hosted_key);
+  const planned = app.ambiguous
+    ? ({ kind: "manual" } as const)
+    : planRewrite(appPaths, { vercelJson: await read("vercel.json"), redirects: (await read("public/_redirects")) ?? (await read("_redirects")) }, backend, project.hosted_key);
+  const plan: RewritePlan = planned.kind === "manual" ? planned : { ...planned, path: `${prefix}${planned.path}` };
   if (plan.kind === "manual") {
     await db().from("projects").update({ hosted_rewrite_pr_url: "manual" }).eq("id", project.id);
     return null;
@@ -244,6 +306,23 @@ export async function checkRewriteLive(project: Project): Promise<boolean> {
   const live = res?.headers.get(HOSTED_HEADER) === "1";
   if (live) await db().from("projects").update({ hosted_rewrite_live_at: new Date().toISOString() }).eq("id", project.id);
   return live;
+}
+
+/** The weekly re-probe (autopilot pass): a stamp older than a week is
+ *  checked again, and CLEARED when the site's /blog no longer answers from
+ *  us - an owner who removed the rewrite (or redeployed without it) must see
+ *  the "Point your /blog at us" card again, and the scheduler must stop
+ *  writing pages nobody can reach. A blip costs at most one day: the next
+ *  pass finds no stamp and probes again through rewriteLiveCached. */
+export async function reprobeRewriteWeekly(project: Project, now = new Date()): Promise<{ live: boolean } | null> {
+  if (project.publish_target !== "hosted" || !project.hosted_rewrite_live_at) return null;
+  if (now.getTime() - Date.parse(project.hosted_rewrite_live_at) < 7 * 24 * 3_600_000) return null;
+  const live = await checkRewriteLive(project);
+  if (!live) {
+    await db().from("projects").update({ hosted_rewrite_live_at: null }).eq("id", project.id);
+    project.hosted_rewrite_live_at = null;
+  }
+  return { live };
 }
 
 /** Settings reads the stamp and only re-probes when it is missing or old,

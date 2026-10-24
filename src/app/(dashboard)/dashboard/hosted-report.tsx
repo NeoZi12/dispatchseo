@@ -29,6 +29,10 @@ import { ARTICLE_STATUS, articleHref, articleStep, dayDate, holdText, inProgress
 import { loadGlances } from "../articles/article-data";
 import { setupGaps } from "../mode";
 import { TOPIC_LIMITS } from "@/lib/autopilot/controls";
+import type { CronHealth } from "@/lib/cron-alerts";
+import { siteIssueLine } from "@/lib/autopilot/friendly";
+import type { OperatorSite } from "@/lib/autopilot/operator";
+import { operatorReleaseArticle } from "./operator-actions";
 
 // The hosted-mode Home, modelled on Polar's overview: the numbers are the
 // main event, and everything is readable in three seconds.
@@ -74,9 +78,9 @@ function messageOf(r: AutopilotReport, gaps: ReturnType<typeof setupGaps>): Mess
   if (held) {
     const h = holdText(held.holdReason);
     return {
-      title: h.first ? "Your first article is ready. Publish it." : "An article is ready and waiting for you.",
+      title: h.first ? "Your first article is written, held for a quality read." : "An article is ready and waiting.",
       sub: h.text,
-      link: { href: "/articles?status=waiting", label: "Read and publish it" },
+      link: { href: "/articles?status=waiting", label: "Read it" },
     };
   }
   if (r.articles.some((a) => a.status === "needs_setup")) {
@@ -177,9 +181,19 @@ export async function HostedReport({
   overview,
   now,
   flags,
+  siteIssues = [],
+  operatorSites = null,
 }: {
   project: Project;
   report: AutopilotReport | null;
+  /** criticalCronIssues for THIS site (getCronHealth scoped to its slug):
+   *  the autopilot's own health row, its pause row and its articles' way
+   *  out. Before 2026-10-24 the hosted Home rendered none of them, so a site
+   *  whose articles had stopped looked exactly like a healthy quiet week. */
+  siteIssues?: CronHealth[];
+  /** Every hosted site's issues and held articles, for the operator only
+   *  (OPERATOR_USER_IDS); null for everyone else. */
+  operatorSites?: OperatorSite[] | null;
   /** Journey + Google's daily series (overview-data.ts), loaded alongside
    *  the report; null when it failed - the report's 90 days still chart. */
   overview: OverviewData | null;
@@ -204,7 +218,9 @@ export async function HostedReport({
   const r = report;
   const google = overview ?? { journey: null, daily: r.traffic.days };
   const plan = planLabel(r.plan);
-  const gaps = setupGaps(r.setup);
+  // A lapsed plan also reads as "no keyword source" (platform data needs an
+  // active plan); the plan message already covers it, so no second card.
+  const gaps = setupGaps({ ...r.setup, keywordSource: r.plan.articlesPerWeek === 0 ? undefined : r.setup.keywordSource });
   const missing = gaps.filter((g) => !g.done);
   const message = messageOf(r, gaps);
   const month = monthCards(r, now);
@@ -275,6 +291,10 @@ export async function HostedReport({
           {flags.msg}
         </Callout>
       ) : null}
+
+      {operatorSites ? <OperatorStrip sites={operatorSites} currentSlug={project.slug} /> : null}
+
+      <SiteIssues issues={siteIssues.filter((h) => !(r.paused && h.job.startsWith("autopilot-pause--")))} />
 
       {/* ---- the main event ---- */}
       <OverviewChart
@@ -382,7 +402,11 @@ export async function HostedReport({
               ))}
             </ol>
           ) : (
-            <p className="mt-5 text-sm text-ink-muted">The queue is empty right now. The next research run fills it.</p>
+            <p className="mt-5 text-sm text-ink-muted">
+              {r.ideas.lastResearchAt
+                ? "No winnable keywords found yet; we retry weekly. Suggesting a topic below is the fastest way to get the next article."
+                : "The queue is empty right now. The next research run fills it."}
+            </p>
           )}
         </div>
         <div>
@@ -477,14 +501,89 @@ function SetupChecklist({ gaps }: { gaps: ReturnType<typeof setupGaps> }) {
                 {g.done ? null : <p className="mt-0.5 text-[13px] leading-relaxed text-ink-muted">{g.detail}</p>}
               </div>
               {!g.done && g.href ? (
-                <Link href={g.href} className={buttonClass("secondary", "sm", next ? "border-accent/45 hover:border-accent/80" : "")}>
-                  Set up
-                </Link>
+                /^https?:\/\//.test(g.href) ? (
+                  // The forwarding pull request lives on GitHub.
+                  <a href={g.href} target="_blank" rel="noopener noreferrer" className={buttonClass("secondary", "sm", next ? "border-accent/45 hover:border-accent/80" : "")}>
+                    Open it
+                  </a>
+                ) : (
+                  <Link href={g.href} className={buttonClass("secondary", "sm", next ? "border-accent/45 hover:border-accent/80" : "")}>
+                    Set up
+                  </Link>
+                )
               ) : null}
             </li>
           );
         })}
       </ul>
+    </Card>
+  );
+}
+
+/** The site's own critical issues, in plain words (friendly.ts). Calm on
+ *  purpose: amber, one box, at most three lines - the owner's question is
+ *  "is something wrong and do I need to do anything", and each line answers
+ *  both. */
+function SiteIssues({ issues }: { issues: CronHealth[] }) {
+  if (!issues.length) return null;
+  const lines = issues.slice(0, 3).map(siteIssueLine);
+  return (
+    <Callout tone="warn" role="status" title={lines.length === 1 ? lines[0].title : "A few things need a look"}>
+      {lines.length === 1 ? (
+        lines[0].detail
+      ) : (
+        <ul className="mt-1 space-y-1.5">
+          {lines.map((l, i) => (
+            <li key={i}>
+              <span className="font-medium text-ink">{l.title}.</span> {l.detail}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Callout>
+  );
+}
+
+/** The operator's view across every hosted site (OPERATOR_USER_IDS only;
+ *  see autopilot/operator.ts). Raw error text on purpose - this reader
+ *  debugs it. Each held article links to its own page (?site= lets the
+ *  operator open a tenant's article read-only) and can be released here. */
+function OperatorStrip({ sites, currentSlug }: { sites: OperatorSite[]; currentSlug: string }) {
+  return (
+    <Card as="section" aria-labelledby="ops-title" className="border-l-2 border-l-warn">
+      <CardHeader
+        id="ops-title"
+        title="All sites"
+        description={sites.length ? `${sites.length} ${sites.length === 1 ? "site needs" : "sites need"} a look. Only operators see this.` : "Every hosted site is healthy and nothing is held. Only operators see this."}
+      />
+      {sites.length ? (
+        <ul className="mt-4 divide-y divide-line-soft">
+          {sites.map((site) => (
+            <li key={site.slug || "instance"} className="space-y-2 py-3.5 first:pt-0 last:pb-0">
+              <p className="text-sm font-medium text-ink">
+                {site.name} <span className="font-normal text-ink-faint">{site.domain}</span>
+              </p>
+              {site.issues.map((i) => (
+                <p key={i.job} className="break-words text-[13px] text-ink-muted">
+                  <span className="font-mono text-ink-faint">{i.job}</span> {i.error}
+                </p>
+              ))}
+              {site.held.map((h) => (
+                <div key={h.runId} className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">
+                  <span className="min-w-0 text-ink">
+                    Held: {h.title}
+                    {h.releasesAt ? <span className="text-ink-faint"> (publishes itself {shortDate(h.releasesAt)})</span> : null}
+                  </span>
+                  <Link href={`/articles/${h.draftId ?? h.runId}${site.slug === currentSlug ? "" : `?site=${encodeURIComponent(site.slug)}`}`} className={LINK}>
+                    Read it
+                  </Link>
+                  <ActionForm action={operatorReleaseArticle} slug={currentSlug} submitLabel="Publish now" size="sm" variant="secondary" hidden={{ run_id: h.runId, project_id: site.projectId }} className="[&_p:empty]:hidden" />
+                </div>
+              ))}
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </Card>
   );
 }

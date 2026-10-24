@@ -183,8 +183,10 @@ async function refillProject(p: {
   const res = await dispatchResearch({
     github_repo: p.github_repo,
     github_installation_id: p.github_installation_id ?? null,
-    // The slug is what instanceTokenAllowedFor keys on; without it an
-    // operator project with no App installation would resolve no credential.
+    // instanceTokenAllowedFor keys on the project id (slug accepted while the
+    // env allowlist still lists slugs); without them an operator project with
+    // no App installation would resolve no credential.
+    id: p.id,
     slug: p.slug,
   });
   if (!res.ok) {

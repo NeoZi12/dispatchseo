@@ -1,6 +1,7 @@
 import { lookup as dnsLookup, type LookupAddress, type LookupOptions } from "node:dns";
 import { Agent, fetch as pinnedFetch } from "undici";
 import { isPrivateHost } from "@/lib/url-guard";
+import { segmentWords } from "@/lib/article-validate";
 
 // Every connection the writer makes goes through this agent, whose DNS
 // lookup is the private-address check itself: it resolves the name once,
@@ -61,21 +62,36 @@ export type FetchedPage = {
   wordCount: number;
 };
 
-export async function fetchPageText(url: string, timeoutMs = 8_000): Promise<FetchedPage | null> {
+/** Why a page-one result was not read. Recorded per URL on the run
+ *  (research.unread), so "only 1 source" can be told apart: a site that
+ *  blocks bots (blocked-status), a PDF (not-html), a JS shell or login wall
+ *  (too-short), a redirect loop (redirect), a slow host (timeout), an
+ *  internal address (private), a dead host (network), garbage (invalid-url). */
+export type UnreadReason = "invalid-url" | "private" | "timeout" | "network" | "redirect" | "blocked-status" | "not-html" | "too-short";
+
+export type FetchOutcome = { ok: true; page: FetchedPage } | { ok: false; reason: UnreadReason; detail?: string };
+
+function isTimeout(err: unknown): boolean {
+  const name = (err as { name?: string } | null)?.name;
+  return name === "TimeoutError" || name === "AbortError";
+}
+
+export async function fetchPage(url: string, opts: { timeoutMs?: number; lang?: string | null } = {}): Promise<FetchOutcome> {
+  const timeoutMs = opts.timeoutMs ?? 8_000;
   let target = url;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     let parsed: URL;
     try {
       parsed = new URL(target);
     } catch {
-      return null;
+      return { ok: false, reason: hop ? "redirect" : "invalid-url" };
     }
-    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return { ok: false, reason: hop ? "redirect" : "invalid-url" };
     // The lexical check refuses names that LOOK internal. Names that RESOLVE
     // internal (a page ranking for the keyword whose A record is 10.0.0.5)
     // are refused inside pinnedAgent's lookup, on every hop, with the socket
     // pinned to the address that passed - see the agent above.
-    if (isPrivateHost(parsed.hostname)) return null;
+    if (isPrivateHost(parsed.hostname)) return { ok: false, reason: "private" };
     let res: Awaited<ReturnType<typeof pinnedFetch>>;
     try {
       res = await pinnedFetch(target, {
@@ -84,22 +100,25 @@ export async function fetchPageText(url: string, timeoutMs = 8_000): Promise<Fet
         signal: AbortSignal.timeout(timeoutMs),
         headers: { "user-agent": USER_AGENT, accept: "text/html,application/xhtml+xml" },
       });
-    } catch {
-      return null;
+    } catch (err) {
+      if (isTimeout(err)) return { ok: false, reason: "timeout" };
+      const code = (err as { cause?: { code?: string }; code?: string } | null)?.cause?.code ?? (err as { code?: string } | null)?.code;
+      if (code === "EPRIVATE") return { ok: false, reason: "private" };
+      return { ok: false, reason: "network", detail: code };
     }
     if (res.status >= 300 && res.status <= 399) {
       const location = res.headers.get("location");
-      if (!location) return null;
+      if (!location) return { ok: false, reason: "redirect", detail: "no location" };
       try {
         target = new URL(location, target).toString();
       } catch {
-        return null;
+        return { ok: false, reason: "redirect", detail: "bad location" };
       }
       continue;
     }
-    if (!res.ok) return null;
+    if (!res.ok) return { ok: false, reason: "blocked-status", detail: String(res.status) };
     const type = res.headers.get("content-type") ?? "";
-    if (!/html/i.test(type)) return null;
+    if (!/html/i.test(type)) return { ok: false, reason: "not-html", detail: type.split(";")[0] || undefined };
     // The timeout signal covers the body read too, so a page that streams
     // slowly rejects here - and a page is never worth failing the stage over.
     try {
@@ -108,14 +127,20 @@ export async function fetchPageText(url: string, timeoutMs = 8_000): Promise<Fet
       const publishedAt = extractDate(html);
       const main = mainContent(html);
       const text = htmlToText(main);
-      if (text.length < 300) return null; // a login wall, a JS shell, an error page
+      if (text.length < 300) return { ok: false, reason: "too-short" }; // a login wall, a JS shell, an error page
       const headings = text.split("\n").filter((l) => l.startsWith("## ")).map((l) => l.slice(3).trim()).slice(0, 40);
-      return { url: target, title, text, headings, publishedAt, wordCount: countWords(text) };
-    } catch {
-      return null;
+      return { ok: true, page: { url: target, title, text, headings, publishedAt, wordCount: countWords(text, opts.lang) } };
+    } catch (err) {
+      return isTimeout(err) ? { ok: false, reason: "timeout" } : { ok: false, reason: "network", detail: "body read failed" };
     }
   }
-  return null;
+  return { ok: false, reason: "redirect", detail: `more than ${MAX_REDIRECTS} redirects` };
+}
+
+/** The page or null, for callers that do not care why. */
+export async function fetchPageText(url: string, timeoutMs = 8_000, lang?: string | null): Promise<FetchedPage | null> {
+  const r = await fetchPage(url, { timeoutMs, lang });
+  return r.ok ? r.page : null;
 }
 
 /** Loopback, RFC1918, link-local, CGNAT, "this" network, and their IPv6
@@ -269,8 +294,11 @@ export function htmlToText(html: string): string {
     .join("\n");
 }
 
-export function countWords(text: string): number {
-  return (text.match(/[\p{L}\p{N}]+/gu) ?? []).length;
+/** Spaceless scripts (Thai, Japanese, Chinese...) are segmented the way the
+ *  quality gate counts them, or a Thai page reads as a few dozen "words" and
+ *  the SERP-median length target collapses to its 700-word floor. */
+export function countWords(text: string, lang?: string | null): number {
+  return (segmentWords(text, lang) ?? text.match(/[\p{L}\p{N}]+/gu) ?? []).length;
 }
 
 /** fromCodePoint throws past 0x10FFFF, and "&#99999999;" is a real thing on

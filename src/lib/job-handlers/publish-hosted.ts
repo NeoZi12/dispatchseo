@@ -4,6 +4,7 @@ import { hostedArticleUrl } from "@/lib/hosted-blog";
 import { renderDraftForRoute } from "./finish";
 import { schemaScript } from "@/lib/article-render";
 import { dryDraftBlocked, parkDryDraft } from "./dry-guard";
+import { trackPublishedKeyword } from "@/lib/autopilot/tracking";
 
 // The hosted half of the publish job: the article is served by us under the
 // site's own /blog (src/lib/hosted-blog.ts), so "publishing" is a render for
@@ -60,6 +61,10 @@ export async function runHostedPublish(project: Project, draftId: string): Promi
       { onConflict: "project_id,url" },
     );
   if (pageError) throw new Error(`published, but could not log the page: ${pageError.message}`);
+
+  // Live on our side this instant: start rank-tracking its keyword now (a
+  // hosted site's keywords are tracked only once published - tracking.ts).
+  await trackPublishedKeyword(project, row);
 
   if (row.suggestion_id) {
     await db()

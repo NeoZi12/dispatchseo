@@ -1,10 +1,13 @@
 import { db } from "@/lib/db";
+import { randomBytes } from "node:crypto";
 import { fetchProjectUrl } from "@/lib/url-guard";
+
 import { enqueue } from "@/lib/jobs";
 import { getProjectById, effectiveAutomations } from "@/lib/projects";
 import { mergePr } from "@/lib/github";
 import { fetchPullRequest } from "@/lib/repo-publish";
 import type { Job } from "@/lib/jobs";
+import { trackPublishedKeyword } from "@/lib/autopilot/tracking";
 
 // Confirms a published article is actually reachable - and, once it is, files
 // it as a real page of the site.
@@ -51,7 +54,7 @@ export async function runVerifyJob(job: Job): Promise<void> {
 
   const { data } = await db()
     .from("article_drafts")
-    .select("id, project_id, status, title, primary_keyword, suggestion_id")
+    .select("id, project_id, status, title, slug, primary_keyword, suggestion_id")
     .eq("id", draftId)
     .maybeSingle();
   if (!data) throw new Error("that article no longer exists");
@@ -60,6 +63,7 @@ export async function runVerifyJob(job: Job): Promise<void> {
     project_id: string;
     status: string;
     title: string;
+    slug: string;
     primary_keyword: string | null;
     suggestion_id: string | null;
   };
@@ -93,6 +97,13 @@ export async function runVerifyJob(job: Job): Promise<void> {
   if (!res || !res.ok) {
     throw new Error(`the published page did not answer yet (${res ? res.status : "no response"})`);
   }
+  // A 200 is not proof the ARTICLE is there: a caching layer, a maintenance
+  // page or a theme that serves the front page for unknown paths all answer
+  // 200 too. The page must carry the article's title or slug (audit H7).
+  if (!(await pageCarriesArticle(res, row.title, row.slug, { url, scopeHost }))) {
+
+    throw new Error("the published page loads but does not show the article yet");
+  }
 
   const now = new Date().toISOString();
 
@@ -121,6 +132,10 @@ export async function runVerifyJob(job: Job): Promise<void> {
   if (pageError) {
     throw new Error(`the page is live but we could not record it: ${pageError.message}`);
   }
+
+  // Live: a hosted site's keyword starts being rank-tracked now, not when it
+  // was queued (autopilot/tracking.ts).
+  await trackPublishedKeyword(scopeProject, row);
 
   // The idea is finished. started_at is cleared for the same reason
   // update_suggestion clears it: it is a build clock, and a stale one feeds
@@ -175,7 +190,7 @@ async function verifyRepoArticle(job: Job, draftId: string): Promise<void> {
   const { data } = await db()
     .from("article_drafts")
     .select(
-      "id, project_id, status, title, primary_keyword, suggestion_id, pr_url, pr_merged_at",
+      "id, project_id, status, title, slug, primary_keyword, suggestion_id, pr_url, pr_merged_at",
     )
     .eq("id", draftId)
     .maybeSingle();
@@ -185,6 +200,7 @@ async function verifyRepoArticle(job: Job, draftId: string): Promise<void> {
     project_id: string;
     status: string;
     title: string;
+    slug: string;
     primary_keyword: string | null;
     suggestion_id: string | null;
     pr_url: string | null;
@@ -266,6 +282,12 @@ async function verifyRepoArticle(job: Job, draftId: string): Promise<void> {
       userAgent: "Mozilla/5.0 (compatible; DispatchSEO/1.0; +https://dispatchseo.com)",
     });
     if (!res || !res.ok) continue;
+    // Predicted addresses are guesses, and a single-page app answers EVERY
+    // guess with its 200 shell: without this the first guess "went live" on
+    // a page that was really the homepage (audit H7). Not the article = not
+    // this address; try the next one.
+    if (!(await pageCarriesArticle(res, row.title, row.slug, { url, scopeHost: project.domain }))) continue;
+
 
     const { error: pageError } = await db()
       .from("pages")
@@ -286,6 +308,8 @@ async function verifyRepoArticle(job: Job, draftId: string): Promise<void> {
     if (pageError) {
       throw new Error(`the page is live but we could not record it: ${pageError.message}`);
     }
+
+    await trackPublishedKeyword(project, row);
 
     if (row.suggestion_id) {
       await db()
@@ -326,4 +350,76 @@ async function rearm(job: Job, draftId: string, round: number, runAfter: Date): 
     runAfter,
     idempotencyKey: `verify:${draftId}:r${round + 1}`,
   });
+}
+
+/** Does this response's HTML carry the article: its title (entities decoded,
+ *  typographic punctuation, whitespace and case folded) or its slug (raw,
+ *  percent-encoded or percent-decoded - a non-Latin slug is printed either
+ *  way)? Bounded read - an article page is never megabytes, and a runaway
+ *  body must not sit in a job's memory.
+ *
+ *  A client-rendered site ships neither in its HTML. For those, `probe`
+ *  (the page's own URL and fetch scope) lets a 200 count when the body
+ *  differs from what a random path on the same origin returns - the
+ *  servesOwnBlog trick in hosted-rewrite.ts: a catch-all shell answers both
+ *  alike, a real route does not. */
+export async function pageCarriesArticle(res: Response, title: string, slug: string, probe?: { url: string; scopeHost: string }): Promise<boolean> {
+  let html: string;
+  try {
+    html = (await res.text()).slice(0, 2_000_000);
+  } catch {
+    return false;
+  }
+  const fold = (t: string) =>
+    t
+      // Numeric entities first, so &#8217; and &#x2014; reach the folds below.
+      .replace(/&#(\d+);/g, (m, d: string) => codePoint(Number(d)) ?? m)
+      .replace(/&#x([0-9a-f]+);/gi, (m, h: string) => codePoint(parseInt(h, 16)) ?? m)
+      .replace(/&amp;/gi, "&")
+      .replace(/&(#39|#x27|apos|rsquo|lsquo);/gi, "'")
+      .replace(/&(quot|ldquo|rdquo|#34);/gi, '"')
+      .replace(/&(ndash|mdash);/gi, "-")
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201c\u201d]/g, '"')
+      .replace(/[\u2013\u2014]/g, "-")
+      .replace(/\s+/g, " ")
+      .toLowerCase();
+  const page = fold(html);
+  const t = fold(title).trim();
+  if (t.length >= 8 && page.includes(t)) return true;
+  // Themes truncate long titles in <title>; the first 40 characters of the
+  // headline are still unmistakable.
+  if (t.length > 40 && page.includes(t.slice(0, 40))) return true;
+  if (slug && slug.length >= 4) {
+    const s = slug.toLowerCase();
+    if (page.includes(s) || page.includes(encodeURIComponent(slug).toLowerCase())) return true;
+    let decoded = page;
+    try {
+      decoded = decodeURI(page);
+    } catch {
+      // A stray "%" that is not an escape: the raw comparisons above stand.
+    }
+    if (decoded !== page && decoded.includes(s)) return true;
+  }
+  if (!probe) return false;
+  const other = await fetchProjectUrl(`${new URL(probe.url).origin}/dispatchseo-probe-${randomBytes(6).toString("hex")}`, probe.scopeHost, {
+    timeoutMs: 8_000,
+    userAgent: "Mozilla/5.0 (compatible; DispatchSEO/1.0; +https://dispatchseo.com)",
+  });
+  if (other && other.status === 200) {
+    const otherBody = await other.text().catch(() => "");
+    // Same status and a body within 10% of the same length is a catch-all
+    // shell, not this article's route (hosted-rewrite.ts servesOwnBlog).
+    const a = html.length;
+    const b = otherBody.length;
+    if (Math.abs(a - b) <= Math.max(a, b) * 0.1) return false;
+  }
+  // The pages row has no note column, so the log carries how this one was
+  // judged live.
+  console.warn(`[verify] liveness: probe-compared for ${probe.url} (neither title nor slug in the HTML)`);
+  return true;
+}
+
+function codePoint(n: number): string | null {
+  return Number.isInteger(n) && n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : null;
 }

@@ -1,6 +1,8 @@
+import { db } from "@/lib/db";
 import { MAX_ATTEMPTS, type Job } from "@/lib/jobs";
-import { failRun, getWriterRun, queueStage, saveScratch, type Stage } from "@/lib/writer/runs";
-import { runStage } from "@/lib/writer/stages";
+import { failRun, getWriterRun, queueStage, saveScratch, VENDOR_FAILURE_RE, type Stage, type WriterRun } from "@/lib/writer/runs";
+import { parkIdea, runStage } from "@/lib/writer/stages";
+
 
 // One hosted-writer run, as many stages as fit in one handler.
 //
@@ -59,7 +61,8 @@ export async function runWriteJob(job: Job): Promise<void> {
       // failure must not end the run on this job's count.
       if (current === stage && job.attempts >= MAX_ATTEMPTS) {
         const message = err instanceof Error ? err.message : String(err);
-        await failRun(run, `gave up at stage ${run.stage} after ${job.attempts} attempts: ${message}`).catch(() => {});
+        await endExhaustedRun(run, `gave up at stage ${run.stage} after ${job.attempts} attempts: ${message}`, message).catch(() => {});
+
       }
       if (current === stage) throw err;
       const message = err instanceof Error ? err.message : String(err);
@@ -77,4 +80,32 @@ export async function runWriteJob(job: Job): Promise<void> {
     if (Date.now() + ESTIMATE_MS[run.stage] > deadline) return; // the queued job takes it from here
     run.lastAdvance = undefined;
   }
+}
+
+/** Vendor-failed runs on one idea before the idea is parked. */
+const INFRA_PARK_AFTER = 3;
+
+/** Ends a run whose stage threw on every attempt. Only a vendor or
+ *  transport fault is "infra": usage.ts skips infra runs and the scheduler
+ *  hands their slot back, so a deterministic model-output failure ("planner
+ *  returned no usable plan", "not enough time left") marked infra would
+ *  retry the same idea every day forever at full model cost. Those get no
+ *  kind and spend the slot. A vendor fault that keeps killing the SAME idea
+ *  parks it after INFRA_PARK_AFTER runs, so even an infra loop has an end. */
+async function endExhaustedRun(run: WriterRun, reason: string, message: string): Promise<void> {
+  if (!VENDOR_FAILURE_RE.test(message)) return failRun(run, reason);
+  if (run.suggestion_id) {
+    const { count, error } = await db()
+      .from("writer_runs")
+      .select("id", { count: "exact", head: true })
+      .eq("project_id", run.project_id)
+      .eq("suggestion_id", run.suggestion_id)
+      .eq("stage_outputs->>failure_kind", "infra");
+    // This run is not marked yet, hence the +1. A failed count falls through
+    // to the plain infra failure: the next exhausted run counts again.
+    if (!error && (count ?? 0) + 1 >= INFRA_PARK_AFTER) {
+      return parkIdea(run, run.suggestion_id, `vendor failures on ${(count ?? 0) + 1} runs for this idea - ${reason}`, 0, {}, "infra");
+    }
+  }
+  return failRun(run, reason, 0, "infra");
 }

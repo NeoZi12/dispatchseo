@@ -1,6 +1,8 @@
 import { checkCron } from "@/lib/cron-auth";
 import { reportCronRun } from "@/lib/cron-alerts";
+import { db } from "@/lib/db";
 import { claimDue, complete, failJob, queueHealth, MAX_ATTEMPTS, type Job } from "@/lib/jobs";
+import { releaseStaleHolds } from "@/lib/autopilot/hold";
 
 // Drains the background work queue (src/lib/jobs.ts, migration 0056).
 //
@@ -75,13 +77,31 @@ export async function GET(req: Request): Promise<Response> {
   const denied = await checkCron(req);
   if (denied) return denied;
 
+  const result: Record<string, unknown> = {};
+  let hadError = false;
+
+  // Held articles past their 48-hour read window publish themselves (see
+  // autopilot/hold.ts). Before the claim, so the finish job each release
+  // queues can be picked up by this very tick.
+  let released = 0;
+  try {
+    const holds = await releaseStaleHolds();
+    released = holds.released.length;
+    if (released) result.holds_released = released;
+    if (holds.failed.length) {
+      hadError = true;
+      result.holds = { error: `could not release ${holds.failed.length} held article(s): ${holds.failed[0]}` };
+    }
+  } catch (e) {
+    hadError = true;
+    result.holds = { error: e instanceof Error ? e.message : String(e) };
+  }
+
   // Small batch per tick on purpose. The cron runs often; a big batch just
   // means one slow job (a 150-page crawl) starves everything behind it and
   // risks the function's own time limit taking the whole batch down with it.
   const jobs = await claimDue(5);
-
-  const result: Record<string, unknown> = { claimed: jobs.length };
-  let hadError = false;
+  result.claimed = jobs.length;
 
   const outcomes = await Promise.allSettled(
     jobs.map(async (job) => {
@@ -92,13 +112,13 @@ export async function GET(req: Request): Promise<Response> {
         // it stops looking pending and starts looking broken, which is what it
         // is.
         await failJob({ ...job, attempts: MAX_ATTEMPTS }, `no handler for job kind "${job.kind}"`);
-        return { id: job.id, kind: job.kind, outcome: "no-handler" as const };
+        return { id: job.id, kind: job.kind, projectId: job.project_id, outcome: "no-handler" as const };
       }
       try {
         const handler = await load();
         await withDeadline(handler(job));
         await complete(job.id);
-        return { id: job.id, kind: job.kind, outcome: "done" as const };
+        return { id: job.id, kind: job.kind, projectId: job.project_id, outcome: "done" as const };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         await failJob(job, message);
@@ -106,6 +126,7 @@ export async function GET(req: Request): Promise<Response> {
         return {
           id: job.id,
           kind: job.kind,
+          projectId: job.project_id,
           outcome: exhausted ? ("failed" as const) : ("retrying" as const),
           attempts: job.attempts,
           error: message,
@@ -144,6 +165,19 @@ export async function GET(req: Request): Promise<Response> {
   }
   if (Object.keys(byKind).length) result.by_kind = byKind;
 
+  // Per-SITE rows, so a site's own dashboard can see its articles failing.
+  // The bare "jobs" row above is instance-wide and, on cloud, the operator's
+  // alone (getCronHealth scopes it away from tenants, rightly: its errors
+  // name every tenant). So a job that gave up also reports under
+  // "articles--<slug>" - urgent by its "gave up after" phrasing - and the
+  // next job of that site that finishes cleanly logs an ok row, which clears
+  // it. Best-effort: this must never fail the drain.
+  try {
+    await reportPerSite(outcomes);
+  } catch (e) {
+    console.warn("[jobs] per-site report failed:", e instanceof Error ? e.message : e);
+  }
+
   // Wedged rows (killed by the platform, not a thrown error, until attempts
   // ran out) are reported on EVERY tick while any exist - their discovery must
   // not depend on this tick having other work, because nothing else in the
@@ -163,6 +197,48 @@ export async function GET(req: Request): Promise<Response> {
   // worth counting against the staleness clock, same reasoning as the other
   // claim-marker crons. A tick that found wedged rows is a real outcome, never
   // claim-only - the claim marker would hide its error from the banner.
-  await reportCronRun("jobs", result, hadError, jobs.length === 0 && queue.wedged === 0);
+  await reportCronRun("jobs", result, hadError, jobs.length === 0 && queue.wedged === 0 && released === 0);
   return Response.json(result, { status: hadError ? 500 : 200 });
+}
+
+const PER_SITE_KINDS = new Set(["finish", "publish", "verify"]);
+
+type Outcome = { id: string; kind: string; outcome: "done" | "retrying" | "failed" | "no-handler"; error?: string; projectId?: string };
+
+async function reportPerSite(outcomes: PromiseSettledResult<Outcome & Record<string, unknown>>[]): Promise<void> {
+  const byProject = new Map<string, { failed: string[]; done: boolean }>();
+  for (const o of outcomes) {
+    if (o.status !== "fulfilled" || !o.value.projectId) continue;
+    const v = o.value;
+    // Only the article's way OUT. A write job that gave up already fails its
+    // run (the autopilot health streak and the article page say so), and a
+    // crawl that cannot read the site is a setup card (B10), not an outage.
+    if (!PER_SITE_KINDS.has(v.kind)) continue;
+    const entry = byProject.get(v.projectId!) ?? { failed: [], done: false };
+    if (v.outcome === "failed") entry.failed.push(`${v.kind}: gave up after ${MAX_ATTEMPTS} attempts: ${v.error ?? "unknown error"}`);
+    if (v.outcome === "done") entry.done = true;
+    byProject.set(v.projectId!, entry);
+  }
+  if (byProject.size === 0) return;
+  // Hosted sites only: the articles--<slug> row drives the red banner and the
+  // hosted-copy customer email, and a legacy agent-mode site has neither a
+  // hosted writer nor an owner who should get that email. A pre-0066 database
+  // errors on writer_mode and reports nothing, which is right - no hosted
+  // site can exist there.
+  const { data } = await db().from("projects").select("id, slug, writer_mode").in("id", [...byProject.keys()]);
+  for (const p of (data ?? []) as { id: string; slug: string; writer_mode: string | null }[]) {
+    if (p.writer_mode !== "hosted") continue;
+    const entry = byProject.get(p.id)!;
+
+    const job = `articles--${p.slug}`;
+    if (entry.failed.length) {
+      await reportCronRun(job, { error: entry.failed.join("; ") }, true);
+      continue;
+    }
+    if (!entry.done) continue;
+    // Clear only a standing failure: an ok row per finished job would add a
+    // row every ten minutes per busy site for no reader.
+    const { data: last } = await db().from("cron_runs").select("ok").eq("job", job).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (last && (last as { ok: boolean }).ok === false) await reportCronRun(job, { recovered: true }, false);
+  }
 }

@@ -26,6 +26,7 @@ import { buttonClass } from "./button";
 import { PipelineSteps } from "./pipeline-steps";
 import { StatusPill } from "./status-pill";
 import { cx, FOCUS_RING } from "./styles";
+import { friendlyError } from "@/lib/autopilot/friendly";
 
 // The article list, one component for Home (the latest few) and the
 // Articles page (all of them, under status tabs), so the two behave the
@@ -207,7 +208,9 @@ function Glance({ a, glance, slug, paused }: { a: AutopilotArticle; glance: Arti
         : null;
   // Retry starts a new run, so only a failed RUN can (a draft the quality
   // gate rejected has a finished run), and never while paused.
-  const canRetry = a.runStatus === "failed" && a.runId != null && !paused;
+  // Not for a content park: the writer set the idea aside on purpose.
+  const canRetry = a.runStatus === "failed" && a.failureKind !== "content" && a.runId != null && !paused;
+
   const step = articleStep(a);
   return (
     <div className="space-y-5">
@@ -237,7 +240,7 @@ function Glance({ a, glance, slug, paused }: { a: AutopilotArticle; glance: Arti
           </Fact>
         ) : null}
         {glance?.gone ? <Fact label="On your site">Gone. The page doesn&apos;t load any more, so it can&apos;t earn new clicks.</Fact> : null}
-        {a.status === "failed" ? <Fact label="Why it stopped">{a.error ?? "It couldn't finish with facts it could verify, so nothing was published."}</Fact> : null}
+        {a.status === "failed" ? <Fact label="Why it stopped">{friendlyError(a.error) ?? "It couldn't finish with facts it could verify, so nothing was published."}</Fact> : null}
       </dl>
       <div className="flex flex-wrap items-center gap-3">
         {live && a.url && !glance?.gone ? (

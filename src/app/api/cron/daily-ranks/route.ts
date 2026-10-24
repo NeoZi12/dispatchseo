@@ -16,7 +16,7 @@ import {
 } from "@/lib/ai-visibility";
 import { reportCronRun } from "@/lib/cron-alerts";
 import { detectRefreshCandidates } from "@/lib/refresh-detect";
-import { listProjectsChecked, publishTarget, type Project } from "@/lib/projects";
+import { listProjectsChecked, publishTarget, writerMode, type Project } from "@/lib/projects";
 import { enqueue } from "@/lib/jobs";
 import { isCloudMode } from "@/lib/cloud";
 import { platformBalanceAlert } from "@/lib/dataforseo-balance";
@@ -148,6 +148,13 @@ async function runRanks(
     if (creds.billedTo === "platform") {
       pacing = (await platformPacingState(project.id)).level;
     }
+    // Hosted sites: the Monday sweep only, never the daily depth-30 pass
+    // (audit 2026-10-24, cost). Their keywords are tracked only once the
+    // article is live (autopilot/tracking.ts) and an autopilot article
+    // moves on a weekly scale; a daily check buys six repeats of one number.
+    // "weekly" is the governor's own terminal level, so the sweep, its cap
+    // and the dormant-keyword decay all apply unchanged.
+    if (writerMode(project) === "hosted") pacing = "weekly";
     const queued = await queueDailyRankTasks(project, creds, tracked, pacing);
     return { source: "dataforseo", ...queued };
   }
@@ -216,6 +223,12 @@ async function runProject(project: Project): Promise<Record<string, unknown>> {
   const gate = await planGate(project.id);
   if (!gate.allowed) return { skipped: `plan: ${gate.reason}` };
 
+  // A paused hosted site writes nothing new; paying for its rank checks and
+  // Domain Rating meanwhile buys numbers nobody acts on. The free halves
+  // (Search Console snapshot, refresh detection, the weekly crawl) still run:
+  // the owner reading their dashboard during a pause wants current traffic.
+  const pausedHosted = writerMode(project) === "hosted" && Boolean(project.writer_paused_at);
+
   // Setup gate, computed once and shared by the two GSC consumers below
   // (GSC-mode ranks + the snapshot half): a project whose owner hasn't
   // finished the Search Console step skips as information, not as a failure
@@ -224,7 +237,7 @@ async function runProject(project: Project): Promise<Record<string, unknown>> {
 
   // --- 1. Ranks (source follows the project's keyword_source) ---
   try {
-    const ranks = await runRanks(project, gscReady);
+    const ranks = pausedHosted ? { skipped: "autopilot paused" } : await runRanks(project, gscReady);
     result.ranks = ranks;
     if (Array.isArray(ranks.failed) && ranks.failed.length) result.hadError = true;
   } catch (e) {
@@ -271,8 +284,10 @@ async function runProject(project: Project): Promise<Record<string, unknown>> {
   // DataForSEO calls). Independent of keyword_source: any project with
   // DataForSEO creds gets DR; free modes without creds skip - there is no
   // free backlink index.
-  const creds = await credsForProject(project);
-  if (!creds) {
+  const creds = pausedHosted ? null : await credsForProject(project);
+  if (pausedHosted) {
+    result.dr = { skipped: "autopilot paused" };
+  } else if (!creds) {
     // Same regression-vs-not-configured distinction as the ranks half above:
     // a decrypt failure means DR was working and just broke.
     const decryptErr = takeDecryptFailure(project.id);

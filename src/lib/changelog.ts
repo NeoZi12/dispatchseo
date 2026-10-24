@@ -75,6 +75,46 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "new",
     text:
+      "Home now tells you when something on your site needs a look: articles that keep " +
+      "stopping, one that hasn't gone live in two days, keyword research that can't run. Problems " +
+      "on our side say so and fix themselves; for the rest, the note says what to do.",
+  },
+  {
+    kind: "improved",
+    text:
+      "A first article held for a quality read is never stuck: it publishes itself within 48 " +
+      "hours, and you can still publish it straight away.",
+  },
+  {
+    kind: "improved",
+    text:
+      "An article waiting on a pull request now says \"Waiting for a merge\" with a link to the PR, " +
+      "instead of \"Publishing\" forever, and an article only shows as Live once its page actually " +
+      "shows the article on your site.",
+  },
+  {
+    kind: "improved",
+    text:
+      "When the writer stops an article, its page says why in plain words instead of an internal " +
+      "error, and an article stopped by a problem on our side no longer uses up one of your week's articles.",
+  },
+  {
+    kind: "improved",
+    text:
+      "A hosted blog shows a \"Merge the forwarding pull request\" card linking straight to the PR " +
+      "until your /blog forwards, and a site we can't read asks you to describe it in Settings " +
+      "instead of waiting forever.",
+  },
+  {
+    kind: "fixed",
+    text:
+      "Articles no longer land in the wrong folder of a repo (tool notes, docs or changeset " +
+      "folders), covers in monorepos and Astro sites go where the site expects them, and " +
+      "WordPress articles no longer name your site as a person in their search markup.",
+  },
+  {
+    kind: "new",
+    text:
       "Articles open with the answer: a TL;DR right under the cover, then the one side-by-side " +
       "table that shows the bottom line, and only then the sections for whoever wants the reasoning.",
   },
