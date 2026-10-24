@@ -144,11 +144,27 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
         )
       ) : null}
 
-      {/* ---- how it was made ---- */}
-      {ledger || a.gain ? <HowItWasMade ledger={ledger} gain={a.gain} /> : null}
+      {a.source === "agent" ? (
+        // Published before autopilot: no research ledger, no writer steps -
+        // just who wrote it and when.
+        <section aria-labelledby="made-title" className="arrive-up rounded-2xl border border-line-soft bg-surface p-5 sm:p-6" style={at(300)}>
+          <h2 id="made-title" className="text-[1.15rem] font-semibold tracking-tight text-ink">
+            Written before autopilot
+          </h2>
+          <p className="mt-1.5 text-[15px] leading-relaxed text-ink-muted">
+            Your coding agent wrote and published this one{a.publishedAt ? ` on ${longDate(a.publishedAt)}` : ""}, before the writer took over. Its
+            Google numbers are tracked the same way as everything since.
+          </p>
+        </section>
+      ) : (
+        <>
+          {/* ---- how it was made ---- */}
+          {ledger || a.gain ? <HowItWasMade ledger={ledger} gain={a.gain} /> : null}
 
-      {/* ---- when each step happened ---- */}
-      <Timeline a={a} steps={steps} />
+          {/* ---- when each step happened ---- */}
+          <Timeline a={a} steps={steps} />
+        </>
+      )}
     </div>
   );
 }

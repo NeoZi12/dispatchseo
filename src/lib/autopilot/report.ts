@@ -27,8 +27,12 @@ export type AutopilotArticleStatus =
 export type AutopilotArticle = {
   /** The article_drafts id. EMPTY STRING for a run that has not produced a
    *  draft yet (still writing, or failed before handoff) - key such rows by
-   *  runId. */
+   *  runId. "page:<pages.id>" for an article published before autopilot
+   *  (source "agent"). */
   draftId: string;
+  /** Who wrote it: the hosted writer, or the site's coding agent before the
+   *  switch to autopilot (a `pages` row with no draft behind it). */
+  source: "writer" | "agent";
   runId: string | null;
   title: string;
   keyword: string | null;
@@ -110,7 +114,10 @@ type DraftRow = {
   plan: { gain?: { type?: string; where?: string } } | null;
 };
 
-const ARTICLE_LIMIT = 50;
+// The list holds every writer article and every earlier guide; the writer's
+// own rows are read in a bounded window, the merged list is capped higher.
+const DRAFT_LIMIT = 100;
+const ARTICLE_LIMIT = 300;
 
 /** Tag on every cached Google-derived read for a project; a GSC sync (or
  *  anything else that changes Google numbers) can revalidateTag it. */
@@ -172,7 +179,7 @@ export async function getAutopilotReport(projectId: string): Promise<AutopilotRe
   if (!project) throw new Error("no such project");
   const now = new Date();
 
-  const [plan, usage, runsRes, draftsRes, gscLightRes, gsc28, ideas, profile, setup, spend] = await Promise.all([
+  const [plan, usage, runsRes, draftsRes, gscLightRes, gsc28, ideas, profile, setup, spend, earlier] = await Promise.all([
     projectPlan(project.id),
     weekUsage(project.id, now),
     db()
@@ -180,14 +187,14 @@ export async function getAutopilotReport(projectId: string): Promise<AutopilotRe
       .select("id, suggestion_id, keyword, title_hint, stage, status, draft_id, error, cost_usd, created_at, hold_reason:stage_outputs->verify->handoff->>reason")
       .eq("project_id", project.id)
       .order("created_at", { ascending: false })
-      .limit(ARTICLE_LIMIT + 20),
+      .limit(DRAFT_LIMIT + 20),
     db()
       .from("article_drafts")
       .select("id, title, primary_keyword, status, published_url, published_at, created_at, cost_usd, plan:validation->plan")
       .eq("project_id", project.id)
       .neq("status", "discarded")
       .order("created_at", { ascending: false })
-      .limit(ARTICLE_LIMIT),
+      .limit(DRAFT_LIMIT),
     // Newest first with a limit, then re-sorted: ascending + limit would pin
     // the window to the oldest days ever collected.
     db().from("gsc_stats").select("date, clicks, impressions").eq("project_id", project.id).order("date", { ascending: false }).limit(CHART_DAYS),
@@ -196,6 +203,7 @@ export async function getAutopilotReport(projectId: string): Promise<AutopilotRe
     loadSiteProfile(project),
     setupSummary(project),
     monthSpend(project.id, now),
+    earlierArticles(project.id),
   ]);
 
   // A failed read must surface as "the report didn't load", never as an
@@ -226,6 +234,7 @@ export async function getAutopilotReport(projectId: string): Promise<AutopilotRe
     const t = d.published_url ? pageTraffic.get(normalizePageUrl(d.published_url)) : undefined;
     return {
       draftId: d.id,
+      source: "writer" as const,
       runId: run?.id ?? null,
       title: d.title,
       keyword: d.primary_keyword,
@@ -252,6 +261,7 @@ export async function getAutopilotReport(projectId: string): Promise<AutopilotRe
     if (r.status === "done") continue;
     articles.push({
       draftId: "",
+      source: "writer",
       runId: r.id,
       title: r.title_hint ?? r.keyword ?? "Choosing a topic",
       keyword: r.keyword,
@@ -270,7 +280,40 @@ export async function getAutopilotReport(projectId: string): Promise<AutopilotRe
       holdReason: r.status === "held" ? r.hold_reason : null,
     });
   }
-  articles.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  // Articles from before autopilot: every guide the site's coding agent
+  // published (the `pages` table), unless a writer draft already stands for
+  // the same URL.
+  const drafted = new Set(drafts.map((d) => d.published_url).filter(Boolean).map((u) => normalizePageUrl(u!)));
+  for (const pg of earlier) {
+    const key = normalizePageUrl(pg.url);
+    if (drafted.has(key)) continue;
+    const t = pageTraffic.get(key);
+    const at = pg.published_at ?? pg.live_at ?? pg.created_at;
+    articles.push({
+      draftId: `page:${pg.id}`,
+      source: "agent",
+      runId: null,
+      title: pg.title?.trim() || pg.url,
+      keyword: pg.primary_keyword,
+      status: "published",
+      stage: null,
+      url: pg.url,
+      publishedAt: at,
+      createdAt: at,
+      costUsd: 0,
+      gain: null,
+      clicks28d: t?.clicks ?? 0,
+      impressions28d: t?.impressions ?? 0,
+      position: t?.avgPosition == null ? null : Math.round(t.avgPosition * 10) / 10,
+      error: null,
+      runStatus: null,
+      holdReason: null,
+    });
+  }
+  // Newest first by the date that matters: when it went live, else when it
+  // was started.
+  const when = (a: AutopilotArticle) => Date.parse(a.publishedAt ?? a.createdAt);
+  articles.sort((a, b) => when(b) - when(a));
 
   const prefs = normalizeContentPrefs(project.content_prefs);
   return {
@@ -297,6 +340,29 @@ export async function getAutopilotReport(projectId: string): Promise<AutopilotRe
     },
     spend: { monthUsd: spend },
   };
+}
+
+type EarlierPage = { id: string; url: string; title: string | null; type: string | null; primary_keyword: string | null; published_at: string | null; live_at: string | null; created_at: string };
+
+/** Guides the site's coding agent published before autopilot (pages rows of
+ *  type "guide"; untyped legacy rows only when they sit under /blog/). Tools
+ *  are the Tools page's. One project-scoped read of a few columns, cached
+ *  10 minutes with the Google numbers (tag gsc:<id>); a failed read throws
+ *  like the report's other reads and is never cached. */
+function earlierArticles(projectId: string): Promise<EarlierPage[]> {
+  return unstable_cache(
+    async () => {
+      const { data, error } = await db()
+        .from("pages")
+        .select("id, url, title, type, primary_keyword, published_at, live_at, created_at")
+        .eq("project_id", projectId)
+        .or("type.eq.guide,type.is.null");
+      if (error) throw new Error(`could not read earlier articles: ${error.message}`);
+      return ((data ?? []) as EarlierPage[]).filter((p) => p.type === "guide" || /\/blog\//.test(p.url));
+    },
+    ["autopilot-earlier-articles", projectId],
+    { revalidate: 600, tags: [gscTag(projectId)] },
+  )();
 }
 
 function runStatusOf(run: Pick<RunRow, "status"> | null): AutopilotArticle["runStatus"] {

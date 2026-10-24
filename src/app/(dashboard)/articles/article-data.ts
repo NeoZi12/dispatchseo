@@ -154,6 +154,8 @@ function goneUrlsCached(projectId: string): Promise<string[]> {
 /** Only the sources column - the validation JSON beside it is the heavy part
  *  and the list never shows it. */
 async function sourceRows(projectId: string, draftIds: string[]) {
+  // "page:<id>" rows (articles from before autopilot) have no draft.
+  draftIds = draftIds.filter((id) => !id.startsWith("page:"));
   if (!draftIds.length) return [];
   const { data } = await db().from("article_drafts").select("id, sources").eq("project_id", projectId).in("id", draftIds);
   return (data ?? []) as Array<{ id: string; sources: unknown }>;
@@ -201,7 +203,8 @@ async function pageDaysRaw(projectId: string, url: string): Promise<PageDay[]> {
 
 /** The research ledger for one draft. */
 export async function loadLedger(projectId: string, draftId: string): Promise<Ledger | null> {
-  if (!draftId) return null;
+  // No draft (in flight) or no ledger at all (written before autopilot).
+  if (!draftId || draftId.startsWith("page:")) return null;
   const [row] = await ledgerRows(projectId, [draftId]);
   if (!row) return null;
   const v = (row.validation ?? {}) as {

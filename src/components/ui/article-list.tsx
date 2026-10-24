@@ -92,6 +92,7 @@ export function ArticleList({
   slug,
   paused,
   at = 0,
+  pageSize,
 }: {
   articles: AutopilotArticle[];
   glances: Record<string, ArticleGlance>;
@@ -99,8 +100,14 @@ export function ArticleList({
   paused: boolean;
   /** Arrival delay (ms) of the first row; the rest follow 40ms apart. */
   at?: number;
+  /** Show this many rows, then "Show more" adds the next batch. */
+  pageSize?: number;
 }) {
+  const [limit, setLimit] = useState(pageSize ?? articles.length);
+  const shown = articles.slice(0, limit);
+  const left = articles.length - shown.length;
   return (
+    <div className="space-y-3">
     <div className="overflow-hidden rounded-xl border border-line-soft bg-surface">
       <div aria-hidden="true" className={`hidden gap-4 border-b border-line-soft px-5 py-2.5 text-[12px] text-ink-faint sm:grid ${GRID}`}>
         <span>Status</span>
@@ -110,13 +117,20 @@ export function ArticleList({
         <span />
       </div>
       <ul className="divide-y divide-line-soft">
-        {articles.map((a, i) => (
+        {shown.map((a, i) => (
           // The first ten rise in order; the rest are simply there.
           <li key={a.draftId || a.runId || a.createdAt} className={i < 10 ? "arrive-up" : undefined} style={i < 10 ? css({ "--at": `${at}ms`, "--i": i, "--step": "40ms" }) : undefined}>
             <Row a={a} glance={glances[a.draftId || a.runId || a.createdAt]} slug={slug} paused={paused} />
           </li>
         ))}
       </ul>
+    </div>
+      {left > 0 && pageSize ? (
+        <button type="button" onClick={() => setLimit((n) => n + pageSize)} className="btn btn-secondary btn-md w-full">
+          Show {Math.min(left, pageSize)} more {Math.min(left, pageSize) === 1 ? "article" : "articles"}
+          <span className="font-normal text-ink-faint">({left} left)</span>
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -212,6 +226,7 @@ function Glance({ a, glance, slug, paused }: { a: AutopilotArticle; glance: Arti
           </Fact>
         ) : null}
         {a.keyword ? <Fact label="Written for the search">{a.keyword}</Fact> : null}
+        {a.source === "agent" ? <Fact label="Written by">Your coding agent, before autopilot</Fact> : null}
         {sources.length ? (
           <Fact label="Checked against">
             {sources.length} {sources.length === 1 ? "source" : "sources"}{" "}

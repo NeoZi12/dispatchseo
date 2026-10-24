@@ -75,7 +75,7 @@ export default async function ArticlesPage({ searchParams }: { searchParams: Pro
 
           <div className="arrive-up flex flex-wrap items-center justify-between gap-x-6 gap-y-3" style={{ "--at": "60ms" } as React.CSSProperties}>
             {shown.length > 1 ? <SortChips base="/articles" sort={sort} keep={{ status: filter.key === "all" ? undefined : filter.key }} /> : <span />}
-            {filter.key === "all" && all.length >= 50 ? <p className="text-[13px] text-ink-faint">Showing the latest 50 articles.</p> : null}
+            {filter.key === "all" && all.length >= 300 ? <p className="text-[13px] text-ink-faint">Showing the latest 300 articles.</p> : null}
           </div>
 
           {shown.length ? (
@@ -102,5 +102,5 @@ export default async function ArticlesPage({ searchParams }: { searchParams: Pro
 
 async function Rows({ projectId, articles, slug, paused }: { projectId: string; articles: AutopilotArticle[]; slug: string; paused: boolean }) {
   const glances = await loadGlances(projectId, articles);
-  return <ArticleList articles={articles} glances={glances} slug={slug} paused={paused} at={0} />;
+  return <ArticleList articles={articles} glances={glances} slug={slug} paused={paused} at={0} pageSize={30} />;
 }
