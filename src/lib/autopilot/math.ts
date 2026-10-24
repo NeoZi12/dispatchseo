@@ -16,7 +16,7 @@ export const DAY_MS = 86_400_000;
  *  outside. Calendar days, not 48 hours: a run that started at 05:31 must
  *  not push the next one past the 05:30 cron two days later. A quota of 4
  *  or more cannot fit in a week two days apart, so those plans go daily
- *  (Scale: five, Mon-Fri) - still one a day, never two. */
+ *  (Scale: five) - still one a day, never two. */
 export const MIN_SPACING_DAYS = 2;
 export function spacingDaysFor(quota: number): number {
   return quota >= 4 ? 1 : MIN_SPACING_DAYS;

@@ -180,6 +180,11 @@ async function pick(c: Ctx): Promise<void> {
       .eq("project_id", project.id)
       .eq("type", "guide")
       .eq("status", "approved")
+      // The owner's order first (queue_position: the Queue page's drag and the
+      // reorder_queue tool), then first come first served - the same order
+      // metrics.ts sortQueue shows, so the page never promises an order the
+      // writer does not keep.
+      .order("queue_position", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: true })
       .limit(1);
     if (busy.length) q = q.not("id", "in", `(${busy.join(",")})`);

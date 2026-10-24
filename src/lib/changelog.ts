@@ -89,7 +89,7 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
     kind: "improved",
     text:
       "Plans now write 1 (Starter), 3 (Growth) and 5 (Scale) articles a week. Up to three a " +
-      "week they start two days apart; five is one every weekday.",
+      "week they start two days apart; five is one a day.",
   },
   {
     kind: "improved",

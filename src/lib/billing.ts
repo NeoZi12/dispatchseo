@@ -54,7 +54,7 @@ export const TIER_LIMITS: Record<Tier, { sites: number; price: number; annual: n
 // Articles a week the hosted writer (the autopilot) publishes per tier
 // (owner, 2026-10-24: 1 / 3 / 5; the per-plan numbers are still to be sat
 // down over, these are the interim ones). Up to three a week they start two
-// days apart; five is one a day, Mon-Fri (math.ts spacingDaysFor) - never two
+// days apart; five is one a day (math.ts spacingDaysFor) - never two
 // in one morning, which is what a content farm looks like. Env-overridable so
 // the operator can tune cost against results without a deploy, and
 // projects.writer_weekly_quota (0070, operator-only SQL) overrides it for one

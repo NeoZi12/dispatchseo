@@ -6,6 +6,20 @@ import { RESEARCH_EVERY_MS, runResearch, type ResearchOutcome } from "./research
 import { runScheduler, type SchedulerOutcome } from "./scheduler";
 import { reportSiteHealth, siteHealthProblems } from "./health";
 import { reprobeRewriteWeekly } from "@/lib/hosted-rewrite";
+import { db } from "@/lib/db";
+import { projectPlan } from "@/lib/billing";
+
+/** Fewer approved guide ideas than the plan writes in a week. A read error
+ *  says "not short": research then waits for its weekly turn as before. */
+async function queueShort(project: Project, now: Date): Promise<boolean> {
+  void now;
+  const [{ count, error }, plan] = await Promise.all([
+    db().from("suggestions").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("type", "guide").eq("status", "approved"),
+    projectPlan(project.id),
+  ]);
+  if (error || plan.articlesPerWeek <= 0) return false;
+  return (count ?? 0) < plan.articlesPerWeek;
+}
 
 // The autopilot (2026-10-23 pivot): a hosted project's research, cadence and
 // brakes, with no agent anywhere. One daily pass per project, run by
@@ -60,7 +74,12 @@ export async function runAutopilotPass(project: Project, now = new Date()): Prom
   // the scheduler runs anyway.
   let research: ResearchOutcome | { error: string } | undefined;
   const stale = !project.last_research_at || now.getTime() - Date.parse(project.last_research_at) >= RESEARCH_EVERY_MS;
-  if (stale) {
+  // Weekly, or sooner when the queue holds less than a week of articles: at
+  // five a week, two queued ideas on a Saturday ran dry by Tuesday while the
+  // next research sat six days out. runResearch itself tops up to the
+  // plan's target and stamps the date, so an early run just moves the clock.
+  const short = stale ? false : await queueShort(project, now);
+  if (stale || short) {
     try {
       research = await runResearch(project, now);
     } catch (e) {
