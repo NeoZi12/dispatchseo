@@ -329,8 +329,8 @@ const QUESTION_LEADS = [
   "とは", "なぜ",
   "คืออะไร", "ทำไม",
 ];
-export function stripQuestionLead(keyword: string): string {
-  let k = keyword.trim().replace(/[?？]+$/, "").trim();
+export function stripQuestionLead(keyword: string | null | undefined): string {
+  let k = (keyword ?? "").trim().replace(/[?？]+$/, "").trim();
   for (let i = 0; i < 2; i++) {
     const lower = k.toLowerCase();
     const lead = QUESTION_LEADS.find((q) => lower === q || lower.startsWith(q + " ") || (q.endsWith("'") && lower.startsWith(q)));
@@ -345,6 +345,15 @@ export function stripQuestionLead(keyword: string): string {
 async function seedsFor(project: Project, profile: SiteProfile): Promise<string[]> {
   const [gscRes, approvedRes, trackedRes] = await Promise.all([
     db().from("gsc_stats").select("top_queries").eq("project_id", project.id).order("date", { ascending: false }).limit(1).maybeSingle(),
+    db()
+      .from("suggestions")
+      .select("primary_keyword, keyword_volume")
+      .eq("project_id", project.id)
+      .eq("type", "guide")
+      .in("status", ["approved", "in_progress", "done"])
+      .not("primary_keyword", "is", null)
+      .order("keyword_volume", { ascending: false, nullsFirst: false })
+      .limit(3),
     // The site's own tracked keywords: its target list, in its own language.
     // Paperbot's profile tags are English ("document management") while its
     // market is Hebrew, so Labs answered with English heads in Israel and the
@@ -357,15 +366,6 @@ async function seedsFor(project: Project, profile: SiteProfile): Promise<string[
       .eq("status", "tracking")
       .order("search_volume", { ascending: false, nullsFirst: false })
       .limit(4),
-    db()
-      .from("suggestions")
-      .select("primary_keyword, keyword_volume")
-      .eq("project_id", project.id)
-      .eq("type", "guide")
-      .in("status", ["approved", "in_progress", "done"])
-      .not("primary_keyword", "is", null)
-      .order("keyword_volume", { ascending: false, nullsFirst: false })
-      .limit(3),
   ]);
   const queries = (((gscRes.data as { top_queries: { query: string; impressions: number }[] | null } | null)?.top_queries ?? []) as { query: string; impressions: number }[])
     .slice()
