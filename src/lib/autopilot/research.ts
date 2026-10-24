@@ -485,14 +485,17 @@ async function proposeQueries(
     rejected.push(why ? `${r.primary_keyword} (${why})` : r.primary_keyword);
   }
   const country = COUNTRY_BY_LOCATION[project.location_code] ?? `DataForSEO location code ${project.location_code}`;
-  const list = (xs: string[]) => (xs.length ? xs.map((x) => `- ${x}`).join("\n") : "(none)");
+  // Owner-written profile text is data: angle brackets are neutralised so a
+  // literal </site> in a tagline cannot close the data block early.
+  const data = (v: string | null | undefined) => String(v ?? "").replace(/[<>]/g, " ");
+  const list = (xs: string[]) => (xs.length ? xs.map((x) => `- ${data(x)}`).join("\n") : "(none)");
   const user = [
     "<site>",
-    `Name: ${profile.name}`,
-    `URL: ${profile.url}`,
-    `Tagline: ${profile.tagline}`,
-    `About: ${profile.short}`,
-    `Details (including who it serves): ${profile.long}`,
+    `Name: ${data(profile.name)}`,
+    `URL: ${data(profile.url)}`,
+    `Tagline: ${data(profile.tagline)}`,
+    `About: ${data(profile.short)}`,
+    `Details (including who it serves): ${data(profile.long)}`,
     `Language: ${languageName(project.language_code)} (${project.language_code})`,
     `Country: ${country}`,
     "",
@@ -526,7 +529,9 @@ async function proposeQueries(
     .filter((q) => {
       const words = q.split(/\s+/).filter(Boolean).length;
       return words >= 2 && words <= 6 && q.length <= 80;
-    });
+    })
+    // The prompt asks for twenty; a reply that ignores that must not reach the paid overview call.
+    .slice(0, 20);
   return { queries, costUsd: r.costUsd };
 }
 

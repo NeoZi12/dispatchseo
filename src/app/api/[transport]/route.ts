@@ -4880,14 +4880,16 @@ const mcpHandler = createMcpHandler(
         title: "Run autopilot research now",
         description:
           "Top the idea queue up to six now instead of at the next weekly run (hosted projects " +
-          "only). Respects every cap: once per 24 hours, the plan gate, the DataForSEO budget, and " +
+          "only). Respects every cap: once per two days, the plan gate, the DataForSEO budget, and " +
           "nothing is added when six ideas are already queued.",
         inputSchema: {},
       },
       async () => {
         const p = currentProject();
-        if (p.last_research_at && Date.now() - Date.parse(p.last_research_at) < 86_400_000) {
-          return fail(`Research already ran at ${p.last_research_at}; it can run again 24 hours after that.`);
+        // Two days, the same floor the daily pass's early refill keeps: each
+        // run now also buys one proposal call and a keyword overview.
+        if (p.last_research_at && Date.now() - Date.parse(p.last_research_at) < 2 * 86_400_000) {
+          return fail(`Research already ran at ${p.last_research_at}; it can run again two days after that.`);
         }
         const outcome = await runResearch(p);
         return "skipped" in outcome ? fail(`Research did not run: ${outcome.skipped}.`) : ok(outcome);
