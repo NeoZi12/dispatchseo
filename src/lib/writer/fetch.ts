@@ -1,5 +1,29 @@
-import { lookup } from "node:dns/promises";
+import { lookup as dnsLookup, type LookupAddress, type LookupOptions } from "node:dns";
+import { Agent, fetch as pinnedFetch } from "undici";
 import { isPrivateHost } from "@/lib/url-guard";
+
+// Every connection the writer makes goes through this agent, whose DNS
+// lookup is the private-address check itself: it resolves the name once,
+// refuses the whole page if ANY answer is private, and hands that same
+// vetted address to the socket. The check and the connect are one step, so
+// a hostile domain cannot answer the check with a public address and the
+// connect with 10.0.0.5 (DNS rebinding). Undici's own fetch is used rather
+// than the global one so the dispatcher and the fetch are the same build.
+function pinnedLookup(hostname: string, options: LookupOptions, callback: (err: NodeJS.ErrnoException | null, address: string | LookupAddress[], family?: number) => void): void {
+  dnsLookup(hostname, { all: true, verbatim: true }, (err, addrs) => {
+    if (err) return callback(err, "", 4);
+    const list = Array.isArray(addrs) ? addrs : [];
+    if (list.length === 0 || list.some((a) => isPrivateIp(a.address))) {
+      const refused: NodeJS.ErrnoException = new Error(`refusing ${hostname}: resolves to a private address`);
+      refused.code = "EPRIVATE";
+      return callback(refused, "", 4);
+    }
+    if (options.all) return callback(null, list);
+    callback(null, list[0].address, list[0].family);
+  });
+}
+
+const pinnedAgent = new Agent({ connect: { lookup: pinnedLookup } });
 
 // Fetching other people's pages for the fact sheet.
 //
@@ -16,7 +40,11 @@ import { isPrivateHost } from "@/lib/url-guard";
 // extractor can quote a row verbatim, and the research stage can read the
 // page's heading skeleton straight off the text.
 
-const MAX_BYTES = 600_000;
+// 1.5 MB: a Next.js page ships its whole RSC payload inline, so the article
+// itself often starts past the first half-megabyte (clockedcode.com's own
+// posts are ~900 KB with the <article> at byte ~250k). Scripts and styles
+// are stripped BEFORE the character cap below for the same reason.
+const MAX_BYTES = 1_500_000;
 /** The regex passes below are linear, but a 600KB page still costs CPU the
  *  handler cannot interrupt; the readable text we need is in the first part. */
 const MAX_PARSE_CHARS = 250_000;
@@ -43,18 +71,15 @@ export async function fetchPageText(url: string, timeoutMs = 8_000): Promise<Fet
       return null;
     }
     if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+    // The lexical check refuses names that LOOK internal. Names that RESOLVE
+    // internal (a page ranking for the keyword whose A record is 10.0.0.5)
+    // are refused inside pinnedAgent's lookup, on every hop, with the socket
+    // pinned to the address that passed - see the agent above.
     if (isPrivateHost(parsed.hostname)) return null;
-    // The lexical check above refuses names that LOOK internal; this refuses
-    // public names that RESOLVE internal (a page ranking for the keyword whose
-    // A record is 10.0.0.5). Checked on every hop, so a redirect cannot route
-    // around it either. What it does not close is a rebind between this
-    // lookup and the connect; pinning the socket to the vetted address needs
-    // a custom dispatcher and is left for when the writer runs untrusted at
-    // scale.
-    if (await resolvesPrivate(parsed.hostname)) return null;
-    let res: Response;
+    let res: Awaited<ReturnType<typeof pinnedFetch>>;
     try {
-      res = await fetch(target, {
+      res = await pinnedFetch(target, {
+        dispatcher: pinnedAgent,
         redirect: "manual",
         signal: AbortSignal.timeout(timeoutMs),
         headers: { "user-agent": USER_AGENT, accept: "text/html,application/xhtml+xml" },
@@ -78,7 +103,7 @@ export async function fetchPageText(url: string, timeoutMs = 8_000): Promise<Fet
     // The timeout signal covers the body read too, so a page that streams
     // slowly rejects here - and a page is never worth failing the stage over.
     try {
-      const html = (await readCapped(res, MAX_BYTES)).slice(0, MAX_PARSE_CHARS);
+      const html = stripNoise(await readCapped(res, MAX_BYTES)).slice(0, MAX_PARSE_CHARS);
       const title = extractTitle(html);
       const publishedAt = extractDate(html);
       const main = mainContent(html);
@@ -91,16 +116,6 @@ export async function fetchPageText(url: string, timeoutMs = 8_000): Promise<Fet
     }
   }
   return null;
-}
-
-async function resolvesPrivate(host: string): Promise<boolean> {
-  let addrs: { address: string; family: number }[];
-  try {
-    addrs = await lookup(host, { all: true });
-  } catch {
-    return true; // unresolvable is not fetchable either
-  }
-  return addrs.length === 0 || addrs.some((a) => isPrivateIp(a.address));
 }
 
 /** Loopback, RFC1918, link-local, CGNAT, "this" network, and their IPv6
@@ -125,10 +140,26 @@ export function isPrivateIp(ip: string): boolean {
   if (/^f[cd]/.test(v6)) return true; // fc00::/7 unique local
   if (/^fe[89ab]/.test(v6)) return true; // fe80::/10 link-local
   if (v6.startsWith("::ffff:")) return true; // mapped v4 not matched above = odd form, refuse
+  // Transition ranges that carry an IPv4 address inside: NAT64 (64:ff9b::/96),
+  // 6to4 (2002::/16) and IPv4-compatible (::/96). Refused outright - a public
+  // site has no reason to be reached through them, and the embedded address
+  // could be anything.
+  if (v6.startsWith("64:ff9b:") || v6.startsWith("2002:")) return true;
+  if (/^(?:0*:)+(?:\d{1,3}\.){3}\d{1,3}$/.test(v6) || /^(?:0*:)+[0-9a-f]{1,4}:[0-9a-f]{1,4}$/.test(v6)) return true;
   return false;
 }
 
-async function readCapped(res: Response, maxBytes: number): Promise<string> {
+/** Script, style, noscript and template blocks carry no prose and, on a
+ *  modern site, most of the bytes; dropping them first keeps the parse cap
+ *  for content. The HTML-to-text pass drops them again later - harmless. */
+function stripNoise(html: string): string {
+  return html.replace(/<(script|style|noscript|template)\b[\s\S]*?<\/\1\s*>/gi, "");
+}
+
+// Undici types its body as the stream/web ReadableStream, which is the same
+// object as the global one at runtime but a different TS declaration; only
+// the reader is used here, so that is all the parameter asks for.
+async function readCapped(res: { body: { getReader(): ReadableStreamDefaultReader<Uint8Array> } | null }, maxBytes: number): Promise<string> {
   const reader = res.body?.getReader();
   if (!reader) return "";
   const chunks: Uint8Array[] = [];
