@@ -260,9 +260,14 @@ export function zeroImpressionStreak(
 
 export const MIN_VOLUME = 50;
 export const DUPLICATE_JACCARD = 0.6;
-/** How many approved guide ideas the autopilot keeps queued. Research tops
- *  the queue back up to this and never past it. */
+/** How many approved guide ideas the autopilot keeps queued, at least.
+ *  Research tops the queue back up to this and never past it. A plan that
+ *  writes more a week keeps two weeks' worth, so one failed weekly research
+ *  (DataForSEO down, budget spent) never leaves a 5-a-week site dry. */
 export const TARGET_APPROVED_IDEAS = 6;
+export function targetApprovedIdeas(articlesPerWeek: number): number {
+  return Math.max(TARGET_APPROVED_IDEAS, 2 * Math.max(0, Math.floor(articlesPerWeek)));
+}
 
 export type Candidate = {
   keyword: string;
@@ -389,8 +394,8 @@ export function sentenceTitle(keyword: string): string {
 }
 
 /** How many new ideas research should add right now. */
-export function ideasNeeded(approvedGuideCount: number): number {
-  return Math.max(0, TARGET_APPROVED_IDEAS - approvedGuideCount);
+export function ideasNeeded(approvedGuideCount: number, articlesPerWeek = 0): number {
+  return Math.max(0, targetApprovedIdeas(articlesPerWeek) - approvedGuideCount);
 }
 
 // --- Owner input --------------------------------------------------------------

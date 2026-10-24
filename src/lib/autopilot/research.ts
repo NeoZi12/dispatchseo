@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { planGate } from "@/lib/billing";
+import { planGate, projectPlan } from "@/lib/billing";
 import { isCloudMode } from "@/lib/cloud";
 import { platformBudgetGate } from "@/lib/dataforseo-usage";
 import { publishRoute } from "@/lib/job-handlers/draft-status";
@@ -147,7 +147,8 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
     .eq("project_id", project.id)
     .eq("type", "guide")
     .eq("status", "approved");
-  const needed = ideasNeeded(approvedCount ?? 0);
+  const plan = await projectPlan(project.id);
+  const needed = ideasNeeded(approvedCount ?? 0, plan.articlesPerWeek);
   if (needed === 0) {
     await stamp();
     return { skipped: "the idea queue is already full" };
