@@ -343,8 +343,20 @@ export function stripQuestionLead(keyword: string): string {
 }
 
 async function seedsFor(project: Project, profile: SiteProfile): Promise<string[]> {
-  const [gscRes, approvedRes] = await Promise.all([
+  const [gscRes, approvedRes, trackedRes] = await Promise.all([
     db().from("gsc_stats").select("top_queries").eq("project_id", project.id).order("date", { ascending: false }).limit(1).maybeSingle(),
+    // The site's own tracked keywords: its target list, in its own language.
+    // Paperbot's profile tags are English ("document management") while its
+    // market is Hebrew, so Labs answered with English heads in Israel and the
+    // research found nothing; its tracked keywords ("איסוף מסמכים מלקוחות")
+    // are the topics it exists for.
+    db()
+      .from("keywords")
+      .select("keyword, search_volume")
+      .eq("project_id", project.id)
+      .eq("status", "tracking")
+      .order("search_volume", { ascending: false, nullsFirst: false })
+      .limit(4),
     db()
       .from("suggestions")
       .select("primary_keyword, keyword_volume")
@@ -386,7 +398,8 @@ async function seedsFor(project: Project, profile: SiteProfile): Promise<string[
     const words = normalizeKeyword(t ?? "").split(" ").filter(Boolean);
     return words.length > 1 || words.some((w) => siteTerms.has(w));
   });
-  const ordered = [...queries, ...profile.categories.filter((c) => profileSeeds.includes(c)), ...heads, ...profile.tags.filter((t) => profileSeeds.includes(t))];
+  const tracked = ((trackedRes.data ?? []) as { keyword: string }[]).map((r) => r.keyword);
+  const ordered = [...queries, ...tracked, ...profile.categories.filter((c) => profileSeeds.includes(c)), ...heads, ...profile.tags.filter((t) => profileSeeds.includes(t))];
   const out: string[] = [];
   const seen = new Set<string>();
   for (const s of ordered) {
