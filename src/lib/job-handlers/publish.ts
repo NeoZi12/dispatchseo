@@ -97,6 +97,9 @@ export async function runPublishJob(job: Job): Promise<void> {
   if (!["accepted", "finished", "blocked_setup"].includes(row.status)) return;
   if (dryDraftBlocked(row.validation)) return parkDryDraft(row.id, row.validation);
   if (!row.rendered_html) throw new Error("this article has not been finished yet");
+  // WordPress themes print the post title themselves: the article's own H1
+  // would repeat it (the hosted route strips it the same way).
+  const bodyHtml = row.rendered_html.replace(/<h1[^>]*>[\s\S]*?<\/h1>\s*/, "");
 
   // Resume rather than restart. A retry after a failed flip must not create a
   // second post - the id we already have is the article.
@@ -133,7 +136,7 @@ export async function runPublishJob(job: Job): Promise<void> {
 
     const created = await createPost(creds, {
       title: row.title,
-      html: row.rendered_html,
+      html: bodyHtml,
       slug: row.slug,
       excerpt: row.meta_description ?? undefined,
       featuredMediaId,
@@ -196,7 +199,7 @@ export async function runPublishJob(job: Job): Promise<void> {
   const withSchema = await updatePostContent(
     creds,
     postId,
-    row.rendered_html + schemaScript(schema),
+    bodyHtml + schemaScript(schema),
   );
   if (!withSchema.ok) {
     console.warn(

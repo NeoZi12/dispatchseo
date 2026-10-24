@@ -238,6 +238,10 @@ export type ParsedSample = {
    *  parseFrontmatter (which never sees a file name); carried on this type so
    *  a caller that knows both can hand one object onward. */
   datePrefixed?: boolean;
+  /** Whether the sample's BODY opens with a markdown H1. Most layouts render
+   *  the frontmatter title themselves, so their posts carry no H1 and ours
+   *  must not either (clockedcode.com showed the title twice, 2026-10-24). */
+  bodyHasH1?: boolean;
 };
 
 /**
@@ -281,7 +285,13 @@ export function parseFrontmatter(text: string): ParsedSample {
     values[key] = stripQuotes(value);
   }
 
-  return { keys, values, raw };
+  // The first non-blank body line after the closing fence: an H1 there means
+  // this site's posts repeat the title in the body, so ours may too.
+  let j = i + 1;
+  while (j < lines.length && lines[j].trim() === "") j++;
+  const bodyHasH1 = j < lines.length && /^#\s+\S/.test(lines[j].trim());
+
+  return { keys, values, raw, bodyHasH1 };
 }
 
 function stripQuotes(value: string): string {
@@ -401,7 +411,7 @@ export function buildArticleFile(sample: ParsedSample | null, article: ArticleFi
     push("keyword", yamlDoubleQuote(article.primaryKeyword));
   }
 
-  return `---\n${lines.join("\n")}\n---\n\n${bodyWithFaq(article)}\n`;
+  return `---\n${lines.join("\n")}\n---\n\n${bodyWithFaq(article, sample)}\n`;
 }
 
 /** The article body plus its FAQ as plain markdown. The gate guarantees every
@@ -410,8 +420,10 @@ export function buildArticleFile(sample: ParsedSample | null, article: ArticleFi
  *  script is injected: in MDX a raw <script> with JSON braces is parsed as an
  *  expression and breaks the build, and every static-site generator this
  *  targets emits its own structured data. */
-function bodyWithFaq(article: ArticleFileInput): string {
-  const body = article.markdown.trim();
+function bodyWithFaq(article: ArticleFileInput, sample: ParsedSample | null): string {
+  // The frontmatter carries the title; unless this site's own posts open with
+  // an H1, the layout prints it and a body H1 would show it twice.
+  const body = (sample?.bodyHasH1 ? article.markdown : article.markdown.replace(/^\s*#\s+[^\n]*\n+/, "")).trim();
   const faq = (article.faq ?? []).filter(
     (f) => f && typeof f.question === "string" && typeof f.answer === "string" && f.question.trim() && f.answer.trim(),
   );
@@ -740,6 +752,10 @@ export async function publishDraftToRepo(
     try {
       const { fetchCover } = await import("./job-handlers/publish");
       const image = await fetchCover(draft.cover_url);
+      // A cover that cannot be fetched is dropped, but never silently: the
+      // first ClockedCode article shipped without one because the publish ran
+      // before the deploy serving /api/cover was live, and nothing said so.
+      if (!image) console.warn(`[publish-repo] cover dropped for ${slug}: ${draft.cover_url} did not return an image`);
       if (image) {
         const blob = await gh(token, "POST", `/repos/${repo}/git/blobs`, {
           content: Buffer.from(image.bytes).toString("base64"),
