@@ -304,15 +304,47 @@ export const WIDEN_MIN_VOLUME = 20;
  *  and DataForSEO under-reports the Hebrew/Thai/etc. long tail - Paperbot's
  *  four runs on 2026-10-24 dropped 60-70% of their candidates under 50. */
 export const WIDEN2_MIN_VOLUME = 10;
-/** A model-proposed query DataForSEO cannot see (no volume, or no KD) is a
- *  guess about a real reader: it needs a much surer fit than a measured one,
- *  and at most this many land per research run, so a thin site keeps moving
- *  without its queue filling up with guesses. */
-export const UNMEASURED_FIT_MIN = 0.85;
-// Four, not two: where DataForSEO is blind to the niche (Paperbot: 1 of 20
-// Hebrew queries known) every idea is a proposal, and two a run starved a
-// 3-a-week site. The 0.85 fit bar and the evergreen/intent rules still hold.
-export const UNMEASURED_MAX_PER_RUN = 4;
+// There is no unmeasured lane (owner, 2026-10-24: "we NEED volume and KD, no
+// guessing"): every queued idea has a measured monthly volume at or above its
+// rung's floor and a measured KD. The thin-market ladder only widens where
+// research LOOKS (more seeds); DataForSEO supplies every number.
+
+/** Research back-off (the wider search costs Labs credits; a thin niche
+ *  that keeps finding nothing must not buy them every two days). In back-off
+ *  - the last two completed runs both added 0 ideas - rung 4 does not run at
+ *  all until research_backoff_until (one weekly interval after the run that
+ *  entered back-off), and then runs on WIDER_LABS_CALLS_BACKOFF billed Labs
+ *  calls instead of WIDER_LABS_CALLS. Rungs 1-3 always run: their seeds are
+ *  cached for 30 days, so an early refill there costs next to nothing. */
+export const WIDER_LABS_CALLS = 20;
+export const WIDER_LABS_CALLS_BACKOFF = 6;
+
+export type BackoffState = { recent_added: number[]; research_backoff_until: string | null };
+
+export function inResearchBackoff(s: BackoffState): boolean {
+  return s.recent_added.length >= 2 && s.recent_added[0] === 0 && s.recent_added[1] === 0;
+}
+
+/** May this run use rung 4, and on how many billed Labs calls. */
+export function widerSearchAllowance(s: BackoffState, nowMs: number): { allowed: true; labsCalls: number } | { allowed: false; why: string } {
+  if (!inResearchBackoff(s)) return { allowed: true, labsCalls: WIDER_LABS_CALLS };
+  if (s.research_backoff_until && nowMs < Date.parse(s.research_backoff_until)) {
+    return { allowed: false, why: `the last two research runs added nothing, so the wider search waits until ${s.research_backoff_until}` };
+  }
+  return { allowed: true, labsCalls: WIDER_LABS_CALLS_BACKOFF };
+}
+
+/** The state after a completed run that added `added` ideas. Entering (or
+ *  still being in) back-off with no wait running starts one: rung 4 rests for
+ *  `everyMs`. Leaving back-off clears it. */
+export function nextBackoffState(s: BackoffState, added: number, nowMs: number, everyMs: number): BackoffState {
+  const recent = [added, ...s.recent_added].slice(0, 2);
+  const next = { recent_added: recent, research_backoff_until: null as string | null };
+  if (!inResearchBackoff(next)) return next;
+  const waiting = s.research_backoff_until && nowMs < Date.parse(s.research_backoff_until);
+  next.research_backoff_until = waiting ? s.research_backoff_until : new Date(nowMs + everyMs).toISOString();
+  return next;
+}
 
 export type DropReason = "volume" | "kd" | "language" | "blocked" | "duplicate" | "near-duplicate";
 
@@ -393,26 +425,42 @@ export function filterCandidates(
 }
 
 /**
- * The checks of filterCandidates that do not need volume or KD - blocked
- * topics, exact duplicates, near-duplicates of the site and of each other -
- * for queries that have no keyword data yet (research's model-proposed
- * rung). Same thresholds, so a proposal is never held to a looser bar than a
- * DataForSEO row. Returns the survivors normalized, in input order.
+ * KD recovery (research): the keywords that would fail filterCandidates ONLY
+ * for an unknown KD at this floor - measured volume >= the floor, KD null on
+ * every row of it, the site's language, not blocked, not already the site's.
+ * Best volume first, at most `cap`: those are the rows worth one
+ * bulk_keyword_difficulty call. Anything else is dropped whatever its KD.
  */
-export function screenTopics(
-  keywords: string[],
-  ctx: Pick<FilterContext, "blockedTopics" | "takenKeywords" | "existingTexts">,
-): string[] {
-  const kept: string[] = [];
-  for (const raw of keywords) {
-    const k = normalizeKeyword(raw);
-    if (!k || kept.includes(k)) continue;
-    if (matchesBlockedTopic(k, ctx.blockedTopics)) continue;
-    if (ctx.takenKeywords.has(k)) continue;
-    if ([...ctx.existingTexts, ...kept].some((t) => jaccard(t, k) >= DUPLICATE_JACCARD)) continue;
-    kept.push(k);
+export function kdRecoveryKeys(raw: Candidate[], ctx: FilterContext, cap: number): string[] {
+  const scored = new Set(raw.filter((c) => c.kd !== null).map((c) => normalizeKeyword(c.keyword)));
+  const best = new Map<string, number>();
+  for (const c of raw) {
+    const k = normalizeKeyword(c.keyword);
+    if (!k || c.kd !== null || scored.has(k)) continue;
+    if (!(c.volume >= (ctx.minVolume ?? MIN_VOLUME))) continue;
+    if (!languageOk(c, ctx.languageCode) || matchesBlockedTopic(k, ctx.blockedTopics) || ctx.takenKeywords.has(k)) continue;
+    best.set(k, Math.max(best.get(k) ?? 0, c.volume));
   }
-  return kept;
+  return [...best.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, Math.max(0, cap))
+    .map(([k]) => k);
+}
+
+/** The raw rows with every recovered KD filled in (keyed by normalized
+ *  keyword), and how many distinct keywords got one. A KD the lookup did not
+ *  return stays null, and filterCandidates drops that row. */
+export function fillKd(raw: Candidate[], kd: Map<string, number | null>): { rows: Candidate[]; recovered: number } {
+  const filled = new Set<string>();
+  const rows = raw.map((c) => {
+    if (c.kd !== null) return c;
+    const k = normalizeKeyword(c.keyword);
+    const v = kd.get(k);
+    if (typeof v !== "number") return c;
+    filled.add(k);
+    return { ...c, kd: v };
+  });
+  return { rows, recovered: filled.size };
 }
 
 export const FIT_MIN = 0.6;

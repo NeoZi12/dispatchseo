@@ -4897,7 +4897,9 @@ const mcpHandler = createMcpHandler(
         description:
           "Ask the autopilot to write about a topic. It passes the same gate research uses - on " +
           "the site's subject, not a blocked topic, not something the site already has - and is " +
-          "either queued as an approved idea (written in turn) or rejected with the reason.",
+          "either queued as an approved idea (written in turn) or rejected with the reason. A " +
+          "queued topic carries its DataForSEO monthly volume and KD; one DataForSEO cannot " +
+          "measure is still queued, marked \"volume unknown - you asked for it\".",
         inputSchema: { topic: z.string().min(3).max(120).describe("A search phrase, e.g. \"how to price a logo design\".") },
       },
       async ({ topic }) => {
@@ -4919,8 +4921,8 @@ const mcpHandler = createMcpHandler(
       },
       async () => {
         const p = currentProject();
-        // Two days, the same floor the daily pass's early refill keeps: each
-        // run now also buys one proposal call and a keyword overview.
+        // Two days, the same floor the daily pass's early refill keeps: a thin
+        // site's run can also buy a seed-proposal call and up to 20 Labs calls.
         if (p.last_research_at && Date.now() - Date.parse(p.last_research_at) < 2 * 86_400_000) {
           return fail(`Research already ran at ${p.last_research_at}; it can run again two days after that.`);
         }

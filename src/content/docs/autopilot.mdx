@@ -56,11 +56,16 @@ The ones left are ranked by how much traffic they can realistically bring
 (searches a month, discounted by difficulty), and the best go to the front
 of the queue. Research runs again once a week.
 
-If nothing passes, research widens once: five more points of difficulty
-and at least 20 searches a month instead of 50. If that still finds
-nothing, the dashboard says "No winnable keywords found yet" and research
-tries again the next week. Suggesting a topic yourself is the fastest way
-past that.
+If too few pass, research goes deeper: five more points of difficulty
+and at least 20 searches a month, then at least 10. In a small market it
+then searches wider: the server picks up to ten more topics from your
+site's profile and looks up the searches around each, a few at a time,
+stopping once it has enough. Every queued idea has a monthly search count
+and a difficulty score from the keyword data. Nothing is queued on a
+guess. If that still finds nothing, the dashboard says "No winnable
+keywords found yet" and research looks again later. After two runs in a
+row that find nothing, the wider search waits for the weekly run.
+Suggesting a topic yourself is the fastest way past that.
 
 ## How often it publishes
 

@@ -89,9 +89,9 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
     kind: "improved",
     text:
       "Small markets no longer stall research. When few searched keywords exist in your language, " +
-      "research goes deeper (down to about 10 searches a month) and then proposes topics from your " +
-      "site itself, checked against the keyword data and the fit judge before they are queued. A " +
-      "short queue is refilled within two days, not only weekly.",
+      "research goes deeper (down to about 10 searches a month) and then searches wider from extra " +
+      "topics drawn from your site. Every queued idea still carries a measured monthly volume and " +
+      "difficulty - nothing is ever guessed. A short queue is refilled within two days, not only weekly.",
   },
   {
     kind: "new",

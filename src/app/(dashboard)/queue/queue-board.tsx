@@ -783,10 +783,16 @@ function QueueCard({
               <span className="truncate">{idea.keyword}</span>
             </span>
           ) : null}
-          <span className="flex items-baseline gap-1.5">
-            <span className="text-[14px] font-semibold tabular-nums text-ink">{idea.volume != null ? fmtInt(idea.volume) : "-"}</span>
-            <span className="text-[12.5px] text-ink-faint">searches a month</span>
-          </span>
+          {/* Research queues nothing without measured numbers; the unknown
+              states are for older ideas and an owner's own unmeasurable topic. */}
+          {idea.volume != null ? (
+            <span className="flex items-baseline gap-1.5">
+              <span className="text-[14px] font-semibold tabular-nums text-ink">{fmtInt(idea.volume)}</span>
+              <span className="text-[12.5px] text-ink-faint">searches a month</span>
+            </span>
+          ) : (
+            <span className="text-[12.5px] text-ink-faint">volume unknown</span>
+          )}
           <Kd kd={idea.kd} zones={zones} />
         </div>
       </div>
@@ -810,7 +816,7 @@ function QueueCard({
 
 function Kd({ kd, zones }: { kd: number | null; zones: KdZones }) {
   if (kd == null) {
-    return <span className="text-[12.5px] text-ink-faint">KD not scored yet</span>;
+    return <span className="text-[12.5px] text-ink-faint">KD unknown</span>;
   }
   const [tone, word] = kd < zones.autoApprove ? ["text-ok", "easy"] : kd < zones.pending ? ["text-warn", "a stretch"] : ["text-danger", "hard"];
   return (

@@ -1,4 +1,6 @@
 import { db } from "@/lib/db";
+import { credsForProject, keywordOverview } from "@/lib/dataforseo";
+import { cachedBulkKeywordDifficulty } from "@/lib/keyword-research-cache";
 import { getProjectById, type Project } from "@/lib/projects";
 import { loadSiteProfile } from "@/lib/site-profile";
 import { HOUSE_RULES_MAX } from "@/lib/content-prefs";
@@ -246,6 +248,12 @@ export async function suggestTopic(projectId: string, text: string): Promise<Sug
     return { rejected: `That doesn't look like something ${profile.name} can credibly write about. Try a topic closer to what the site offers.` };
   }
 
+  // Measured like a research idea, after the judge (a refused topic buys no
+  // keyword data). The owner asked for it explicitly, so a topic DataForSEO
+  // cannot measure is still queued - but the queue says so instead of
+  // showing a number nobody measured.
+  const { volume, kd } = await measureTopic(project, topic);
+  const numbers = [volume !== null ? `volume ${volume}` : "volume unknown", kd !== null ? `KD ${kd}` : volume !== null ? "KD unknown" : null].filter(Boolean).join(", ");
   const title = sentenceTitle(topic);
   const { data, error } = await db()
     .from("suggestions")
@@ -255,7 +263,9 @@ export async function suggestTopic(projectId: string, text: string): Promise<Sug
       status: "approved",
       title,
       primary_keyword: topic,
-      rationale: `suggested by the owner: fit ${fit.toFixed(2)}`,
+      keyword_volume: volume,
+      keyword_difficulty: kd,
+      rationale: `suggested by the owner: fit ${fit.toFixed(2)}, ${numbers}${volume !== null && kd !== null ? "" : " - you asked for it"}`,
       source: "owner",
       decided_at: new Date().toISOString(),
     })
@@ -266,4 +276,27 @@ export async function suggestTopic(projectId: string, text: string): Promise<Sug
     return { rejected: `Couldn't save it: ${error.message}` };
   }
   return { accepted: true, suggestionId: (data as { id: string }).id, title };
+}
+
+/** Monthly volume and KD of an owner's topic: Labs keyword_overview, then a
+ *  bulk_keyword_difficulty lookup when the overview measured the volume but
+ *  left KD empty. Never fails the suggestion - no keyword source, a spent
+ *  budget or a DataForSEO error all read as "unknown". */
+async function measureTopic(project: Project, topic: string): Promise<{ volume: number | null; kd: number | null }> {
+  try {
+    const creds = await credsForProject(project);
+    if (!creds) return { volume: null, kd: null };
+    const overview = await keywordOverview([topic], creds, project.location_code, project.language_code);
+    const idea = overview.ideas.find((i) => normalizeKeyword(i.keyword) === topic) ?? overview.ideas[0];
+    const volume = typeof idea?.search_volume === "number" ? idea.search_volume : null;
+    let kd = typeof idea?.keyword_difficulty === "number" ? idea.keyword_difficulty : null;
+    if (volume !== null && kd === null) {
+      const r = await cachedBulkKeywordDifficulty([topic], creds, project.location_code, project.language_code);
+      kd = r.kd.get(topic) ?? null;
+    }
+    return { volume, kd };
+  } catch (e) {
+    console.warn(`[autopilot] could not measure the owner's topic for ${project.slug}: ${e instanceof Error ? e.message : String(e)}`);
+    return { volume: null, kd: null };
+  }
 }

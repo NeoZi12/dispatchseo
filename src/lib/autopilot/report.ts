@@ -1,5 +1,5 @@
 import { unstable_cache } from "next/cache";
-import { thinNote } from "./research";
+import { thinNote, WIDER_SEARCH_TAG } from "./research";
 import { db } from "@/lib/db";
 import { projectPlan } from "@/lib/billing";
 import { credsForProject } from "@/lib/dataforseo";
@@ -83,9 +83,10 @@ export type AutopilotReport = {
   ideas: {
     approved: number;
     nextTitles: string[];
-    /** Queued ideas research proposed from the site itself because the
-     *  keyword data knows too little of this market (thin-market rung 4). */
-    proposed: number;
+    /** Queued ideas research found through its wider search (thin-market
+     *  rung 4: extra seeds from the site's profile, every idea still with a
+     *  measured volume and KD), told by their rationale tag. */
+    wider: number;
     /** The one-line explanation for a thin market, or null. */
     note: string | null;
     /** When research last ran (projects.last_research_at). With approved 0,
@@ -359,7 +360,7 @@ export async function getAutopilotReport(projectId: string): Promise<AutopilotRe
     articles: articles.slice(0, ARTICLE_LIMIT),
     articlesTruncated: articles.length > ARTICLE_LIMIT || drafts.length >= DRAFT_LIMIT,
     traffic: { days, clicks28d, impressions28d, deltaClicksPct: prev28.length >= 14 ? deltaPct(clicks28d, prevClicks) : null, topQueries },
-    ideas: { ...ideas, note: ideas.proposed > 0 ? thinNote(project.language_code, 4, ideas.proposed) : null, lastResearchAt: project.last_research_at ?? null },
+    ideas: { ...ideas, note: ideas.wider > 0 ? thinNote(project.language_code, 4, ideas.wider) : null, lastResearchAt: project.last_research_at ?? null },
     setup: { ...setup, profile: profile.fromDb, siteUnreadable: setup.siteUnreadable && !profile.fromDb },
     controls: {
       brand: {
@@ -427,8 +428,8 @@ async function ideaSummary(projectId: string): Promise<Omit<AutopilotReport["ide
   const taken = new Set(((busy ?? []) as { suggestion_id: string }[]).map((r) => r.suggestion_id));
   // The owner's order, then oldest first: the order the writer's pick stage takes them in.
   const free = ((rows ?? []) as { id: string; title: string; rationale: string | null }[]).filter((r) => !taken.has(r.id));
-  const proposed = free.filter((r) => /proposed from the site's profile/.test(r.rationale ?? "")).length;
-  return { approved: free.length, nextTitles: free.slice(0, 3).map((r) => r.title), proposed, note: null };
+  const wider = free.filter((r) => (r.rationale ?? "").includes(WIDER_SEARCH_TAG)).length;
+  return { approved: free.length, nextTitles: free.slice(0, 3).map((r) => r.title), wider, note: null };
 }
 
 async function setupSummary(project: Project): Promise<Omit<AutopilotReport["setup"], "profile">> {

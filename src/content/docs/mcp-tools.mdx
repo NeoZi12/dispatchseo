@@ -1878,7 +1878,9 @@ when given); without, the site itself. `null` clears a field.
 
 Asks the autopilot to write about a topic. It passes the research gate
 (on-topic, not blocked, not a duplicate) and is queued as an approved idea,
-or rejected with the reason.
+or rejected with the reason. A queued topic carries its monthly searches and
+difficulty from DataForSEO. If DataForSEO has no data for it, it is still
+queued, marked "volume unknown - you asked for it".
 
 <Fields>
   <Field name="topic" type="string" required="true">A search phrase.</Field>

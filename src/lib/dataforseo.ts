@@ -645,8 +645,8 @@ export async function relatedKeywords(
 }
 
 // Labs keyword_overview: volume + KD for keywords we already have in hand
-// (autopilot research's model-proposed rung - research.ts). One task, up to
-// 700 keywords (80 chars / 10 words each; DataForSEO lowercases them). Flat
+// (an owner's suggested topic - autopilot/controls.ts suggestTopic). One
+// task, up to 700 keywords (80 chars / 10 words each; DataForSEO lowercases them). Flat
 // item shape, the same as keyword_suggestions: tasks[0].result[0].items[] with
 // keyword, keyword_info.search_volume, keyword_properties.keyword_difficulty /
 // detected_language / is_another_language (docs.dataforseo.com/v3/
@@ -675,6 +675,47 @@ export async function keywordOverview(
   ], creds);
   const items = json.tasks?.[0]?.result?.[0]?.items ?? [];
   return { ideas: mapLabsItems(items), cost: json.cost };
+}
+
+// Labs bulk_keyword_difficulty: KD alone, for keywords whose volume the Labs
+// expansion already measured but whose keyword_properties.keyword_difficulty
+// came back empty - about half of a Hebrew expansion (autopilot research.ts,
+// which queues nothing without a measured KD). One task per call, up to 1000
+// keywords, lowercased by DataForSEO. Response, per
+// docs.dataforseo.com/v3/dataforseo_labs/google/bulk_keyword_difficulty/live
+// (read 2026-10-24): tasks[0].result[0].items[] with { se_type, keyword,
+// keyword_difficulty }. The docs do not say whether a keyword with no data is
+// absent or carries a null, so both read as "still unknown". Billed per
+// request ($0.0103 for three keywords in the docs' example).
+export async function bulkKeywordDifficulty(
+  keywords: string[],
+  creds: DataforseoCreds,
+  locationCode: number = LOCATION_CODE,
+  languageCode: string = LANGUAGE_CODE,
+): Promise<{ items: Array<{ keyword: string; kd: number | null }>; cost: number }> {
+  // Same per-keyword limits as the other Labs keyword lists: one bad keyword
+  // fails the whole task, so a long one is left out rather than sent.
+  const list = [...new Set(keywords.map((k) => k.trim().toLowerCase().replace(/\s+/g, " ")))]
+    .filter((k) => k && k.length <= 80 && k.split(" ").length <= 10)
+    .slice(0, 1000);
+  if (list.length === 0) return { items: [], cost: 0 };
+  const json = await post<{
+    cost: number;
+    tasks: Array<{ result?: Array<{ items?: Array<{ keyword?: string; keyword_difficulty?: number | null }> }> }>;
+  }>("/dataforseo_labs/google/bulk_keyword_difficulty/live", [
+    {
+      keywords: list,
+      location_code: locationCode,
+      language_code: languageCode,
+    },
+  ], creds);
+  const items = json.tasks?.[0]?.result?.[0]?.items ?? [];
+  return {
+    items: items
+      .filter((it) => typeof it.keyword === "string" && it.keyword)
+      .map((it) => ({ keyword: it.keyword as string, kd: typeof it.keyword_difficulty === "number" ? it.keyword_difficulty : null })),
+    cost: json.cost,
+  };
 }
 
 export type BacklinksSummary = {
