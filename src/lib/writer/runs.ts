@@ -269,7 +269,13 @@ export async function advanceRun(
   // in-memory total made every later stage write (stale + own) and lose the
   // earlier increments (the first live run ledgered $0.43 and recorded $0.23).
   run.cost_usd = Number((Number(run.cost_usd) + costUsd).toFixed(4));
-  if (patch.rewrites !== undefined) run.rewrites = patch.rewrites;
+  // Every patched column, not only rewrites: pick resolves the keyword of a
+  // run started from an idea and saves it here, and the chained research
+  // stage read run.keyword from this same object (null -> "Cannot read
+  // properties of null (reading 'toLowerCase')" on Paperbot's first run).
+  for (const key of ["keyword", "title_hint", "suggestion_id", "draft_id", "rewrites"] as const) {
+    if (patch[key] !== undefined) (run as Record<string, unknown>)[key] = patch[key];
+  }
   if (status === "running" && next !== "done") await queueStage(run.project_id, run.id, next, fallbackAfter);
   return true;
 }
