@@ -73,6 +73,13 @@ export type ChangelogEntry = {
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
+    kind: "fixed",
+    text:
+      "Every article now links one of your site's own guides or tools, even when its topic is far " +
+      "from the rest of the site, and never comes in under 700 words - sites whose build checks for " +
+      "both no longer refuse the article.",
+  },
+  {
     kind: "new",
     text:
       "Home now tells you when something on your site needs a look: articles that keep " +

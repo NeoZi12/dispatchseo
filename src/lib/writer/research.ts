@@ -392,6 +392,18 @@ export function isHubPage(url: string): boolean {
   return false;
 }
 
+/** A page under a section (/blog/x, /free-tools/y) is a guide or a tool;
+ *  the one-segment pages of a site (/privacy, /pricing, /how-we-work) are
+ *  legal and product pages, never a "related page". */
+export function isContentPage(url: string): boolean {
+  if (isHubPage(url)) return false;
+  try {
+    return new URL(url).pathname.split("/").filter(Boolean).length >= 2;
+  } catch {
+    return false;
+  }
+}
+
 export async function buildSiteBrief(project: Project, keyword: string): Promise<SiteBrief> {
   const own = project.domain.replace(/^www\./, "").toLowerCase();
   const [{ profile }, digestRow, gscRow] = await Promise.all([
@@ -423,7 +435,7 @@ export async function buildSiteBrief(project: Project, keyword: string): Promise
   const candidates = Array.isArray((digestRow.data as { link_candidates?: unknown } | null)?.link_candidates)
     ? ((digestRow.data as { link_candidates: LinkCandidate[] }).link_candidates)
     : [];
-  const pages = candidates
+  const scored = candidates
     .filter((c) => !isHubPage(c.url))
     .map((c) => {
       const hay = `${c.title} ${(c.keywords ?? []).join(" ")} ${c.url.replace(/[-_/]+/g, " ")}`;
@@ -431,17 +443,34 @@ export async function buildSiteBrief(project: Project, keyword: string): Promise
       let hits = 0;
       for (const x of new Set(t)) if (distinct.has(x)) hits++;
       return { c, hits };
-    })
+    });
+  let related = scored
     .filter((x) => x.hits >= needHits)
     .sort((a, b) => b.hits - a.hits)
-    .slice(0, 12)
-    .map((x, i) => ({
-      n: i + 1,
-      url: x.c.url,
-      title: x.c.title,
-      why: "shares terms with the keyword",
-      snippet: (x.c.keywords ?? []).filter((k) => typeof k === "string").slice(0, 12).join(", ") || undefined,
-    }));
+    .slice(0, 12);
+  let why = "shares terms with the keyword";
+  if (related.length === 0) {
+    // A keyword far from the rest of the site still gets a related page:
+    // the nearest guides and tools, so the article links one of them (the
+    // writer's rule, and check 6b). Paperbot 2026-10-30: "העלאת מסמכים"
+    // shared no term with a site about office automation, the brief offered
+    // nothing, 6b never ran, and the site's own content lint failed the PR
+    // ("no internal link to another guide or tool"). Only pages under a
+    // section qualify here - a zero-hit legal or product page is never a
+    // related page.
+    related = scored
+      .filter((x) => isContentPage(x.c.url))
+      .sort((a, b) => b.hits - a.hits)
+      .slice(0, 3);
+    why = "the nearest guide or tool of this site (no page shares the keyword's terms)";
+  }
+  const pages = related.map((x, i) => ({
+    n: i + 1,
+    url: x.c.url,
+    title: x.c.title,
+    why,
+    snippet: (x.c.keywords ?? []).filter((k) => typeof k === "string").slice(0, 12).join(", ") || undefined,
+  }));
 
   const queries = (Array.isArray((gscRow.data as { top_queries?: unknown } | null)?.top_queries)
     ? ((gscRow.data as { top_queries: { query: string; impressions: number; position: number }[] }).top_queries)

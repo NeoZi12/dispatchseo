@@ -114,9 +114,29 @@ export async function claimDue(limit = 5, kinds?: JobKind[]): Promise<Job[]> {
     (j) => !j.claimed_at || j.claimed_at < graceCutoff,
   );
 
+  // One job per run (or per draft) in flight at a time. A stage's fallback
+  // job and the resume job its agent answer queued can both be due in the
+  // same tick; claimed together they both ran the judge (Paperbot
+  // 2026-10-30): one handed the article off and published it, the other
+  // patched on and then parked the idea as "writer did not build". The
+  // later job waits for the earlier to finish, then finds the run moved on
+  // and is a no-op. Jobs with no run or draft (a crawl) are unaffected.
+  const { data: inFlight } = await db()
+    .from("jobs")
+    .select("kind, payload")
+    .is("finished_at", null)
+    .gte("claimed_at", graceCutoff);
+  const busy = new Set<string>();
+  for (const j of (inFlight as Pick<Job, "kind" | "payload">[]) ?? []) {
+    const lane = laneOf(j);
+    if (lane) busy.add(lane);
+  }
+
   const claimed: Job[] = [];
   for (const candidate of candidates) {
     if (claimed.length >= limit) break;
+    const lane = laneOf(candidate);
+    if (lane && busy.has(lane)) continue;
     // Re-assert the exact state we read. If another worker claimed it in the
     // meantime, claimed_at no longer matches and this updates zero rows.
     let update = db()
@@ -129,9 +149,21 @@ export async function claimDue(limit = 5, kinds?: JobKind[]): Promise<Job[]> {
       : update.is("claimed_at", null);
 
     const { data: won } = await update.select("*").maybeSingle();
-    if (won) claimed.push(won as Job);
+    if (won) {
+      claimed.push(won as Job);
+      if (lane) busy.add(lane);
+    }
   }
   return claimed;
+}
+
+/** The run or draft a job belongs to; jobs on the same lane never run at once. */
+function laneOf(j: Pick<Job, "kind" | "payload">): string | null {
+  const runId = j.payload?.runId;
+  if (typeof runId === "string" && runId) return `run:${runId}`;
+  const draftId = j.payload?.draftId;
+  if (typeof draftId === "string" && draftId) return `draft:${draftId}`;
+  return null;
 }
 
 /** Done. Terminal - the idempotency key becomes reusable. */

@@ -51,7 +51,7 @@ import {
   type FactSheet,
   type SiteBrief,
 } from "./evidence";
-import { advanceRun, failRun, recordDraft, saveScratch, suggestionIdsInFlight, VENDOR_FAILURE_RE, type FailureKind, type Stage, type WriterRun } from "./runs";
+import { advanceRun, failRun, getWriterRun, recordDraft, saveScratch, suggestionIdsInFlight, VENDOR_FAILURE_RE, type FailureKind, type Stage, type WriterRun } from "./runs";
 
 import { matchesBlockedTopic } from "@/lib/autopilot/math";
 import { isHubPage } from "./research";
@@ -577,7 +577,10 @@ async function plan(c: Ctx): Promise<void> {
     return plan(c);
   }
   parsed.slug = slugify(parsed.slug || parsed.title, sheet.keyword);
-  parsed.target_words = Number.isFinite(parsed.target_words) ? Math.min(2500, Math.max(600, parsed.target_words)) : sheet.medianWords;
+  // 700 is the floor a page needs to read as an answer rather than a stub
+  // (Paperbot's own content lint refuses anything shorter; the gate below
+  // holds the same line), 2500 the point past which a draft rambles.
+  parsed.target_words = Number.isFinite(parsed.target_words) ? Math.min(2500, Math.max(700, parsed.target_words)) : sheet.medianWords;
   parsed.faq_questions = (parsed.faq_questions ?? []).filter((q) => sheet.peopleAlsoAsk.some((p) => jaccard(p, q, project.language_code) >= 0.5)).slice(0, 5);
   if (prefs.disabled_blocks.includes("faq")) parsed.faq_questions = [];
 
@@ -903,6 +906,12 @@ async function verify(c: Ctx): Promise<void> {
         const record = { ...checked.record, dropped_faq: dropped, marker_fixes: markerFixes, patch_attempts: attempts, passes: passes.length, internal_link_fallback: fallback.url };
         return handoff(c, draft, p, checked.report, record, cost);
       }
+      // Another worker may have handed this run off in the meantime (its
+      // fallback job and its resume job claimed in one tick, before the
+      // queue serialised them): that draft is the article, and parking
+      // now would brand a published article "writer did not build".
+      const fresh = await getWriterRun(project.id, run.id);
+      if (fresh?.draft_id) return;
       // Content, not a fault: this keyword did not become an article the
       // gate accepts in the patches it was allowed. Park the idea.
       return parkIdea(run, run.suggestion_id, `still failing after ${MAX_PATCHES} patches: ${blocking.map((i) => i.note).join(" | ").slice(0, 800)}`, cost, {
@@ -1184,7 +1193,9 @@ async function runChecks(c: Ctx, sheet: FactSheet, brief: SiteBrief, p: Plan, in
     { title: p.title, slug: p.slug, metaDescription: p.meta_description ?? "", primaryKeyword: sheet.keyword, markdown: full, faq: draft.faq, sources: sheet.sources.map((s) => ({ url: s.url, title: s.title ?? undefined })) },
     {
       archetype: p.archetype,
-      minWords: Math.round(p.target_words * 0.7),
+      // Never under 700 whatever the target: a 900-word target let a
+      // 689-word article through and Paperbot's build refused it.
+      minWords: Math.max(700, Math.round(p.target_words * 0.7)),
       maxWords: Math.max(2500, Math.round(p.target_words * 1.5)),
       existingSlugs: existing.slugs,
       existingTitles: existing.titles,
