@@ -75,6 +75,18 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "fixed",
     text:
+      "Google started wrapping most search results in a redirect link on October 30, which made the writer " +
+      "stop articles for \"too few readable sources\" and rank tracking miss your site. Both now see through it.",
+  },
+  {
+    kind: "fixed",
+    text:
+      "The fact check no longer stops an article over a link to one of your own pages whose title has a number " +
+      "in it, a sentence that introduces a list, or your own reasoning built on a figure the sources state.",
+  },
+  {
+    kind: "fixed",
+    text:
       "Every article now links one of your site's own guides or tools, even when its topic is far " +
       "from the rest of the site, and never comes in under 700 words - sites whose build checks for " +
       "both no longer refuse the article.",

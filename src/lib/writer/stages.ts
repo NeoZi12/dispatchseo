@@ -1146,6 +1146,10 @@ async function runChecks(c: Ctx, sheet: FactSheet, brief: SiteBrief, p: Plan, in
   //    else reads the article: each claim against the passages of the
   //    source it cites. Claims with a marker or a figure are judged first.
   const units = claimUnits(draft.markdown + renderFaq(draft.faq, draft.faqHeading), lang);
+  // What the research and the site brief state, for the figure checks below
+  // and for telling the writer's reasoning from an unsourced claim.
+  const site = briefText(brief);
+  const everything = sheet.facts.map((f) => f.quote).join("\n") + "\n" + site + "\n" + sheet.keyword;
   const ranked = units.map((u, i) => ({ u, i, w: (u.cites.length ? 2 : 0) + (u.figures.length ? 1 : 0) })).sort((a, b) => b.w - a.w || a.i - b.i);
   const judged = ranked.slice(0, MAX_CLAIMS).map((x) => x.u);
   const claimsUnchecked = units.length - judged.length;
@@ -1173,11 +1177,17 @@ async function runChecks(c: Ctx, sheet: FactSheet, brief: SiteBrief, p: Plan, in
     const ref = v.passage?.source ?? null;
     ledger.push({ claim: unit.text, verdict: v.verdict, source: ref && /^\d+$/.test(ref) ? Number(ref) : null, source_ref: ref, quote: v.passage?.quote ?? null, passage: v.passage?.id ?? null, confidence: Number(v.confidence.toFixed(3)) });
     const isGeneral = unit.figures.length === 0 && unit.cites.length === 0;
+    // "Total clearly below $20: we'd use the API" cites nothing and uses a
+    // figure the sources state: the writer's own reasoning (judged for
+    // usefulness like any uncited sentence), not a claim nobody supports.
+    // A cite-less figure NO source states is still blocked, by check 3.
+    const reasoning = unit.cites.length === 0 && unit.figures.length > 0 && unit.figures.every((f) => figureAppearsIn(f, everything));
     const where = locate(unit.raw);
     if (v.verdict === "not_judged") {
       notJudged.push(`claim: ${v.why ?? "the judge failed"}`);
       issues.push({ ...where, note: `the judge could not check this claim (${v.why ?? "no answer"}); not verified against the sources: "${unit.text.slice(0, 160)}"`, blocking: false });
     } else if (v.verdict === "contradicts") issues.push({ ...where, note: `this contradicts its source; fix or remove: "${unit.text.slice(0, 160)}"`, blocking: true });
+    else if (v.verdict === "says_nothing" && reasoning) issues.push({ ...where, note: `no source states this conclusion; keep it as your own reasoning, not as a fact: "${unit.text.slice(0, 160)}"`, blocking: false });
     else if (v.verdict === "says_nothing" && !isGeneral) issues.push({ ...where, note: `no source supports this; remove the figure or the citation: "${unit.text.slice(0, 160)}"`, blocking: true });
     else if (v.verdict === "supports" && v.confidence < 0.5 && !isGeneral) issues.push({ ...where, note: `weakly supported; state it only as far as the source does: "${unit.text.slice(0, 160)}"`, blocking: false });
   }
@@ -1231,8 +1241,6 @@ async function runChecks(c: Ctx, sheet: FactSheet, brief: SiteBrief, p: Plan, in
   //    everything.
   const bySource = new Map<string, string>();
   for (const s of sheet.sources) bySource.set(String(s.n), sheet.facts.filter((f) => f.url === s.url).map((f) => f.quote).join("\n"));
-  const site = briefText(brief);
-  const everything = sheet.facts.map((f) => f.quote).join("\n") + "\n" + site + "\n" + sheet.keyword;
   const haystackFor = (cites: string[]): string => {
     if (cites.length === 0) return everything;
     return (

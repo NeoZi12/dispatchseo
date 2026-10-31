@@ -288,6 +288,8 @@ export type SerpItem = {
   title?: string;
   domain?: string;
   url?: string;
+  /** The grey line above the title ("https://www.mindstudio.ai › blog › …"). */
+  breadcrumb?: string;
   references?: Array<{ domain?: string; url?: string; title?: string; source?: string }>;
   items?: Array<{
     references?: Array<{ domain?: string; url?: string; title?: string; source?: string }>;
@@ -401,6 +403,25 @@ export async function serpOrganic(
 
 // Organic SERP items -> OrganicResult rows, shared by the live path above and
 // the serp-collect cron (task_get returns the same item shape).
+/** Since 2026-10-30 Google wraps most organic links as
+ *  `google.com/goto?url=<opaque token>` (a 302 to the real page), and
+ *  DataForSEO reports `domain: "google.com"` for every one of them - which
+ *  made rank tracking miss the tracked site and the writer skip 11 of 19
+ *  page-one results in one morning. The breadcrumb still names the real host
+ *  for ordinary sites; for the few whose breadcrumb is "20+ likes · 7 months
+ *  ago" (Medium, X) the domain stays google.com and only the fetcher, which
+ *  follows the redirect, learns where it went. */
+export const GOOGLE_REDIRECTOR_RE = /^https?:\/\/(?:www\.)?google\.[a-z.]+\/(?:goto|url)\?/i;
+
+export function isGoogleRedirector(url: string | null | undefined): boolean {
+  return !!url && GOOGLE_REDIRECTOR_RE.test(url);
+}
+
+function domainFromBreadcrumb(breadcrumb: string | undefined): string | null {
+  const m = breadcrumb?.trim().match(/^(?:https?:\/\/)?([a-z0-9-]+(?:\.[a-z0-9-]+)+)(?=[\s›/]|$)/i);
+  return m ? m[1].toLowerCase() : null;
+}
+
 export function mapOrganicItems(items: SerpItem[]): OrganicResult[] {
   return items
     .filter((it) => it.type === "organic")
@@ -408,7 +429,7 @@ export function mapOrganicItems(items: SerpItem[]): OrganicResult[] {
       position: it.rank_absolute ?? 0,
       title: it.title ?? null,
       url: it.url ?? null,
-      domain: it.domain ?? null,
+      domain: (isGoogleRedirector(it.url) ? domainFromBreadcrumb(it.breadcrumb) : null) ?? it.domain ?? null,
     }))
     .filter((it) => it.position > 0);
 }

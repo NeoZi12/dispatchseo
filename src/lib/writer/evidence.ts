@@ -163,11 +163,18 @@ export function claimUnits(markdown: string, lang?: string | null): ClaimUnit[] 
   const lines = markdown.replace(CODE_FENCE_BT_RE, (m) => m.replace(/[^\n]/g, " ")).replace(CODE_FENCE_TILDE_RE, (m) => m.replace(/[^\n]/g, " ")).split("\n");
   const out: ClaimUnit[] = [];
   const seen = new Set<string>();
-  const push = (raw: string, text: string, table: boolean) => {
+  // `context` is read by the judge but carries no figures of its own: a
+  // lead-in sentence ("Cover three things, in this order [1]:") is only
+  // checkable together with the list under it, whose items are units too.
+  const push = (raw: string, text: string, table: boolean, context = "") => {
     if (!raw || seen.has(raw)) return;
     const display = text.replace(/\]\([^)\n]*\)/g, "]").trim();
     if (display.length <= minChars) return;
-    const figures = figuresIn(display, lang);
+    // A link's label is navigation, not a claim: "our [12 CLAUDE.md Examples
+    // Worth Copying](/blog/…)" was read as the unsourced figure 12, and the
+    // internal-link check demanded that very link - an article that could
+    // not pass (2026-10-29).
+    const figures = figuresIn(text.replace(/!?\[[^\]\n]*\]\([^)\n]*\)/g, " "), lang);
     const cites = citesIn(raw);
     // Reporting verbs are an English list; other languages are covered by
     // their figures and markers (a non-English "study found" with neither is
@@ -175,8 +182,9 @@ export function claimUnits(markdown: string, lang?: string | null): ClaimUnit[] 
     const report = english && /\b(?:according to|found that|reports?|recommends?|requires?|study|survey|research shows|data shows)\b/i.test(display);
     if (figures.length === 0 && cites.length === 0 && !report) return;
     seen.add(raw);
-    out.push({ text: display.slice(0, 600), raw, cites, table, figures });
+    out.push({ text: (context ? `${display} ${context}` : display).slice(0, 600), raw, cites, table, figures });
   };
+  const listItem = /^\s*(?:[-*+]|\d+\.)\s+/;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (/^\s{0,3}#{1,6}\s/.test(line)) continue;
@@ -193,12 +201,23 @@ export function claimUnits(markdown: string, lang?: string | null): ClaimUnit[] 
       for (const row of rows) push(row.trim(), header ? `Table columns: ${cells(header)}. Row: ${cells(row)}` : cells(row), true);
       continue;
     }
+    // A line ending in ":" introduces the list below it; the judge reads
+    // the lead-in with up to twelve of its items.
+    let context = "";
+    if (/:\s*$/.test(line)) {
+      const items: string[] = [];
+      let j = i + 1;
+      while (j < lines.length && !lines[j].trim()) j++; // the blank line Markdown puts before a list
+      for (; j < lines.length && listItem.test(lines[j]) && items.length < 12; j++) items.push(lines[j].replace(listItem, "").trim());
+      if (items.length) context = items.join("; ");
+    }
     // Sentences end at . ! ? followed by space, or right after the
     // full-width stops of Chinese and Japanese (no space follows those).
-    for (const piece of line.split(/(?<=[.!?])\s+|(?<=[。！？])/)) {
+    const pieces = line.split(/(?<=[.!?])\s+|(?<=[。！？])/);
+    pieces.forEach((piece, k) => {
       const raw = piece.trim();
-      push(raw, raw.replace(/^(?:>\s*)+|^\s*(?:[-*+]|\d+\.)\s+/g, ""), false);
-    }
+      push(raw, raw.replace(/^(?:>\s*)+|^\s*(?:[-*+]|\d+\.)\s+/g, ""), false, k === pieces.length - 1 ? context : "");
+    });
   }
   return out;
 }

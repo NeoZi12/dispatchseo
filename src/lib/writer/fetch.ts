@@ -1,6 +1,7 @@
 import { lookup as dnsLookup, type LookupAddress, type LookupOptions } from "node:dns";
 import { Agent, fetch as pinnedFetch } from "undici";
 import { isPrivateHost } from "@/lib/url-guard";
+import { isGoogleRedirector } from "@/lib/dataforseo";
 import { segmentWords } from "@/lib/article-validate";
 
 // Every connection the writer makes goes through this agent, whose DNS
@@ -49,7 +50,9 @@ const MAX_BYTES = 1_500_000;
 /** The regex passes below are linear, but a 600KB page still costs CPU the
  *  handler cannot interrupt; the readable text we need is in the first part. */
 const MAX_PARSE_CHARS = 250_000;
-const MAX_REDIRECTS = 3;
+// 5, not 3: since 2026-10-30 a SERP link is google.com/goto (301 to www,
+// 302 to the page) BEFORE the page's own http->https or trailing-slash hop.
+const MAX_REDIRECTS = 5;
 const USER_AGENT = "DispatchSEO-Writer/1.0 (+https://dispatchseo.com)";
 
 export type FetchedPage = {
@@ -117,6 +120,16 @@ export async function fetchPage(url: string, opts: { timeoutMs?: number; lang?: 
       continue;
     }
     if (!res.ok) return { ok: false, reason: "blocked-status", detail: String(res.status) };
+    // Google's goto/url redirector 302s from a laptop but, from a datacenter
+    // address, often answers 200 with a "Redirect Notice" page whose only
+    // content is the link onward - which read as "too-short" and left 11 of
+    // 19 page-one results unread on 2026-10-30. Take the link and keep going.
+    if (isGoogleRedirector(target)) {
+      const onward = redirectorTarget(await readCapped(res, 65_536).catch(() => ""));
+      if (!onward) return { ok: false, reason: "redirect", detail: "google redirector gave no target" };
+      target = onward;
+      continue;
+    }
     const type = res.headers.get("content-type") ?? "";
     if (!/html/i.test(type)) return { ok: false, reason: "not-html", detail: type.split(";")[0] || undefined };
     // The timeout signal covers the body read too, so a page that streams
@@ -135,6 +148,21 @@ export async function fetchPage(url: string, opts: { timeoutMs?: number; lang?: 
     }
   }
   return { ok: false, reason: "redirect", detail: `more than ${MAX_REDIRECTS} redirects` };
+}
+
+/** The onward link in a Google redirector page: the first absolute http(s)
+ *  href or meta-refresh target that is not Google itself. */
+export function redirectorTarget(html: string): string | null {
+  const decode = (s: string) => s.replace(/&amp;/g, "&").replace(/&#39;/g, "'").replace(/&quot;/g, '"');
+  const refresh = html.match(/http-equiv=["']?refresh["']?[^>]*?url=([^"'\s>]+)/i);
+  const candidates = [refresh?.[1], ...[...html.matchAll(/href=["']?(https?:\/\/[^"'\s>]+)/gi)].map((m) => m[1])];
+  for (const c of candidates) {
+    if (!c) continue;
+    const url = decode(c);
+    if (/^https?:\/\/(?:[a-z0-9-]+\.)*google\.[a-z.]+\//i.test(url)) continue;
+    return url;
+  }
+  return null;
 }
 
 /** The page or null, for callers that do not care why. */
