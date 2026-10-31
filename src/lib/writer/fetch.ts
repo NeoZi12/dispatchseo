@@ -125,8 +125,9 @@ export async function fetchPage(url: string, opts: { timeoutMs?: number; lang?: 
     // content is the link onward - which read as "too-short" and left 11 of
     // 19 page-one results unread on 2026-10-30. Take the link and keep going.
     if (isGoogleRedirector(target)) {
-      const onward = redirectorTarget(await readCapped(res, 65_536).catch(() => ""));
-      if (!onward) return { ok: false, reason: "redirect", detail: "google redirector gave no target" };
+      const body = await readCapped(res, 65_536).catch(() => "");
+      const onward = redirectorTarget(body);
+      if (!onward) return { ok: false, reason: "redirect", detail: `google redirector gave no target: ${htmlToText(stripNoise(body)).replace(/\s+/g, " ").slice(0, 240)}` };
       target = onward;
       continue;
     }
