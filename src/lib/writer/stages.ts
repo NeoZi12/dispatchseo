@@ -102,6 +102,9 @@ import { blockedTopicsOf } from "@/lib/autopilot/prefs";
 //             produces.
 
 const MAX_PATCHES = 2;
+/** How often research waits out Google's goto hold, and for how long. */
+const MAX_REDIRECTOR_WAITS = 3;
+const REDIRECTOR_WAIT_MS = 5 * 60_000;
 const FACT_SHEET_TTL_MS = 45 * 86_400_000;
 const CLIENT_KIND = "dispatchseo-writer";
 /** More than this fraction of 8-word shingles shared with ONE source, or a
@@ -397,7 +400,29 @@ async function research(c: Ctx): Promise<void> {
       for (let round = 0; round < 3 && next < urls.length; round++) {
         let read = reads[round];
         if (!read) {
-          read = await readPages(urls, { start: next, want: round === 0 ? PAGES_WANTED : 2, lang, deadline: c.deadline });
+          const want = round === 0 ? PAGES_WANTED : 2;
+          read = await readPages(urls, { start: next, want, lang, deadline: c.deadline });
+          // Google's goto links (the SERP's shape since 2026-10-30) answer a
+          // request made minutes after the SERP was bought with "verifying
+          // your request, continue in a few seconds" and no onward link; the
+          // same token resolves by itself a few minutes later (measured
+          // 2026-10-31: held at issue, instant at +4 min). So a round short of
+          // pages because of held links is not read: the stage comes back
+          // after the hold and reads the same URLs. Rounds already read
+          // (agent_reads) are kept; this one is not saved until it is whole.
+          const held = read.unread.filter((u) => u.reason === "redirect" && /google redirector/.test(u.why));
+          const waits = Number(run.stage_outputs.redirector_waits ?? 0);
+          if (held.length && read.pages.length < want && waits < MAX_REDIRECTOR_WAITS) {
+            await saveScratch(run, "redirector_waits", waits + 1);
+            await enqueue({
+              projectId: project.id,
+              kind: "write",
+              payload: { runId: run.id, stage: "research" },
+              runAfter: new Date(Date.now() + REDIRECTOR_WAIT_MS),
+              idempotencyKey: `write:${run.id}:research:redirector:${waits + 1}`,
+            });
+            return;
+          }
           if (agent) {
             // Only what extraction reads: the prompt sees the first
             // PAGE_TEXT_CAP characters, so the quote check needs no more.
