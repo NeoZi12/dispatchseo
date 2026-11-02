@@ -7,6 +7,7 @@ import { TitleLengthChecker } from "@/components/free-tools/title-length-checker
 import { UrlSlugGenerator } from "@/components/free-tools/url-slug-generator";
 import { H1TagChecker } from "@/components/free-tools/h1-tag-checker";
 import { OgTagChecker } from "@/components/free-tools/og-tag-checker";
+import { MetaDescriptionChecker } from "@/components/free-tools/meta-description-checker";
 
 // Registry for the free, public interactive tools at /free-tools/<slug>.
 // One entry per tool - everything the index card and the detail page's
@@ -410,6 +411,54 @@ export const FREE_TOOLS: ToolEntry[] = [
       },
     ],
     Widget: OgTagChecker,
+  },
+  {
+    slug: "meta-description-checker",
+    title: "Meta description checker",
+    h1: "Meta description checker",
+    valueLine:
+      "Paste in a batch of pages and check all their meta descriptions at once - length, a missing target keyword, and, unlike a single-page checker, which ones are word-for-word duplicates of each other.",
+    metaDescription:
+      "Free meta description checker: audit a batch of pages at once for length, missing keywords, and duplicate descriptions - computed entirely in your browser. No signup, no crawling.",
+    description: [
+      "Paste in the URL, meta description, and (optionally) the target keyword for a batch of pages, and this tool checks all of them at once against Google's practical length behavior: safe, cutting it close, or likely to get cut off, on both desktop and mobile. That's the same length math as [the SEO title length checker](/free-tools/seo-title-length-checker) - 135 characters is a safe target, and the observed average snippet length before truncation is about 146 characters on desktop and 136 on mobile - but where that tool checks one title and description as you type them, this one is built for the moment you already have a list: a CMS export, a spreadsheet from a content audit, a site migration where twenty pages need re-checking at once.",
+      "The part a one-page-at-a-time checker structurally can't do is catch duplicates. Paste in \"Learn more about our services and how we can help your business grow\" as the description for three different pages and this tool flags all three as identical, because two pages competing for the same click with the exact same snippet is a real, common problem - it's the kind of thing that shows up as a \"duplicate, Google chose different canonical\" note once a site is indexed, except this catches it before publishing instead of after. Give it a target keyword per page and it also flags a description that never actually mentions the word someone would search for, which is a plain miss most tools don't check either.",
+      "Nothing you paste is uploaded anywhere - the whole audit runs in your browser tab. Once your descriptions are sized and de-duplicated, [the keyword cannibalization checker](/free-tools/keyword-cannibalization-checker) is a good next stop for the same batch of pages, since a duplicate description is often a sign two pages are targeting the same search in the first place.",
+      "This is the same pre-publish check DispatchSEO's own pipeline runs on every page it proposes, so it can't queue two guides with the same snippet in the first place. See how that fits into a fully " +
+        "[automated SEO agent](/blog/ai-seo-agent) if you'd rather this run itself across your whole site on a schedule instead of pasting pages in by hand.",
+    ],
+    faq: [
+      {
+        question: "How is this different from a normal meta description length checker?",
+        answer:
+          "Most checkers, including this site's own SEO title length checker, check one page at a time as you type. This one is built for a batch - paste in several pages at once and it audits all of them together, which is also the only way to catch duplicate descriptions: a single-page checker never sees a second page to compare against.",
+      },
+      {
+        question: "How does it decide two descriptions are duplicates?",
+        answer:
+          "It trims whitespace, collapses multiple spaces, and lowercases each description, then checks for an exact match against every other page in the batch. It's a strict, mechanical comparison on purpose - two descriptions that are only similar, not identical, are a judgment call, but two that are byte-for-byte the same after trimming are always worth fixing.",
+      },
+      {
+        question: "Why does it check desktop and mobile separately?",
+        answer:
+          "Because Google's observed average snippet length before truncation differs by device - about 146 characters on desktop versus 136 on mobile, per Semrush's own measurements, since Google doesn't publish a fixed number for either. Switch the tab and every row's verdict re-checks against the device you're looking at.",
+      },
+      {
+        question: "Is my data uploaded anywhere?",
+        answer: "No. Nothing you paste in leaves your browser tab - the length check and duplicate comparison both run locally.",
+      },
+      {
+        question: "What does the target keyword field actually check?",
+        answer:
+          "Whether that exact keyword or phrase appears anywhere in the description, case-insensitively. It's a plain substring check, not a fuzzy match, so a description that only implies the keyword without using those words will get flagged - the fix there is usually to just say the thing plainly instead of dancing around it.",
+      },
+      {
+        question: "How many pages can I check at once?",
+        answer:
+          "There's no hard limit - add as many page rows as you need. Results stay easiest to scan through somewhere in the 5-30 page range at a time, which covers most single-audit or single-migration use cases.",
+      },
+    ],
+    Widget: MetaDescriptionChecker,
   },
 ];
 
