@@ -3,6 +3,9 @@ import { db } from "@/lib/db";
 import { gscTag } from "@/lib/autopilot/report";
 import { normalizePageUrl, type GscPageStat } from "@/lib/metrics";
 import { isKnownGone } from "@/lib/page-liveness";
+import { credsForProject, keywordOverview } from "@/lib/dataforseo";
+import { cachedBulkKeywordDifficulty } from "@/lib/keyword-research-cache";
+import type { Project } from "@/lib/projects";
 import type { AutopilotArticle } from "@/lib/autopilot/report";
 
 // Server-only reads behind the article list (Home and Articles) and the
@@ -276,4 +279,73 @@ export async function loadStepTimes(projectId: string, runId: string | null): Pr
     write: last("writer"),
     check: last("judge"),
   };
+}
+
+/** The target keyword's monthly searches and difficulty, as research
+ *  measured them: the tracked keyword's row, else the idea it was written
+ *  from. Null when neither has the numbers (or a read fails). */
+export async function loadKeywordStats(projectId: string, keyword: string | null): Promise<{ volume: number | null; difficulty: number | null } | null> {
+  const k = keyword?.trim();
+  if (!k) return null;
+  // Exact, case-insensitive: ilike with its wildcards escaped.
+  const pattern = k.replace(/[\\%_]/g, (c) => `\\${c}`);
+  const num = (v: unknown) => (v == null || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
+  try {
+    const [kw, sug] = await Promise.all([
+      db().from("keywords").select("search_volume, keyword_difficulty").eq("project_id", projectId).ilike("keyword", pattern).limit(1).maybeSingle(),
+      db()
+        .from("suggestions")
+        .select("keyword_volume, keyword_difficulty")
+        .eq("project_id", projectId)
+        .ilike("primary_keyword", pattern)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+    const a = (kw.data ?? null) as { search_volume: unknown; keyword_difficulty: unknown } | null;
+    const b = (sug.data ?? null) as { keyword_volume: unknown; keyword_difficulty: unknown } | null;
+    const volume = num(a?.search_volume) ?? num(b?.keyword_volume);
+    const difficulty = num(a?.keyword_difficulty) ?? num(b?.keyword_difficulty);
+    return volume == null && difficulty == null ? null : { volume, difficulty };
+  } catch {
+    return null;
+  }
+}
+
+/** loadKeywordStats, and when research never measured the keyword (pages
+ *  the site's coding agent wrote before autopilot), measure it once through
+ *  the site's DataForSEO - the same Labs keyword_overview + KD fallback an
+ *  owner's suggested topic gets - and keep the numbers on the tracked
+ *  keyword's row. The measurement, "unknown" included, is cached a week per
+ *  keyword, so a keyword DataForSEO doesn't know isn't paid for on every
+ *  view; an error is never cached. No DataForSEO for the site: null. */
+export async function keywordStatsFor(project: Project, keyword: string | null): Promise<{ volume: number | null; difficulty: number | null } | null> {
+  const stored = await loadKeywordStats(project.id, keyword);
+  const k = keyword?.trim().toLowerCase().replace(/\s+/g, " ");
+  if (stored || !k) return stored;
+  try {
+    return await unstable_cache(
+      async () => {
+        const creds = await credsForProject(project);
+        if (!creds) return null;
+        const overview = await keywordOverview([k], creds, project.location_code, project.language_code);
+        const idea = overview.ideas.find((i) => i.keyword.trim().toLowerCase() === k) ?? overview.ideas[0];
+        const volume = typeof idea?.search_volume === "number" ? idea.search_volume : null;
+        let difficulty = typeof idea?.keyword_difficulty === "number" ? idea.keyword_difficulty : null;
+        if (volume !== null && difficulty === null) {
+          const r = await cachedBulkKeywordDifficulty([k], creds, project.location_code, project.language_code);
+          difficulty = r.kd.get(k) ?? null;
+        }
+        if (volume === null && difficulty === null) return null;
+        const pattern = k.replace(/[\\%_]/g, (c) => `\\${c}`);
+        await db().from("keywords").update({ search_volume: volume, keyword_difficulty: difficulty }).eq("project_id", project.id).ilike("keyword", pattern);
+        return { volume, difficulty };
+      },
+      ["article-keyword-measure", project.id, k],
+      { revalidate: 7 * 86_400 },
+    )();
+  } catch (e) {
+    console.warn(`[article] could not measure "${k}" for ${project.slug}: ${e instanceof Error ? e.message : String(e)}`);
+    return null;
+  }
 }

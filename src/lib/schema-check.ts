@@ -158,6 +158,7 @@ const PROBES: Probe[] = [
   { migration: "0069_writer_provider_agent", table: "projects", column: "writer_provider" },
   { migration: "0069_writer_provider_agent", table: "writer_tasks", column: "key" },
   { migration: "0070_writer_weekly_quota", table: "projects", column: "writer_weekly_quota" },
+  { migration: "0071_page_screenshots", table: "page_screenshots", column: "taken_at" },
 ];
 
 // Migrations that genuinely CANNOT be probed through this mechanism, with the

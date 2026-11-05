@@ -7,35 +7,25 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { AutopilotArticle } from "@/lib/autopilot/report";
-import { retryArticle } from "@/app/autopilot-actions";
 import {
   ARTICLE_SORTS,
   ARTICLE_STATUS,
   articleDate,
-  articleStep,
-  longDate,
   shortDate,
   articleHref,
   statusLabel,
-  stepLine,
   type ArticleSort,
 } from "@/app/(dashboard)/article-status";
 import type { ArticleGlance } from "@/app/(dashboard)/articles/article-data";
-import { ActionForm } from "./action-form";
-import { buttonClass } from "./button";
-import { PipelineSteps } from "./pipeline-steps";
 import { StatusPill } from "./status-pill";
 import { ClickIcon, SearchIcon } from "./overview-chart";
 import { cx, FOCUS_RING } from "./styles";
-import { friendlyError } from "@/lib/autopilot/friendly";
 
 // The article list, one component for Home (the latest few) and the
 // Articles page (all of them, under status tabs), so the two behave the
 // same. Four columns a row - status, title, date, clicks - and the whole row
-// opens (native <details>, keyboard and no-JS included) onto a short panel
-// of plain facts, one per line, and the one or two buttons that apply.
-// Everything deeper (score, claims, angle, timeline) is on the article's
-// own page, one click further.
+// is a link to the article's own page (preview, numbers, the live link and
+// whatever action applies).
 
 const GRID = "sm:grid-cols-[10rem_minmax(0,1fr)_5rem_5.5rem_1rem]";
 const css = (v: Record<string, string | number>) => v as React.CSSProperties;
@@ -91,15 +81,14 @@ export function SortChips({
 export function ArticleList({
   articles,
   glances,
-  slug,
-  paused,
   at = 0,
   pageSize,
 }: {
   articles: AutopilotArticle[];
   glances: Record<string, ArticleGlance>;
-  slug: string;
-  paused: boolean;
+  /** Kept for callers; the row's actions live on the article's page now. */
+  slug?: string;
+  paused?: boolean;
   /** Arrival delay (ms) of the first row; the rest follow 40ms apart. */
   at?: number;
   /** Show this many rows, then "Show more" adds the next batch. */
@@ -126,7 +115,7 @@ export function ArticleList({
           {shown.map((a, i) => (
             // The first ten rise in order; the rest are simply there.
             <li key={a.draftId || a.runId || a.createdAt} className={i < 10 ? "arrive-up" : undefined} style={i < 10 ? css({ "--at": `${at}ms`, "--i": i, "--step": "40ms" }) : undefined}>
-              <Row a={a} glance={glances[a.draftId || a.runId || a.createdAt]} slug={slug} paused={paused} />
+              <Row a={a} glance={glances[a.draftId || a.runId || a.createdAt]} />
             </li>
           ))}
         </ul>
@@ -141,60 +130,55 @@ export function ArticleList({
   );
 }
 
-function Row({ a, glance, slug, paused }: { a: AutopilotArticle; glance: ArticleGlance | undefined; slug: string; paused: boolean }) {
+function Row({ a, glance }: { a: AutopilotArticle; glance: ArticleGlance | undefined }) {
   const s = ARTICLE_STATUS[a.status];
   const live = a.status === "published";
-  // The panel's markup is built the first time the row opens, not for every
-  // row up front: most rows are never opened, and each panel is the bulk of
-  // a row's HTML. (Its facts are already here - nothing is fetched.)
-  const [opened, setOpened] = useState(false);
-  return (
-    // Waiting on the owner: an amber edge that stays, and three soft passes
-    // on first paint so the eye lands here.
-    <details
-      className={cx("dispatch-details group", s.attention ? "dispatch-flag shadow-[inset_2px_0_0_var(--color-warn)]" : "")}
-      onToggle={(e) => e.currentTarget.open && setOpened(true)}
-    >
-      <summary className="al-sum">
-        <div className="min-w-0 sm:order-2">
-          <p className="al-title">{a.title}</p>
-          {/* The search it was written for, quiet under the title. */}
-          {a.keyword ? (
-            <p className="mt-1 flex min-w-0 items-center gap-1.5 text-[12.5px] text-ink-faint">
-              <SearchIcon className="h-3.5 w-3.5 shrink-0" />
-              <span className="sr-only">Written for the search </span>
-              <span className="truncate">{a.keyword}</span>
-            </p>
-          ) : null}
-        </div>
-        <div className="flex items-center gap-4 sm:contents">
-          <div className="sm:order-1">
-            {/* Known not to load any more: grey "Gone", whatever the
-                writer last said. */}
-            {glance?.gone ? (
-              <StatusPill tone="neutral">Gone</StatusPill>
-            ) : (
-              <StatusPill tone={s.tone} live={s.live}>
-                {statusLabel(a)}
-              </StatusPill>
-            )}
-          </div>
-          <span className="text-[13px] text-ink-muted tabular-nums sm:order-3 sm:text-right">{shortDate(articleDate(a))}</span>
-          {/* Clicks: the figure that rewards, icon and number as one
-              right-aligned unit so the counts stack down the column. */}
-          {live ? (
-            <span className="inline-flex items-center gap-1.5 sm:order-4 sm:justify-end">
-              <ClickIcon className={cx("h-4 w-4 shrink-0", a.clicks28d > 0 ? "text-ok" : "text-ink-faint")} />
-              <span className={cx("text-[16px] font-semibold tracking-tight tabular-nums", a.clicks28d > 0 ? "text-ink" : "text-ink-muted")}>
-                {a.clicks28d.toLocaleString("en-US")}
-              </span>
-              <span className="text-[13px] text-ink-faint sm:sr-only">{a.clicks28d === 1 ? "click" : "clicks"}</span>
-            </span>
+  // The whole row opens the article's own page: preview, numbers, the
+  // live link and whatever action applies all live there (owner,
+  // 2026-11-05: every way to an article goes through its details first).
+  const href = articleHref(a);
+  const body = (
+    <>
+      <div className="min-w-0 sm:order-2">
+        <p className="al-title transition-colors group-hover:text-accent">{a.title}</p>
+        {/* The search it was written for, quiet under the title. */}
+        {a.keyword ? (
+          <p className="mt-1 flex min-w-0 items-center gap-1.5 text-[12.5px] text-ink-faint">
+            <SearchIcon className="h-3.5 w-3.5 shrink-0" />
+            <span className="sr-only">Written for the search </span>
+            <span className="truncate">{a.keyword}</span>
+          </p>
+        ) : null}
+      </div>
+      <div className="flex items-center gap-4 sm:contents">
+        <div className="sm:order-1">
+          {/* Known not to load any more: grey "Gone", whatever the
+              writer last said. */}
+          {glance?.gone ? (
+            <StatusPill tone="neutral">Gone</StatusPill>
           ) : (
-            <span className="hidden text-right text-[13px] text-ink-faint sm:order-4 sm:block" aria-hidden="true">
-              -
-            </span>
+            <StatusPill tone={s.tone} live={s.live}>
+              {statusLabel(a)}
+            </StatusPill>
           )}
+        </div>
+        <span className="text-[13px] text-ink-muted tabular-nums sm:order-3 sm:text-right">{shortDate(articleDate(a))}</span>
+        {/* Clicks: the figure that rewards, icon and number as one
+            right-aligned unit so the counts stack down the column. */}
+        {live ? (
+          <span className="inline-flex items-center gap-1.5 sm:order-4 sm:justify-end">
+            <ClickIcon className={cx("h-4 w-4 shrink-0", a.clicks28d > 0 ? "text-ok" : "text-ink-faint")} />
+            <span className={cx("text-[16px] font-semibold tracking-tight tabular-nums", a.clicks28d > 0 ? "text-ink" : "text-ink-muted")}>
+              {a.clicks28d.toLocaleString("en-US")}
+            </span>
+            <span className="text-[13px] text-ink-faint sm:sr-only">{a.clicks28d === 1 ? "click" : "clicks"}</span>
+          </span>
+        ) : (
+          <span className="hidden text-right text-[13px] text-ink-faint sm:order-4 sm:block" aria-hidden="true">
+            -
+          </span>
+        )}
+        {href ? (
           <svg
             viewBox="0 0 24 24"
             fill="none"
@@ -202,94 +186,24 @@ function Row({ a, glance, slug, paused }: { a: AutopilotArticle; glance: Article
             strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
-            className="al-chev"
+            className="al-chev transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none"
             aria-hidden="true"
           >
-            <path d="M6 9l6 6 6-6" />
+            <path d="M9 6l6 6-6 6" />
           </svg>
-        </div>
-      </summary>
-      <div className="dispatch-details-body al-panel">{opened ? <Glance a={a} glance={glance} slug={slug} paused={paused} /> : null}</div>
-    </details>
-  );
-}
-
-/** The expand panel: plain facts, one per line, then the buttons. */
-function Glance({ a, glance, slug, paused }: { a: AutopilotArticle; glance: ArticleGlance | undefined; slug: string; paused: boolean }) {
-  const live = a.status === "published";
-  const href = articleHref(a);
-  const sources = glance?.sources ?? [];
-  const spot =
-    glance?.now != null
-      ? `#${Math.max(1, Math.round(glance.now))} now${glance.best ? `, best #${Math.max(1, Math.round(glance.best.position))}` : ""}`
-      : live
-        ? "Not on Google yet"
-        : null;
-  // Retry starts a new run, so only a failed RUN can (a draft the quality
-  // gate rejected has a finished run), and never while paused.
-  // Not for a content park: the writer set the idea aside on purpose.
-  const canRetry = a.runStatus === "failed" && a.failureKind !== "content" && a.runId != null && !paused;
-
-  const step = articleStep(a);
-  return (
-    <div className="space-y-5">
-      {step != null ? (
-        <div className="max-w-xl">
-          <PipelineSteps current={step} labels />
-          <p className="mt-3 text-[14px] leading-relaxed text-ink-muted">{stepLine(step)}</p>
-        </div>
-      ) : null}
-      <dl className="al-facts">
-        <Fact label={live ? "Went live" : "Started"}>{longDate(live ? a.publishedAt : a.createdAt)}</Fact>
-        {spot ? <Fact label="Spot on Google">{spot}</Fact> : null}
-        {live ? (
-          <Fact label="People who clicked">
-            {a.clicks28d.toLocaleString("en-US")} in the last 28 days
-          </Fact>
-        ) : null}
-        {a.keyword ? <Fact label="Written for the search">{a.keyword}</Fact> : null}
-        {a.source === "agent" ? <Fact label="Written by">Your coding agent, before autopilot</Fact> : null}
-        {sources.length ? (
-          <Fact label="Checked against">
-            {sources.length} {sources.length === 1 ? "source" : "sources"}{" "}
-            <span className="text-[12.5px] text-ink-faint">
-              ({[...new Set(sources.map((s) => s.host))].slice(0, 4).join(", ")}
-              {new Set(sources.map((s) => s.host)).size > 4 ? ", ..." : ""})
-            </span>
-          </Fact>
-        ) : null}
-        {glance?.gone ? <Fact label="On your site">Gone. The page doesn&apos;t load any more, so it can&apos;t earn new clicks.</Fact> : null}
-        {a.status === "failed" ? <Fact label="Why it stopped">{friendlyError(a.error) ?? "It couldn't finish with facts it could verify, so nothing was published."}</Fact> : null}
-      </dl>
-      <div className="flex flex-wrap items-center gap-3">
-        {live && a.url && !glance?.gone ? (
-          <a href={a.url} target="_blank" rel="noopener noreferrer" className={buttonClass("primary", "md")}>
-            Open the article
-            <ExternalIcon />
-          </a>
-        ) : a.status === "needs_setup" ? (
-          <Link href="/settings?section=publishing" className={buttonClass("primary", "md")}>
-            Choose where articles go
-          </Link>
-        ) : canRetry ? (
-          <ActionForm action={retryArticle} slug={slug} submitLabel="Try again" hidden={{ run_id: a.runId! }} className="[&_p:empty]:hidden" />
-        ) : null}
-        {href ? (
-          <Link href={href} className={buttonClass("secondary", "md")}>
-            Full details
-          </Link>
         ) : null}
       </div>
-    </div>
-  );
-}
-
-function Fact({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <>
-      <dt className="text-ink-muted">{label}</dt>
-      <dd className="al-dd">{children}</dd>
     </>
+  );
+  // Waiting on the owner: an amber edge that stays, and three soft passes
+  // on first paint so the eye lands here.
+  const flag = s.attention ? "dispatch-flag shadow-[inset_2px_0_0_var(--color-warn)]" : "";
+  return href ? (
+    <Link href={href} className={cx("group al-sum", flag)}>
+      {body}
+    </Link>
+  ) : (
+    <div className={cx("al-sum cursor-default hover:bg-transparent", flag)}>{body}</div>
   );
 }
 

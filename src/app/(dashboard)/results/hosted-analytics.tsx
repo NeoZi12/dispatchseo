@@ -66,6 +66,12 @@ export async function HostedAnalytics() {
   const connected = Boolean(project.gsc_site_url);
   // Pages we track that no longer load, by path (the table's key).
   const gone = new Set([...goneUrls].map((u) => pagePath(u)));
+  // Our articles' own dashboard pages, by path: their rows open those.
+  const articleAt = new Map<string, string>();
+  for (const a of report?.articles ?? []) {
+    const href = a.url ? articleHref(a) : null;
+    if (a.url && href) articleAt.set(pagePath(a.url), href);
+  }
   const published = (report?.articles ?? [])
     .filter((a) => a.status === "published" && a.publishedAt)
     .map((a) => ({ at: a.publishedAt!, title: a.title, href: articleHref(a) }));
@@ -110,7 +116,7 @@ export async function HostedAnalytics() {
 
           <section aria-labelledby="pages-title" className="arrive-up space-y-4" style={at(960)}>
             <CardHeader id="pages-title" title="Where they landed" description="The pages on your site people opened from Google." />
-            <LandedTable at={960} rows={o.breakdown.rows.map((r) => ({ path: r.path, url: r.url, title: r.title, clicks: r.clicks, impressions: r.impressions, position: r.avgPosition, gone: gone.has(r.path) }))} />
+            <LandedTable at={960} rows={o.breakdown.rows.map((r) => ({ path: r.path, url: r.url, title: r.title, clicks: r.clicks, impressions: r.impressions, position: r.avgPosition, gone: gone.has(r.path), href: articleAt.get(r.path) ?? null }))} />
           </section>
 
           <section aria-labelledby="queries-title" className="arrive-up space-y-4" style={at(1040)}>

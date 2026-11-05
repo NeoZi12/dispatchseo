@@ -6,6 +6,7 @@ import { schemaScript } from "@/lib/article-render";
 import { dryDraftBlocked, parkDryDraft } from "./dry-guard";
 import { trackPublishedKeyword } from "@/lib/autopilot/tracking";
 import { ideaDone } from "@/lib/writer/runs";
+import { warmScreenshotsLater } from "@/lib/page-screenshot";
 
 // The hosted half of the publish job: the article is served by us under the
 // site's own /blog (src/lib/hosted-blog.ts), so "publishing" is a render for
@@ -77,4 +78,7 @@ export async function runHostedPublish(project: Project, draftId: string): Promi
     .eq("id", row.id)
     .in("status", LIVE);
   if (error) throw new Error(`published, but could not record it: ${error.message}`);
+  // The dashboard's preview of it (page-screenshot.ts). If the blog isn't
+  // reachable at this address yet, the dashboard takes it later.
+  warmScreenshotsLater(project.id, [url], 1);
 }

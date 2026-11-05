@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
 import { CountUp } from "./count-up";
@@ -304,7 +305,7 @@ export function OverviewChart({
                 <Area
                   buckets={buckets}
                   value={(b) => b.impressions}
-                  format={(v) => `${v.toLocaleString("en-US")} ${v === 1 ? "time" : "times"}`}
+                  format={(v) => `${v.toLocaleString("en-US")} ${v === 1 ? "impression" : "impressions"}`}
                   size={size}
                   tone="info"
                   heightClass="h-24"
@@ -413,12 +414,45 @@ export function ClickIcon({ className }: { className?: string }) {
   );
 }
 
+/** A list row's link: the article's dashboard page in-app, or a page on
+ *  the site in a new tab. Shared with Analytics' "Where they landed". */
+export function RowLink({ href, external, className, children }: { href: string; external: boolean; className?: string; children: React.ReactNode }) {
+  return external ? (
+    <a href={href} target="_blank" rel="noopener noreferrer" className={className}>
+      {children}
+    </a>
+  ) : (
+    <Link href={href} className={className}>
+      {children}
+    </Link>
+  );
+}
+
+/** The arrow at a linked row's end: a chevron into the dashboard, the
+ *  diagonal out-arrow for a new tab. */
+export function RowArrow({ external }: { external: boolean }) {
+  return external ? (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 16 16"
+      className="h-4 w-4 shrink-0 text-ink-faint transition-[color,transform] duration-150 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-ok"
+    >
+      <path d="M5 11 11 5M6 5h5v5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ) : (
+    <svg aria-hidden="true" viewBox="0 0 16 16" className="h-4 w-4 shrink-0 text-ink-faint transition-[color,transform] duration-150 group-hover:translate-x-0.5 group-hover:text-ok">
+      <path d="m6 3.5 4.5 4.5L6 12.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 /** The pages the range's clicks landed on, best first, made to feel like a
  *  reward: each row's click count is the big figure (the way a video's
  *  views are), with its rank and its name on the left, and its spot on
  *  Google beside the count. The right side is
  *  fixed-width columns, so spots, counts and arrows line up row to row.
- *  The whole row opens the live post in a new tab. The top three ranks
+ *  The whole row opens the article's own page (the live post in a new tab
+ *  for a page that isn't one of ours). The top three ranks
  *  carry the green, the rest stay quiet. Rows arrive one after another and
  *  re-arrive quickly when the range switches, like the lines above. */
 function LandedList({ rows, rangeName, when, redraw }: { rows: LandedPage[]; rangeName: string; when: string; redraw: string | null }) {
@@ -448,10 +482,9 @@ function LandedList({ rows, rangeName, when, redraw }: { rows: LandedPage[]; ran
             const podium = i < 3;
             return (
               <li key={p.path} className="arrive-up" style={css({ "--at": quick ? "0ms" : "960ms", "--i": i, "--step": quick ? "30ms" : "55ms" })}>
-                <a
-                  href={p.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <RowLink
+                  href={p.href ?? p.url}
+                  external={!p.href}
                   className={cx("group flex items-center gap-4 rounded-xl px-3 py-3.5 transition-colors hover:bg-surface-2 sm:gap-5", FOCUS_RING)}
                 >
                   <span
@@ -505,15 +538,9 @@ function LandedList({ rows, rangeName, when, redraw }: { rows: LandedPage[]; ran
                       </span>
                     </span>
                   </span>
-                  <svg
-                    aria-hidden="true"
-                    viewBox="0 0 16 16"
-                    className="h-4 w-4 shrink-0 text-ink-faint transition-[color,transform] duration-150 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-ok"
-                  >
-                    <path d="M5 11 11 5M6 5h5v5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  <span className="sr-only">(opens the post in a new tab)</span>
-                </a>
+                  <RowArrow external={!p.href} />
+                  {p.href ? null : <span className="sr-only">(opens the post in a new tab)</span>}
+                </RowLink>
               </li>
             );
           })}

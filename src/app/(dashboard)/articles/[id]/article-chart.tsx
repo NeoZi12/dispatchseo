@@ -6,7 +6,7 @@ import { cx, FOCUS_RING } from "@/components/ui/styles";
 
 // One article, day by day, from the day it was published (owner,
 // 2026-11-05: start when the article came out, fewer colours, to the point).
-// One chart, one colour, one switch: clicks and times shown as daily bars,
+// One chart, one colour, one switch: clicks and impressions as daily bars,
 // its spot on Google as a line with the best spot at the top. Hovering a day
 // gives all three numbers for it, whichever is switched on. Hand-rolled SVG:
 // the repo bans chart libraries; anything that must not stretch is HTML.
@@ -14,7 +14,7 @@ import { cx, FOCUS_RING } from "@/components/ui/styles";
 type Metric = "clicks" | "impressions" | "position";
 const METRICS: { key: Metric; label: string }[] = [
   { key: "clicks", label: "Clicks" },
-  { key: "impressions", label: "Times shown" },
+  { key: "impressions", label: "Impressions" },
   { key: "position", label: "Spot on Google" },
 ];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -49,20 +49,23 @@ export function ArticleChart({ daily }: { daily: string }) {
   const hi = present.length ? Math.max(...present) : 0;
   const lo = present.length ? Math.min(...present) : 0;
   const top = bars ? Math.max(1, hi) : 0;
-  // Spot: lower is better, so the best spot sits at the top.
-  const yPos = (p: number) => 12 + ((p - lo) / Math.max(hi - lo, 1)) * (H - 24);
+  // Spot: lower is better, so the best spot sits at the top. A day Google
+  // didn't show it sits on the floor, below the worst spot, so the line runs
+  // unbroken from the day it was published (owner, 2026-11-05: no missing
+  // stretch - nothing is a flat line).
+  const unranked = !bars && present.length > 0 && days.some((d) => d.position == null);
+  const FLOOR = H - 1;
+  const span = unranked ? H - 60 : H - 24;
+  const yPos = (p: number) => 12 + ((p - lo) / Math.max(hi - lo, 1)) * span;
 
   let line = "";
   if (!bars) {
-    let open = false;
     days.forEach((d, i) => {
-      if (d.position == null) {
-        open = false;
-        return;
-      }
-      line += `${open ? "L" : "M"}${xMid(i).toFixed(1)},${yPos(d.position).toFixed(1)} `;
-      open = true;
+      const y = d.position == null ? FLOOR : yPos(d.position);
+      line += `${i ? "L" : "M"}${xMid(i).toFixed(1)},${y.toFixed(1)} `;
     });
+    // One day alone draws nothing: give it a short flat stroke.
+    if (n === 1) line += `L${(xMid(0) + 1).toFixed(1)},${(days[0].position == null ? FLOOR : yPos(days[0].position)).toFixed(1)}`;
   }
   const tk = ticks(n, 6);
   const h = hover != null ? days[hover] : null;
@@ -100,11 +103,27 @@ export function ArticleChart({ daily }: { daily: string }) {
       </div>
 
       <div className="mt-5 flex gap-3">
-        {/* The scale: top and bottom only, which is all a reader needs. */}
-        <div aria-hidden="true" className="flex h-56 w-9 shrink-0 flex-col justify-between text-right text-[11.5px] tabular-nums text-ink-faint">
-          <span>{empty ? "" : bars ? num(top) : spot(lo)}</span>
-          <span>{empty ? "" : bars ? "0" : spot(hi)}</span>
-        </div>
+        {/* The scale: top and bottom only, which is all a reader needs. For
+            the spot line, the best and worst spots sit level with their
+            values, and the floor reads "off" when it has unshown days. */}
+        {bars || empty ? (
+          <div aria-hidden="true" className="flex h-56 w-9 shrink-0 flex-col justify-between text-right text-[11.5px] tabular-nums text-ink-faint">
+            <span>{empty ? "" : num(top)}</span>
+            <span>{empty ? "" : "0"}</span>
+          </div>
+        ) : (
+          <div aria-hidden="true" className="relative h-56 w-9 shrink-0 text-right text-[11.5px] tabular-nums text-ink-faint">
+            <span className="absolute right-0 -translate-y-1/2" style={{ top: `${(yPos(lo) / H) * 100}%` }}>
+              {spot(lo)}
+            </span>
+            {hi !== lo ? (
+              <span className="absolute right-0 -translate-y-1/2" style={{ top: `${(yPos(hi) / H) * 100}%` }}>
+                {spot(hi)}
+              </span>
+            ) : null}
+            {unranked ? <span className="absolute bottom-0 right-0 translate-y-1/2">off</span> : null}
+          </div>
+        )}
         <div className="min-w-0 flex-1">
           <div className="relative h-56 touch-none select-none" onPointerMove={onMove} onPointerDown={onMove} onPointerLeave={() => setHover(null)}>
             <span aria-hidden="true" className="absolute inset-x-0 top-0 border-t border-dashed border-line-soft" />
@@ -149,9 +168,11 @@ export function ArticleChart({ daily }: { daily: string }) {
                   <p className="mt-1 tabular-nums text-ink">
                     <span className={metric === "clicks" ? "font-semibold" : ""}>{num(h.clicks)} {h.clicks === 1 ? "click" : "clicks"}</span>
                     <span className="text-ink-faint"> · </span>
-                    <span className={metric === "impressions" ? "font-semibold" : ""}>shown {num(h.impressions)}</span>
+                    <span className={metric === "impressions" ? "font-semibold" : ""}>
+                      {num(h.impressions)} {h.impressions === 1 ? "impression" : "impressions"}
+                    </span>
                     <span className="text-ink-faint"> · </span>
-                    <span className={metric === "position" ? "font-semibold" : ""}>spot {spot(h.position)}</span>
+                    <span className={metric === "position" ? "font-semibold" : ""}>{h.position == null ? "not on Google" : `spot ${spot(h.position)}`}</span>
                   </p>
                 </div>
               </>

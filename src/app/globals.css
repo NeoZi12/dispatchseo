@@ -676,19 +676,10 @@
     display: none;
   }
   .al-title {
-    @apply line-clamp-2 text-[15px] font-medium text-ink group-open:line-clamp-none sm:truncate sm:group-open:whitespace-normal;
+    @apply line-clamp-2 text-[15px] font-medium text-ink sm:truncate;
   }
   .al-chev {
-    @apply ml-auto h-4 w-4 shrink-0 text-ink-faint transition-transform group-open:rotate-180 motion-reduce:transition-none sm:order-5 sm:ml-0;
-  }
-  .al-panel {
-    @apply border-t border-line-soft bg-canvas/40 px-4 py-5 sm:px-5;
-  }
-  .al-facts {
-    @apply grid gap-y-2.5 text-[14px] sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-x-6;
-  }
-  .al-dd {
-    @apply min-w-0 text-ink sm:mb-0 [&:not(:last-child)]:mb-1.5;
+    @apply ml-auto h-4 w-4 shrink-0 text-ink-faint sm:order-5 sm:ml-0;
   }
 }
 

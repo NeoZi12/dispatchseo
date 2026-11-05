@@ -471,9 +471,12 @@ unset.
 
 <Field name="CLOUDFLARE_BROWSER_TOKEN" type="string" tag="Optional">
 
-A Cloudflare API token with the **Browser Rendering - Edit** permission,
-used with `CLOUDFLARE_ACCOUNT_ID` to screenshot each live article for the
-preview on its detail page (cached a week per page). Falls back to
+A Cloudflare API token with the **Browser Rendering - Edit** permission
+(listed as **Browser Run - Edit** in newer dashboards), used with
+`CLOUDFLARE_ACCOUNT_ID` to screenshot each live article for the preview on
+its detail page. Each page is shot once - when it publishes, or in the
+background the first time the dashboard lists it - and kept in the
+database, re-taken after 30 days. Falls back to
 `CLOUDFLARE_API_TOKEN` when unset. Without either, the screenshot comes
 from Microlink instead (see `MICROLINK_API_KEY`).
 
@@ -484,7 +487,7 @@ from Microlink instead (see `MICROLINK_API_KEY`).
 A [Microlink](https://microlink.io) API key for the article previews'
 screenshots when Cloudflare isn't set up. Without it they use Microlink's
 keyless free tier, a small daily allowance per server; when that runs out
-the preview shows the page's own share image.
+the preview shows a plain card with the page's title and description.
 
 </Field>
 

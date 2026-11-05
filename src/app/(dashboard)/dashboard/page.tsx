@@ -90,6 +90,7 @@ import { isOperator, operatorOverview } from "@/lib/autopilot/operator";
 import { loadOverviewData } from "./overview-data";
 import { getHostedQueue } from "@/lib/autopilot/queue";
 import { loadReport, writerMode } from "../mode";
+import { warmScreenshotsLater } from "@/lib/page-screenshot";
 
 export const dynamic = "force-dynamic";
 
@@ -360,6 +361,9 @@ export default async function Home({
       // Home's calendar and "Up next" never disagree with /queue.
       getHostedQueue(project).catch(() => null),
     ]);
+    // Live articles without a stored preview get one after this response,
+    // a few per visit (page-screenshot.ts), so the article page shows it at once.
+    if (report) warmScreenshotsLater(project.id, report.articles.filter((a) => a.status === "published" && a.url).map((a) => a.url!), 4);
     return (
       <HostedReport
         project={project}

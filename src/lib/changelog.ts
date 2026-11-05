@@ -73,6 +73,25 @@ export type ChangelogEntry = {
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
+    kind: "improved",
+    text:
+      "Opening an article is faster: its page preview is taken once when it publishes and kept, so it shows at " +
+      "once instead of loading a fresh screenshot, and the page appears before Google's numbers finish loading.",
+  },
+  {
+    kind: "improved",
+    text:
+      "Every article row - your top posts on Home, the Articles list and Analytics' pages - now opens the " +
+      "article's own page first, with its preview, its numbers and the link to the live post.",
+  },
+  {
+    kind: "improved",
+    text:
+      "An article's page shows how this week (or month) compares with the one before for clicks, impressions and its " +
+      "spot on Google, and its details are down to what matters: the keyword it targets with its monthly searches and " +
+      "difficulty, how many different searches it shows up for, its best spot, when it went out and its address.",
+  },
+  {
     kind: "fixed",
     text:
       "The writer no longer picks an idea whose article is still waiting to go live, and a refused idea no longer " +

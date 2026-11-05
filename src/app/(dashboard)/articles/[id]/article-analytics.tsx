@@ -3,6 +3,8 @@ import { gscClientForProject, gscPageSearches, type PageSearchStats } from "@/li
 import type { Project } from "@/lib/projects";
 import { fmtInt, longDate } from "../../article-status";
 import type { PageDay } from "../article-data";
+import { ExternalIcon } from "@/components/ui/article-list";
+import { cx, FOCUS_RING } from "@/components/ui/styles";
 
 // One article's numbers, everything an owner asks about how it went (owner,
 // 2026-11-05: "spot on Google, clicks, impressions, what people searched to
@@ -51,7 +53,7 @@ export async function loadSearches(project: Project, url: string, publishedAt: s
         const sc = await gscClientForProject(project);
         return { ...(await gscPageSearches(site, path, start, sc)), since: start };
       },
-      ["article-searches-v2", project.id, path, start],
+      ["article-searches-v3", project.id, path, start],
       { revalidate: SIX_HOURS },
     )();
   } catch (e) {
@@ -103,21 +105,73 @@ function facts(series: PageDay[], publishedAt: string | null) {
   return { latest, best, firstShown, firstClick, bestDay, after, published };
 }
 
-/** The stats row: lifetime clicks, times shown, click rate, and its spot. */
+type Delta = { text: string; good: boolean | null; title: string };
+
+/** The latest window against the one before it: 28 days against 28 once
+ *  the article has 56 days of history, else 7 against 7 from 14 days, else
+ *  nothing (too new to compare). Google's newest days lead the series. */
+function windows(series: PageDay[]): { cur: PageDay[]; prev: PageDay[]; label: string; title: string } | null {
+  const n = series.length >= 56 ? 28 : series.length >= 14 ? 7 : 0;
+  if (!n) return null;
+  return {
+    cur: series.slice(-n),
+    prev: series.slice(-2 * n, -n),
+    label: n === 7 ? "this week" : "this month",
+    title: n === 7 ? "The last 7 days of Google's numbers against the 7 before" : "The last 28 days of Google's numbers against the 28 before",
+  };
+}
+
+/** A count's change, as "▲ 24% this week" (or "+5" when there was none before). */
+function countDelta(cur: number, prev: number, w: { label: string; title: string }): Delta | null {
+  if (!cur && !prev) return null;
+  if (!prev) return { text: `▲ ${fmtInt(cur)} new ${w.label}`, good: true, title: w.title };
+  const change = (cur - prev) / prev;
+  if (Math.abs(change) < 0.005) return null;
+  const p = Math.abs(change) >= 10 ? `${Math.round(Math.abs(change))}x` : `${Math.round(Math.abs(change) * 100)}%`;
+  return { text: `${change > 0 ? "▲" : "▼"} ${p} ${w.label}`, good: change > 0, title: w.title };
+}
+
+/** Impression-weighted average spot over some days, or null when never shown. */
+function avgSpot(days: PageDay[]): number | null {
+  let w = 0;
+  let sum = 0;
+  for (const d of days) {
+    if (d.position == null || !d.impressions) continue;
+    w += d.impressions;
+    sum += d.position * d.impressions;
+  }
+  return w ? sum / w : null;
+}
+
+/** The stats row: lifetime clicks, impressions, click rate and its spot,
+ *  each with how its latest week (or month) compares with the one before. */
 export function ArticleStats({ series, searches: s }: { series: PageDay[]; searches: Searches }) {
   const searches = s && !s.failed ? s : null;
   const { latest, best } = facts(series, null);
   const clicks = searches ? searches.totals.clicks : series.reduce((n, d) => n + d.clicks, 0);
   const impressions = searches ? searches.totals.impressions : series.reduce((n, d) => n + d.impressions, 0);
   const avg = searches?.totals.position ?? null;
-  const tiles: { label: string; value: string; sub: string }[] = [
-    { label: "Clicks from Google", value: fmtInt(clicks), sub: "people who opened it from a search" },
-    { label: "Times shown on Google", value: fmtInt(impressions), sub: "times it appeared in results" },
+  const w = windows(series);
+  const sum = (days: PageDay[], k: "clicks" | "impressions") => days.reduce((n, d) => n + d[k], 0);
+  let spotDelta: Delta | null = null;
+  if (w) {
+    const a = avgSpot(w.cur);
+    const b = avgSpot(w.prev);
+    if (a != null && b != null) {
+      const moved = Math.round(b) - Math.round(a); // up the page = a smaller number
+      // No move, no line: "holding" read as jargon (owner, 2026-11-05).
+      spotDelta = moved ? { text: `${moved > 0 ? "▲" : "▼"} ${plural(Math.abs(moved), "spot")} ${w.label}`, good: moved > 0, title: w.title } : null;
+    }
+  }
+  const tiles: { label: string; value: string; sub: string; delta?: Delta | null }[] = [
+    { label: "Clicks from Google", value: fmtInt(clicks), sub: "people who opened it from a search", delta: w ? countDelta(sum(w.cur, "clicks"), sum(w.prev, "clicks"), w) : null },
+    { label: "Impressions", value: fmtInt(impressions), sub: "times it appeared on Google", delta: w ? countDelta(sum(w.cur, "impressions"), sum(w.prev, "impressions"), w) : null },
     { label: "Click rate", value: impressions ? pct(clicks / impressions) : "-", sub: impressions ? "of the times it was shown" : "not shown yet" },
     {
       label: "Spot on Google",
       value: spot(latest?.position),
       sub: latest ? `on ${longDate(latest.date)}${best && best !== latest ? ` · best ${spot(best.position)}` : ""}${avg ? ` · average ${spot(avg)}` : ""}` : "not shown yet",
+      delta: spotDelta,
     },
   ];
   return (
@@ -125,7 +179,20 @@ export function ArticleStats({ series, searches: s }: { series: PageDay[]; searc
       {tiles.map((t) => (
         <div key={t.label} className="min-w-0 bg-surface px-5 py-5 sm:px-6">
           <dt className="text-[13px] text-ink-muted">{t.label}</dt>
-          <dd className="mt-1.5 text-[1.9rem] font-semibold leading-none tracking-tight text-ink tabular-nums">{t.value}</dd>
+          <dd className="mt-1.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+            <span className="text-[1.9rem] font-semibold leading-none tracking-tight text-ink tabular-nums">{t.value}</span>
+            {t.delta ? (
+              <span
+                title={t.delta.title}
+                className={cx(
+                  "whitespace-nowrap text-[13px] font-semibold tabular-nums",
+                  t.delta.good == null ? "text-ink-faint" : t.delta.good ? "text-ok" : "text-danger",
+                )}
+              >
+                {t.delta.text}
+              </span>
+            ) : null}
+          </dd>
           <dd className="mt-2 truncate text-[12.5px] text-ink-faint" title={t.sub}>
             {t.sub}
           </dd>
@@ -202,10 +269,33 @@ export function hasSearchRows(s: Searches): boolean {
   return Boolean(s && !s.failed && s.queries.length);
 }
 
-/** The facts about it: dates and records, no decoration. A column of rows
- *  beside the searches, or a full-width grid of cells when there are none. */
-export function ArticleDetails({ series, publishedAt, keyword, url, wide = false }: { series: PageDay[]; publishedAt: string | null; keyword: string | null; url: string | null; wide?: boolean }) {
-  const { best, firstShown, firstClick, bestDay, after, published } = facts(series, publishedAt);
+type Fact = { label: string; value: string; sub?: string; href?: string; quiet?: boolean };
+export type KeywordStats = { volume: number | null; difficulty: number | null };
+
+/** The facts about it, big and plain: the search it targets, its best
+ *  spot, when it went out and its address. A full-width
+ *  grid under the chart (the last cell stretches so no cell stands empty),
+ *  or a column beside the searches. */
+export function ArticleDetails({
+  series,
+  publishedAt,
+  keyword,
+  keywordStats,
+  searches: s,
+  url,
+  wide = false,
+}: {
+  series: PageDay[];
+  publishedAt: string | null;
+  keyword: string | null;
+  /** The target keyword's monthly searches and difficulty, when research measured them. */
+  keywordStats?: KeywordStats | null;
+  searches?: Searches;
+  url: string | null;
+  wide?: boolean;
+}) {
+  const searches = s && !s.failed ? s : null;
+  const { best, published } = facts(series, publishedAt);
   const live = published != null ? Math.max(0, Math.floor((Date.now() - published) / DAY)) : null;
   let path: string | null = null;
   try {
@@ -213,57 +303,93 @@ export function ArticleDetails({ series, publishedAt, keyword, url, wide = false
   } catch {
     path = url;
   }
-  const rows: { label: string; value: string; sub?: string }[] = [
+  // Only what matters about it (owner, 2026-11-05: no "first shown",
+  // "first click" or "best day" - the search it targets, its best spot,
+  // when it went out, where it lives).
+  const kwSub = [
+    keywordStats?.volume != null ? `${fmtInt(keywordStats.volume)} searches a month` : null,
+    keywordStats?.difficulty != null ? `difficulty ${Math.round(keywordStats.difficulty)}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const items: Fact[] = [
+    ...(keyword ? [{ label: "Target keyword", value: keyword, sub: kwSub || undefined }] : []),
+    ...(searches
+      ? [
+          {
+            label: "Shows up for",
+            value: searches.queryCount ? plural(searches.queryCount, "search", "searches") + (searches.queryCount >= 250 ? "+" : "") : "No searches yet",
+            sub: searches.queryCount ? "different searches on Google" : undefined,
+            quiet: !searches.queryCount,
+          },
+        ]
+      : []),
+    { label: "Best spot on Google", value: best ? spot(best.position) : "Not yet", sub: best ? `on ${longDate(best.date)}` : undefined, quiet: !best },
     { label: "Published", value: publishedAt ? longDate(publishedAt) : "-", sub: live != null ? `live ${plural(live, "day")}` : undefined },
-    { label: "First shown on Google", value: firstShown ? longDate(firstShown.date) : "Not yet", sub: firstShown ? after(firstShown) : undefined },
-    { label: "First click", value: firstClick ? longDate(firstClick.date) : "Not yet", sub: firstClick ? after(firstClick) : undefined },
-    { label: "Best day", value: bestDay ? longDate(bestDay.date) : "Not yet", sub: bestDay ? plural(bestDay.clicks, "click") : undefined },
-    { label: "Best spot", value: best ? spot(best.position) : "Not yet", sub: best ? `on ${longDate(best.date)}` : undefined },
-    ...(keyword ? [{ label: "Written for", value: `“${keyword}”` }] : []),
-    ...(path ? [{ label: "Address", value: path }] : []),
+    ...(path ? [{ label: "Address", value: path, href: url ?? undefined }] : []),
   ];
-  if (wide) {
-    return (
-      <section aria-labelledby="details-title" className="arrive-up overflow-hidden rounded-2xl border border-line-soft bg-surface" style={{ "--at": "380ms" } as React.CSSProperties}>
-        <h3 id="details-title" className="px-5 pt-4 text-[15px] font-semibold text-ink sm:px-6">
-          Details
-        </h3>
-        <dl className="mt-3 grid grid-cols-2 gap-px border-t border-line-soft bg-line-soft lg:grid-cols-4">
-          {rows.map((r) => (
-            <div key={r.label} className="min-w-0 bg-surface px-5 py-3.5 sm:px-6">
-              <dt className="text-[12.5px] text-ink-muted">{r.label}</dt>
-              <dd className="mt-1 truncate text-[14.5px] font-medium text-ink tabular-nums" title={r.value}>
-                {r.value}
-              </dd>
-              {r.sub ? <dd className="truncate text-[12px] text-ink-faint">{r.sub}</dd> : null}
+  // How many columns the last row's final cell spans so the row ends flush.
+  const restLg = (3 - (items.length % 3)) % 3;
+  const restSm = items.length % 2;
+  return (
+    <section
+      aria-labelledby="details-title"
+      className="arrive-up min-w-0 overflow-hidden rounded-2xl border border-line-soft bg-surface"
+      style={{ "--at": wide ? "380ms" : "420ms" } as React.CSSProperties}
+    >
+      <h3 id="details-title" className="px-6 py-5 text-[1.25rem] font-semibold tracking-tight text-ink sm:px-7">
+        Details
+      </h3>
+      {wide ? (
+        <dl className="grid grid-cols-1 gap-px border-t border-line-soft bg-line-soft sm:grid-cols-2 lg:grid-cols-3">
+          {items.map((f, i) => {
+            const last = i === items.length - 1;
+            return (
+              <div
+                key={f.label}
+                className={cx(
+                  "min-w-0 bg-surface px-6 py-6 sm:px-7",
+                  last && restSm ? "sm:col-span-2" : "",
+                  // lg always says its own span, so it overrides sm's.
+                  last && (restSm || restLg) ? ["lg:col-span-1", "lg:col-span-2", "lg:col-span-3"][restLg] : "",
+                )}
+              >
+                <dt className="text-[14px] font-medium text-ink-muted">{f.label}</dt>
+                <FactValue f={f} className="mt-2 text-[1.5rem] leading-tight" />
+                {f.sub ? <dd className="mt-1.5 truncate text-[14px] text-ink-faint">{f.sub}</dd> : null}
+              </div>
+            );
+          })}
+        </dl>
+      ) : (
+        <dl className="divide-y divide-line-soft border-t border-line-soft">
+          {items.map((f) => (
+            <div key={f.label} className="px-6 py-4">
+              <dt className="text-[14px] font-medium text-ink-muted">{f.label}</dt>
+              <FactValue f={f} className="mt-1 text-[1.2rem] leading-tight" />
+              {f.sub ? <dd className="mt-1 truncate text-[13.5px] text-ink-faint">{f.sub}</dd> : null}
             </div>
           ))}
-          {/* Fill the last row so the grid ends on a clean edge. */}
-          {Array.from({ length: (4 - (rows.length % 4)) % 4 }, (_, i) => (
-            <div key={`pad${i}`} aria-hidden="true" className="hidden bg-surface lg:block" />
-          ))}
         </dl>
-      </section>
+      )}
+    </section>
+  );
+}
+
+function FactValue({ f, className }: { f: Fact; className: string }) {
+  if (f.href) {
+    return (
+      <dd className={cx("min-w-0", className)}>
+        <a href={f.href} target="_blank" rel="noopener noreferrer" title={f.value} className={cx("group inline-flex max-w-full items-center gap-2 rounded-sm font-semibold tracking-tight text-ink hover:text-accent", FOCUS_RING)}>
+          <span className="truncate">{f.value}</span>
+          <ExternalIcon className="h-4 w-4 shrink-0 text-ink-faint transition-colors group-hover:text-accent" />
+        </a>
+      </dd>
     );
   }
   return (
-    <section aria-labelledby="details-title" className="arrive-up rounded-2xl border border-line-soft bg-surface" style={{ "--at": "420ms" } as React.CSSProperties}>
-      <h3 id="details-title" className="px-5 pt-4 text-[15px] font-semibold text-ink sm:px-6">
-        Details
-      </h3>
-      <dl className="mt-2 divide-y divide-line-soft">
-        {rows.map((r) => (
-          <div key={r.label} className="flex items-baseline justify-between gap-4 px-5 py-2.5 sm:px-6">
-            <dt className="shrink-0 text-[13px] text-ink-muted">{r.label}</dt>
-            <dd className="min-w-0 text-right">
-              <span className="block truncate text-[13.5px] font-medium text-ink tabular-nums" title={r.value}>
-                {r.value}
-              </span>
-              {r.sub ? <span className="block text-[12px] text-ink-faint">{r.sub}</span> : null}
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </section>
+    <dd className={cx("truncate font-semibold tracking-tight tabular-nums", f.quiet ? "text-ink-faint" : "text-ink", className)} title={f.value}>
+      {f.value}
+    </dd>
   );
 }

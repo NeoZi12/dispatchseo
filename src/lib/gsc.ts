@@ -407,6 +407,9 @@ export async function gscQueryPositions(
 export type PageSearchStats = {
   totals: { clicks: number; impressions: number; ctr: number; position: number | null };
   queries: Array<{ query: string; clicks: number; impressions: number; ctr: number; position: number }>;
+  /** How many different searches showed the page (up to 250 counted), of
+   *  which `queries` keeps the top `limit`. */
+  queryCount: number;
   days: Array<{ date: string; clicks: number; impressions: number; position: number | null }>;
 };
 
@@ -430,14 +433,14 @@ export async function gscPageSearches(
     .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d.date))
     .sort((a, b) => a.date.localeCompare(b.date));
   const t = totalsRes.data.rows?.[0];
-  const queries = (queriesRes.data.rows ?? [])
+  const allQueries = (queriesRes.data.rows ?? [])
     .map((r) => ({ query: r.keys?.[0] ?? "", clicks: r.clicks ?? 0, impressions: r.impressions ?? 0, ctr: r.ctr ?? 0, position: r.position ?? 0 }))
     .filter((q) => q.query)
-    .sort((a, b) => b.clicks - a.clicks || b.impressions - a.impressions)
-    .slice(0, limit);
+    .sort((a, b) => b.clicks - a.clicks || b.impressions - a.impressions);
   return {
     totals: { clicks: t?.clicks ?? 0, impressions: t?.impressions ?? 0, ctr: t?.ctr ?? 0, position: t?.position ?? null },
-    queries,
+    queries: allQueries.slice(0, limit),
+    queryCount: allQueries.length,
     days,
   };
 }

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ClickIcon, SearchIcon, compact } from "@/components/ui/overview-chart";
+import { ClickIcon, RowArrow, RowLink, SearchIcon, compact } from "@/components/ui/overview-chart";
 import { cx, FOCUS_RING } from "@/components/ui/styles";
 
 // Analytics' three lists, as client components for weight: the RSC payload
@@ -99,7 +99,17 @@ function FoldButton({ onClick, children }: { onClick: () => void; children: Reac
   );
 }
 
-export type LandedRow = { path: string; url: string; title: string | null; clicks: number; impressions: number; position: number | null; gone: boolean };
+export type LandedRow = {
+  path: string;
+  url: string;
+  title: string | null;
+  clicks: number;
+  impressions: number;
+  position: number | null;
+  gone: boolean;
+  /** The article's own dashboard page, when the page is one of ours. */
+  href?: string | null;
+};
 
 /** Where Google's clicks landed. A page we know no longer loads keeps its
  *  row and clicks (the totals still add up) but is marked "Gone", isn't
@@ -152,18 +162,18 @@ export function LandedTable({ rows, at = 0 }: { rows: LandedRow[]; at?: number }
                 strong={podium}
                 folded={`${compact(r.impressions)} impressions${r.position == null ? "" : ` · ${spot(r.position)}`}`}
               />
-              <OutArrow show={!r.gone} />
-              {r.gone ? null : <span className="sr-only">(opens the page in a new tab)</span>}
+              {r.href ? <RowArrow external={false} /> : <OutArrow show={!r.gone} />}
+              {r.gone || r.href ? null : <span className="sr-only">(opens the page in a new tab)</span>}
             </>
           );
           return (
             <li key={r.path} {...arrive(i, at)}>
-              {r.gone ? (
+              {r.gone && !r.href ? (
                 <div className={ROW}>{body}</div>
               ) : (
-                <a href={r.url} target="_blank" rel="noopener noreferrer" className={cx("group transition-colors hover:bg-surface-2", ROW, FOCUS_RING)}>
+                <RowLink href={r.href ?? r.url} external={!r.href} className={cx("group transition-colors hover:bg-surface-2", ROW, FOCUS_RING)}>
                   {body}
-                </a>
+                </RowLink>
               )}
             </li>
           );

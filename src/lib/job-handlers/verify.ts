@@ -17,6 +17,7 @@ import type { Project } from "@/lib/projects";
 import type { Job } from "@/lib/jobs";
 import { trackPublishedKeyword } from "@/lib/autopilot/tracking";
 import { ideaDone } from "@/lib/writer/runs";
+import { warmScreenshotsLater } from "@/lib/page-screenshot";
 
 // Confirms a published article is actually reachable - and, once it is, files
 // it as a real page of the site.
@@ -155,6 +156,10 @@ export async function runVerifyJob(job: Job): Promise<void> {
     .from("article_drafts")
     .update({ status: "published", published_at: now, updated_at: now })
     .eq("id", draftId);
+
+  // The dashboard's preview of it, taken once now so opening the article
+  // never waits on a browser (page-screenshot.ts).
+  warmScreenshotsLater(row.project_id, [url], 1);
 }
 
 /** How long after a merge we keep looking for the page. Long enough for a slow
@@ -336,6 +341,8 @@ async function verifyRepoArticle(job: Job, draftId: string): Promise<void> {
       .from("article_drafts")
       .update({ status: "published", published_at: now, published_url: url, updated_at: now })
       .eq("id", draftId);
+    // The dashboard's preview of it (page-screenshot.ts).
+    warmScreenshotsLater(row.project_id, [url], 1);
     return;
   }
 

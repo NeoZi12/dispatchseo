@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { after } from "next/server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { LivePreview } from "./live-preview";
@@ -18,9 +19,10 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { cx, FOCUS_RING } from "@/components/ui/styles";
 import { ARTICLE_STATUS, articleStep, fmtInt, longDate, statusLabel, stepLine, waitingOnMerge } from "../../article-status";
 import { loadReport, redirectIfAgent } from "../../mode";
-import { loadGoneUrls, loadLedger, loadPageDays, type Check, type Ledger, type PageDay } from "../article-data";
+import { keywordStatsFor, loadGoneUrls, loadLedger, loadPageDays, type Check, type Ledger, type PageDay } from "../article-data";
 import { normalizePageUrl } from "@/lib/metrics";
-import { getProjectBySlug } from "@/lib/projects";
+import { getProjectBySlug, type Project } from "@/lib/projects";
+import { previewSrc, storedShotAt, warmScreenshots } from "@/lib/page-screenshot";
 import { isOperator } from "@/lib/autopilot/operator";
 import { friendlyError } from "@/lib/autopilot/friendly";
 
@@ -70,22 +72,24 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
   // "page:<id>" articles predate autopilot: no draft, so no ledger and no
   // cover (loadLedger returns null for them without querying).
   const hasDraft = Boolean(a.draftId) && !a.draftId.startsWith("page:");
-  const [days, ledger, goneUrls, searches] = await Promise.all([
-    a.url ? loadPageDays(project.id, a.url).catch(() => [] as PageDay[]) : Promise.resolve([] as PageDay[]),
+  const live = a.status === "published";
+  // Only database reads hold the page: the Search Console numbers stream in
+  // below (AnalyticsSection), and the preview is a stored picture.
+  const [ledger, goneUrls, shotAt] = await Promise.all([
     hasDraft ? loadLedger(project.id, a.draftId) : Promise.resolve(null),
     a.url ? loadGoneUrls(project.id) : Promise.resolve(new Set<string>()),
-    // Search Console about this one page (totals + the searches behind it);
-    // null when Google isn't connected or the read fails.
-    a.url && a.status === "published" ? loadSearches(project, a.url, a.publishedAt ?? a.createdAt) : Promise.resolve(null),
+    live && a.url ? storedShotAt(project.id, a.url).catch(() => undefined) : Promise.resolve(undefined),
   ]);
   // Known not to load any more: say so, and don't send anyone to it.
   const gone = a.url ? goneUrls.has(normalizePageUrl(a.url)) : false;
   const publishedAt = a.publishedAt ?? a.createdAt;
-  const series = articleSeries(days, searches, publishedAt);
-  const everShown = series.some((d) => d.impressions > 0) || Boolean(searches && !searches.failed && searches.totals.impressions);
+  // A month-old screenshot shows now and is re-taken after the response.
+  if (live && a.url && !gone && shotAt && Date.now() - Date.parse(shotAt) > 30 * 86_400_000) {
+    const url = a.url;
+    after(() => warmScreenshots(project.id, [url], 1));
+  }
   const s = ARTICLE_STATUS[a.status];
   const step = articleStep(a);
-  const live = a.status === "published";
   const paused = Boolean(report.paused);
   const pill = gone ? (
     <StatusPill tone="neutral" className="text-[14px]">
@@ -153,9 +157,26 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
                   <span className="min-w-0 flex-1 truncate rounded-md bg-surface px-3 py-1 text-center text-[12px] text-ink-muted">{displayUrl(a.url)}</span>
                 </div>
                 <div className="aspect-[16/10] w-full bg-surface-2">
-                  <Suspense fallback={<div className="h-full w-full animate-pulse bg-surface-2/60 motion-reduce:animate-none" />}>
-                    <LivePreview url={a.url} title={a.title} />
-                  </Suspense>
+                  {shotAt ? (
+                    // Stored (page_screenshots): a plain image the browser
+                    // loads and keeps; nothing to wait for here.
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={previewSrc(project.id, a.url, shotAt)}
+                      alt=""
+                      width={1280}
+                      height={800}
+                      decoding="async"
+                      fetchPriority="high"
+                      data-preview="screenshot"
+                      className="block h-full w-full object-cover object-top"
+                    />
+                  ) : (
+                    <Suspense fallback={<div className="h-full w-full animate-pulse bg-surface-2/60 motion-reduce:animate-none" />}>
+                      {/* None stored yet: take it now (and store it). */}
+                      <LivePreview projectId={project.id} url={a.url} title={a.title} store={shotAt === null} />
+                    </Suspense>
+                  )}
                 </div>
               </div>
             </a>
@@ -218,7 +239,8 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
 
       {a.source !== "agent" && (ledger?.angle || a.gain) ? <Angle angle={ledger?.angle ?? null} gain={a.gain} /> : null}
 
-      {/* ---- how it does on Google ---- */}
+      {/* ---- how it does on Google: streamed, so a slow Search Console
+          read never holds up the rest of the page ---- */}
       {live ? (
         <section aria-labelledby="article-analytics" className="space-y-5">
           <div className="arrive-up" style={at(240)}>
@@ -227,34 +249,72 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
             </h2>
             <p className="mt-1 text-[15px] text-ink-muted">How it has done on Google since it was published on {longDate(publishedAt)}</p>
           </div>
-          {everShown ? (
-            <>
-              <ArticleStats series={series} searches={searches} />
-              <ArticleChart daily={packDays(series)} />
-              {hasSearchRows(searches) ? (
-                <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_21rem]">
-                  <ArticleSearches searches={searches} keyword={a.keyword} />
-                  <ArticleDetails series={series} publishedAt={publishedAt} keyword={a.keyword} url={a.url} />
-                </div>
-              ) : (
-                <>
-                  <ArticleDetails series={series} publishedAt={publishedAt} keyword={a.keyword} url={a.url} wide />
-                  <ArticleSearches searches={searches} keyword={a.keyword} />
-                </>
-              )}
-            </>
-          ) : (
-            <div className="arrive-up rounded-2xl border border-dashed border-line px-6 py-10 text-center" style={at(300)}>
-              <p className="text-[16px] font-medium text-ink">Not on Google yet</p>
-              <p className="mx-auto mt-2 max-w-md text-[14px] leading-relaxed text-ink-muted">
-                New pages usually take a few days to a few weeks to show up. Google&apos;s numbers also run two to three days behind. This fills in on its own.
-              </p>
-            </div>
-          )}
+          <Suspense fallback={<AnalyticsGhost />}>
+            <AnalyticsSection project={project} url={a.url} keyword={a.keyword} publishedAt={publishedAt} />
+          </Suspense>
         </section>
       ) : null}
 
       {a.source !== "agent" && ledger && (ledger.checks.length || ledger.sources.length) ? <FactCheck ledger={ledger} /> : null}
+    </div>
+  );
+}
+
+/** The numbers, the chart, the searches and the details: everything that
+ *  asks Search Console about this one page (cached six hours a page), so it
+ *  streams in after the rest of the page. */
+async function AnalyticsSection({ project, url, keyword, publishedAt }: { project: Project; url: string | null; keyword: string | null; publishedAt: string | null }) {
+  const [days, searches, keywordStats] = await Promise.all([
+    url ? loadPageDays(project.id, url).catch(() => [] as PageDay[]) : Promise.resolve([] as PageDay[]),
+    // Search Console about this one page (totals + the searches behind it);
+    // null when Google isn't connected or the read fails.
+    url ? loadSearches(project, url, publishedAt) : Promise.resolve(null),
+    keywordStatsFor(project, keyword),
+  ]);
+  const series = articleSeries(days, searches, publishedAt);
+  const everShown = series.some((d) => d.impressions > 0) || Boolean(searches && !searches.failed && searches.totals.impressions);
+  if (!everShown) {
+    return (
+      <div className="arrive-up rounded-2xl border border-dashed border-line px-6 py-10 text-center" style={at(300)}>
+        <p className="text-[16px] font-medium text-ink">Not on Google yet</p>
+        <p className="mx-auto mt-2 max-w-md text-[14px] leading-relaxed text-ink-muted">
+          New pages usually take a few days to a few weeks to show up. Google&apos;s numbers also run two to three days behind. This fills in on its own.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <>
+      <ArticleStats series={series} searches={searches} />
+      <ArticleChart daily={packDays(series)} />
+      {hasSearchRows(searches) ? (
+        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_21rem]">
+          <ArticleSearches searches={searches} keyword={keyword} />
+          <ArticleDetails series={series} publishedAt={publishedAt} keyword={keyword} keywordStats={keywordStats} searches={searches} url={url} />
+        </div>
+      ) : (
+        // No searches listed (none yet, Google not connected, or the read
+        // failed): no empty card about it, just the details.
+        <ArticleDetails series={series} publishedAt={publishedAt} keyword={keyword} keywordStats={keywordStats} searches={searches} url={url} wide />
+      )}
+    </>
+  );
+}
+
+/** What the analytics look like while they load: the four tiles and the chart card. */
+function AnalyticsGhost() {
+  return (
+    <div className="space-y-5 motion-safe:animate-pulse" aria-hidden="true">
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-line-soft bg-line-soft lg:grid-cols-4">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="bg-surface px-5 py-5 sm:px-6">
+            <div className="h-3.5 w-24 rounded bg-surface-3" />
+            <div className="mt-3 h-7 w-16 rounded bg-surface-3" />
+            <div className="mt-3 h-3 w-32 max-w-full rounded bg-surface-2" />
+          </div>
+        ))}
+      </div>
+      <div className="h-[22rem] rounded-2xl border border-line-soft bg-surface" />
     </div>
   );
 }

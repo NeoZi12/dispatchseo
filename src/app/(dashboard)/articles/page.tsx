@@ -13,6 +13,7 @@ import { Tabs } from "@/components/ui/tabs";
 import { parseSort, sortArticles } from "../article-status";
 import { loadReport, redirectIfAgent } from "../mode";
 import { loadGlances } from "./article-data";
+import { warmScreenshotsLater } from "@/lib/page-screenshot";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +44,9 @@ export default async function ArticlesPage({ searchParams }: { searchParams: Pro
   await redirectIfAgent("/drafts");
   const project = await getActiveProject();
   const report = await loadReport(project.id);
+  // Any live article without a stored preview gets one after this response,
+  // a few per visit, so opening it later never waits on a browser.
+  if (report) warmScreenshotsLater(project.id, report.articles.filter((a) => a.status === "published" && a.url).map((a) => a.url!), 4);
   const { status, sort: sortParam } = await searchParams;
   const filter = FILTERS.find((f) => f.key === status) ?? FILTERS[0];
   const sort = parseSort(sortParam);

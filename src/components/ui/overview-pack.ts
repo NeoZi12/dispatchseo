@@ -49,5 +49,8 @@ export type LandedPage = {
   position: number | null;
   /** When the post went live, when we know (our own pages only). */
   publishedAt?: string | null;
+  /** The article's own dashboard page, when the post is one of ours: the
+   *  row opens that rather than the live post. */
+  href?: string | null;
 };
 export type Landed = Partial<Record<LandedRangeKey, LandedPage[]>>;

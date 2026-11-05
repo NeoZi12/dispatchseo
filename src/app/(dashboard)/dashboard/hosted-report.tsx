@@ -234,15 +234,15 @@ export async function HostedReport({
     .filter((a) => a.status === "published" && a.publishedAt)
     .map((a) => ({ at: a.publishedAt!, title: a.title, href: articleHref(a) }));
   // The top-posts lists name our articles by their own titles and publish
-  // dates; anything else keeps what the pages table had, or its path. Rows link to
-  // the live post either way.
-  const ours = new Map<string, { title: string; publishedAt: string | null }>();
-  for (const a of r.articles) if (a.url) ours.set(pagePath(a.url), { title: a.title, publishedAt: a.publishedAt });
+  // dates, and open the article's own page; anything else keeps what the
+  // pages table had, or its path, and links to the live post.
+  const ours = new Map<string, { title: string; publishedAt: string | null; href: string | null }>();
+  for (const a of r.articles) if (a.url) ours.set(pagePath(a.url), { title: a.title, publishedAt: a.publishedAt, href: articleHref(a) });
   const landed: Landed = {};
   for (const [key, rows] of Object.entries(google.landed ?? {}) as Array<[keyof Landed, NonNullable<Landed[keyof Landed]>]>) {
     landed[key] = rows.map((p) => {
       const o = ours.get(p.path);
-      return o ? { ...p, title: o.title, publishedAt: o.publishedAt ?? p.publishedAt } : p;
+      return o ? { ...p, title: o.title, publishedAt: o.publishedAt ?? p.publishedAt, href: o.href } : p;
     });
   }
   const tally = {
