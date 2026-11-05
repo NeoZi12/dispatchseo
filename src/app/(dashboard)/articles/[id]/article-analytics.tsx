@@ -228,7 +228,7 @@ export function ArticleSearches({ searches: s, keyword }: { searches: Searches; 
             <tr className="border-y border-line-soft text-left text-[12px] text-ink-faint">
               <th scope="col" className="px-5 py-2 font-medium sm:px-6">Search</th>
               <th scope="col" className="px-2 py-2 text-right font-medium">Clicks</th>
-              <th scope="col" className="px-2 py-2 text-right font-medium">Shown</th>
+              <th scope="col" className="px-2 py-2 text-right font-medium">Impressions</th>
               <th scope="col" className="hidden px-2 py-2 text-right font-medium sm:table-cell">Click rate</th>
               <th scope="col" className="px-5 py-2 text-right font-medium sm:px-6">Spot</th>
             </tr>
