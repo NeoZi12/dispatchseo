@@ -56,6 +56,7 @@ import { advanceRun, failRun, getWriterRun, recordDraft, saveScratch, suggestion
 import { matchesBlockedTopic } from "@/lib/autopilot/math";
 import { isHubPage } from "./research";
 import { blockedTopicsOf } from "@/lib/autopilot/prefs";
+import { coverPrompt, dryCoverSvg, hueOf, pickHue, sanitizeCoverSvg, type Hue } from "@/lib/cover-art";
 
 // The stages of one article. Five persisted stages, each one job in the
 // queue; job-handlers/write.ts chains them inside one handler while the
@@ -795,10 +796,15 @@ async function write(c: Ctx): Promise<void> {
   // throw) is reused, never bought again. The agent provider memoizes its
   // answers itself; this is the API provider's memo.
   const priorRaw = run.stage_outputs.draft_raw;
-  const { text, costUsd } =
+  // The cover is drawn alongside the prose, from the same plan: the subject
+  // is settled by now and the two calls share nothing, so they cost one
+  // wait instead of two. The hue is fixed BEFORE either call so a replayed
+  // agent task asks the identical question (its key hashes the prompt).
+  const hue = await coverHue(c, p.slug);
+  const writing =
     typeof priorRaw === "string" && priorRaw.trim()
-      ? { text: priorRaw, costUsd: 0 }
-      : await generate({
+      ? Promise.resolve({ text: priorRaw, costUsd: 0 })
+      : generate({
     slot: "writer",
     provider: writerProvider(project),
     projectId: project.id,
@@ -818,6 +824,23 @@ async function write(c: Ctx): Promise<void> {
       )}\n\nWrite the article now.`,
     dry: () => dryArticle(sheet, brief, p),
   });
+  const [wrote, drew] = await Promise.allSettled([writing, drawCover(c, sheet.keyword, brief.name, p, hue)]);
+  // The cover first: it is saved (with its cost) even when the prose call
+  // failed, so a retry of this stage never pays for the drawing twice.
+  const waits: string[] = [];
+  if (drew.status === "fulfilled" && drew.value) {
+    await saveScratch(run, "cover_svg", drew.value.svg);
+    if (drew.value.costUsd > 0) {
+      await db().from("writer_runs").update({ cost_usd: Number((Number(run.cost_usd) + drew.value.costUsd).toFixed(4)) }).eq("id", run.id);
+      run.cost_usd = Number(run.cost_usd) + drew.value.costUsd;
+    }
+  } else if (drew.status === "rejected" && isAwaitingAgent(drew.reason)) waits.push(...drew.reason.keys);
+  if (wrote.status === "rejected") {
+    if (isAwaitingAgent(wrote.reason)) throw new AwaitingAgent([...wrote.reason.keys, ...waits]);
+    throw wrote.reason;
+  }
+  if (waits.length) throw new AwaitingAgent(waits);
+  const { text, costUsd } = wrote.value;
   // Saved the moment it exists, with its cost, before anything can throw.
   if (costUsd > 0 && text.trim()) {
     await saveScratch(run, "draft_raw", text);
@@ -829,6 +852,53 @@ async function write(c: Ctx): Promise<void> {
   // The raw text served its purpose; the draft carries what verify needs.
   if (run.stage_outputs.draft_raw !== undefined) run.stage_outputs = { ...run.stage_outputs, draft_raw: undefined };
   await advanceRun(run, { key: "draft", value: draft }, "verify", {}, 0, fallbackAfter(c));
+}
+
+/** The cover's hue: chosen once per run (saved, so a resumed stage asks the
+ *  illustrator the same question) and different from the site's last two
+ *  covers. A read failure (migration 0072 not applied) just means no history. */
+async function coverHue(c: Ctx, seed: string): Promise<Hue> {
+  const saved = c.run.stage_outputs.cover_hue;
+  if (typeof saved === "string" && saved) return saved as Hue;
+  const { data, error } = await db()
+    .from("article_drafts")
+    .select("cover_svg")
+    .eq("project_id", c.project.id)
+    .not("cover_svg", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(2);
+  const recent = error ? [] : ((data ?? []) as { cover_svg: string | null }[]).map((r) => hueOf(r.cover_svg));
+  const hue = pickHue(seed, recent);
+  await saveScratch(c.run, "cover_hue", hue);
+  return hue;
+}
+
+/** One call for the cover's subject layer (cover-art.ts). Never fails the
+ *  article: a refused, broken or failed drawing is saved as "" and the cover
+ *  route draws the title card instead. null = an earlier attempt of this
+ *  stage already drew it. Only AwaitingAgent escapes, so the subscription
+ *  provider parks the run until the drawing is answered. */
+async function drawCover(c: Ctx, keyword: string, siteName: string, p: Plan, hue: Hue): Promise<{ svg: string; costUsd: number } | null> {
+  if (typeof c.run.stage_outputs.cover_svg === "string") return null;
+  const { system, user } = coverPrompt({
+    lang: c.project.language_code ?? "en",
+    hue,
+    title: p.title,
+    keyword,
+    angle: p.angle,
+    sections: p.sections.map((x) => x.heading),
+    siteName,
+  });
+  try {
+    const r = await generate({ slot: "illustrator", ...ctxOf(c), temperature: 0.7, system, user, dry: dryCoverSvg });
+    const svg = sanitizeCoverSvg(r.text, hue);
+    if (!svg) console.warn(`[writer] run ${c.run.id}: the illustrator returned no usable SVG; the cover falls back to the title card`);
+    return { svg: svg ?? "", costUsd: r.costUsd };
+  } catch (err) {
+    if (isAwaitingAgent(err)) throw err;
+    console.warn(`[writer] run ${c.run.id}: cover not drawn (${err instanceof Error ? err.message : String(err)}); the title card stands in`);
+    return { svg: "", costUsd: 0 };
+  }
 }
 
 function archetypeContract(archetype: string): string {
@@ -1790,6 +1860,13 @@ async function handoff(c: Ctx, draft: Draft, p: Plan, report: ValidationReport, 
   }
 
   const draftId = run.draft_id!;
+  // The drawing rides in its own update so a database without migration
+  // 0072 still gets the article (with the title-card cover).
+  const coverSvg = run.stage_outputs.cover_svg;
+  if (typeof coverSvg === "string" && coverSvg) {
+    const { error: coverErr } = await db().from("article_drafts").update({ cover_svg: coverSvg }).eq("id", draftId);
+    if (coverErr) console.warn(`[writer] draft ${draftId}: cover drawing not saved (${coverErr.message}) - is migration 0072 applied?`);
+  }
   if (run.suggestion_id) {
     await db().from("suggestions").update({ status: "in_progress", started_at: new Date().toISOString() }).eq("id", run.suggestion_id);
   }

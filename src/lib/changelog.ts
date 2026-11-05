@@ -75,6 +75,12 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "improved",
     text:
+      "Every new article gets a drawn cover that shows what the article is about, instead of its title on a " +
+      "gradient. Covers on Hebrew and Arabic sites now read the right way round.",
+  },
+  {
+    kind: "improved",
+    text:
       "Opening an article is faster: its page preview is taken once when it publishes and kept, so it shows at " +
       "once instead of loading a fresh screenshot, and the page appears before Google's numbers finish loading.",
   },

@@ -55,7 +55,7 @@ export type Ledger = {
   cover: boolean;
 };
 
-// The cover route's own allowlist (src/app/api/cover/[draftId]/route.tsx).
+// The cover route's own allowlist (src/app/api/cover/[draftId]/route.ts).
 const COVER_STATUSES = new Set(["accepted", "finished", "published", "blocked_setup"]);
 
 const HISTORY_DAYS = 400;

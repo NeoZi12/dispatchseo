@@ -11,6 +11,14 @@ const nextConfig: NextConfig = {
   // other request as a dev "issue" - declare both rather than downgrade the
   // screenshots, which are the product's one visual proof on that page.
   images: { qualities: [75, 90] },
+  // Article covers (src/lib/cover-art.ts) rasterize with resvg's native
+  // binding, which must stay a runtime require, and read their fonts from
+  // src/lib/cover-fonts by path - files no import points at, so the tracer
+  // has to be told to ship them with every function that can draw a cover.
+  serverExternalPackages: ["@resvg/resvg-js"],
+  outputFileTracingIncludes: {
+    "/api/cover/*": ["./src/lib/cover-fonts/*.ttf"],
+  },
   // The dashboard cookie lives 30 days and SameSite=Lax does not stop the
   // page being framed - without these an attacker can iframe the logged-in
   // dashboard and clickjack Approve/Merge/Delete buttons.

@@ -59,7 +59,7 @@ import { db } from "@/lib/db";
 // itself: an identical call is the same task, a changed one is a new task.
 // The judge never takes this path (Jev stays server-side, ~$0.004/article).
 
-export type Slot = "judge" | "extractor" | "planner" | "writer" | "patcher";
+export type Slot = "judge" | "extractor" | "planner" | "writer" | "patcher" | "illustrator";
 export type Provider = "anthropic" | "openai" | "typesafe" | "dry-run" | "subscription";
 
 type ModelSpec = {
@@ -135,6 +135,11 @@ function slotSpecs(slot: Slot): ModelSpec[] {
       return [pick(env("WRITER_WRITER"), s.opus)];
     case "patcher":
       return [pick(env("WRITER_PATCHER"), s.sonnet)];
+    // The cover's subject layer: one small SVG (~1-3k output tokens), about
+    // $0.01-0.03 on Sonnet. Haiku's line art came out cruder in the
+    // pipeline's own covers; this is the cheap slot where quality shows.
+    case "illustrator":
+      return [pick(env("WRITER_ILLUSTRATOR"), s.sonnet)];
   }
 }
 

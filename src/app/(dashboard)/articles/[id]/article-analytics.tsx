@@ -5,6 +5,7 @@ import { fmtInt, longDate } from "../../article-status";
 import type { PageDay } from "../article-data";
 import { ExternalIcon } from "@/components/ui/article-list";
 import { cx, FOCUS_RING } from "@/components/ui/styles";
+import { SearchesTable } from "./searches-table";
 
 // One article's numbers, everything an owner asks about how it went (owner,
 // 2026-11-05: "spot on Google, clicks, impressions, what people searched to
@@ -223,40 +224,17 @@ export function ArticleSearches({ searches: s, keyword }: { searches: Searches; 
         <p className="mt-0.5 text-[13px] text-ink-muted">{note}</p>
       </div>
       {rows.length ? (
-        <table className="w-full text-[13.5px]">
-          <thead>
-            <tr className="border-y border-line-soft text-left text-[12px] text-ink-faint">
-              <th scope="col" className="px-5 py-2 font-medium sm:px-6">Search</th>
-              <th scope="col" className="px-2 py-2 text-right font-medium">Clicks</th>
-              <th scope="col" className="px-2 py-2 text-right font-medium">Impressions</th>
-              <th scope="col" className="hidden px-2 py-2 text-right font-medium sm:table-cell">Click rate</th>
-              <th scope="col" className="px-5 py-2 text-right font-medium sm:px-6">Spot</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-line-soft">
-            {rows.map((q) => {
-              const target = keyword != null && q.query.toLowerCase() === keyword.toLowerCase();
-              return (
-                <tr key={q.query}>
-                  <td className="relative max-w-0 px-5 py-2.5 sm:px-6">
-                    {/* A quiet bar behind the search, sized by how often it showed the page. */}
-                    <span aria-hidden="true" className="absolute inset-y-1.5 left-3 rounded bg-ink/[0.05] sm:left-4" style={{ width: `calc(${Math.max(4, (q.impressions / max) * 100)}% - 1.5rem)` }} />
-                    <span className="relative flex min-w-0 items-center gap-2">
-                      <span className="truncate text-ink" title={q.query}>
-                        {q.query}
-                      </span>
-                      {target ? <span className="shrink-0 rounded border border-line px-1.5 text-[11px] text-ink-muted">written for</span> : null}
-                    </span>
-                  </td>
-                  <td className="px-2 py-2.5 text-right tabular-nums text-ink">{fmtInt(q.clicks)}</td>
-                  <td className="px-2 py-2.5 text-right tabular-nums text-ink-muted">{fmtInt(q.impressions)}</td>
-                  <td className="hidden px-2 py-2.5 text-right tabular-nums text-ink-muted sm:table-cell">{q.impressions ? pct(q.clicks / q.impressions) : "-"}</td>
-                  <td className="px-5 py-2.5 text-right tabular-nums text-ink-muted sm:px-6">{spot(q.position)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <SearchesTable
+          rows={rows.map((q) => ({
+            query: q.query,
+            clicks: fmtInt(q.clicks),
+            impressions: fmtInt(q.impressions),
+            rate: q.impressions ? pct(q.clicks / q.impressions) : "-",
+            spot: spot(q.position),
+            bar: Math.max(4, (q.impressions / max) * 100),
+            target: keyword != null && q.query.toLowerCase() === keyword.toLowerCase(),
+          }))}
+        />
       ) : null}
     </section>
   );
