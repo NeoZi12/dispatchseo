@@ -117,6 +117,13 @@ const MAX_VERIFY_PASSES = 8;
  *  stage and every verify pass; the park spends the week's slot on purpose
  *  (an infra park would hand the slot back and re-run the same idea). */
 const RUN_MAX_USD = Number(process.env.WRITER_RUN_MAX_USD) || 0.6;
+/** Facts the research must yield before a plan or a draft is paid for. An
+ *  article grounded in fewer has nothing to say that page one does not,
+ *  and the writer, told "no fact, no number", would pad it; the gate then
+ *  fails it after the expensive stages. Parking at research costs a cent.
+ *  Lower where the owner switched sources off (a local business FAQ). */
+const MIN_FACTS = Number(process.env.WRITER_MIN_FACTS) || 10;
+const MIN_FACTS_NO_SOURCES = 4;
 /** How often research waits out Google's goto hold, and for how long. */
 const MAX_REDIRECTOR_WAITS = 3;
 const REDIRECTOR_WAIT_MS = 5 * 60_000;
@@ -315,6 +322,7 @@ async function research(c: Ctx): Promise<void> {
   // page. The owner can switch sources off (a local business FAQ), and then
   // one readable page is enough.
   const minSources = requireSourcesFor(project) ? 2 : 1;
+  const minFacts = dry ? 1 : requireSourcesFor(project) ? MIN_FACTS : MIN_FACTS_NO_SOURCES;
 
   // The site brief is per project and cheap (no model): always fresh.
   const brief = await buildSiteBrief(project, keyword);
@@ -336,7 +344,7 @@ async function research(c: Ctx): Promise<void> {
       // Shared across tenants: this site's own pages come out on the way
       // out, and the coverage and length target are recomputed without them.
       const view = sheetForSite(hit.sheet, own, lang);
-      if (view.facts.length >= 8 && view.sources.length >= minSources) sheet = view;
+      if (view.facts.length >= minFacts && view.sources.length >= minSources) sheet = view;
     }
   }
 
@@ -483,6 +491,14 @@ async function research(c: Ctx): Promise<void> {
       const n = sheet.sources.length;
       return parkIdea(run, run.suggestion_id, `only ${n} page-one result${n === 1 ? "" : "s"} could be read for this keyword`, cost, { unread });
     }
+    // The pre-write gate: too few facts is the keyword's verdict (when every
+    // readable page was extracted), and it is reached before the planner and
+    // the writer are paid for. The writer is told "no fact, no number", so
+    // a thin sheet cannot become a full article honestly.
+    if (sheet.facts.length < minFacts) {
+      if (extractionRejected) throw thinBecauseRejected(`only ${sheet.facts.length} usable facts of the ${minFacts} needed`);
+      return parkIdea(run, run.suggestion_id, `read ${pages.length} pages for "${keyword}" but found only ${sheet.facts.length} usable, quotable facts (${minFacts} needed to ground an article)`, cost, { unread });
+    }
     // Cached only when it is the whole story: a sheet built while some
     // page's extraction failed (a vendor blip) or from a single source would
     // be served for 45 days to every site that writes this keyword.
@@ -548,7 +564,15 @@ async function plan(c: Ctx): Promise<void> {
   const allowedArchetypes = ["tutorial", "comparison", "reference", "data-study", "opinion"].filter((a) => !prefs.disabled_archetypes.includes(a as never));
   const prefix = renderSheet(sheet, brief);
 
-  const { text, costUsd } = await generate({
+  // A plan already paid for by this attempt (the judge threw after it, the
+  // handler died, a CAS loss) is reused, never bought again. Keyed by the
+  // attempt, since a re-plan with feedback is a different call.
+  const rawKey = `plan_raw_${attempts}`;
+  const priorRaw = run.stage_outputs[rawKey];
+  const { text, costUsd } =
+    typeof priorRaw === "string" && priorRaw.trim()
+      ? { text: priorRaw, costUsd: 0 }
+      : await generate({
     slot: "planner",
     provider: writerProvider(project),
     projectId: project.id,
@@ -585,6 +609,14 @@ async function plan(c: Ctx): Promise<void> {
       (feedback.length ? `\nYour previous plan was refused. Fix every point:\n- ${feedback.join("\n- ")}\n` : ""),
     dry: () => JSON.stringify(dryPlan(sheet, brief)),
   });
+  if (costUsd > 0 && text.trim()) {
+    await saveScratch(run, rawKey, text);
+    await db().from("writer_runs").update({ cost_usd: Number((Number(run.cost_usd) + costUsd).toFixed(4)) }).eq("id", run.id);
+    run.cost_usd = Number(run.cost_usd) + costUsd;
+  }
+  // From here the planner's cost is on the run already; what the rest of
+  // the stage spends is the judge's.
+  const planCost = 0;
   const parsed = parseJson<Plan>(text);
   const covers = pageOneCovers(sheet);
   const usable = Boolean(parsed?.sections?.length && parsed?.title);
@@ -611,7 +643,7 @@ async function plan(c: Ctx): Promise<void> {
       questions: { cannot_beat: skipQuestion },
       dry: () => ({ cannot_beat: { type: "noul", noul: 0.9 } }),
     });
-    const spent = costUsd + verdict.costUsd;
+    const spent = planCost + verdict.costUsd;
     if (yes(verdict.answers.cannot_beat, 0.7) || attempts >= 1) return parkIdea(run, run.suggestion_id, `the planner could not beat page one: ${parsed.skip}`, spent);
     await saveScratch(run, "plan_feedback", [`you chose to skip ("${String(parsed.skip).slice(0, 200)}"), but the research supports an article: plan it, and omit skip`]);
     await saveScratch(run, "plan_attempts", attempts + 1);
@@ -666,7 +698,7 @@ async function plan(c: Ctx): Promise<void> {
     }),
   });
   if (parsed.skip) {
-    if (yes(answers.cannot_beat, 0.7)) return parkIdea(run, run.suggestion_id, `the planner could not beat page one: ${parsed.skip}`, costUsd + judgeCost);
+    if (yes(answers.cannot_beat, 0.7)) return parkIdea(run, run.suggestion_id, `the planner could not beat page one: ${parsed.skip}`, planCost + judgeCost);
     delete parsed.skip; // judged beatable: the plan stands
   }
   if (covers.length && no(answers.covers_intent, 0.4)) problems.push("the plan does not cover every subtopic page one shares; add the missing ones to intent_contract and sections");
@@ -691,7 +723,7 @@ async function plan(c: Ctx): Promise<void> {
   const sameness = isDryRun() ? { pass: true, flags: [] as { detail: string; against: string }[] } : compareToCorpus(extractFromMarkdown(outlineMd, new Set(tokenize(sheet.keyword))), await corpusEntries(project.id), "outline");
   if (!sameness.pass) problems.push(...sameness.flags.map((f) => `${f.detail} (against ${f.against}) - change the heading skeleton`));
 
-  const total = costUsd + judgeCost;
+  const total = planCost + judgeCost;
   if (problems.length && attempts < 1) {
     // Re-planned in THIS process: a stage that re-queues itself under its
     // own job collides with that job's idempotency key and strands the run.
@@ -704,6 +736,8 @@ async function plan(c: Ctx): Promise<void> {
   if (problems.some((p) => p.startsWith("the gain is not real") || p.startsWith("gain must"))) {
     return parkIdea(run, run.suggestion_id, `no honest information gain was found for "${sheet.keyword}" with the available facts and site data`, total);
   }
+  // The raw planner answers served their purpose (a retry's memo).
+  run.stage_outputs = Object.fromEntries(Object.entries(run.stage_outputs).filter(([k]) => !k.startsWith("plan_raw_")));
   await advanceRun(run, { key: "plan", value: { ...parsed, judge: answers, problems, not_judged: notJudged } }, "write", {}, total, fallbackAfter(c));
 }
 
@@ -717,7 +751,8 @@ const writerRules = (lang: string): string => `RULES - every one of them is a re
 - Every section gives the reader something to DO or DECIDE: a step, a threshold, a recommendation with its condition ("if you ship under 50 orders a month, choose X because…"). Delete any sentence that would be true of any article on any topic.
 - One concrete worked example with real figures from the facts beats three abstract tips. Name things: products, plans, prices, settings, from the facts or the site brief.
 - Take positions. Where sources disagree or hedge, say which option you would pick for which reader and why, and include a short "when this is the wrong choice" passage.
-- Every statistic, price, date or study comes from the FACTS and states its year and who measured it in prose ("a 2025 Baymard study found…"), and the sentence ends with the source marker [n] matching the SOURCES list. Site facts use [S<n>]. Never invent a figure; if the facts have none, write without one.
+- NO FACT, NO NUMBER. A figure (a price, a percentage, a count, a date, a version, a duration) may appear only when a FACT's quote writes that figure, and then exactly as the quote writes it: same unit, same rounding, same currency. Never compute, convert, round, add up or compare figures into a new one ("twice as much", "about 40%", "$3 a day" from a monthly price are all invented). The same goes for names of studies, products, plans and people: only as the facts name them. Where no quote carries the figure you want, write the sentence without a number ("most", "under", "a few") or leave it out. This is checked by a program after you write, figure by figure against the quotes, and an article with one unsupported figure is rewritten or thrown away.
+- Every statistic, price, date or study states its year and who measured it in prose ("a 2025 Baymard study found…"), and the sentence ends with the source marker [n] matching the SOURCES list. Site facts use [S<n>].
 - Cite sparingly: one marker per source per paragraph, on the sentence that carries its most specific fact, and at most one marker per table row. A paragraph that names the source in prose ("Primeline's 2026 breakdown…") carries the marker there and nowhere else. An article where every sentence ends in a marker reads like a term paper and gets skimmed, not read.
 - The byline is the site, not a person: never write "I", "I'd", "my" or "in my experience". Give every verdict as the site's recommendation ("we'd pick…" is fine, "I agree" is not).
 - Use the site's own pages and products from the brief only where they genuinely solve the reader's problem: at most one bounded section, never the spine, linked inline as markdown links.
@@ -735,7 +770,15 @@ async function write(c: Ctx): Promise<void> {
   const p = run.stage_outputs.plan as Plan;
   const prefix = renderSheet(sheet, brief);
 
-  const { text, costUsd } = await generate({
+  // A draft already paid for by an earlier attempt of this stage (the handler
+  // died between the call and advanceRun, a CAS loss, a post-processing
+  // throw) is reused, never bought again. The agent provider memoizes its
+  // answers itself; this is the API provider's memo.
+  const priorRaw = run.stage_outputs.draft_raw;
+  const { text, costUsd } =
+    typeof priorRaw === "string" && priorRaw.trim()
+      ? { text: priorRaw, costUsd: 0 }
+      : await generate({
     slot: "writer",
     provider: writerProvider(project),
     projectId: project.id,
@@ -755,9 +798,17 @@ async function write(c: Ctx): Promise<void> {
       )}\n\nWrite the article now.`,
     dry: () => dryArticle(sheet, brief, p),
   });
+  // Saved the moment it exists, with its cost, before anything can throw.
+  if (costUsd > 0 && text.trim()) {
+    await saveScratch(run, "draft_raw", text);
+    await db().from("writer_runs").update({ cost_usd: Number((Number(run.cost_usd) + costUsd).toFixed(4)) }).eq("id", run.id);
+    run.cost_usd = Number(run.cost_usd) + costUsd;
+  }
   const draft = postProcessDraft(text, sheet, brief, project, await ownPagesOf(project, brief));
   if (!draft.markdown.trim()) throw new Error("write stage: the writer returned no article");
-  await advanceRun(run, { key: "draft", value: draft }, "verify", {}, costUsd, fallbackAfter(c));
+  // The raw text served its purpose; the draft carries what verify needs.
+  if (run.stage_outputs.draft_raw !== undefined) run.stage_outputs = { ...run.stage_outputs, draft_raw: undefined };
+  await advanceRun(run, { key: "draft", value: draft }, "verify", {}, 0, fallbackAfter(c));
 }
 
 function archetypeContract(archetype: string): string {
@@ -1035,8 +1086,23 @@ function warningsOf(run: WriterRun): unknown[] {
 type Checked = { issues: Issue[]; report: ValidationReport; record: Record<string, unknown>; costUsd: number; draft: Draft; markerFixes: MarkerFix[] };
 
 /** How many claims one pass judges. Past it, the rest are counted in the
- *  record and flagged, never dropped silently. */
-const MAX_CLAIMS = 120;
+ *  record and flagged, never dropped silently. Only claims that cite a
+ *  source or carry a figure are judged at all (see runChecks), so this
+ *  bounds those; a 2,000-word article has 20-40 of them. */
+const MAX_CLAIMS = 60;
+/** Verdicts kept on the run across verify passes, keyed by the claim's text
+ *  and markers: a re-check after a patch judges only the sentences the
+ *  patch changed. Bounded so stage_outputs cannot grow without end. */
+const CLAIM_CACHE_MAX = 240;
+type CachedVerdict = { verdict: "supports" | "contradicts" | "says_nothing"; confidence: number; passage: Passage | null };
+function claimCache(run: WriterRun): Record<string, CachedVerdict> {
+  const v = run.stage_outputs.claim_cache;
+  if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, CachedVerdict>;
+  const fresh: Record<string, CachedVerdict> = {};
+  run.stage_outputs = { ...run.stage_outputs, claim_cache: fresh };
+  return fresh;
+}
+const claimCacheKey = (unit: ClaimUnit): string => `${unit.cites.join(",")}|${unit.text.slice(0, 300)}`;
 /** Concurrent judge requests: the public endpoint rate-limits, and a pass
  *  of 120 single-claim states at ~250ms each still lands in a few seconds. */
 const CLAIM_CONCURRENCY = 8;
@@ -1121,6 +1187,17 @@ async function judgeClaims(c: Ctx, sheet: FactSheet, brief: SiteBrief, units: { 
         verdicts[i] = { unit, verdict: "says_nothing", confidence: 1, passage: null };
         continue;
       }
+      // Judged on an earlier pass of this run and unchanged since: the
+      // verdict stands (the passages are a function of the claim and the
+      // sheet, so the cached passage is the same one, re-read in full).
+      const cache = claimCache(run);
+      const ck = claimCacheKey(unit);
+      const hit = cache[ck];
+      if (hit) {
+        const passage = hit.passage ? passages.find((ps) => ps.id === hit.passage!.id && ps.source === hit.passage!.source) ?? hit.passage : null;
+        verdicts[i] = { unit, verdict: hit.verdict, confidence: hit.confidence, passage };
+        continue;
+      }
       const criteria: Record<string, string> = {};
       passages.forEach((ps, j) => {
         criteria[ps.id] = `Passage ${ps.id} (state.passages[${j}]) states the claim or directly implies it, with the same figure when the claim has one.`;
@@ -1169,6 +1246,9 @@ async function judgeClaims(c: Ctx, sheet: FactSheet, brief: SiteBrief, units: { 
         confidence: chosen ? (a?.type === "choice" ? a.confidence : 0) : contradicted >= 0.7 ? contradicted : a?.type === "choice" ? a.confidence : 0,
         passage: chosen,
       };
+      if (Object.keys(cache).length < CLAIM_CACHE_MAX) {
+        cache[ck] = { verdict: verdicts[i].verdict as CachedVerdict["verdict"], confidence: verdicts[i].confidence, passage: chosen ? { ...chosen, quote: chosen.quote.slice(0, 300) } : null };
+      }
     }
   };
   await Promise.all(Array.from({ length: Math.min(CLAIM_CONCURRENCY, units.length) }, worker));
@@ -1205,15 +1285,25 @@ async function runChecks(c: Ctx, sheet: FactSheet, brief: SiteBrief, p: Plan, in
 
   // 1. Claims first, because what code can fix it fixes before anything
   //    else reads the article: each claim against the passages of the
-  //    source it cites. Claims with a marker or a figure are judged first.
+  //    source it cites. Only claims that cite a source or carry a figure
+  //    are judged: a general sentence with neither can only ever come back
+  //    "says nothing", which blocks nothing (the rubric below judges its
+  //    usefulness), so judging it bought latency and tick timeouts, never a
+  //    verdict. Cited claims go first.
   const units = claimUnits(draft.markdown + renderFaq(draft.faq, draft.faqHeading), lang);
   // What the research and the site brief state, for the figure checks below
   // and for telling the writer's reasoning from an unsourced claim.
   const site = briefText(brief);
   const everything = sheet.facts.map((f) => f.quote).join("\n") + "\n" + site + "\n" + sheet.keyword;
-  const ranked = units.map((u, i) => ({ u, i, w: (u.cites.length ? 2 : 0) + (u.figures.length ? 1 : 0) })).sort((a, b) => b.w - a.w || a.i - b.i);
+  const checkable = units.filter((u) => u.cites.length > 0 || u.figures.length > 0);
+  const ranked = checkable.map((u, i) => ({ u, i, w: (u.cites.length ? 2 : 0) + (u.figures.length ? 1 : 0) })).sort((a, b) => b.w - a.w || a.i - b.i);
   const judged = ranked.slice(0, MAX_CLAIMS).map((x) => x.u);
-  const claimsUnchecked = units.length - judged.length;
+  const claimsUnchecked = checkable.length - judged.length;
+  // A judge pass is model calls: starting one with seconds left bills them
+  // for a timeout. Nothing is spent yet, so the queued job (or a retry)
+  // resumes here at no cost - and the verdict cache makes a second pass of
+  // the same draft nearly free.
+  if (c.deadline - Date.now() < 60_000) throw new Error("not enough time left in this tick to judge the claims; retrying");
   const { verdicts, costUsd: claimCost } = await judgeClaims(c, sheet, brief, judged.map((unit) => ({ unit, section: locate(unit.raw).section })));
   judgeCost += claimCost;
   const markerFixes: MarkerFix[] = [];
@@ -1499,6 +1589,7 @@ async function runChecks(c: Ctx, sheet: FactSheet, brief: SiteBrief, p: Plan, in
     issues,
     not_judged: notJudged,
     claims_unchecked: claimsUnchecked,
+    claims_general: units.length - checkable.length,
   };
   return { issues, report, record, costUsd: judgeCost, draft, markerFixes };
 }
