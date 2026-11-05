@@ -75,6 +75,13 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "fixed",
     text:
+      "Your article list no longer shows a red \"Stopped\" row every time the writer retries or sets a topic aside. " +
+      "Those are routine: the topic went live on a later try, is back in the queue, or didn't hold up to a fact check. " +
+      "\"Stopped\" now only appears when something really went wrong.",
+  },
+  {
+    kind: "fixed",
+    text:
       "Google started wrapping most search results in a redirect link on October 30, which made the writer " +
       "stop articles for \"too few readable sources\" and rank tracking miss your site. Both now see through it.",
   },

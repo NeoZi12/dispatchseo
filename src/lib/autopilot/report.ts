@@ -284,12 +284,14 @@ export async function getAutopilotReport(projectId: string): Promise<AutopilotRe
       prMerged: Boolean(d.pr_merged_at),
     };
   });
-  for (const r of runs) {
+  const ideaStatus = await failedRunIdeaStatus(runs);
+  for (const [i, r] of runs.entries()) {
     if (r.draft_id) continue;
     // A run refused at pick never became an article (nothing approved, an
     // off-topic idea parked): bookkeeping, not something to show the owner.
     if (r.status === "failed" && r.stage === "pick") continue;
     if (r.status === "done") continue;
+    if (r.status === "failed" && quietFailure(r, runs.slice(0, i), ideaStatus)) continue;
     articles.push({
       draftId: "",
       source: "writer",
@@ -399,6 +401,41 @@ function earlierArticles(projectId: string): Promise<EarlierPage[]> {
     ["autopilot-earlier-articles", projectId],
     { revalidate: 600, tags: [gscTag(projectId)] },
   )();
+}
+
+/** A failed attempt the owner never needs to see as "Stopped" (owner,
+ *  2026-11-05: a red row means something really went wrong, not that the
+ *  writer is doing its job). Three cases are routine, not breakage:
+ *  - a later attempt took the same idea over (it went live, or is being
+ *    written now) - the failure is history;
+ *  - the idea is back in the queue, so it retries by itself and the calendar
+ *    already shows it as "Up next";
+ *  - the writer set the idea aside on purpose (failure_kind "content": the
+ *    facts didn't hold up, too few readable sources). A quality call is the
+ *    product working; the site's health banner still catches a real streak.
+ *  `newer` holds the runs started after this one (the list is newest first). */
+export function quietFailure(
+  run: Pick<RunRow, "suggestion_id" | "keyword" | "failure_kind">,
+  newer: Pick<RunRow, "suggestion_id" | "keyword">[],
+  ideaStatus: Map<string, string>,
+): boolean {
+  if (run.failure_kind === "content") return true;
+  const sameIdea = (o: Pick<RunRow, "suggestion_id" | "keyword">) =>
+    run.suggestion_id ? o.suggestion_id === run.suggestion_id : Boolean(run.keyword) && o.keyword?.toLowerCase() === run.keyword!.toLowerCase();
+  if (newer.some(sameIdea)) return true;
+  const s = run.suggestion_id ? ideaStatus.get(run.suggestion_id) : undefined;
+  return s === "approved" || s === "in_progress";
+}
+
+/** Current status of each idea a failed run was started for. A failed read
+ *  answers an empty map: the row then falls back to showing, never hiding a
+ *  failure we couldn't check. */
+async function failedRunIdeaStatus(runs: RunRow[]): Promise<Map<string, string>> {
+  const ids = [...new Set(runs.filter((r) => r.status === "failed" && !r.draft_id && r.suggestion_id).map((r) => r.suggestion_id!))];
+  if (!ids.length) return new Map();
+  const { data, error } = await db().from("suggestions").select("id, status").in("id", ids);
+  if (error) return new Map();
+  return new Map(((data ?? []) as { id: string; status: string }[]).map((s) => [s.id, s.status]));
 }
 
 function failureKindOf(run: Pick<RunRow, "status" | "failure_kind"> | null): AutopilotArticle["failureKind"] {
