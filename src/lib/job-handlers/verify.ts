@@ -5,7 +5,15 @@ import { fetchProjectUrl } from "@/lib/url-guard";
 import { enqueue } from "@/lib/jobs";
 import { getProjectById, effectiveAutomations } from "@/lib/projects";
 import { mergePr } from "@/lib/github";
-import { fetchPullRequest } from "@/lib/repo-publish";
+import {
+  commentOnPullRequest,
+  commitAgeMs,
+  fetchPullRequest,
+  pullRequestChecks,
+  rebuildPullRequest,
+  type PullRequestState,
+} from "@/lib/repo-publish";
+import type { Project } from "@/lib/projects";
 import type { Job } from "@/lib/jobs";
 import { trackPublishedKeyword } from "@/lib/autopilot/tracking";
 
@@ -226,6 +234,16 @@ async function verifyRepoArticle(job: Job, draftId: string): Promise<void> {
     // a repo-route PR is ever merged by us - never at open time, so a failing
     // build cannot be merged before its checks have spoken.
     const auto = effectiveAutomations(project).auto_merge;
+    // A red build heals itself before anyone has to look at it.
+    if (!MERGEABLE_STATES.has(String(pr.mergeable_state))) {
+      const heal = await healFailedBuild(job, project, pr);
+      if (heal) {
+        if (round < MAX_ROUNDS) {
+          await rearm(job, draftId, round, new Date(nowDate.getTime() + heal.lookAfterMs), heal.payload);
+        }
+        return;
+      }
+    }
     if (auto && MERGEABLE_STATES.has(String(pr.mergeable_state))) {
       // A refused merge is answered by asking again on the next round, not by
       // failing a job the owner would be emailed about. A merge that WORKED
@@ -336,17 +354,74 @@ async function verifyRepoArticle(job: Job, draftId: string): Promise<void> {
   }
 }
 
+/** Rebuilds of one pull request before we stop and say so. Two covers a
+ *  flaky network twice over; an article that fails three identical builds is
+ *  breaking a rule of the site's own, and a fourth costs build minutes for
+ *  the same answer. */
+const MAX_REBUILDS = 2;
+/** A preview build takes a minute or two; look again soon after a rebuild. */
+const REBUILD_LOOK_MS = 10 * 60_000;
+/** When the checks themselves cannot be read, a PR GitHub still calls
+ *  "unstable" (a check red or still running) this long after its last push
+ *  has failed or hung: preview builds finish in a minute or two. */
+const STUCK_RED_MS = 20 * 60_000;
+
+/** When the PR's checks have all finished and one failed, push an empty
+ *  commit so they run again (most red builds on an article PR are the
+ *  network, not the article: a font or package download that timed out).
+ *  After MAX_REBUILDS it leaves one comment on the PR naming the failing
+ *  checks, so the owner sees why it is waiting without opening a build log,
+ *  and the slow cadence carries on: a fix pushed by hand still merges.
+ *  Null = nothing to heal (checks passing, still running, or unreadable). */
+async function healFailedBuild(
+  job: Job,
+  project: Project,
+  pr: PullRequestState,
+): Promise<{ lookAfterMs: number; payload: Record<string, unknown> } | null> {
+  const checks = await pullRequestChecks(project, pr.head_sha);
+  if (checks) {
+    if (checks.verdict !== "failed") return null;
+  } else {
+    if (pr.mergeable_state !== "unstable") return null;
+    const age = await commitAgeMs(project, pr.head_sha);
+    if (age === null || age < STUCK_RED_MS) return null;
+  }
+  const rebuilds = Number(job.payload.rebuilds ?? 0);
+  if (rebuilds < MAX_REBUILDS) {
+    const ok = await rebuildPullRequest(project, pr.head_ref, pr.head_sha);
+    return ok ? { lookAfterMs: REBUILD_LOOK_MS, payload: { rebuilds: rebuilds + 1 } } : null;
+  }
+  if (job.payload.buildNotified) return null;
+  const which = checks?.failing.length
+    ? `The failing check${checks.failing.length === 1 ? "" : "s"}:\n\n${checks.failing
+        .map((c) => `- ${c.url ? `[${c.name}](${c.url})` : c.name}`)
+        .join("\n")}`
+    : `See which check is red on the [Checks tab](${pr.html_url}/checks) or in the status list at the bottom of this page.`;
+  await commentOnPullRequest(
+    project,
+    pr.number,
+    `This article's build failed ${rebuilds + 1} times in a row, including ${rebuilds} automatic retries, so it is probably something in the article rather than a network hiccup. ${which}\n\nOpen the log, fix the article on this branch, and it merges on its own once the build is green.`,
+  );
+  return { lookAfterMs: AWAITING_MERGE_RETRY_MS, payload: { buildNotified: true } };
+}
+
 /** Queue this job's own successor and finish cleanly.
  *
  *  The round suffix is load-bearing: the plain `verify:<draft>` key is still
  *  held by THIS job (it is not finished until the handler returns), so the
  *  partial unique index would reject the successor and the chain would end
  *  silently on its first hop. */
-async function rearm(job: Job, draftId: string, round: number, runAfter: Date): Promise<void> {
+async function rearm(
+  job: Job,
+  draftId: string,
+  round: number,
+  runAfter: Date,
+  patch: Record<string, unknown> = {},
+): Promise<void> {
   await enqueue({
     projectId: job.project_id,
     kind: "verify",
-    payload: { ...job.payload, round: round + 1 },
+    payload: { ...job.payload, ...patch, round: round + 1 },
     runAfter,
     idempotencyKey: `verify:${draftId}:r${round + 1}`,
   });

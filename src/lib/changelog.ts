@@ -375,6 +375,13 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
       "written shows the step it is on, and numbers, checklists and the traffic chart animate in. " +
       "Everything respects your reduced-motion setting.",
   },
+  {
+    kind: "improved",
+    text:
+      "An article whose site build fails is now rebuilt automatically, up to twice, so a passing network " +
+      "hiccup on your host no longer leaves it waiting unmerged. If the build keeps failing, the pull request " +
+      "gets a short note naming the check that failed.",
+  },
 ];
 
 // Newest first. The head of this list is what the banner announces.

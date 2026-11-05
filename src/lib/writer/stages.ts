@@ -743,9 +743,22 @@ async function plan(c: Ctx): Promise<void> {
 
 // --- write ---------------------------------------------------------------------
 
+/** "November 2026" in the article's language, for the as-of stamp on prices.
+ *  Gregorian calendar and Latin digits on purpose: a Buddhist-era year
+ *  (Thai 2569) is a figure no source quotes, and the fact gate would flag
+ *  it. A bare 19xx/20xx year passes that gate as structure. */
+function asOfMonth(lang: string): string {
+  const opts = { month: "long", year: "numeric", timeZone: "UTC" } as const;
+  try {
+    return new Intl.DateTimeFormat(`${lang}-u-ca-gregory-nu-latn`, opts).format(new Date());
+  } catch {
+    return new Intl.DateTimeFormat("en", opts).format(new Date());
+  }
+}
+
 /** The writer's rules, in the cached prefix (the same text for the draft
- *  and every patch of one run). A function of the language only for the
- *  FAQ heading, so the heading reads in the article's own language. */
+ *  and every patch of one run). A function of the language for the FAQ
+ *  heading and the price stamp (the month changes the prefix once a month). */
 const writerRules = (lang: string): string => `RULES - every one of them is a reason an article gets demoted or ignored when broken:
 - THE OPENING, in this exact order, because readers look before they read: (1) directly under the H1, a blockquote that starts with "> **TL;DR:**" - two or three short sentences holding the answer and the one rule or number that decides it, with the keyword in them naturally; (2) then, still before the first H2, the article's single highest-value visual as a markdown table: the bottom line side by side (options against what decides between them with a verdict row; or symptom against fix; or step against what you should see), every cell short, every figure from the facts; (3) only then the sections. A reader who stops after the TL;DR and the table must already know what to do; the sections are for the one who wants the reasoning. No scene-setting, no "in this guide", no definition the reader already knows.
 - Every section gives the reader something to DO or DECIDE: a step, a threshold, a recommendation with its condition ("if you ship under 50 orders a month, choose X because…"). Delete any sentence that would be true of any article on any topic.
@@ -753,6 +766,7 @@ const writerRules = (lang: string): string => `RULES - every one of them is a re
 - Take positions. Where sources disagree or hedge, say which option you would pick for which reader and why, and include a short "when this is the wrong choice" passage.
 - NO FACT, NO NUMBER. A figure (a price, a percentage, a count, a date, a version, a duration) may appear only when a FACT's quote writes that figure, and then exactly as the quote writes it: same unit, same rounding, same currency. Never compute, convert, round, add up or compare figures into a new one ("twice as much", "about 40%", "$3 a day" from a monthly price are all invented). The same goes for names of studies, products, plans and people: only as the facts name them. Where no quote carries the figure you want, write the sentence without a number ("most", "under", "a few") or leave it out. This is checked by a program after you write, figure by figure against the quotes, and an article with one unsupported figure is rewritten or thrown away.
 - Every statistic, price, date or study states its year and who measured it in prose ("a 2025 Baymard study found…"), and the sentence ends with the source marker [n] matching the SOURCES list. Site facts use [S<n>].
+- PRICES ARE DATED. If the article states any price, the prose next to the first price (or the sentence introducing a price table) says when it was checked: "as of ${asOfMonth(lang)}", written in the article's language${lang.startsWith("he") ? ` (in Hebrew exactly "נכון ל${asOfMonth(lang)}")` : ""}. Once per article is enough.
 - Cite sparingly: one marker per source per paragraph, on the sentence that carries its most specific fact, and at most one marker per table row. A paragraph that names the source in prose ("Primeline's 2026 breakdown…") carries the marker there and nowhere else. An article where every sentence ends in a marker reads like a term paper and gets skimmed, not read.
 - The byline is the site, not a person: never write "I", "I'd", "my" or "in my experience". Give every verdict as the site's recommendation ("we'd pick…" is fine, "I agree" is not).
 - Use the site's own pages and products from the brief only where they genuinely solve the reader's problem: at most one bounded section, never the spine, linked inline as markdown links.

@@ -647,6 +647,8 @@ export type PullRequestState = {
   state: string;
   merged_at: string | null;
   mergeable_state: string | null;
+  head_sha: string;
+  head_ref: string;
 };
 
 export async function fetchPullRequest(
@@ -664,7 +666,111 @@ export async function fetchPullRequest(
     state: String(res.json.state ?? ""),
     merged_at: (res.json.merged_at as string | null) ?? null,
     mergeable_state: (res.json.mergeable_state as string | null) ?? null,
+    head_sha: String((res.json.head as { sha?: string } | undefined)?.sha ?? ""),
+    head_ref: String((res.json.head as { ref?: string } | undefined)?.ref ?? ""),
   };
+}
+
+export type PullRequestChecks = {
+  /** failed = at least one check failed and none is still running. */
+  verdict: "passed" | "pending" | "failed" | "none";
+  failing: { name: string; url: string | null }[];
+};
+
+/** Every check on one commit, folded into one verdict: commit statuses
+ *  (Vercel posts these) and check runs (Actions, CodeRabbit). Null when
+ *  GitHub refuses - the DispatchSEO App does not hold checks:read or
+ *  statuses:read (2026-11-05), so on installation tokens this is null until
+ *  those are added; callers fall back to mergeable_state. A parked
+ *  `action_required` run is GitHub holding a bot PR's workflow for approval,
+ *  not a verdict on the article, so it counts as neither pass nor fail. */
+export async function pullRequestChecks(
+  project: Project,
+  sha: string,
+): Promise<PullRequestChecks | null> {
+  if (!project.github_repo || !sha) return null;
+  const token = await tokenForRef(project);
+  if (!token) return null;
+  const [st, cr] = await Promise.all([
+    gh(token, "GET", `/repos/${project.github_repo}/commits/${sha}/status`),
+    gh(token, "GET", `/repos/${project.github_repo}/commits/${sha}/check-runs?per_page=100`),
+  ]);
+  if (st.status !== 200 || cr.status !== 200) return null;
+  let total = 0;
+  let pending = 0;
+  const failing: PullRequestChecks["failing"] = [];
+  for (const s of (st.json?.statuses ?? []) as { state?: string; context?: string; target_url?: string | null }[]) {
+    total++;
+    if (s.state === "pending") pending++;
+    else if (s.state !== "success") failing.push({ name: String(s.context ?? "status"), url: s.target_url ?? null });
+  }
+  for (const r of (cr.json?.check_runs ?? []) as { status?: string; conclusion?: string | null; name?: string; html_url?: string | null }[]) {
+    if (r.conclusion === "action_required") continue;
+    total++;
+    if (r.status !== "completed") pending++;
+    else if (!["success", "neutral", "skipped"].includes(String(r.conclusion))) {
+      failing.push({ name: String(r.name ?? "check"), url: r.html_url ?? null });
+    }
+  }
+  const verdict = total === 0 ? "none" : pending > 0 ? "pending" : failing.length > 0 ? "failed" : "passed";
+  return { verdict, failing };
+}
+
+/** Rebuild a pull request's checks without changing a byte: an empty commit
+ *  (same tree, the head as parent) on its branch. Every host that builds
+ *  previews on push (Vercel, Netlify, Cloudflare Pages) and every Actions
+ *  check runs again. This is the cure for a build that failed on the
+ *  network rather than on the article - a Google Fonts download that timed
+ *  out mid-build stranded a good article for 19 hours (ClockedCode, 2026-11-04). */
+export async function rebuildPullRequest(
+  project: Project,
+  branch: string,
+  sha: string,
+): Promise<boolean> {
+  if (!project.github_repo || !branch || !sha) return false;
+  const token = await tokenForRef(project);
+  if (!token) return false;
+  const repo = project.github_repo;
+  const head = await gh(token, "GET", `/repos/${repo}/git/commits/${sha}`);
+  const tree = (head.json?.tree as { sha?: string } | undefined)?.sha;
+  if (head.status !== 200 || !tree) return false;
+  const made = await gh(token, "POST", `/repos/${repo}/git/commits`, {
+    message: "chore: rebuild (the last build failed - retrying it automatically)",
+    tree,
+    parents: [sha],
+  });
+  const next = made.json?.sha;
+  if (made.status !== 201 || typeof next !== "string") return false;
+  const ref = branch.split("/").map(encodeURIComponent).join("/");
+  const moved = await gh(token, "PATCH", `/repos/${repo}/git/refs/heads/${ref}`, { sha: next, force: false });
+  return moved.status === 200;
+}
+
+/** How long ago a commit was made, or null when GitHub will not say. Needs
+ *  only contents:read, which the App has - unlike the checks reader above,
+ *  which needs checks:read + statuses:read the App does not request. */
+export async function commitAgeMs(project: Project, sha: string): Promise<number | null> {
+  if (!project.github_repo || !sha) return null;
+  const token = await tokenForRef(project);
+  if (!token) return null;
+  const res = await gh(token, "GET", `/repos/${project.github_repo}/git/commits/${sha}`);
+  const date = (res.json?.committer as { date?: string } | undefined)?.date;
+  if (res.status !== 200 || !date) return null;
+  const t = new Date(date).getTime();
+  return Number.isNaN(t) ? null : Date.now() - t;
+}
+
+/** A plain comment on a pull request. Best-effort: false on any failure. */
+export async function commentOnPullRequest(
+  project: Project,
+  number: number,
+  body: string,
+): Promise<boolean> {
+  if (!project.github_repo) return false;
+  const token = await tokenForRef(project);
+  if (!token) return false;
+  const res = await gh(token, "POST", `/repos/${project.github_repo}/issues/${number}/comments`, { body });
+  return res.status === 201;
 }
 
 /**
