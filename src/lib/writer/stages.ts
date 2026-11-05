@@ -5,7 +5,7 @@ import { loadSiteProfile } from "@/lib/site-profile";
 import { normalizeContentPrefs } from "@/lib/content-prefs";
 import { validateArticle, type ValidationReport } from "@/lib/article-validate";
 import { compareToCorpus, extractFromMarkdown, tokenize, type CorpusEntry } from "@/lib/similarity";
-import { AwaitingAgent, agentAnswerExists, agentKey, generate, judge, isAwaitingAgent, isDryRun, parseJson, yes, no, scoreOf, type Answer, type GenerateInput, type Question } from "./models";
+import { AwaitingAgent, agentAnswerExists, agentKey, generate, judge, isAgentTaskFailed, isAwaitingAgent, isDryRun, parseJson, yes, no, scoreOf, type Answer, type GenerateInput, type Question } from "./models";
 
 import {
   assembleSheet,
@@ -86,7 +86,8 @@ import { blockedTopicsOf } from "@/lib/autopilot/prefs";
 //   write     the prose, raw markdown at temperature 0.8 from Opus, from the
 //             sheet and brief only. Links to anywhere else are stripped.
 //   verify    every check, then at most one patch per pass, at most two
-//             patch attempts: the quality gate, figures against the quotes
+//             patch attempts, never more than MAX_VERIFY_PASSES passes or
+//             RUN_MAX_USD of spend: the quality gate, figures against the quotes
 //             of the source they cite, each claim judged against the cited
 //             source's passages (citation check), SERP overlap by shingles,
 //             sameness against the site's recent posts, banned phrases, and
@@ -102,6 +103,20 @@ import { blockedTopicsOf } from "@/lib/autopilot/prefs";
 //             produces.
 
 const MAX_PATCHES = 2;
+/** Hard ceiling on verify passes (one pass = every check, ~15 judge calls)
+ *  for one run, whatever the attempt bookkeeping says. Normal flow uses
+ *  three (check, patch, check, patch, check); FAQ drops and deadline resumes
+ *  add one each. On 2026-11-03 a cached patch answer that failed to parse
+ *  replayed as a "free" attempt 1,361 times in 90 minutes (20k judge calls)
+ *  because only APPLIED answers were excluded from the replay test. The
+ *  counter is the backstop for the next bug of that shape. */
+const MAX_VERIFY_PASSES = 8;
+/** Model spend one run may reach before its idea is parked, in USD. A
+ *  finished API article costs ~$0.25 (2026-11-05, n=4), so this is the
+ *  "something is looping" line, not a quality budget. Checked before every
+ *  stage and every verify pass; the park spends the week's slot on purpose
+ *  (an infra park would hand the slot back and re-run the same idea). */
+const RUN_MAX_USD = Number(process.env.WRITER_RUN_MAX_USD) || 0.6;
 /** How often research waits out Google's goto hold, and for how long. */
 const MAX_REDIRECTOR_WAITS = 3;
 const REDIRECTOR_WAIT_MS = 5 * 60_000;
@@ -145,6 +160,9 @@ export const STAGE_FNS: Record<Exclude<Stage, "done">, StageFn> = { pick, resear
 
 export async function runStage(run: WriterRun, deadline: number): Promise<void> {
   if (run.status !== "running" || run.stage === "done") return;
+  if (Number(run.cost_usd) >= RUN_MAX_USD) {
+    return parkIdea(run, run.suggestion_id, `spend cap: this run reached $${Number(run.cost_usd).toFixed(2)} before stage ${run.stage} (WRITER_RUN_MAX_USD ${RUN_MAX_USD})`);
+  }
   const project = await getProjectById(run.project_id);
   if (!project) throw new Error("project no longer exists");
   await STAGE_FNS[run.stage]({ project, run, deadline });
@@ -867,7 +885,19 @@ async function verify(c: Ctx): Promise<void> {
   };
   // A pending patch belongs to the pass that saved it (verify_passes was
   // already bumped past it), so the replay runs as that pass again.
+  // The two backstops. Neither should ever fire on a healthy run; when one
+  // does, the idea is parked with the reason, the slot is spent, and the
+  // run's record shows every pass. Another worker may already have handed
+  // the run off (see the MAX_PATCHES park below for why that matters).
+  const backstop = async (reason: string): Promise<void> => {
+    const fresh = await getWriterRun(project.id, run.id);
+    if (fresh?.draft_id) return;
+    return parkIdea(run, run.suggestion_id, reason, cost, { draft, last_issues: passes, dropped_faq: dropped, marker_fixes: markerFixes, patch_attempts: attempts });
+  };
   for (let pass = Number(run.stage_outputs.verify_passes ?? 0) - (pendingOf() ? 1 : 0); ; pass++) {
+    if (pass >= MAX_VERIFY_PASSES) return backstop(`verify ran ${pass} passes without an accepted article (ceiling ${MAX_VERIFY_PASSES}, patches spent ${attempts})`);
+    const spent = Number(run.cost_usd) + cost;
+    if (spent >= RUN_MAX_USD) return backstop(`spend cap: this run reached $${spent.toFixed(2)} in verify (WRITER_RUN_MAX_USD ${RUN_MAX_USD})`);
     const pending = pendingOf();
     if (pending) {
       const call = patchCall(c, sheet, brief, p, draft, pending.issues);
@@ -879,9 +909,12 @@ async function verify(c: Ctx): Promise<void> {
         // the wait - either way the attempt was counted when it was saved.
         patchedDraft = await call.finish((await generate(call.input)).text);
       } catch (err) {
-        if (isAwaitingAgent(err)) throw err;
+        if (isAwaitingAgent(err) || isAgentTaskFailed(err)) throw err;
         const message = err instanceof Error ? err.message : String(err);
-        if (!(await save({ pending_patch: null, warnings: [...warningsOf(run), { at: new Date().toISOString(), stage: "verify", message: `patch attempt ${attempts} failed: ${message}`.slice(0, 500) }] }))) return;
+        // The answer is consumed either way: a cached answer that could not
+        // be applied must never pass the replay test again (that was the
+        // 2026-11-03 loop), so it joins applied_patches, which means "used".
+        if (!(await save({ pending_patch: null, applied_patches: [...appliedPatches(), key], warnings: [...warningsOf(run), { at: new Date().toISOString(), stage: "verify", message: `patch attempt ${attempts} failed: ${message}`.slice(0, 500) }] }))) return;
         continue;
       }
       draft = patchedDraft;
@@ -972,7 +1005,7 @@ async function verify(c: Ctx): Promise<void> {
     } catch (err) {
       // A wait is not a failed patch: the attempt stays spent (it will be
       // answered), the pending marker stays, the stage parks.
-      if (isAwaitingAgent(err)) throw err;
+      if (isAwaitingAgent(err) || isAgentTaskFailed(err)) throw err;
       const message = err instanceof Error ? err.message : String(err);
       if (PATCH_INFRA_RE.test(message)) {
         // Not billed and not the article's fault: hand the attempt back,
@@ -982,8 +1015,11 @@ async function verify(c: Ctx): Promise<void> {
         throw err;
       }
       // Spent: the next pass re-checks the same draft and, if attempts are
-      // left, patches again; otherwise it parks.
-      if (!(await save({ ...clearPending, warnings: [...warningsOf(run), { at: new Date().toISOString(), stage: "verify", message: `patch attempt ${attempts} failed: ${message}`.slice(0, 500) }] }))) return;
+      // left, patches again; otherwise it parks. A replayed answer that
+      // failed here was a real, useless attempt: count it, and consume the
+      // key so the same cached answer is never replayed for free again.
+      if (replayed) attempts += 1;
+      if (!(await save({ ...clearPending, ...(key ? { applied_patches: [...appliedPatches(), key] } : {}), warnings: [...warningsOf(run), { at: new Date().toISOString(), stage: "verify", message: `patch attempt ${attempts} failed: ${message}`.slice(0, 500) }] }, replayed ? run.rewrites + 1 : run.rewrites))) return;
       continue;
     }
     cost += patched.costUsd;
