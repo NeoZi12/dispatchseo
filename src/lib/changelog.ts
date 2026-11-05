@@ -139,6 +139,19 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "improved",
     text: "The Tools page now says plainly that interactive tools aren't available yet, instead of offering an upgrade for them.",
+    kind: "new",
+    text:
+      "Your first article starts the moment you connect your site. Research and the first run begin within minutes of " +
+      "\"You're connected\" instead of waiting for the next morning's schedule, so a new site's first article is usually " +
+      "written within the hour.",
+  },
+  {
+    kind: "new",
+    text:
+      "Plans are now per site and priced by how much we write: Starter is $15 a month for one article a week, " +
+      "Growth $29 for up to three a week, Scale $59 for up to five. \"Up to\", because we only write about keywords " +
+      "with measured searches and difficulty, so a very small niche can fill fewer slots. Existing plans keep their " +
+      "price and their site allowance.",
   },
   {
     kind: "fixed",

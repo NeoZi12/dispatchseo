@@ -34,12 +34,11 @@ type Support = "ready" | "building" | "no";
 const PLATFORM_SUPPORT: Record<string, Support> = {
   nextjs: "ready", // a code-built site: the repo path works today
   static: "ready",
-  // Ready since 2026-08-19: connect, crawl, finish, publish and verify all
-  // proven end to end against a live site, plus five fixture installs
-  // (vanilla, Elementor, Yoast, RankMath, and one with REST locked down).
-  // Self-hosted WordPress specifically - a wordpress.com-hosted site still
-  // reaches the connect screen, where it fails by name rather than here.
-  wordpress: "ready",
+  // The publisher works (proven end to end 2026-08-19, five fixture
+  // installs), but the done-for-you release (owner, 2026-11-05) is GitHub
+  // repos only, so a WordPress site is refused here by name - "not
+  // supported", no waitlist, same as every other platform on this list.
+  wordpress: "no",
   wix: "no",
   squarespace: "no",
   shopify: "no",

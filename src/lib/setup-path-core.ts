@@ -855,7 +855,7 @@ function hostedChain(x: Ctx): Draft | null {
       "Writing your first article",
       "We read your site, pick a keyword you can win, research page one and write the article. Nothing for you to do.",
       "This turns green on its own the moment the article is written.",
-      { since: null, typical: "within a day", slowAfterMs: BUILD_SLOW_MS, slowHint: "Taking a while - open Articles", slowHref: "/articles" },
+      { since: null, typical: "usually within the hour", slowAfterMs: BUILD_SLOW_MS, slowHint: "Taking a while - open Articles", slowHref: "/articles" },
     );
   }
   if (!publishedDone(x)) {

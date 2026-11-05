@@ -27,7 +27,7 @@ function Spinner() {
 export function QualifyForm() {
   const [state, action, pending] = useActionState<QualifyState, FormData>(submitQualifier, null);
   const [siteKind, setSiteKind] = useState<SiteKind | null>(
-    state?.siteKind === "wordpress" || state?.siteKind === "code" ? state.siteKind : null,
+    state?.siteKind === "wordpress" || state?.siteKind === "code" ? state.siteKind : "code",
   );
 
   // After a verdict the form steps aside; "Change my answers" brings it back.
@@ -55,8 +55,9 @@ export function QualifyForm() {
         <section>
           <h2 className="mt-3 text-lg font-semibold text-neutral-50">What kind of website is it?</h2>
           <p className="mt-1 text-[13px] text-neutral-500">
-            These are the two kinds we can publish to. Anything else (Wix, Squarespace, Shopify,
-            Webflow, Framer) we can&apos;t, and we&apos;d rather say so now.
+            Right now we publish to one kind of site: code that lives in a GitHub repo. WordPress,
+            Wix, Squarespace, Shopify, Webflow and Framer we can&apos;t, and we&apos;d rather say so
+            now.
           </p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {SITE_KINDS.map((k) => {

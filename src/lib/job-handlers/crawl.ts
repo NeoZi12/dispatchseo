@@ -3,7 +3,7 @@ import { crawlSite } from "@/lib/site-crawl";
 import { getProjectById, writerMode } from "@/lib/projects";
 import { loadSiteProfile } from "@/lib/site-profile";
 import { generateSiteProfile } from "@/lib/autopilot/profile";
-import type { Job } from "@/lib/jobs";
+import { enqueue, type Job } from "@/lib/jobs";
 import { readSiteTheme } from "@/lib/hosted-theme";
 
 // Reads a customer's site and stores what it learned.
@@ -92,6 +92,17 @@ export async function runCrawlJob(job: Job): Promise<void> {
       if (!fromDb && !error) await generateSiteProfile(project);
     } catch (e) {
       console.warn(`[crawl] site profile for ${project.slug} not written: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    // A site that has never been researched gets its first autopilot pass
+    // now (job-handlers/autopilot.ts), not at tomorrow's cron: research,
+    // then the first writer run. Best-effort, and only ever the first time -
+    // a re-crawl of a site that already researched changes nothing here.
+    if (!project.last_research_at) {
+      try {
+        await enqueue({ projectId: project.id, kind: "autopilot", payload: { first: true }, idempotencyKey: `autopilot:first:${project.id}` });
+      } catch (e) {
+        console.warn(`[crawl] first autopilot pass for ${project.slug} not queued: ${e instanceof Error ? e.message : String(e)}`);
+      }
     }
   }
 }

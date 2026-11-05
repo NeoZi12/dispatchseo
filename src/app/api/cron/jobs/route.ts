@@ -65,6 +65,10 @@ async function withDeadline(run: Promise<void>): Promise<void> {
 const HANDLERS: Record<string, () => Promise<Handler>> = {
   // A batch-lane writer run waiting on Anthropic's Message Batches API (0075).
   "batch-poll": async () => (await import("@/lib/job-handlers/batch-poll")).runBatchPollJob,
+  // One hosted project's daily pass (research + scheduler), run NOW rather
+  // than at tomorrow's /api/cron/autopilot - queued by the first crawl so a
+  // new site's first article starts minutes after "You're connected".
+  autopilot: async () => (await import("@/lib/job-handlers/autopilot")).runAutopilotJob,
   crawl: async () => (await import("@/lib/job-handlers/crawl")).runCrawlJob,
   finish: async () => (await import("@/lib/job-handlers/finish")).runFinishJob,
   publish: async () => (await import("@/lib/job-handlers/publish")).runPublishJob,

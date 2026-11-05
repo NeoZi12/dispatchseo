@@ -34,32 +34,39 @@ export function isBillingInterval(value: unknown): value is BillingInterval {
 // products for a tier MUST be priced in the Polar dashboard to match these
 // numbers, because the page advertises this table and Polar charges its own.
 //
-// Why these numbers (2026-08-20): the customer's own coding agent does the
-// research and writing, so our per-site cost is DataForSEO (~$1/site/mo
-// measured on prod) plus the Polar fee - there is no token bill to pass on.
-// That is what lets Starter sit under every competitor that opens PRs (Lyra,
-// Edward ~$39 + the customer's API tokens) while keeping a wide margin. The
-// yearly plan is deliberately generous (~30% off) because annual billing is
-// the single strongest retention lever in this category.
+// Why these numbers (owner, 2026-11-05, the done-for-you release): every
+// plan is ONE SITE, and the tiers differ only in how many articles a week
+// the hosted writer publishes (ARTICLES_PER_WEEK below: up to 1 / 3 / 5).
+// The wedge is the $15 plan - one article a week for a founder's new site,
+// when every general autoblogger starts at $50-80. Cost per site per month
+// measured that day: ~$0.25 of model spend per published article (Opus
+// draft, Sonnet plan and patches, Jev judging), ~$1 of DataForSEO, and the
+// Polar fee; every tier keeps >50% gross margin even at a pessimistic
+// $0.75 an article. Prices here MUST match the Polar products.
+//
+// Existing subscriptions are grandfathered by construction: the webhook
+// rewrites tier and sites_limit only for a product id it recognises
+// (applySubscriptionState), so the owner creates NEW Polar products for
+// these prices and never edits the old ones - the old rows keep their tier
+// and their site allowance (the operator's own Scale row covers 10 sites).
+//
+// The yearly figures are per month and show only once the yearly products
+// exist (productIdForTier); ~20% off, whole dollars.
 export const TIER_LIMITS: Record<Tier, { sites: number; price: number; annual: number }> = {
-  starter: { sites: 1, price: 29, annual: 20 },
-  growth: { sites: 3, price: 59, annual: 40 },
-  // Scale was 10 sites until 2026-08-21. Cut to 5 so the ladder is a flat
-  // ~$20/site (Growth $59/3, Scale $99/5) instead of a 50% volume discount a
-  // bootstrapped founder never asked for - and because a 10-site buyer is an
-  // agency with agency-sized support needs. More than 5 is a conversation.
-  scale: { sites: 5, price: 99, annual: 69 },
+  starter: { sites: 1, price: 15, annual: 12 },
+  growth: { sites: 1, price: 29, annual: 23 },
+  scale: { sites: 1, price: 59, annual: 47 },
 };
 
 // Articles a week the hosted writer (the autopilot) publishes per tier
-// (owner, 2026-10-24: 1 / 3 / 5; the per-plan numbers are still to be sat
-// down over, these are the interim ones). Up to three a week they start two
-// days apart; five is one a day (math.ts spacingDaysFor) - never two
-// in one morning, which is what a content farm looks like. Env-overridable so
-// the operator can tune cost against results without a deploy, and
-// projects.writer_weekly_quota (0070, operator-only SQL) overrides it for one
-// site. Prices above are unchanged by this (the Polar products are the
-// owner's call).
+// (owner, 2026-11-05: up to 1 / 3 / 5 - "up to", because research never
+// queues a keyword without measured volume and difficulty, so a thin niche
+// may not fill the week, and the public copy says so). Up to three a week
+// they start two days apart; five is one a day (math.ts spacingDaysFor) -
+// never two in one morning, which is what a content farm looks like.
+// Env-overridable so the operator can tune cost against results without a
+// deploy, and projects.writer_weekly_quota (0070, operator-only SQL)
+// overrides it for one site.
 export const ARTICLES_PER_WEEK: Record<Tier, number> = {
   starter: 1,
   growth: 3,

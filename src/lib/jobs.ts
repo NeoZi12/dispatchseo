@@ -26,7 +26,7 @@ import { db } from "./db";
 // changed without changing it.
 
 // "batch-poll" = a batch-lane writer run waiting on Anthropic's Message Batches API (job-handlers/batch-poll.ts).
-export type JobKind = "batch-poll" | "crawl" | "finish" | "publish" | "verify" | "write";
+export type JobKind = "autopilot" | "batch-poll" | "crawl" | "finish" | "publish" | "verify" | "write";
 
 export type Job = {
   id: string;

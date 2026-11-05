@@ -142,7 +142,7 @@ export default async function BillingPage({
             </div>
             <p className="mt-3 text-[15px] text-ink">
               {hostedMode
-                ? `${perWeek} ${perWeek === 1 ? "article" : "articles"} a week, up to ${sub.sites_limit} ${sub.sites_limit === 1 ? "site" : "sites"}`
+                ? `${perWeek === 1 ? "One article" : `Up to ${perWeek} articles`} a week${sub.sites_limit > 1 ? `, up to ${sub.sites_limit} sites` : ", one site"}`
                 : `Up to ${sub.sites_limit} ${sub.sites_limit === 1 ? "site" : "sites"}`}
             </p>
             <p className="mt-1 text-[14px] text-ink-muted">{state.line}</p>

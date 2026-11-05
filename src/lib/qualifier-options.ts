@@ -11,8 +11,10 @@
 // Webflow, Framer, Ghost) is refused by the domain probe, not offered here.
 export type SiteKind = "wordpress" | "code";
 
+// The done-for-you release (owner, 2026-11-05) publishes to GitHub repos
+// only, so WordPress is not offered. The kind stays in the type (older
+// qualifier rows carry it) and the WordPress publisher stays in the code.
 export const SITE_KINDS: { value: SiteKind; label: string; hint: string }[] = [
-  { value: "wordpress", label: "WordPress", hint: "Self-hosted, any theme or builder" },
   { value: "code", label: "Built with code", hint: "Next.js, Astro, Hugo… in a GitHub repo" },
 ];
 
