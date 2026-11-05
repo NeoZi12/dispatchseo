@@ -16,6 +16,7 @@ import {
 import type { Project } from "@/lib/projects";
 import type { Job } from "@/lib/jobs";
 import { trackPublishedKeyword } from "@/lib/autopilot/tracking";
+import { ideaDone } from "@/lib/writer/runs";
 
 // Confirms a published article is actually reachable - and, once it is, files
 // it as a real page of the site.
@@ -148,13 +149,7 @@ export async function runVerifyJob(job: Job): Promise<void> {
   // The idea is finished. started_at is cleared for the same reason
   // update_suggestion clears it: it is a build clock, and a stale one feeds
   // the stuck-build sweep.
-  if (row.suggestion_id) {
-    await db()
-      .from("suggestions")
-      .update({ status: "done", completed_at: now, started_at: null })
-      .eq("id", row.suggestion_id)
-      .eq("project_id", row.project_id);
-  }
+  if (row.suggestion_id) await ideaDone(row.project_id, row.suggestion_id, now, true);
 
   await db()
     .from("article_drafts")

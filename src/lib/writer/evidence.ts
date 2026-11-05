@@ -525,7 +525,12 @@ export function linkCitations(markdown: string, sources: Source[], pages: SiteBr
           if (!s || seen.has(n)) return "";
           seen.add(n);
           return ` ([${s.host}](${s.url}))`;
-        });
+        })
+        // A marker the writer made up ("[S-brief]" for "from the site brief"
+        // reached a live ClockedCode table on 2026-11-05) is not a citation
+        // and never a link: it is dropped, not shown. Real links ("[x](url)")
+        // are untouched.
+        .replace(/\s?\[S-[A-Za-z][\w-]*\](?!\()/g, "");
     })
     .join("\n");
 }

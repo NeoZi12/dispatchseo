@@ -593,7 +593,7 @@ async function plan(c: Ctx): Promise<void> {
         slug: "3-6 words, kebab-case",
         meta_description: "120-155 characters, states the concrete benefit",
         sections: [{ heading: "phrased as the reader's question or the outcome, never a topic noun", reader_outcome: "what the reader can DO or DECIDE after this section", fact_ids: ["f1"], format: "prose|steps|table|checklist" }],
-        faq_questions: ["ONLY from QUESTIONS PEOPLE ALSO ASK, 0-5, omit any the sections already answer"],
+        faq_questions: ["from QUESTIONS PEOPLE ALSO ASK when the research lists any, otherwise 2-3 questions this article's reader would ask next; 0-5, omit any the sections already answer"],
         glance_table: "one line: what the side-by-side table under the TL;DR shows - its columns and its rows, built from the facts (the bottom line a reader gets without reading a paragraph)",
         target_words: 1200,
         skip: "ONLY if this article cannot honestly beat page one with these facts and this site: one sentence why. Otherwise omit.",
@@ -656,7 +656,13 @@ async function plan(c: Ctx): Promise<void> {
   // (Paperbot's own content lint refuses anything shorter; the gate below
   // holds the same line), 2500 the point past which a draft rambles.
   parsed.target_words = Number.isFinite(parsed.target_words) ? Math.min(2500, Math.max(700, parsed.target_words)) : sheet.medianWords;
-  parsed.faq_questions = (parsed.faq_questions ?? []).filter((q) => sheet.peopleAlsoAsk.some((p) => jaccard(p, q, project.language_code) >= 0.5)).slice(0, 5);
+  // FAQ questions come from People Also Ask when the SERP has them; when it
+  // has none (thin markets, Hebrew), up to three planner questions stand in,
+  // or 3 of 4 articles ship without a FAQ (audit 2026-11-05). Their answers
+  // still face faq-quality and NO FACT, NO NUMBER like any other text.
+  parsed.faq_questions = sheet.peopleAlsoAsk.length
+    ? (parsed.faq_questions ?? []).filter((q) => sheet.peopleAlsoAsk.some((p) => jaccard(p, q, project.language_code) >= 0.5)).slice(0, 5)
+    : (parsed.faq_questions ?? []).filter((q) => typeof q === "string" && q.trim().length > 8).slice(0, 3);
   if (prefs.disabled_blocks.includes("faq")) parsed.faq_questions = [];
 
   // Code checks what code can check: every cited fact id and site page exists.
@@ -1468,7 +1474,7 @@ async function runChecks(c: Ctx, sheet: FactSheet, brief: SiteBrief, p: Plan, in
   //    the intro section ("" is the text above the first H2).
   {
     const intro = full.split(/^## /m)[0].replace(/^# [^\n]*\n/, "").trim();
-    const tldrFirst = /^>\s*\*\*TL;DR/i.test(intro) || /^>/.test(intro);
+    const tldrFirst = /^>\s*\*\*TL;DR/i.test(intro);
     const tableInIntro = /^\|.*\|\s*$\n^\|\s*:?-{3,}/m.test(intro);
     if (!tldrFirst) issues.push({ section: "", note: "the article must open, directly under the title, with a blockquote that starts \"> **TL;DR:**\" - two or three short sentences with the answer and the one rule or number that decides it", blocking: true });
     if (!tableInIntro) issues.push({ section: "", note: `right after the TL;DR and before the first section heading, add the one side-by-side markdown table that shows the bottom line (${p.glance_table ?? "options against what decides between them, with a verdict row"})`, blocking: true });
@@ -1696,6 +1702,39 @@ async function splicePatch(
 
 // --- handoff -------------------------------------------------------------------
 
+/** The article's one ad: a link to the site itself. The writer is asked to
+ *  use the site's products where they solve the reader's problem, and it
+ *  does so about half the time (audit 2026-11-05: 2 of 4 articles pitched in
+ *  plain text with no link, 1 had nothing). When the body already links the
+ *  site's home page nothing is added; otherwise one closing line, the site's
+ *  name as the link and its own one-sentence description, in the site's
+ *  language because the brief is. Code, not a patch: it costs nothing and
+ *  cannot be forgotten. Owners who want no pitch disable the "cta" block. */
+function closingCta(markdown: string, brief: SiteBrief, project: Project): string {
+  const prefs = (project.content_prefs ?? {}) as { disabled_blocks?: unknown };
+  if (Array.isArray(prefs.disabled_blocks) && prefs.disabled_blocks.includes("cta")) return "";
+  let home: URL;
+  try {
+    home = new URL(brief.url);
+  } catch {
+    return "";
+  }
+  const host = home.hostname.toLowerCase().replace(/^www\./, "");
+  const linksHome = [...markdown.matchAll(/\]\(([^)\s]+)\)/g)].some((m) => {
+    try {
+      const u = new URL(m[1], brief.url);
+      return u.hostname.toLowerCase().replace(/^www\./, "") === host && u.pathname.replace(/\/+$/, "") === "";
+    } catch {
+      return false;
+    }
+  });
+  if (linksHome) return "";
+  const sentence = (brief.about ?? "").trim().split(/(?<=[.!?])\s+/)[0]?.trim() ?? "";
+  const blurb = sentence.length > 200 ? `${sentence.slice(0, 197).trimEnd()}…` : sentence;
+  const name = (brief.name || host).replace(/[[\]]/g, "").trim();
+  return `\n\n[**${name}**](${home.origin}/)${blurb ? `: ${blurb}` : ""}\n`;
+}
+
 async function handoff(c: Ctx, draft: Draft, p: Plan, report: ValidationReport, record: Record<string, unknown>, costSoFar: number): Promise<void> {
   const { project, run } = c;
   const { sheet, brief } = run.stage_outputs.research as { sheet: FactSheet; brief: SiteBrief };
@@ -1704,7 +1743,7 @@ async function handoff(c: Ctx, draft: Draft, p: Plan, report: ValidationReport, 
   // Sanitized once more at the very end: the FAQ answers are model text that
   // never passed through restrictLinks, and this is the last hand before the
   // customer's repo.
-  const body = sanitizeWriterMarkdown(linkCitations(draft.markdown, sheet.sources, brief.pages) + renderFaq(draft.faq, draft.faqHeading));
+  const body = sanitizeWriterMarkdown(linkCitations(draft.markdown, sheet.sources, brief.pages) + closingCta(draft.markdown, brief, project) + renderFaq(draft.faq, draft.faqHeading));
   const sources = sheet.sources.map((s) => ({ url: s.url, title: s.title ?? undefined }));
   const fields = {
     title: p.title,

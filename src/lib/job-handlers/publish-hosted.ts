@@ -5,6 +5,7 @@ import { renderDraftForRoute } from "./finish";
 import { schemaScript } from "@/lib/article-render";
 import { dryDraftBlocked, parkDryDraft } from "./dry-guard";
 import { trackPublishedKeyword } from "@/lib/autopilot/tracking";
+import { ideaDone } from "@/lib/writer/runs";
 
 // The hosted half of the publish job: the article is served by us under the
 // site's own /blog (src/lib/hosted-blog.ts), so "publishing" is a render for
@@ -66,13 +67,7 @@ export async function runHostedPublish(project: Project, draftId: string): Promi
   // hosted site's keywords are tracked only once published - tracking.ts).
   await trackPublishedKeyword(project, row);
 
-  if (row.suggestion_id) {
-    await db()
-      .from("suggestions")
-      .update({ status: "done", completed_at: now })
-      .eq("id", row.suggestion_id)
-      .eq("project_id", project.id);
-  }
+  if (row.suggestion_id) await ideaDone(project.id, row.suggestion_id, now, false);
 
   // Status re-checked in the write: a discard that landed between our read
   // and this update must win.

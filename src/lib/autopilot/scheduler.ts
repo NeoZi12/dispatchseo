@@ -4,7 +4,7 @@ import { planGate, projectPlan } from "@/lib/billing";
 import { loadSiteProfile } from "@/lib/site-profile";
 import { publishRoute } from "@/lib/job-handlers/draft-status";
 import { isDryRun, missingCredentials } from "@/lib/writer/models";
-import { startWriterRun } from "@/lib/writer/runs";
+import { startWriterRun, suggestionIdsInFlight } from "@/lib/writer/runs";
 import { rewriteLiveCached } from "@/lib/hosted-rewrite";
 import { publishTarget, writerMode, type Project } from "@/lib/projects";
 import { cadence } from "./math";
@@ -40,11 +40,11 @@ export type SchedulerOutcome =
  *  in the busy set" - the busy set can hold ideas already moved to
  *  in_progress, so subtracting its size would double-count them. */
 export async function approvedIdeaCount(projectId: string): Promise<number> {
-  const [{ data: rows }, { data: busy }] = await Promise.all([
+  const [{ data: rows }, busy] = await Promise.all([
     db().from("suggestions").select("id").eq("project_id", projectId).eq("type", "guide").eq("status", "approved").limit(500),
-    db().from("writer_runs").select("suggestion_id").eq("project_id", projectId).eq("status", "running").not("suggestion_id", "is", null),
+    suggestionIdsInFlight(projectId),
   ]);
-  const taken = new Set(((busy ?? []) as { suggestion_id: string }[]).map((r) => r.suggestion_id));
+  const taken = new Set(busy);
   return ((rows ?? []) as { id: string }[]).filter((r) => !taken.has(r.id)).length;
 }
 
@@ -163,9 +163,12 @@ export async function runScheduler(
 
   // A run our side killed (failure_kind "infra") gives its slot back: the
   // claim moved next_article_at two days out, and an outage is not a reason
-  // for the customer to wait two more days (audit C2). Only when the newest
-  // run is that failure, so a real article in between keeps its spacing.
-  await returnSlotAfterInfraFailure(project, now);
+  // for the customer to wait two more days (audit C2). So does a run that
+  // died at pick - the idea was refused before any work (off-topic, a
+  // duplicate, blocked), the week's count ignores it, and the next idea
+  // should get the same slot today, not next time. Only when the newest run
+  // is that failure, so a real article in between keeps its spacing.
+  await returnSlotAfterOurFailure(project, now);
 
   const plan = await projectPlan(project.id);
   const usage = await weekUsage(project.id, now);
@@ -227,18 +230,20 @@ export async function runScheduler(
   };
 }
 
-/** See the call site: hand back the slot a run lost to OUR failure. */
-async function returnSlotAfterInfraFailure(project: Project, now: Date): Promise<void> {
+/** See the call site: hand back the slot a run lost to OUR failure, or to a
+ *  pick that refused the idea before any work. */
+async function returnSlotAfterOurFailure(project: Project, now: Date): Promise<void> {
   if (!project.next_article_at || Date.parse(project.next_article_at) <= now.getTime()) return;
   const { data } = await db()
     .from("writer_runs")
-    .select("status, failure_kind:stage_outputs->>failure_kind")
+    .select("status, stage, failure_kind:stage_outputs->>failure_kind")
     .eq("project_id", project.id)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  const last = data as { status: string; failure_kind: string | null } | null;
-  if (last?.status !== "failed" || last.failure_kind !== "infra") return;
+  const last = data as { status: string; stage: string; failure_kind: string | null } | null;
+  if (last?.status !== "failed") return;
+  if (last.failure_kind !== "infra" && last.stage !== "pick") return;
   await setNextArticleAt(project.id, now);
   project.next_article_at = now.toISOString();
 }

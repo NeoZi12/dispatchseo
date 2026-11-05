@@ -204,6 +204,13 @@ export async function generate(input: GenerateInput): Promise<GenerateResult> {
   if (input.provider === "agent") return generateViaAgent(input);
   const candidates = slotSpecs(input.slot);
   const errors: string[] = [];
+  // Money spent on candidates that threw (truncated output, no JSON after a
+  // retry): a success folds it into its own cost; a final failure writes it
+  // to the run row itself, so the per-run cap and the daily ceilings (which
+  // read writer_runs.cost_usd) see it on the next attempt. Before this, a
+  // truncated Opus draft (~$0.32) retried five times was $1.60 the cap never
+  // saw (audit 2026-11-05).
+  let lost = 0;
   for (const [i, spec] of candidates.entries()) {
     if (i > 0 && remainingMs(input.deadline) < MIN_BUDGET_MS) {
       errors.push("no time left in this stage for a fallback");
@@ -226,15 +233,17 @@ export async function generate(input: GenerateInput): Promise<GenerateResult> {
         raw = again;
         if (parseJson(raw.text) === undefined) throw new Error("model did not return JSON after a retry");
       }
-      const costUsd = price(spec, spent);
+      const costUsd = price(spec, spent) + lost;
       await ledger(input.projectId, input.runId, input.slot, spec, spent, Date.now() - started, null);
       return { text: raw.text, provider: spec.provider, model: spec.model, costUsd };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       errors.push(`${spec.provider}/${spec.model}: ${message}`);
+      lost += price(spec, spent);
       await ledger(input.projectId, input.runId, input.slot, spec, spent, Date.now() - started, message, false);
     }
   }
+  if (input.runId && lost > 0) await chargeRun(input.runId, lost);
   throw new Error(`every ${input.slot} model failed - ${errors.join("; ")}`);
 }
 
@@ -662,6 +671,18 @@ function price(spec: ModelSpec, u: Usage): number {
       u.outputTokens * spec.outputPerM) /
     1_000_000
   );
+}
+
+/** Adds spend to a run's total directly, for money a stage never got to
+ *  record because the call threw. Read-then-write: the only other writers of
+ *  this column are the stage's own advance/fail, which happen after this
+ *  returns (the throw is what gets the handler there). */
+async function chargeRun(runId: string, usd: number): Promise<void> {
+  const { data } = await db().from("writer_runs").select("cost_usd").eq("id", runId).maybeSingle();
+  if (!data) return;
+  const total = Number((Number((data as { cost_usd: number | string }).cost_usd ?? 0) + usd).toFixed(4));
+  const { error } = await db().from("writer_runs").update({ cost_usd: total }).eq("id", runId);
+  if (error) console.error("[writer] could not charge the run for a failed call:", error.message);
 }
 
 async function ledger(

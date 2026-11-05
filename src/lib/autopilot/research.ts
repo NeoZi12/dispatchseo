@@ -162,7 +162,7 @@ export async function promoteBacklog(projectId: string, articlesPerWeek: number)
   if (short === 0) return 0;
   const { data, error } = await db()
     .from("suggestions")
-    .select("id, spec")
+    .select("id, spec, created_at")
     .eq("project_id", projectId)
     .eq("type", "guide")
     .eq("status", "pending")
@@ -173,7 +173,13 @@ export async function promoteBacklog(projectId: string, articlesPerWeek: number)
     const r = (s as { rank?: unknown } | null)?.rank;
     return typeof r === "number" ? r : Number.MAX_SAFE_INTEGER;
   };
-  const ids = (data as { id: string; spec: unknown }[]).sort((a, b) => rank(a.spec) - rank(b.spec)).slice(0, short).map((r) => r.id);
+  // `rank` is the pick order WITHIN one research run; across runs the older
+  // run's leftovers go first, or a refill's rank 0 would jump the queue
+  // ahead of ideas chosen (and cluster-ordered) before it.
+  const ids = (data as { id: string; spec: unknown; created_at: string }[])
+    .sort((a, b) => a.created_at.localeCompare(b.created_at) || rank(a.spec) - rank(b.spec))
+    .slice(0, short)
+    .map((r) => r.id);
   const { error: upErr } = await db().from("suggestions").update({ status: "approved", decided_at: new Date().toISOString() }).in("id", ids).eq("status", "pending");
   if (upErr) {
     console.warn(`[autopilot] backlog promotion failed for ${projectId}: ${upErr.message}`);

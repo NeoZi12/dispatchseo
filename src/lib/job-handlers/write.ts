@@ -113,6 +113,13 @@ export async function runWriteJob(job: Job): Promise<void> {
 
 /** Vendor-failed runs on one idea before the idea is parked. */
 const INFRA_PARK_AFTER = 3;
+/** Exhausted (every attempt threw, not a vendor fault) runs on one idea
+ *  before it is parked. One retry is cheap insurance against a one-off
+ *  (the 2026-11-03 verify loop's idea succeeded the next day); a second
+ *  identical death is the content, and letting it run a third time would
+ *  spend a weekly slot and up to the run cap on it every slot forever
+ *  (audit 2026-11-05). */
+const EXHAUSTED_PARK_AFTER = 2;
 
 /** Ends a run whose stage threw on every attempt. Only a vendor or
  *  transport fault is "infra": usage.ts skips infra runs and the scheduler
@@ -122,7 +129,21 @@ const INFRA_PARK_AFTER = 3;
  *  kind and spend the slot. A vendor fault that keeps killing the SAME idea
  *  parks it after INFRA_PARK_AFTER runs, so even an infra loop has an end. */
 async function endExhaustedRun(run: WriterRun, reason: string, message: string): Promise<void> {
-  if (!VENDOR_FAILURE_RE.test(message)) return failRun(run, reason);
+  if (!VENDOR_FAILURE_RE.test(message)) {
+    if (run.suggestion_id) {
+      const { count, error } = await db()
+        .from("writer_runs")
+        .select("id", { count: "exact", head: true })
+        .eq("project_id", run.project_id)
+        .eq("suggestion_id", run.suggestion_id)
+        .eq("status", "failed")
+        .like("error", "gave up at stage %");
+      if (!error && (count ?? 0) + 1 >= EXHAUSTED_PARK_AFTER) {
+        return parkIdea(run, run.suggestion_id, `${reason} (run ${(count ?? 0) + 1} on this idea to die the same way)`);
+      }
+    }
+    return failRun(run, reason);
+  }
   if (run.suggestion_id) {
     const { count, error } = await db()
       .from("writer_runs")

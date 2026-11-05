@@ -73,6 +73,19 @@ export type ChangelogEntry = {
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
+    kind: "fixed",
+    text:
+      "The writer no longer picks an idea whose article is still waiting to go live, and a refused idea no longer " +
+      "costs the site its article for that day: the next idea gets the same slot. An idea that dies the same way " +
+      "twice is parked instead of retried every week.",
+  },
+  {
+    kind: "improved",
+    text:
+      "Every article now ends with one link to your site, articles on thin markets get a short FAQ instead of none, " +
+      "and a stray citation marker can no longer reach a published page.",
+  },
+  {
     kind: "improved",
     text:
       "Analytics got the same look as the top posts on Home: where people landed, what they searched and where you " +

@@ -157,15 +157,50 @@ export async function listWriterRuns(projectId: string, limit = 20): Promise<Wri
   return (data as WriterRun[] | null) ?? [];
 }
 
-/** Ideas that already have a live run, so pick never chooses one twice. */
+/** Ideas that already have a run on them, so pick never chooses one twice:
+ *  a running run, or a done run whose article is still on its way to the
+ *  site (a PR awaiting merge, a hosted publish pending). The idea itself
+ *  stays `approved` until the page is live, so without the second half the
+ *  next daily tick picked it again, paid a classifier call to learn it was
+ *  "the same topic as the existing page" and parked it (clockedcode
+ *  2026-11-05, paperbot 2026-10-28). Published and discarded drafts free
+ *  the idea: publish marks it done, discard restores it on purpose. */
 export async function suggestionIdsInFlight(projectId: string): Promise<string[]> {
   const { data } = await db()
     .from("writer_runs")
-    .select("suggestion_id")
+    .select("suggestion_id, status, draft_id")
     .eq("project_id", projectId)
-    .eq("status", "running")
-    .not("suggestion_id", "is", null);
-  return ((data ?? []) as { suggestion_id: string }[]).map((r) => r.suggestion_id);
+    .in("status", ["running", "done"])
+    .not("suggestion_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(300);
+  const rows = (data ?? []) as { suggestion_id: string; status: string; draft_id: string | null }[];
+  const busy = new Set(rows.filter((r) => r.status === "running").map((r) => r.suggestion_id));
+  const pending = rows.filter((r) => r.status === "done" && r.draft_id);
+  if (pending.length) {
+    const { data: drafts } = await db()
+      .from("article_drafts")
+      .select("id")
+      .in("id", pending.map((r) => r.draft_id as string))
+      .in("status", ["submitted", "accepted", "blocked_setup", "finished"]);
+    const unpublished = new Set(((drafts ?? []) as { id: string }[]).map((d) => d.id));
+    for (const r of pending) if (unpublished.has(r.draft_id as string)) busy.add(r.suggestion_id);
+  }
+  return [...busy];
+}
+
+/** The idea's article is live: done, and the note an earlier run's park
+ *  left on it ("[writer did not build: …]") comes off, or the Queue page
+ *  shows a published idea as refused. */
+export async function ideaDone(projectId: string, suggestionId: string, now: string, clearStarted: boolean): Promise<void> {
+  const { data } = await db().from("suggestions").select("rationale").eq("id", suggestionId).eq("project_id", projectId).maybeSingle();
+  const prior = (data as { rationale: string | null } | null)?.rationale;
+  const rationale = prior == null ? undefined : prior.replace(/^(?:\[writer did not build:[^\n]*\]\n?)+/, "") || null;
+  await db()
+    .from("suggestions")
+    .update({ status: "done", completed_at: now, ...(clearStarted ? { started_at: null } : {}), ...(rationale !== undefined ? { rationale } : {}) })
+    .eq("id", suggestionId)
+    .eq("project_id", projectId);
 }
 
 /** One `write` job per stage. The idempotency key carries the stage so a
@@ -297,7 +332,7 @@ export type FailureKind = "infra" | "content";
  *  (hand the attempt back) and the write handler's last-attempt verdict
  *  (infra, or a failure that counts against the slot). */
 export const VENDOR_FAILURE_RE =
-  /(?:anthropic|typesafe) (?:401|403|429|5\d\d)|credit balance|overloaded|(?:ANTHROPIC|TYPESAFE)_API_KEY is not set|fetch failed|ECONNRESET|ENOTFOUND|EAI_AGAIN|no time left/i;
+  /(?:anthropic|typesafe) (?:401|403|429|5\d\d)|credit balance|overloaded|(?:ANTHROPIC|TYPESAFE)_API_KEY is not set|fetch failed|ECONNRESET|ENOTFOUND|EAI_AGAIN|no(?: enough)? time left/i;
 
 
 /** A run that cannot continue. Terminal and deliberately NOT a thrown error:
@@ -317,7 +352,10 @@ export async function failRun(run: WriterRun, reason: string, costUsd = 0, kind?
     .update({
       status: "failed",
       error: reason.slice(0, 1000),
-      cost_usd: Number((Number(run.cost_usd) + costUsd).toFixed(4)),
+      // Nothing to add leaves the column alone: a failed model call may have
+      // charged the row directly (models.ts chargeRun) after this worker
+      // read it, and writing the stale copy back would erase that.
+      ...(costUsd > 0 ? { cost_usd: Number((Number(run.cost_usd) + costUsd).toFixed(4)) } : {}),
       updated_at: new Date().toISOString(),
       ...(outputs ? { stage_outputs: outputs } : {}),
     })
