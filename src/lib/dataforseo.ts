@@ -288,6 +288,8 @@ export type SerpItem = {
   title?: string;
   domain?: string;
   url?: string;
+  /** The page's date as Google shows it ("2024-03-02 00:00:00 +00:00"), when it does. */
+  timestamp?: string | null;
   /** The grey line above the title ("https://www.mindstudio.ai › blog › …"). */
   breadcrumb?: string;
   references?: Array<{ domain?: string; url?: string; title?: string; source?: string }>;
@@ -862,6 +864,51 @@ export async function serpResearch(
     organic: mapOrganicItems(items),
     peopleAlsoAsk: [...new Set(peopleAlsoAsk)].slice(0, 8),
     relatedSearches: [...new Set(relatedSearches)].slice(0, 10),
+    cost: json.cost,
+  };
+}
+
+// --- Page-one snapshot for the keyword pick -------------------------------------
+//
+// What page one looks like for a candidate keyword, read by the autopilot's
+// research (autopilot/research.ts) to prefer keywords a new site can beat:
+// forum and UGC results, pages years old, and no AI Overview in the way. One
+// depth-10 advanced call with the overview loaded (~$0.002, the same call
+// serpAiOverview makes), billed to the project's account like every SERP.
+export type SerpSnapshot = {
+  organic: Array<{ position: number; domain: string | null; url: string | null; timestamp: string | null }>;
+  aiOverview: boolean;
+  /** "Discussions and forums" blocks on the page (Reddit, Quora threads Google surfaces as a group). */
+  forumBlocks: number;
+  cost: number;
+};
+
+export async function serpSnapshot(
+  keyword: string,
+  creds: DataforseoCreds,
+  locationCode: number = LOCATION_CODE,
+  languageCode: string = LANGUAGE_CODE,
+): Promise<SerpSnapshot> {
+  const json = await post<{
+    cost: number;
+    tasks: Array<{ result?: Array<{ items?: AdvancedItem[] }> }>;
+  }>("/serp/google/organic/live/advanced", [
+    { keyword, location_code: locationCode, language_code: languageCode, depth: 10, load_async_ai_overview: true },
+  ], creds);
+  const items = json.tasks?.[0]?.result?.[0]?.items ?? [];
+  const organic = items
+    .filter((it) => it.type === "organic")
+    .map((it) => ({
+      position: it.rank_absolute ?? 0,
+      domain: (isGoogleRedirector(it.url) ? domainFromBreadcrumb(it.breadcrumb) : null) ?? it.domain ?? null,
+      url: it.url ?? null,
+      timestamp: typeof it.timestamp === "string" && it.timestamp ? it.timestamp : null,
+    }))
+    .filter((it) => it.position > 0);
+  return {
+    organic,
+    aiOverview: parseAiOverview(items).present,
+    forumBlocks: items.filter((it) => it.type === "discussions_and_forums").length,
     cost: json.cost,
   };
 }

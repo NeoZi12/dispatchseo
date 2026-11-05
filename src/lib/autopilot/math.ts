@@ -463,7 +463,12 @@ export function fillKd(raw: Candidate[], kd: Map<string, number | null>): { rows
   return { rows, recovered: filled.size };
 }
 
-export const FIT_MIN = 0.6;
+/** 0.6 let "expat families" (fit 0.69) through for a tutoring site
+ *  (2026-11-01). The fit question now asks whether a BUYER of the site
+ *  would type it, and the bar sits at 0.7: a thin queue is honest, an
+ *  off-audience article is a wasted slot and a Google signal in the wrong
+ *  direction. */
+export const FIT_MIN = 0.7;
 export const EVERGREEN_MIN = 0.5;
 export const ACCEPTED_INTENTS = ["informational", "commercial"] as const;
 

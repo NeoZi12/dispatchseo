@@ -128,10 +128,37 @@ export async function weekUsage(projectId: string, now: Date): Promise<WeekUsage
  *                   between starts (math.ts cadence / spacingDaysFor). `gated` skips ONLY this part,
  *                   for the scheduler, which just evaluated the same rule.
  */
+/** Daily model-spend ceilings, per site and for the whole deploy, summed from
+ *  the day's writer runs (writer_runs.cost_usd carries every model call of a
+ *  run, the 2026-11-03 loop included). The last belt behind the per-run cap
+ *  (stages.ts RUN_MAX_USD) and the start caps (runs.ts): a bug that gets
+ *  past both still cannot spend more than this in a day. Read errors never
+ *  block a start. */
+const PROJECT_DAILY_USD = Number(process.env.WRITER_PROJECT_DAILY_USD) || 2;
+const PLATFORM_DAILY_USD = Number(process.env.WRITER_PLATFORM_DAILY_USD) || 40;
+
+async function runSpendUsd(projectId: string | null, since: Date): Promise<number> {
+  let q = db().from("writer_runs").select("cost_usd").gte("created_at", since.toISOString());
+  if (projectId) q = q.eq("project_id", projectId);
+  const { data, error } = await q;
+  if (error) return 0;
+  return ((data ?? []) as { cost_usd: number | string }[]).reduce((a, r) => a + Number(r.cost_usd ?? 0), 0);
+}
+
+export async function spendCeilingReason(projectId: string, now = new Date()): Promise<string | null> {
+  const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const [site, platform] = await Promise.all([runSpendUsd(projectId, dayStart), runSpendUsd(null, dayStart)]);
+  if (site >= PROJECT_DAILY_USD) return `spend ceiling: this site's runs already cost $${site.toFixed(2)} today (ceiling $${PROJECT_DAILY_USD}); the next article starts tomorrow.`;
+  if (platform >= PLATFORM_DAILY_USD) return `spend ceiling: today's runs on this deploy already cost $${platform.toFixed(2)} (ceiling $${PLATFORM_DAILY_USD}); articles resume tomorrow.`;
+  return null;
+}
+
 export async function writerStartGate(project: Project, opts: { gated?: boolean } = {}, now = new Date()): Promise<string | null> {
   if (project.writer_paused_at) return "The autopilot is paused for this site. Resume it first.";
   const missing = missingCredentials();
   if (missing.length) return `The hosted writer has no model credentials on this deploy (${missing.join("; ")}).`;
+  const ceiling = await spendCeilingReason(project.id, now);
+  if (ceiling) return ceiling;
   if (isCloudMode()) {
     if (!polarConfigured()) return "plan inactive: billing is not configured on this deploy, so no article can be started.";
     const gate = await planGate(project.id);

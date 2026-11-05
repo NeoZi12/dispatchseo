@@ -3,7 +3,7 @@ import { planGate, projectPlan } from "@/lib/billing";
 import { isCloudMode } from "@/lib/cloud";
 import { platformBudgetGate } from "@/lib/dataforseo-usage";
 import { publishRoute } from "@/lib/job-handlers/draft-status";
-import { credsForProject, type KeywordIdea } from "@/lib/dataforseo";
+import { credsForProject, serpSnapshot, type KeywordIdea, type SerpSnapshot } from "@/lib/dataforseo";
 import {
   cachedBulkKeywordDifficulty,
   cachedKeywordSuggestions,
@@ -122,6 +122,55 @@ const RUN_USD_CEILING = 0.3;
 /** Rung 1 keeping fewer candidates than this, then coming up short, is what
  *  makes a market "thin" (the outcome's `thin`). */
 const THIN_RUNG1_KEPT = 10;
+/** Page-one snapshots bought per run for the pick, at most (~$0.002 each). */
+const SERP_SCORE_MAX = 12;
+/** Articles one cluster (one seed's subject) holds before the next opens. */
+const CLUSTER_SIZE = 12;
+/** Hosts whose page-one presence says the query is beatable: user-generated
+ *  or personal, ranking on relevance rather than authority. */
+const WEAK_HOST_RE = /(^|\.)(reddit\.com|quora\.com|stackexchange\.com|stackoverflow\.com|news\.ycombinator\.com|facebook\.com|medium\.com|substack\.com|dev\.to|hashnode\.dev|github\.io|wordpress\.com|blogspot\.com|tumblr\.com|pinterest\.com)$/i;
+const OLD_PAGE_MS = 2 * 365 * DAY_MS;
+
+/** What one cheap SERP says about how beatable a keyword is for a new site.
+ *  Forum/UGC results in the top ten count double (capped), pages over two
+ *  years old count once (capped), an AI Overview over an informational query
+ *  costs two (it answers the query before the reader reaches a result:
+ *  Seer, Sept 2025 - organic CTR 1.76% -> 0.61% where one shows). */
+export type SerpWeakness = { score: number; forums: number; old: number; aiOverview: boolean };
+
+export function weaknessOf(snap: SerpSnapshot, intent: string | null, now: Date): SerpWeakness {
+  const top = snap.organic.filter((o) => o.position <= 10);
+  const forums = top.filter((o) => o.domain && WEAK_HOST_RE.test(o.domain)).length + snap.forumBlocks;
+  const old = top.filter((o) => {
+    const t = o.timestamp ? Date.parse(o.timestamp.replace(" +00:00", "Z").replace(" ", "T")) : NaN;
+    return Number.isFinite(t) && now.getTime() - t > OLD_PAGE_MS;
+  }).length;
+  const score = Math.min(4, forums * 2) + Math.min(3, old) - (snap.aiOverview && intent === "informational" ? 2 : 0);
+  return { score, forums, old, aiOverview: snap.aiOverview };
+}
+
+/** The seed the site's live ideas mostly came from, while it still has room
+ *  (under CLUSTER_SIZE ideas queued or written). Null = no cluster open:
+ *  the first run, or a full one, so the next seed's subject opens. */
+async function openClusterFor(projectId: string): Promise<string | null> {
+  const { data, error } = await db()
+    .from("suggestions")
+    .select("spec")
+    .eq("project_id", projectId)
+    .eq("type", "guide")
+    .in("status", ["approved", "in_progress", "building", "done"])
+    .order("created_at", { ascending: false })
+    .limit(60);
+  if (error || !data) return null;
+  const counts = new Map<string, number>();
+  for (const row of data as { spec: unknown }[]) {
+    const c = (row.spec as { cluster?: unknown } | null)?.cluster;
+    if (typeof c === "string" && c) counts.set(c, (counts.get(c) ?? 0) + 1);
+  }
+  let best: { seed: string; n: number } | null = null;
+  for (const [seed, n] of counts) if (!best || n > best.n) best = { seed, n };
+  return best && best.n < CLUSTER_SIZE ? best.seed : null;
+}
 
 /** A candidate on its way through the ladder. `wider`: it came from the
  *  expansion of a rung-4 proposed seed, not from the site's own seeds - still
@@ -181,6 +230,14 @@ export type ResearchOutcome =
       wider?: { seeds: string[]; searched: number; candidates: number; kept: number; dropped: Record<string, number>; stopped?: string };
       /** Rung 4 was due but did not run: back-off, or the run's spend. */
       widerSkipped?: string;
+      /** Rung 4 proposed seeds one hop out of the core niche, because
+       *  difficulty (not thinness) is what emptied rung 1. */
+      oneHop?: true;
+      /** Page-one snapshots bought for the pick (one per shortlisted idea),
+       *  their DataForSEO cost, and the first error if any failed. */
+      serp?: { scored: number; usd: number; error?: string };
+      /** The cluster (seed) the site is filling, if one is open. */
+      cluster?: string;
       /** Labs expansion calls made this run (cache hits included), and how
        *  many of them DataForSEO billed. */
       labsCalls: number;
@@ -276,6 +333,13 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
   // expanded into nothing usable within the last 30 days are skipped, so
   // their slots go to seeds that might still find something.
   const seedList = await seedsFor(project, profile, dead);
+  // The open cluster goes first among the seeds, so the subject the site is
+  // building authority on is searched before anything else is.
+  const openPillar = await openClusterFor(project.id);
+  if (openPillar) {
+    const i = seedList.seeds.findIndex((s) => seedKey(s) === openPillar);
+    if (i > 0) seedList.seeds.unshift(...seedList.seeds.splice(i, 1));
+  }
   const seeds = seedList.seeds.slice(0, Math.min(MAX_SEEDS, 2 + needed));
   if (seeds.length === 0 && seedList.skippedDead === 0) return { skipped: "nothing to research from yet (the profile has no categories or tags)" };
 
@@ -468,6 +532,7 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
   const raw2: Candidate[] = [];
   let widerKept = 0;
   let widerDropped: Record<string, number> = {};
+  let oneHop = false;
   if (!judgeError && passed.length < needed && batches < MAX_JUDGE_CALLS) {
     const allowance = widerSearchAllowance(backoff, now.getTime());
     if (!allowance.allowed) widerSkipped = allowance.why;
@@ -475,7 +540,14 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
     else {
       rung = 4;
       try {
-        const r = await proposeSeeds(project, profile, existing.texts, failedJudge, seeds, [...dead]);
+        // Difficulty, not thinness, is what emptied rung 1: more searched
+        // keywords were dropped for KD than were kept. Then the seeds move
+        // one hop out (ONE_HOP_RULE) instead of digging deeper into a
+        // subject the site cannot rank for yet.
+        const kdDropped = Number(dropped.kd ?? 0);
+        const tooHard = kdDropped >= 10 && kdDropped >= rung1Kept ? { kdCeiling, rejected: kdDropped } : undefined;
+        oneHop = Boolean(tooHard);
+        const r = await proposeSeeds(project, profile, existing.texts, failedJudge, seeds, [...dead], { tooHard });
         costUsd += r.costUsd;
         // Deduped against every seed this run used and every dead one, and
         // never a seed under a blocked topic (its rows would all be dropped).
@@ -537,11 +609,48 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
     }
   }
 
+  // The pick among what passed. Two things decide the order the ideas are
+  // queued in (which is the order the writer takes them):
+  //   1. the open cluster: the seed the site's recent ideas came from, kept
+  //      until it holds CLUSTER_SIZE articles - ten-odd pages on one subject
+  //      is what earns a new site authority, ten subjects earn nothing;
+  //   2. page-one weakness, from one cheap SERP per candidate: forum and
+  //      UGC results in the top ten, pages years old, and no AI Overview
+  //      over an informational query. Nothing is REFUSED here (a thin niche
+  //      needs every idea); the weak page ones simply go first.
+  const seedOf = (keyword: string): string | null => {
+    for (const [seed, rows] of expandedSeeds) if (rows.some((r) => r.keyword === keyword)) return seed;
+    return null;
+  };
+  const weakness = new Map<string, SerpWeakness>();
+  let serpScored = 0;
+  let serpUsd = 0;
+  let serpError: string | undefined;
+  if (passed.length > 1 && dataforseoUsd < WIDER_STOP_USD) {
+    const shortlist = passed.slice(0, Math.min(SERP_SCORE_MAX, needed + 4));
+    const snaps = await Promise.allSettled(shortlist.map((c) => serpSnapshot(c.keyword, creds, loc, lang)));
+    snaps.forEach((r, i) => {
+      if (r.status === "rejected") {
+        serpError ??= r.reason instanceof Error ? r.reason.message : String(r.reason);
+        return;
+      }
+      serpScored++;
+      serpUsd += r.value.cost ?? 0;
+      charge("seeds", r.value.cost ?? 0);
+      weakness.set(shortlist[i].keyword, weaknessOf(r.value, shortlist[i].intent, now));
+    });
+  }
+  const inPillar = (c: Judged) => (openPillar && seedOf(c.keyword) === openPillar ? 1 : 0);
+  const weak = (c: Judged) => weakness.get(c.keyword)?.score ?? 0;
+  passed.sort((a, b) => inPillar(b) - inPillar(a) || weak(b) - weak(a)); // stable: ties keep opportunity order
+
   const added: ResearchAdded[] = [];
   for (const c of passed.slice(0, needed)) {
     // The rule, where it matters: an idea is queued only with a measured
     // monthly volume at or above the lowest floor and a measured KD.
     if (!(c.volume >= WIDEN2_MIN_VOLUME) || typeof c.kd !== "number") continue;
+    const cluster = seedOf(c.keyword);
+    const w = weakness.get(c.keyword);
     const { data, error } = await db()
       .from("suggestions")
       .insert({
@@ -552,9 +661,12 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
         primary_keyword: c.keyword,
         keyword_volume: c.volume,
         keyword_difficulty: c.kd,
-        rationale: `autopilot research: fit ${c.fit.toFixed(2)}, volume ${c.volume}, KD ${c.kd}${c.wider ? ` ${WIDER_SEARCH_TAG}` : ""}`,
+        rationale:
+          `autopilot research: fit ${c.fit.toFixed(2)}, volume ${c.volume}, KD ${c.kd}${c.wider ? ` ${WIDER_SEARCH_TAG}` : ""}` +
+          (w ? `; page one: ${w.forums} forum result${w.forums === 1 ? "" : "s"}, ${w.old} page${w.old === 1 ? "" : "s"} over two years old${w.aiOverview ? ", an AI Overview" : ", no AI Overview"}` : "") +
+          (cluster ? `; cluster "${cluster}"` : ""),
         source: "autopilot",
-        spec: { intent: c.intent },
+        spec: { intent: c.intent, ...(cluster ? { cluster } : {}), ...(w ? { serp: w } : {}) },
         decided_at: now.toISOString(),
       })
       .select("id")
@@ -643,6 +755,9 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
     deadSeeds: { skipped: seedList.skippedDead, marked: deadSeeds.map((d) => d.seed) },
     ...(rung === 4 ? { proposed, expandedFrom, wider: { seeds: widerSeeds, searched: widerSearched, candidates: raw2.length, kept: widerKept, dropped: widerDropped, ...(widerStop ? { stopped: widerStop } : {}) } } : {}),
     ...(widerSkipped ? { widerSkipped } : {}),
+    ...(oneHop ? { oneHop: true as const } : {}),
+    ...(serpScored || serpError ? { serp: { scored: serpScored, usd: Math.round(serpUsd * 10_000) / 10_000, ...(serpError ? { error: serpError } : {}) } } : {}),
+    ...(openPillar ? { cluster: openPillar } : {}),
     ...(proposeError ? { proposeError } : {}),
     ...(judgeError ? { judgeError } : {}),
     ...(thin ? { note: thinNote(lang, rung, added.length, { topics: widerSearched, needed, soon }) } : {}),
@@ -704,6 +819,17 @@ const PROPOSE_SYSTEM = [
   "Reply with a JSON array of strings only: no prose, no keys, no code fence.",
 ].join("\n");
 
+/** The one-hop variant: the site's own subject is too competitive for it
+ *  (every searched keyword sits above the difficulty a new site can rank
+ *  for), so the seeds move one hop out - the problems, tasks, mistakes,
+ *  comparisons and setups the SAME buyer searches before they know this
+ *  site's category exists - and never to a different audience. */
+const ONE_HOP_RULE = [
+  "THIS SITE'S OWN SUBJECT IS TOO COMPETITIVE FOR IT RIGHT NOW: the keywords on it that people search are all harder to rank for than a site this new can manage (the difficulty data is in the site block).",
+  "So propose seeds ONE HOP OUT: the problems, tasks, mistakes, comparisons, setups and 'how do I' situations the SAME people search before they know this site's category exists - the job they are trying to get done, not the product category. Same audience, every time; never a different audience, never a broader public.",
+  "The shape, for an invoicing tool whose own category is too hard: \"late payment reminder\", \"freelance contract\", \"deposit before work\", \"net 30 terms\".",
+].join("\n");
+
 /**
  * Rung 4's one model call: up to ten extra SEEDS for the Labs expansion, not
  * keywords to queue - every number on what they turn up comes from
@@ -719,6 +845,9 @@ async function proposeSeeds(
   rejectedThisRun: Judged[],
   usedSeeds: string[],
   deadSeeds: string[],
+  /** The core niche was too hard: kdCeiling is what the site can rank for,
+   *  tooHard how many searched keywords on its subject sat above it. */
+  opts: { tooHard?: { kdCeiling: number; rejected: number } } = {},
 ): Promise<{ seeds: string[]; costUsd: number }> {
   const [trackedRes, rejectedRes] = await Promise.all([
     db().from("keywords").select("keyword").eq("project_id", project.id).eq("status", "tracking").order("search_volume", { ascending: false, nullsFirst: false }).limit(10),
@@ -756,6 +885,9 @@ async function proposeSeeds(
     `Details (including who it serves): ${data(profile.long)}`,
     `Language: ${languageName(project.language_code)} (${project.language_code})`,
     `Country: ${country}`,
+    ...(opts.tooHard
+      ? [`Difficulty: this site can rank for keywords up to difficulty ${opts.tooHard.kdCeiling} of 100; ${opts.tooHard.rejected} searched keywords on its own subject were above that this run.`]
+      : []),
     "",
     "Existing articles and queued topics:",
     list(titles.slice(0, 15)),
@@ -777,7 +909,7 @@ async function proposeSeeds(
     provider: "api",
     projectId: project.id,
     runId: null,
-    system: PROPOSE_SYSTEM,
+    system: opts.tooHard ? `${PROPOSE_SYSTEM}\n${ONE_HOP_RULE}` : PROPOSE_SYSTEM,
     user,
     json: true,
     deadline: Date.now() + 60_000,
@@ -1016,8 +1148,8 @@ export async function judgeCandidates(
   batch.forEach((c, i) => {
     questions[`fit_${i}`] = {
       type: "noul",
-      instructions: `Candidate ${i} ("${c.keyword}"): a reader of this site would search this, and the site can credibly answer it with an article.`,
-      criteria: { true: "on the site's subject and within what it can speak to", false: "off-topic, or something the site has no standing to answer" },
+      instructions: `Candidate ${i} ("${c.keyword}"): a person who would buy from, sign up to or use this site would type this search, and the site can credibly answer it with an article.`,
+      criteria: { true: "the site's own audience searches this, on a subject the site can speak to from what it does", false: "a different audience, a topic the audience only touches in passing, or something the site has no standing to answer" },
     };
     questions[`intent_${i}`] = {
       type: "choice",
