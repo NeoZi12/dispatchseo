@@ -102,36 +102,104 @@ export function coverPrompt(input: {
   return { system, user };
 }
 
+/** Elements a subject layer may use: shapes, text, grouping, gradients.
+ *  Nothing that loads anything (image, use, feImage, any filter), nothing
+ *  that runs anything. Compared exactly, so a prefixed name ("svg:image")
+ *  is simply not on the list. */
+const ALLOWED_ELEMENTS = new Set([
+  "svg", "g", "defs", "path", "line", "circle", "ellipse", "rect", "polyline", "polygon",
+  "text", "tspan", "linearGradient", "radialGradient", "stop", "clipPath", "mask",
+]);
+/** Presentation and geometry attributes only. No href of any kind, no
+ *  event handlers, no style (CSS can carry url()), nothing namespaced. */
+const ALLOWED_ATTRS = new Set([
+  "id", "x", "y", "x1", "y1", "x2", "y2", "cx", "cy", "r", "rx", "ry", "fx", "fy", "width", "height",
+  "d", "points", "transform", "viewBox", "opacity", "fill", "fill-opacity", "fill-rule", "stroke",
+  "stroke-width", "stroke-opacity", "stroke-linecap", "stroke-linejoin", "stroke-dasharray",
+  "stroke-dashoffset", "stroke-miterlimit", "font-family", "font-size", "font-weight", "font-style",
+  "letter-spacing", "text-anchor", "dominant-baseline", "direction", "offset", "stop-color",
+  "stop-opacity", "gradientUnits", "gradientTransform", "spreadMethod", "clip-path", "mask",
+  "clipPathUnits", "maskUnits", "maskContentUnits", "dx", "dy", "rotate", "visibility", "display",
+]);
+const MAX_ELEMENTS = 600;
+
 /**
  * The model's reply -> a subject layer safe to rasterize, stamped with its
- * hue; null when it is not a usable drawing. The PNG is all that ever ships
- * (no browser parses this SVG), so the dangers are resvg's: an <image> or
- * any href it could resolve against the local filesystem, and documents big
- * enough to stall a render. Everything that could reach outside the document
- * goes; what is left is shapes and text.
+ * hue; null when it is not a usable drawing.
+ *
+ * The PNG is all that ever ships (no browser parses this SVG), so the danger
+ * is resvg itself: an <image> (or a filter, or a <use>) pointing at a path
+ * on this server would be read from disk and drawn into a public PNG. The
+ * model's prompt is built from scraped pages, so its output is untrusted.
+ * Hence an ALLOWLIST rebuild, not a blocklist: the document is tokenized
+ * into tags and text, and only listed elements with listed attributes are
+ * re-emitted (security review 2026-11-05: the first, regex blocklist version
+ * let `<svg:image xlink:href=...>`-style prefixed names through). Comments,
+ * doctypes, entities, CDATA and processing instructions never survive, and
+ * the only reference left anywhere is an in-document url(#id).
  */
 export function sanitizeCoverSvg(raw: string, hue: Hue): string | null {
   const start = raw.indexOf("<svg");
   const end = raw.lastIndexOf("</svg>");
   if (start < 0 || end < start) return null;
-  let svg = raw.slice(start, end + 6);
-  if (svg.length > MAX_SVG_CHARS) return null;
-  svg = svg
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<!DOCTYPE[^>]*>/gi, "")
-    .replace(/<(script|style|foreignObject|image|use|feImage|iframe|object|embed|a)\b[\s\S]*?(<\/\1\s*>|\/>)/gi, "")
-    .replace(/<(script|style|foreignObject|image|use|feImage|iframe|object|embed)\b[^>]*>/gi, "")
-    // Event handlers and every href that is not an in-document fragment.
-    .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*')/gi, "")
-    .replace(/\s(xlink:)?href\s*=\s*("(?!#)[^"]*"|'(?!#)[^']*')/gi, "")
-    .replace(/url\(\s*(?!['"]?#)[^)]*\)/gi, "none");
+  const src = raw.slice(start, end + 6);
+  if (src.length > MAX_SVG_CHARS) return null;
+
+  const out: string[] = [];
+  // Open allowed elements, to close them in order; a dropped element's whole
+  // subtree is dropped (depth > 0 in `skip`).
+  const stack: { name: string; kept: boolean }[] = [];
+  let skipping = 0;
+  let elements = 0;
+  const tokens = src.match(/<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<[!?][^>]*>|<\/?[^>]*>|[^<]+/g) ?? [];
+  for (const tok of tokens) {
+    if (/^<[!?]/.test(tok)) continue; // comment, doctype, entity decl, CDATA, PI
+    const close = tok.match(/^<\/\s*([^\s>]+)\s*>$/);
+    if (close) {
+      const top = stack.pop();
+      if (!top || top.name !== close[1]) return null; // malformed: no drawing
+      if (top.kept) out.push(`</${top.name}>`);
+      else skipping--;
+      continue;
+    }
+    const open = tok.match(/^<([^\s/>]+)([\s\S]*?)(\/?)>$/);
+    if (open) {
+      const [, name, rest, selfClose] = open;
+      const kept = skipping === 0 && ALLOWED_ELEMENTS.has(name);
+      if (kept) {
+        if (++elements > MAX_ELEMENTS) return null;
+        const attrs: string[] = [];
+        for (const m of rest.matchAll(/([^\s=]+)\s*=\s*("[^"]*"|'[^']*')/g)) {
+          const key = m[1];
+          const value = m[2].slice(1, -1);
+          if (!ALLOWED_ATTRS.has(key)) continue;
+          // url() may only point inside this document; anything else, and
+          // any character that could break out of the attribute, drops it.
+          if (/url\(/i.test(value) && !/^\s*url\(\s*#[\w-]+\s*\)\s*$/i.test(value)) continue;
+          if (/[<>&"]/.test(value)) continue;
+          attrs.push(`${key}="${value}"`);
+        }
+        out.push(`<${name}${attrs.length ? " " + attrs.join(" ") : ""}${selfClose ? "/" : ""}>`);
+      } else if (!selfClose) skipping++;
+      if (!selfClose) stack.push({ name, kept });
+      continue;
+    }
+    if (tok.startsWith("<")) return null; // a tag we could not read
+    // Text: only inside kept elements; entities other than the five XML
+    // ones are neutralised so nothing is expanded.
+    if (skipping === 0) out.push(tok.replace(/&(?!(amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)/g, "&amp;"));
+  }
+  if (stack.length) return null;
+
+  let svg = out.join("");
   // A full-canvas background rect would paint over the house base.
-  svg = svg.replace(/<rect\b[^>]*\bwidth\s*=\s*["'](1600|100%)["'][^>]*\bheight\s*=\s*["'](900|100%)["'][^>]*\/?>/gi, "");
+  svg = svg.replace(/<rect\b[^>]*\bwidth="(1600|100%)"[^>]*\bheight="(900|100%)"[^>]*\/?>/g, "");
   // Normalise the root: our viewBox, our size, our hue stamp. Whatever the
   // model declared is replaced, so the layer always maps 1:1 onto the base.
+  if (!/^<svg\b/.test(svg)) return null;
   svg = svg.replace(/^<svg\b[^>]*>/, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${COVER_W} ${COVER_H}" width="${COVER_W}" height="${COVER_H}" data-dsc-hue="${hue}">`);
   // Something must actually be drawn.
-  if (!/<(path|line|circle|rect|polyline|polygon|ellipse|text)\b/i.test(svg)) return null;
+  if (!/<(path|line|circle|rect|polyline|polygon|ellipse|text)\b/.test(svg)) return null;
   return svg;
 }
 
