@@ -233,6 +233,8 @@ export function ArticleSearches({ searches: s, keyword }: { searches: Searches; 
             spot: spot(q.position),
             bar: Math.max(4, (q.impressions / max) * 100),
             target: keyword != null && q.query.toLowerCase() === keyword.toLowerCase(),
+            clickCount: q.clicks,
+            position: q.position ?? null,
           }))}
         />
       ) : null}
@@ -247,7 +249,7 @@ export function hasSearchRows(s: Searches): boolean {
   return Boolean(s && !s.failed && s.queries.length);
 }
 
-type Fact = { label: string; value: string; sub?: string; href?: string; quiet?: boolean };
+type Fact = { label: string; value: string; sub?: string; href?: string; quiet?: boolean; /** Page one: the value reads green. */ good?: boolean };
 export type KeywordStats = { volume: number | null; difficulty: number | null };
 
 /** The facts about it, big and plain: the search it targets, its best
@@ -302,7 +304,7 @@ export function ArticleDetails({
           },
         ]
       : []),
-    { label: "Best spot on Google", value: best ? spot(best.position) : "Not yet", sub: best ? `on ${longDate(best.date)}` : undefined, quiet: !best },
+    { label: "Best spot on Google", value: best ? spot(best.position) : "Not yet", sub: best ? `on ${longDate(best.date)}` : undefined, quiet: !best, good: best?.position != null && Math.round(best.position) <= 10 },
     { label: "Published", value: publishedAt ? longDate(publishedAt) : "-", sub: live != null ? `live ${plural(live, "day")}` : undefined },
     ...(path ? [{ label: "Address", value: path, href: url ?? undefined }] : []),
   ];
@@ -366,7 +368,7 @@ function FactValue({ f, className }: { f: Fact; className: string }) {
     );
   }
   return (
-    <dd className={cx("truncate font-semibold tracking-tight tabular-nums", f.quiet ? "text-ink-faint" : "text-ink", className)} title={f.value}>
+    <dd className={cx("truncate font-semibold tracking-tight tabular-nums", f.quiet ? "text-ink-faint" : f.good ? "text-ok" : "text-ink", className)} title={f.value}>
       {f.value}
     </dd>
   );
