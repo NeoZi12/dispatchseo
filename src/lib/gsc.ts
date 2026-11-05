@@ -398,6 +398,50 @@ export async function gscQueryPositions(
   return out;
 }
 
+/** One page's own Search Console numbers since a date: the totals, and the
+ *  searches that showed it (most clicks first, then most impressions).
+ *  Matched on the path, so http/https and www/apex variants of the page
+ *  count as one. Also the page's own day-by-day numbers (only days Google
+ *  has a row for), which the stored snapshots can't give for a page outside
+ *  a site's top 100. For the article detail screen; free, like every GSC call. */
+export type PageSearchStats = {
+  totals: { clicks: number; impressions: number; ctr: number; position: number | null };
+  queries: Array<{ query: string; clicks: number; impressions: number; ctr: number; position: number }>;
+  days: Array<{ date: string; clicks: number; impressions: number; position: number | null }>;
+};
+
+export async function gscPageSearches(
+  site: string,
+  pathContains: string,
+  startDate: string,
+  scArg?: GscClient,
+  limit = 25,
+): Promise<PageSearchStats> {
+  const sc = scArg ?? (await searchConsole());
+  const filter = [{ filters: [{ dimension: "page", operator: "contains", expression: pathContains }] }];
+  const endDate = ymd(new Date());
+  const [totalsRes, queriesRes, daysRes] = await Promise.all([
+    sc.searchanalytics.query({ siteUrl: site, requestBody: { startDate, endDate, dimensionFilterGroups: filter, rowLimit: 1 } }),
+    sc.searchanalytics.query({ siteUrl: site, requestBody: { startDate, endDate, dimensions: ["query"], dimensionFilterGroups: filter, rowLimit: 250 } }),
+    sc.searchanalytics.query({ siteUrl: site, requestBody: { startDate, endDate, dimensions: ["date"], dimensionFilterGroups: filter, rowLimit: 500 } }),
+  ]);
+  const days = (daysRes.data.rows ?? [])
+    .map((r) => ({ date: r.keys?.[0] ?? "", clicks: r.clicks ?? 0, impressions: r.impressions ?? 0, position: r.impressions ? (r.position ?? null) : null }))
+    .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d.date))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const t = totalsRes.data.rows?.[0];
+  const queries = (queriesRes.data.rows ?? [])
+    .map((r) => ({ query: r.keys?.[0] ?? "", clicks: r.clicks ?? 0, impressions: r.impressions ?? 0, ctr: r.ctr ?? 0, position: r.position ?? 0 }))
+    .filter((q) => q.query)
+    .sort((a, b) => b.clicks - a.clicks || b.impressions - a.impressions)
+    .slice(0, limit);
+  return {
+    totals: { clicks: t?.clicks ?? 0, impressions: t?.impressions ?? 0, ctr: t?.ctr ?? 0, position: t?.position ?? null },
+    queries,
+    days,
+  };
+}
+
 // Read-only URL Inspection: what Google actually says about one page. A PASS
 // verdict means the page is indexed. Quota is 2000 calls per property per day
 // - callers keep a small per-run budget, they never sweep the whole catalog.

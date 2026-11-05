@@ -469,6 +469,25 @@ unset.
 
 </Field>
 
+<Field name="CLOUDFLARE_BROWSER_TOKEN" type="string" tag="Optional">
+
+A Cloudflare API token with the **Browser Rendering - Edit** permission,
+used with `CLOUDFLARE_ACCOUNT_ID` to screenshot each live article for the
+preview on its detail page (cached a week per page). Falls back to
+`CLOUDFLARE_API_TOKEN` when unset. Without either, the screenshot comes
+from Microlink instead (see `MICROLINK_API_KEY`).
+
+</Field>
+
+<Field name="MICROLINK_API_KEY" type="string" tag="Optional">
+
+A [Microlink](https://microlink.io) API key for the article previews'
+screenshots when Cloudflare isn't set up. Without it they use Microlink's
+keyless free tier, a small daily allowance per server; when that runs out
+the preview shows the page's own share image.
+
+</Field>
+
 <Field name="SUPABASE_ANON_KEY" type="string" tag="Cloud only">
 
 The same Supabase project's anon/publishable key, from **Settings → API**.

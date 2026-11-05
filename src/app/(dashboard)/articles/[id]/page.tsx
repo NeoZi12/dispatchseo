@@ -1,5 +1,9 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { LivePreview } from "./live-preview";
+import { ArticleDetails, ArticleSearches, ArticleStats, articleSeries, hasSearchRows, loadSearches } from "./article-analytics";
+import { ArticleChart } from "./article-chart";
 import { requireDashboard } from "@/lib/auth-gate";
 import { getActiveProject } from "@/lib/active-project";
 import type { AutopilotArticle } from "@/lib/autopilot/report";
@@ -9,7 +13,6 @@ import { ExternalIcon } from "@/components/ui/article-list";
 import { buttonClass } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { packDays } from "@/components/ui/overview-pack";
-import { OverviewChart } from "@/components/ui/overview-chart";
 import { PipelineSteps } from "@/components/ui/pipeline-steps";
 import { StatusPill } from "@/components/ui/status-pill";
 import { cx, FOCUS_RING } from "@/components/ui/styles";
@@ -24,16 +27,19 @@ import { friendlyError } from "@/lib/autopilot/friendly";
 export const dynamic = "force-dynamic";
 
 // One article, read top to bottom in the order an owner asks about it: what
-// it looks like (the cover), what it is (title, the search it's for), the
-// one thing to do with it (open it, or fix / retry it), then six
-// facts - when it went out, where it sits on Google, who clicked, how it
-// scored, what it read, what it checked. The angle is one line under them;
-// Google's daily chart and the claim-by-claim fact check come last, the
-// check folded shut. Only real data: the per-page numbers are Google's daily
-// top-100 pages, the score and claims the draft's own validation.
+// it looks like (a preview of the page itself), what it is (title, the
+// search it's for, when it went out), the one thing to do with it (open it,
+// or fix / retry it), then how it does on Google (the chart carries clicks,
+// impressions and its spot) and, folded shut, the claim-by-claim fact check
+// with the quality score. Owner, 2026-11-05: no fact tiles, no "written
+// before autopilot" card - a published date and the graphs; then
+// "fewer colours, informative, to the point", a chart that starts the day it
+// was published, and a preview that is the real page. Only real data: the
+// per-page numbers are Search Console's (our stored daily top-100 pages when
+// that read fails), the score and claims the draft's own validation, the
+// preview a screenshot of the live page.
 
 const at = (ms: number, i = 0) => ({ "--at": `${ms}ms`, "--i": i }) as React.CSSProperties;
-const DAY = 86_400_000;
 
 export default async function ArticlePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ site?: string }> }) {
   const auth = await requireDashboard();
@@ -64,13 +70,19 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
   // "page:<id>" articles predate autopilot: no draft, so no ledger and no
   // cover (loadLedger returns null for them without querying).
   const hasDraft = Boolean(a.draftId) && !a.draftId.startsWith("page:");
-  const [days, ledger, goneUrls] = await Promise.all([
+  const [days, ledger, goneUrls, searches] = await Promise.all([
     a.url ? loadPageDays(project.id, a.url).catch(() => [] as PageDay[]) : Promise.resolve([] as PageDay[]),
     hasDraft ? loadLedger(project.id, a.draftId) : Promise.resolve(null),
     a.url ? loadGoneUrls(project.id) : Promise.resolve(new Set<string>()),
+    // Search Console about this one page (totals + the searches behind it);
+    // null when Google isn't connected or the read fails.
+    a.url && a.status === "published" ? loadSearches(project, a.url, a.publishedAt ?? a.createdAt) : Promise.resolve(null),
   ]);
   // Known not to load any more: say so, and don't send anyone to it.
   const gone = a.url ? goneUrls.has(normalizePageUrl(a.url)) : false;
+  const publishedAt = a.publishedAt ?? a.createdAt;
+  const series = articleSeries(days, searches, publishedAt);
+  const everShown = series.some((d) => d.impressions > 0) || Boolean(searches && !searches.failed && searches.totals.impressions);
   const s = ARTICLE_STATUS[a.status];
   const step = articleStep(a);
   const live = a.status === "published";
@@ -94,12 +106,63 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
         All articles
       </Link>
 
-      {/* ---- the cover, what it is, and the one thing to do with it ---- */}
-      <header className="-mt-4 grid gap-6 lg:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] lg:items-center lg:gap-10">
-        <div className="arrive-in" style={at(0)}>
-          {hasDraft && ledger?.cover ? (
-            // A plain <img>: the route is dynamic and same-origin. alt is
-            // empty on purpose - the title sits right beside it.
+      {/* ---- one card: what it is and the one thing to do, beside the page itself ---- */}
+      <header className="arrive-in -mt-4 overflow-hidden rounded-3xl border border-line-soft bg-surface lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]" style={at(0)}>
+        <div className="arrive-up flex min-w-0 flex-col justify-center p-6 sm:p-8 lg:p-10" style={at(80)}>
+          <div>{pill}</div>
+          <h1 className="mt-4 text-balance text-[1.75rem] font-semibold leading-[1.15] tracking-tight text-ink sm:text-[2.15rem]">{a.title}</h1>
+          {a.keyword ? (
+            <p className="mt-4 text-[15px] text-ink-muted">
+              Written for the search <span className="font-medium text-ink">&ldquo;{a.keyword}&rdquo;</span>
+            </p>
+          ) : null}
+          <p className="mt-1.5 text-[15px] text-ink-muted">
+            {live ? (
+              <>
+                Published <span className="font-medium text-ink">{longDate(a.publishedAt ?? a.createdAt)}</span>
+              </>
+            ) : (
+              <>Started {longDate(a.createdAt)}</>
+            )}
+          </p>
+          {asOperator ? (
+            <p className="mt-6 text-[13px] text-ink-muted">
+              Viewing {project.name} as the operator. Release it from the All sites strip on your Home.
+            </p>
+          ) : null}
+          {!gone && !asOperator ? (
+            <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
+              <PrimaryAction a={a} slug={project.slug} paused={paused} />
+            </div>
+          ) : null}
+        </div>
+
+        {/* The page itself, on a quiet stage that runs to the card's edge. */}
+        <div className="order-first flex items-center bg-surface-2/60 p-5 sm:p-8 lg:order-none lg:p-10">
+          {live && a.url && !gone ? (
+            // A screenshot of the live page in a browser frame, streamed in
+            // so a slow capture never holds up the rest of the screen.
+            <a href={a.url} target="_blank" rel="noopener noreferrer" aria-label="Open the live article" className={cx("group/frame block w-full rounded-xl", FOCUS_RING)}>
+              <div className="overflow-hidden rounded-xl bg-surface shadow-xl shadow-black/20 ring-1 ring-line transition-transform duration-300 group-hover/frame:-translate-y-0.5 motion-reduce:transition-none motion-reduce:group-hover/frame:translate-y-0">
+                <div className="flex h-9 items-center gap-3 border-b border-line-soft bg-surface-2 px-3.5" aria-hidden="true">
+                  <span className="flex gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full bg-ink-faint/40" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-ink-faint/40" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-ink-faint/40" />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate rounded-md bg-surface px-3 py-1 text-center text-[12px] text-ink-muted">{displayUrl(a.url)}</span>
+                </div>
+                <div className="aspect-[16/10] w-full bg-surface-2">
+                  <Suspense fallback={<div className="h-full w-full animate-pulse bg-surface-2/60 motion-reduce:animate-none" />}>
+                    <LivePreview url={a.url} title={a.title} />
+                  </Suspense>
+                </div>
+              </div>
+            </a>
+          ) : hasDraft && ledger?.cover ? (
+            // Not live yet: the article's cover. A plain <img>: the route is
+            // dynamic and same-origin. alt is empty on purpose - the title
+            // sits right beside it.
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={`/api/cover/${encodeURIComponent(a.draftId)}`}
@@ -107,42 +170,11 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
               width={1200}
               height={630}
               decoding="async"
-              className="block aspect-[1200/630] w-full rounded-2xl bg-surface-2 object-cover ring-1 ring-line-soft"
+              className="block aspect-[1200/630] w-full rounded-xl bg-surface-2 object-cover shadow-xl shadow-black/20 ring-1 ring-line"
             />
           ) : (
-            <div className="flex aspect-[1200/630] w-full items-center justify-center rounded-2xl border border-dashed border-line bg-surface-2/50">{pill}</div>
+            <div className="flex aspect-[1200/630] w-full items-center justify-center rounded-xl border border-dashed border-line bg-surface/60">{pill}</div>
           )}
-        </div>
-
-        <div className="arrive-up min-w-0" style={at(80)}>
-          {pill}
-          <h1 className="mt-3 text-balance text-[1.75rem] font-semibold leading-[1.15] tracking-tight text-ink sm:text-[2.15rem]">{a.title}</h1>
-          {a.keyword ? (
-            <p className="mt-3 text-[15px] text-ink-muted">
-              Written for the search <span className="font-medium text-ink">&ldquo;{a.keyword}&rdquo;</span>
-            </p>
-          ) : null}
-          {asOperator ? (
-            <p className="mt-6 text-[13px] text-ink-muted">
-              Viewing {project.name} as the operator. Release it from the All sites strip on your Home.
-            </p>
-          ) : null}
-          {!gone && !asOperator ? (
-            <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3">
-              <PrimaryAction a={a} slug={project.slug} paused={paused} />
-              {live ? (
-                <a
-                  href={`https://www.google.com/search?q=${encodeURIComponent(a.keyword ?? a.title)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-[14px] font-medium text-ink-muted underline decoration-line underline-offset-[4px] hover:text-ink"
-                >
-                  See it on Google
-                  <ExternalIcon />
-                </a>
-              ) : null}
-            </div>
-          ) : null}
         </div>
       </header>
 
@@ -184,37 +216,42 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
         </Callout>
       ) : null}
 
-      {/* ---- the facts ---- */}
-      <Facts a={a} days={days} ledger={ledger} />
-
-      {a.source === "agent" ? (
-        // Published before autopilot: no research ledger, no writer steps -
-        // just who wrote it and when.
-        <section aria-labelledby="made-title" className="arrive-up rounded-2xl border border-line-soft bg-surface p-5 sm:p-6" style={at(300)}>
-          <h2 id="made-title" className="text-[1.15rem] font-semibold tracking-tight text-ink">
-            Written before autopilot
-          </h2>
-          <p className="mt-1.5 text-[15px] leading-relaxed text-ink-muted">
-            Your coding agent wrote and published this one{a.publishedAt ? ` on ${longDate(a.publishedAt)}` : ""}, before the writer took over. Its
-            Google numbers are tracked the same way as everything since.
-          </p>
-        </section>
-      ) : ledger?.angle || a.gain ? (
-        <Angle angle={ledger?.angle ?? null} gain={a.gain} />
-      ) : null}
+      {a.source !== "agent" && (ledger?.angle || a.gain) ? <Angle angle={ledger?.angle ?? null} gain={a.gain} /> : null}
 
       {/* ---- how it does on Google ---- */}
       {live ? (
-        days.length ? (
-          <OverviewChart daily={packDays(days)} page />
-        ) : (
-          <section className="arrive-up rounded-2xl border border-dashed border-line px-6 py-10 text-center" style={at(300)}>
-            <p className="text-[16px] font-medium text-ink">Not on Google yet</p>
-            <p className="mx-auto mt-2 max-w-md text-[14px] leading-relaxed text-ink-muted">
-              New pages usually take a few days to a few weeks to show up. Google&apos;s numbers also run two to three days behind. This fills in on its own.
-            </p>
-          </section>
-        )
+        <section aria-labelledby="article-analytics" className="space-y-5">
+          <div className="arrive-up" style={at(240)}>
+            <h2 id="article-analytics" className="text-2xl font-semibold tracking-tight text-ink sm:text-[1.75rem]">
+              Article analytics
+            </h2>
+            <p className="mt-1 text-[15px] text-ink-muted">How it has done on Google since it was published on {longDate(publishedAt)}</p>
+          </div>
+          {everShown ? (
+            <>
+              <ArticleStats series={series} searches={searches} />
+              <ArticleChart daily={packDays(series)} />
+              {hasSearchRows(searches) ? (
+                <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_21rem]">
+                  <ArticleSearches searches={searches} keyword={a.keyword} />
+                  <ArticleDetails series={series} publishedAt={publishedAt} keyword={a.keyword} url={a.url} />
+                </div>
+              ) : (
+                <>
+                  <ArticleDetails series={series} publishedAt={publishedAt} keyword={a.keyword} url={a.url} wide />
+                  <ArticleSearches searches={searches} keyword={a.keyword} />
+                </>
+              )}
+            </>
+          ) : (
+            <div className="arrive-up rounded-2xl border border-dashed border-line px-6 py-10 text-center" style={at(300)}>
+              <p className="text-[16px] font-medium text-ink">Not on Google yet</p>
+              <p className="mx-auto mt-2 max-w-md text-[14px] leading-relaxed text-ink-muted">
+                New pages usually take a few days to a few weeks to show up. Google&apos;s numbers also run two to three days behind. This fills in on its own.
+              </p>
+            </div>
+          )}
+        </section>
       ) : null}
 
       {a.source !== "agent" && ledger && (ledger.checks.length || ledger.sources.length) ? <FactCheck ledger={ledger} /> : null}
@@ -222,14 +259,30 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
   );
 }
 
+/** host + path of a page, without the scheme, for the browser frame's address bar. */
+function displayUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    return (u.host + u.pathname).replace(/\/$/, "");
+  } catch {
+    return url;
+  }
+}
+
 /** The one unmistakable button: open it if it's live, otherwise the action
  *  that moves it on. */
 function PrimaryAction({ a, slug, paused }: { a: AutopilotArticle; slug: string; paused: boolean }) {
   if (a.status === "published" && a.url) {
     return (
-      <a href={a.url} target="_blank" rel="noopener noreferrer" className={buttonClass("primary", "lg")}>
+      <a href={a.url} target="_blank" rel="noopener noreferrer" className={cx(
+          "group inline-flex h-14 items-center gap-3 rounded-2xl bg-gradient-to-br from-accent-strong via-violet-600 to-indigo-600 px-7 text-[17px] font-semibold text-white shadow-lg shadow-accent-strong/30 ring-1 ring-inset ring-white/20 transition duration-200 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-accent-strong/40 hover:brightness-110 active:translate-y-0 motion-reduce:transition-none motion-reduce:hover:translate-y-0",
+          FOCUS_RING,
+        )}
+      >
         Open the live article
-        <ExternalIcon className="h-4 w-4" />
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:group-hover:translate-x-0 motion-reduce:group-hover:translate-y-0">
+          <ExternalIcon className="h-4 w-4" />
+        </span>
       </a>
     );
   }
@@ -246,107 +299,6 @@ function PrimaryAction({ a, slug, paused }: { a: AutopilotArticle; slug: string;
     return <ActionForm action={retryArticle} slug={slug} submitLabel="Try again" size="lg" hidden={{ run_id: a.runId }} className="[&_p:empty]:hidden" />;
   }
   return null;
-}
-
-/** Six facts, one frame, hairlines between: a label, a value, at most one
- *  quiet line under it. Articles from before autopilot have no draft, so
- *  they get the three Google ones only. */
-function Facts({ a, days, ledger }: { a: AutopilotArticle; days: PageDay[]; ledger: Ledger | null }) {
-  const live = a.status === "published";
-  const cutoff = Date.now() - 28 * DAY;
-  const recent = days.filter((d) => Date.parse(`${d.date.slice(0, 10)}T00:00:00Z`) >= cutoff);
-  const clicks = recent.reduce((n, d) => n + d.clicks, 0);
-  const impressions = recent.reduce((n, d) => n + d.impressions, 0);
-  const lastPos = [...days].reverse().find((d) => d.position != null)?.position ?? null;
-  const pos = a.position ?? lastPos;
-  const onGoogle = Boolean(a.url) && (days.length > 0 || pos != null);
-  const hosts = ledger ? [...new Set(ledger.sources.map((src) => src.host))] : [];
-  const score = ledger?.score != null ? Math.max(0, Math.min(100, Math.round(ledger.score))) : null;
-
-  return (
-    <dl
-      aria-label="At a glance"
-      className={cx(
-        "arrive-up grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-line-soft bg-line-soft sm:grid-cols-3",
-        // An odd tile out on a phone spans the row rather than leaving a hole.
-        "[&>*:last-child:nth-child(odd)]:col-span-2 sm:[&>*:last-child:nth-child(odd)]:col-span-1",
-      )}
-      style={at(200)}
-    >
-      <Fact
-        label="Published"
-        value={live ? longDate(a.publishedAt ?? a.createdAt) : statusLabel(a)}
-        sub={live ? null : `Started ${longDate(a.createdAt)}`}
-      />
-      <Fact label="Spot on Google" value={pos != null ? `#${Math.max(1, Math.round(pos))}` : "Not on Google yet"} small={pos == null} />
-      <Fact
-        label="Clicks, last 28 days"
-        value={onGoogle ? fmtInt(clicks) : "None yet"}
-        small={!onGoogle}
-        sub={onGoogle ? `Shown ${fmtInt(impressions)} ${impressions === 1 ? "time" : "times"}` : null}
-      />
-      {a.source === "agent" ? null : (
-        <>
-          <Fact
-            label="Quality score"
-            value={
-              score != null ? (
-                <>
-                  {score}
-                  <span className="ml-0.5 text-[0.95rem] font-medium text-ink-faint">/100</span>
-                </>
-              ) : (
-                "Not scored yet"
-              )
-            }
-            small={score == null}
-          />
-          <Fact
-            label="Sources"
-            value={ledger?.sources.length ? fmtInt(ledger.sources.length) : "None yet"}
-            small={!ledger?.sources.length}
-            sub={hosts.length ? hosts.join(", ") : null}
-          />
-          <Fact
-            label="Facts checked"
-            value={
-              ledger?.claims ? (
-                <>
-                  {fmtInt(ledger.supported)}
-                  <span className="text-[0.95rem] font-medium text-ink-faint"> of {fmtInt(ledger.claims)}</span>
-                </>
-              ) : (
-                "Not checked yet"
-              )
-            }
-            small={!ledger?.claims}
-            sub={ledger?.claims ? "matched a source" : null}
-          />
-        </>
-      )}
-    </dl>
-  );
-}
-
-function Fact({ label, value, sub, small = false }: { label: string; value: React.ReactNode; sub?: string | null; small?: boolean }) {
-  return (
-    <div className="min-w-0 bg-surface px-4 py-4 sm:px-5 sm:py-5">
-      <dt className="text-[13px] text-ink-muted">{label}</dt>
-      <dd
-        className={cx(
-          "mt-1.5 truncate font-semibold leading-tight tracking-tight tabular-nums",
-          small ? "text-[1.05rem] text-ink-muted" : "text-[1.3rem] text-ink sm:text-[1.5rem]",
-        )}
-      >
-        {value}
-      </dd>
-      {sub ? (
-        <dd className="mt-1 truncate text-[12.5px] text-ink-faint" title={sub}>
-          {sub}
-        </dd>
-      ) : null}
-    </div>
-  );
 }
 
 /** The plan's angle in one line, and what it adds that page one lacks. */
@@ -398,6 +350,7 @@ function FactCheck({ ledger }: { ledger: Ledger }) {
           {n ? `Fact check (${fmtInt(n)} ${n === 1 ? "claim" : "claims"})` : `Sources (${fmtInt(ledger.sources.length)})`}
         </span>
         <span className="flex items-center gap-3 text-[13px] text-ink-muted">
+          {ledger.score != null ? <span className="tabular-nums">Quality {Math.max(0, Math.min(100, Math.round(ledger.score)))}/100</span> : null}
           {n ? <span className="tabular-nums">{fmtInt(ledger.checks.filter((c) => c.verdict === "supports").length)} matched</span> : null}
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 text-ink-faint transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true">
             <path d="M6 9l6 6 6-6" />

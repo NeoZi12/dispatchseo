@@ -151,6 +151,91 @@ export async function fetchPage(url: string, opts: { timeoutMs?: number; lang?: 
   return { ok: false, reason: "redirect", detail: `more than ${MAX_REDIRECTS} redirects` };
 }
 
+/** What a live page says about itself in its <head>: the card a link preview
+ *  shows (og:image, title, description, site name). Read for the article
+ *  detail screen's preview of a published page, through the same pinned,
+ *  private-address-refusing fetch as everything else here, and cached per
+ *  server instance for six hours - a detail screen opened twice must not
+ *  fetch the owner's page twice. null = could not read it (the caller shows
+ *  its own fallback). */
+export type PageMeta = { url: string; image: string | null; title: string | null; description: string | null; siteName: string | null };
+
+const META_TTL_MS = 6 * 3_600_000;
+const metaCache = new Map<string, { at: number; meta: PageMeta | null }>();
+
+export async function fetchPageMeta(url: string, timeoutMs = 4_000): Promise<PageMeta | null> {
+  const hit = metaCache.get(url);
+  if (hit && Date.now() - hit.at < META_TTL_MS) return hit.meta;
+  const meta = await readPageMeta(url, timeoutMs).catch(() => null);
+  if (metaCache.size > 200) metaCache.clear();
+  metaCache.set(url, { at: Date.now(), meta });
+  return meta;
+}
+
+async function readPageMeta(url: string, timeoutMs: number): Promise<PageMeta | null> {
+  let target = url;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    let parsed: URL;
+    try {
+      parsed = new URL(target);
+    } catch {
+      return null;
+    }
+    if ((parsed.protocol !== "https:" && parsed.protocol !== "http:") || isPrivateHost(parsed.hostname)) return null;
+    const res = await pinnedFetch(target, {
+      dispatcher: pinnedAgent,
+      redirect: "manual",
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: { "user-agent": USER_AGENT, accept: "text/html,application/xhtml+xml" },
+    });
+    if (res.status >= 300 && res.status <= 399) {
+      const location = res.headers.get("location");
+      if (!location) return null;
+      target = new URL(location, target).toString();
+      continue;
+    }
+    if (!res.ok || !/html/i.test(res.headers.get("content-type") ?? "")) return null;
+    // Not just the <head>: Next.js streams its metadata into the body for
+    // visitors it does not recognise as bots, after the inline page payload
+    // (clockedcode.com, 2026-11-05: og:image at byte 239,403 of 913 KB). So
+    // up to 1 MB is read and every <meta> tag collected in one linear pass.
+    const head = await readCapped(res, 1_000_000);
+    const decode = (s: string) => s.replace(/&amp;/g, "&").replace(/&#39;|&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim();
+    const metas = new Map<string, string>();
+    for (const tag of head.matchAll(/<meta\b[^>]{0,2000}>/gi)) {
+      const t = tag[0];
+      const key = t.match(/\b(?:property|name)\s*=\s*["']([^"']+)["']/i)?.[1]?.toLowerCase();
+      const content = t.match(/\bcontent\s*=\s*["']([^"']*)["']/i)?.[1];
+      if (key && content?.trim() && !metas.has(key)) metas.set(key, decode(content));
+    }
+    const metaOf = (...keys: string[]): string | null => {
+      for (const key of keys) {
+        const v = metas.get(key.toLowerCase());
+        if (v) return v;
+      }
+      return null;
+    };
+    const rawImage = metaOf("og:image:secure_url", "og:image", "twitter:image", "twitter:image:src");
+    let image: string | null = null;
+    if (rawImage) {
+      try {
+        const u = new URL(rawImage, target);
+        if (u.protocol === "https:" || u.protocol === "http:") image = u.toString();
+      } catch {
+        image = null;
+      }
+    }
+    return {
+      url: target,
+      image,
+      title: metaOf("og:title", "twitter:title") ?? extractTitle(head),
+      description: metaOf("og:description", "description", "twitter:description"),
+      siteName: metaOf("og:site_name", "application-name"),
+    };
+  }
+  return null;
+}
+
 /** The onward link in a Google redirector page: the first absolute http(s)
  *  href or meta-refresh target that is not Google itself. */
 export function redirectorTarget(html: string): string | null {
