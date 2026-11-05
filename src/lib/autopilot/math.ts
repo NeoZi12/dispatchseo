@@ -486,9 +486,27 @@ export function sentenceTitle(keyword: string): string {
   return k ? k[0].toUpperCase() + k.slice(1) : k;
 }
 
-/** How many new ideas research should add right now. */
+/** How many ideas the visible queue (status approved, what the writer takes
+ *  next and what the owner sees) is short of its target. */
 export function ideasNeeded(approvedGuideCount: number, articlesPerWeek = 0): number {
   return Math.max(0, targetApprovedIdeas(articlesPerWeek) - approvedGuideCount);
+}
+
+/** The backlog behind the visible queue (owner, 2026-11-05: "copy what the
+ *  autobloggers do" - they build a deep keyword list at onboarding and drain
+ *  it, so running dry never comes up). Research fills the site's live ideas
+ *  (approved + pending) up to this many measured keywords; the extra ones
+ *  wait as `pending` and are promoted into the visible queue as it drains
+ *  (research.ts promoteBacklog). Internal: the owner never sees the backlog. */
+export const BACKLOG_TARGET = 100;
+/** Research refills the backlog when it holds less than this many weeks of
+ *  the plan's articles. */
+export const BACKLOG_REFILL_WEEKS = 4;
+export function backlogNeeded(liveIdeaCount: number): number {
+  return Math.max(0, BACKLOG_TARGET - liveIdeaCount);
+}
+export function backlogShort(liveIdeaCount: number, articlesPerWeek: number): boolean {
+  return liveIdeaCount < Math.max(4, BACKLOG_REFILL_WEEKS * Math.max(0, Math.floor(articlesPerWeek)));
 }
 
 // --- Owner input --------------------------------------------------------------

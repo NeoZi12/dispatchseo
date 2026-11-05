@@ -2,7 +2,8 @@ import type { Project } from "@/lib/projects";
 import { writerMode } from "@/lib/projects";
 import { isDryRun } from "@/lib/writer/models";
 import { evaluateAutoPause } from "./pause";
-import { RESEARCH_EVERY_MS, runResearch, type ResearchOutcome } from "./research";
+import { promoteBacklog, RESEARCH_EVERY_MS, runResearch, type ResearchOutcome } from "./research";
+import { backlogShort } from "./math";
 import { runScheduler, type SchedulerOutcome } from "./scheduler";
 import { reportSiteHealth, siteHealthProblems } from "./health";
 import { reprobeRewriteWeekly } from "@/lib/hosted-rewrite";
@@ -10,16 +11,17 @@ import { db } from "@/lib/db";
 import { projectPlan } from "@/lib/billing";
 import { DAY_MS } from "./math";
 
-/** Fewer approved guide ideas than the plan writes in a week. A read error
- *  says "not short": research then waits for its weekly turn as before. */
+/** The site's live ideas (the visible queue plus the backlog behind it) hold
+ *  less than BACKLOG_REFILL_WEEKS of the plan's articles. A read error says
+ *  "not short": research then waits for its weekly turn as before. */
 async function queueShort(project: Project, now: Date): Promise<boolean> {
   void now;
   const [{ count, error }, plan] = await Promise.all([
-    db().from("suggestions").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("type", "guide").eq("status", "approved"),
+    db().from("suggestions").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("type", "guide").in("status", ["approved", "pending"]),
     projectPlan(project.id),
   ]);
   if (error || plan.articlesPerWeek <= 0) return false;
-  return (count ?? 0) < plan.articlesPerWeek;
+  return backlogShort(count ?? 0, plan.articlesPerWeek);
 }
 
 // The autopilot (2026-10-23 pivot): a hosted project's research, cadence and
@@ -52,6 +54,8 @@ export type AutopilotPass = {
   pause?: { paused: boolean; reason?: string };
   research?: ResearchOutcome | { error: string };
   scheduler?: SchedulerOutcome;
+  /** Ideas promoted from the backlog into the visible queue this pass. */
+  promoted?: number;
   health?: string[];
   /** A real fault happened in a stage that did not stop the pass. */
   hadError?: boolean;
@@ -97,6 +101,11 @@ export async function runAutopilotPass(project: Project, now = new Date()): Prom
   await reprobeRewriteWeekly(project, now).catch(() => null);
 
   const researched = Boolean(research && !("skipped" in research));
+  // The visible queue is topped up from the backlog before the writer looks
+  // at it, so a drained queue never waits for a research run. Never fatal.
+  const promoted = await projectPlan(project.id)
+    .then((plan) => promoteBacklog(project.id, plan.articlesPerWeek))
+    .catch(() => 0);
   const scheduler = await runScheduler(project, now, { researchedThisRun: researched });
 
   const skips = [
@@ -107,5 +116,5 @@ export async function runAutopilotPass(project: Project, now = new Date()): Prom
   const health = await siteHealthProblems(project, skips, now);
   await reportSiteHealth(project, health);
 
-  return { pause, research, scheduler, ...(health.length ? { health } : {}), ...(research && "error" in research ? { hadError: true } : {}) };
+  return { pause, research, scheduler, ...(promoted ? { promoted } : {}), ...(health.length ? { health } : {}), ...(research && "error" in research ? { hadError: true } : {}) };
 }

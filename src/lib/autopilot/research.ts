@@ -21,6 +21,9 @@ import { isDuplicateKeyError } from "@/lib/suggestion-dedupe";
 import { generate, judge, JUDGE_MAX_QUESTIONS_PER_CALL, choiceOf, isDryRun, missingCredentials, parseJson, type Answer, type Question } from "@/lib/writer/models";
 import { writerMode, type Project } from "@/lib/projects";
 import {
+  BACKLOG_TARGET,
+  backlogNeeded,
+  backlogShort,
   DAY_MS,
   EVERGREEN_MIN,
   FIT_MIN,
@@ -149,6 +152,36 @@ export function weaknessOf(snap: SerpSnapshot, intent: string | null, now: Date)
   return { score, forums, old, aiOverview: snap.aiOverview };
 }
 
+/** Tops the visible queue (approved) up from the backlog (pending ideas
+ *  research queued, in their pick order), so the writer always has its next
+ *  ideas without a research run. Returns how many were promoted. Called by
+ *  the daily pass before the scheduler. */
+export async function promoteBacklog(projectId: string, articlesPerWeek: number): Promise<number> {
+  const { count } = await db().from("suggestions").select("id", { count: "exact", head: true }).eq("project_id", projectId).eq("type", "guide").eq("status", "approved");
+  const short = ideasNeeded(count ?? 0, articlesPerWeek);
+  if (short === 0) return 0;
+  const { data, error } = await db()
+    .from("suggestions")
+    .select("id, spec")
+    .eq("project_id", projectId)
+    .eq("type", "guide")
+    .eq("status", "pending")
+    .eq("source", "autopilot")
+    .limit(BACKLOG_TARGET);
+  if (error || !data?.length) return 0;
+  const rank = (s: unknown) => {
+    const r = (s as { rank?: unknown } | null)?.rank;
+    return typeof r === "number" ? r : Number.MAX_SAFE_INTEGER;
+  };
+  const ids = (data as { id: string; spec: unknown }[]).sort((a, b) => rank(a.spec) - rank(b.spec)).slice(0, short).map((r) => r.id);
+  const { error: upErr } = await db().from("suggestions").update({ status: "approved", decided_at: new Date().toISOString() }).in("id", ids).eq("status", "pending");
+  if (upErr) {
+    console.warn(`[autopilot] backlog promotion failed for ${projectId}: ${upErr.message}`);
+    return 0;
+  }
+  return ids.length;
+}
+
 /** The seed the site's live ideas mostly came from, while it still has room
  *  (under CLUSTER_SIZE ideas queued or written). Null = no cluster open:
  *  the first run, or a full one, so the next seed's subject opens. */
@@ -178,7 +211,7 @@ async function openClusterFor(projectId: string): Promise<string | null> {
 type Pooled = Candidate & { wider?: boolean };
 type Judged = Pooled & JudgedCandidate;
 
-export type ResearchAdded = { id: string; keyword: string; volume: number; kd: number; fit: number; wider?: true };
+export type ResearchAdded = { id: string; keyword: string; volume: number; kd: number; fit: number; wider?: true; /** Queued behind the visible queue (status pending), promoted as it drains. */ backlog?: true };
 
 /** The rationale suffix of an idea rung 4's wider search found. report.ts
  *  counts queued ideas by it, so the two stay one string. */
@@ -238,6 +271,10 @@ export type ResearchOutcome =
       serp?: { scored: number; usd: number; error?: string };
       /** The cluster (seed) the site is filling, if one is open. */
       cluster?: string;
+      /** The idea backlog: live ideas (approved + pending) before this run,
+       *  the target, and how many of this run's additions went to the
+       *  backlog rather than the visible queue. */
+      backlog: { live: number; target: number; added: number };
       /** Labs expansion calls made this run (cache hits included), and how
        *  many of them DataForSEO billed. */
       labsCalls: number;
@@ -312,17 +349,21 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
 
   const stamp = () => db().from("projects").update({ last_research_at: now.toISOString() }).eq("id", project.id);
 
-  const { count: approvedCount } = await db()
-    .from("suggestions")
-    .select("id", { count: "exact", head: true })
-    .eq("project_id", project.id)
-    .eq("type", "guide")
-    .eq("status", "approved");
+  // Two counts. The visible queue (approved) is what the writer takes next
+  // and what the owner sees; the backlog behind it (pending, promoted as the
+  // queue drains) is what keeps a site from ever running dry. Research
+  // fills the backlog to BACKLOG_TARGET; the ladder widens only for the
+  // visible queue's sake, so a rich niche's backlog is rung-1 keywords.
+  const [{ count: approvedCount }, { count: liveCount }] = await Promise.all([
+    db().from("suggestions").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("type", "guide").eq("status", "approved"),
+    db().from("suggestions").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("type", "guide").in("status", ["approved", "pending"]),
+  ]);
   const plan = await projectPlan(project.id);
-  const needed = ideasNeeded(approvedCount ?? 0, plan.articlesPerWeek);
+  const visibleNeeded = ideasNeeded(approvedCount ?? 0, plan.articlesPerWeek);
+  const needed = backlogNeeded(liveCount ?? 0);
   if (needed === 0) {
     await stamp();
-    return { skipped: "the idea queue is already full" };
+    return { skipped: "the idea backlog is already full" };
   }
 
   const loc = project.location_code;
@@ -503,7 +544,7 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
       { rung: 3, minVolume: WIDEN2_MIN_VOLUME },
     ];
     for (const w of widenings) {
-      if (passed.length >= needed || raw.length === 0 || batches >= seedCalls) break;
+      if (passed.length >= Math.max(1, visibleNeeded) || raw.length === 0 || batches >= seedCalls) break;
       ({ kept, dropped } = filterCandidates(raw, withPassed({ ...filterCtx, kdCeiling: kdCeiling + WIDEN_KD_BY, minVolume: w.minVolume })));
       rung = w.rung;
       keptByRung[String(w.rung) as "2" | "3"] = kept.length;
@@ -533,7 +574,7 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
   let widerKept = 0;
   let widerDropped: Record<string, number> = {};
   let oneHop = false;
-  if (!judgeError && passed.length < needed && batches < MAX_JUDGE_CALLS) {
+  if (!judgeError && passed.length < Math.max(1, visibleNeeded) && batches < MAX_JUDGE_CALLS) {
     const allowance = widerSearchAllowance(backoff, now.getTime());
     if (!allowance.allowed) widerSkipped = allowance.why;
     else if (dataforseoUsd >= WIDER_STOP_USD) widerSkipped = `this run's keyword data already cost $${dataforseoUsd.toFixed(3)}`;
@@ -563,7 +604,7 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
         const judgeCap = Math.min(MAX_JUDGE_CALLS, batches + PROPOSAL_JUDGE_CALLS);
         const widerFailures: string[] = [];
         for (let i = 0; i < widerSeeds.length; ) {
-          if (passed.length >= needed) break;
+          if (passed.length >= Math.max(1, visibleNeeded)) break;
           if (batches >= judgeCap) { widerStop = "judge calls used up"; break; }
           if (dataforseoUsd >= WIDER_STOP_USD) { widerStop = `keyword data spend reached $${dataforseoUsd.toFixed(3)}`; break; }
           // Sized so neither cap can be crossed even if every call in the
@@ -594,7 +635,7 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
         }
         // The seeds ran out (or a spend cap stopped them): what is left of
         // rung 4's judge calls goes to the best rows still unjudged.
-        if (passed.length < needed && batches < judgeCap && raw2.length) {
+        if (passed.length < Math.max(1, visibleNeeded) && batches < judgeCap && raw2.length) {
           const rest = filterCandidates(fillKd(raw2, kdKnown).rows, withPassed(widest));
           await judgePool(rest.kept.map((c) => ({ ...c, wider: true })), judgeCap);
         }
@@ -645,18 +686,22 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
   passed.sort((a, b) => inPillar(b) - inPillar(a) || weak(b) - weak(a)); // stable: ties keep opportunity order
 
   const added: ResearchAdded[] = [];
-  for (const c of passed.slice(0, needed)) {
+  let backlogged = 0;
+  for (const [i, c] of passed.slice(0, needed).entries()) {
     // The rule, where it matters: an idea is queued only with a measured
     // monthly volume at or above the lowest floor and a measured KD.
     if (!(c.volume >= WIDEN2_MIN_VOLUME) || typeof c.kd !== "number") continue;
     const cluster = seedOf(c.keyword);
     const w = weakness.get(c.keyword);
+    // The visible queue's shortfall lands approved, in pick order; the rest
+    // waits as pending with its rank, promoted as the queue drains.
+    const visible = added.length < visibleNeeded;
     const { data, error } = await db()
       .from("suggestions")
       .insert({
         project_id: project.id,
         type: "guide",
-        status: "approved",
+        status: visible ? "approved" : "pending",
         title: sentenceTitle(c.keyword),
         primary_keyword: c.keyword,
         keyword_volume: c.volume,
@@ -666,7 +711,7 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
           (w ? `; page one: ${w.forums} forum result${w.forums === 1 ? "" : "s"}, ${w.old} page${w.old === 1 ? "" : "s"} over two years old${w.aiOverview ? ", an AI Overview" : ", no AI Overview"}` : "") +
           (cluster ? `; cluster "${cluster}"` : ""),
         source: "autopilot",
-        spec: { intent: c.intent, ...(cluster ? { cluster } : {}), ...(w ? { serp: w } : {}) },
+        spec: { intent: c.intent, rank: i, ...(cluster ? { cluster } : {}), ...(w ? { serp: w } : {}) },
         decided_at: now.toISOString(),
       })
       .select("id")
@@ -677,7 +722,8 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
       if (isDuplicateKeyError(error)) continue;
       throw new Error(`could not queue "${c.keyword}": ${error.message}`);
     }
-    added.push({ id: (data as { id: string }).id, keyword: c.keyword, volume: c.volume, kd: c.kd, fit: Math.round(c.fit * 100) / 100, ...(c.wider ? { wider: true as const } : {}) });
+    if (!visible) backlogged++;
+    added.push({ id: (data as { id: string }).id, keyword: c.keyword, volume: c.volume, kd: c.kd, fit: Math.round(c.fit * 100) / 100, ...(c.wider ? { wider: true as const } : {}), ...(visible ? {} : { backlog: true as const }) });
   }
 
   // NOT tracked for rank checks here (audit 2026-10-24, cost): a queued idea
@@ -739,7 +785,7 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
   const thin = (widened || raw.length === 0) && rung1Kept < THIN_RUNG1_KEPT;
   // The daily pass refills a queue holding less than a week of articles two
   // days after the last run; a fuller queue waits for the weekly run.
-  const soon = (approvedCount ?? 0) + added.length < plan.articlesPerWeek;
+  const soon = backlogShort((liveCount ?? 0) + added.length, plan.articlesPerWeek);
   const round = (b: (typeof spend)[Bucket]) => ({ ...b, usd: Math.round(b.usd * 10_000) / 10_000 });
   return {
     seeds,
@@ -758,6 +804,7 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
     ...(oneHop ? { oneHop: true as const } : {}),
     ...(serpScored || serpError ? { serp: { scored: serpScored, usd: Math.round(serpUsd * 10_000) / 10_000, ...(serpError ? { error: serpError } : {}) } } : {}),
     ...(openPillar ? { cluster: openPillar } : {}),
+    backlog: { live: liveCount ?? 0, target: BACKLOG_TARGET, added: backlogged },
     ...(proposeError ? { proposeError } : {}),
     ...(judgeError ? { judgeError } : {}),
     ...(thin ? { note: thinNote(lang, rung, added.length, { topics: widerSearched, needed, soon }) } : {}),
