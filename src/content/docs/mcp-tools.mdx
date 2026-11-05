@@ -240,9 +240,10 @@ Returns the updated row, with a `note` when the approval was coerced to
 pending or when a tool build was (or wasn't) dispatched.
 
 On a hosted site's queue, `status:"parked"` on an approved guide sets it
-aside (the Queue screen's Set aside): it leaves the queue and shows under
-`parked` in `get_autopilot`. `status:"approved"` on a parked guide puts it
-back at the end of the queue (Put back), and is never coerced to pending.
+aside: it leaves the queue and shows under `parked` in `get_autopilot`.
+`status:"approved"` on a parked guide puts it back at the end of the queue,
+and is never coerced to pending. (The dashboard's Queue page is read-only;
+this tool is the way to steer it.)
 
 ### `reorder_queue`
 

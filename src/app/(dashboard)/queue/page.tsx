@@ -5,12 +5,7 @@ import { getDomainRating } from "@/lib/domain-rating";
 import { kdZones } from "@/lib/kd-zones";
 import { getHostedQueue, type HostedQueue } from "@/lib/autopilot/queue";
 import { weekStartUtc } from "@/lib/autopilot/math";
-import { TOPIC_LIMITS } from "@/lib/autopilot/controls";
-import { suggestTopicAction } from "@/app/autopilot-actions";
-import { ActionForm } from "@/components/ui/action-form";
 import { Callout } from "@/components/ui/callout";
-import { Field } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { PageHeading } from "@/components/ui/page-heading";
 import { loadReport, redirectIfAgent } from "../mode";
 import { QueueBoard } from "./queue-board";
@@ -23,13 +18,11 @@ export const dynamic = "force-dynamic";
 // which mirrors the writer's pick stage exactly. Agent projects keep their
 // own queue on /research.
 //
-// Server-rendered in full (the board is a client component, so it still
-// arrives as HTML and reads without JS); drag, reorder, set aside, put back
-// and add are the client's enhancements. Every one of them is reversible,
-// so there is no confirm dialog anywhere on this screen.
+// Read-only (owner, 2026-11-05): owners see what's coming and when, they
+// don't reorder or remove it. The agent still can, over MCP.
 //
 // Not behind requireOnboarded, same as Articles: the queue fills during
-// setup, and an owner mid-setup should be able to see and shape it.
+// setup, and an owner mid-setup should be able to see it.
 
 const DAY = 86_400_000;
 const LINK = "text-sm font-medium text-accent underline decoration-accent/40 underline-offset-[3px] hover:decoration-accent";
@@ -57,7 +50,7 @@ export default async function QueuePage() {
     <PageHeading
       className="arrive-up"
       title="Queue"
-      description="Articles are written from the top down. Reorder or set aside anything here; it can all be undone."
+      description="What gets written next, and when. Articles are written from the top down."
       actions={
         <Link href="/articles" className={LINK}>
           Articles
@@ -93,23 +86,14 @@ export default async function QueuePage() {
     <div className="mx-auto max-w-4xl space-y-8">
       {heading}
       <QueueBoard
-        slug={project.slug}
         now={now}
         zones={zones}
         upcoming={queue.upcoming}
-        parked={queue.parked}
         nextStart={queue.nextStart}
         usedThisWeek={queue.usedThisWeek}
         quota={queue.quota}
         paused={queue.paused}
         startedDays={started}
-        addForm={
-          <ActionForm action={suggestTopicAction} slug={project.slug} submitLabel="Add topic" successLabel="Added" variant="secondary" inline resetOnSuccess>
-            <Field id="queue-topic" label="A topic or keyword you want an article on" hint="We check it fits your site and isn't covered yet, then add it to the end.">
-              <Input id="queue-topic" name="topic" placeholder="e.g. how to price a first SaaS plan" maxLength={TOPIC_LIMITS.max} required minLength={TOPIC_LIMITS.min} />
-            </Field>
-          </ActionForm>
-        }
       />
     </div>
   );

@@ -5,10 +5,10 @@ import { getAnalyticsOverview } from "@/lib/analytics-data";
 import { gscTag } from "@/lib/autopilot/report";
 import type { Project } from "@/lib/projects";
 import { gscFreshnessNote } from "@/lib/metrics";
-import { RankingsTable, fmtInt, fmtPct } from "@/components/seo-cards";
+import { fmtDate, fmtPct } from "@/components/seo-cards";
 import { pagePath, type SitePageRow } from "@/lib/metrics";
 import { loadGoneUrls } from "../articles/article-data";
-import { LandedTable, QueriesTable } from "./tables";
+import { LandedTable, QueriesTable, RankingsList } from "./tables";
 import { PixelDesk } from "@/components/pixel-dispatcher";
 import { buttonClass } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
@@ -19,7 +19,6 @@ import { Stat } from "@/components/ui/stat";
 import { packDays } from "@/components/ui/overview-pack";
 import { OverviewChart } from "@/components/ui/overview-chart";
 import { StatGrid } from "@/components/ui/stat-grid";
-import { Table, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { loadReport } from "../mode";
 import { articleHref } from "../article-status";
 
@@ -111,13 +110,13 @@ export async function HostedAnalytics() {
 
           <section aria-labelledby="pages-title" className="arrive-up space-y-4" style={at(960)}>
             <CardHeader id="pages-title" title="Where they landed" description="The pages on your site people opened from Google." />
-            <LandedTable rows={o.breakdown.rows.map((r) => ({ path: r.path, url: r.url, title: r.title, clicks: r.clicks, impressions: r.impressions, position: r.avgPosition, gone: gone.has(r.path) }))} />
+            <LandedTable at={960} rows={o.breakdown.rows.map((r) => ({ path: r.path, url: r.url, title: r.title, clicks: r.clicks, impressions: r.impressions, position: r.avgPosition, gone: gone.has(r.path) }))} />
           </section>
 
           <section aria-labelledby="queries-title" className="arrive-up space-y-4" style={at(1040)}>
             <CardHeader id="queries-title" title="What they searched" description="What people typed into Google before they found you." />
             {o.topQueries.length ? (
-              <QueriesTable rows={o.topQueries.map((q) => ({ query: q.query, clicks: q.clicks, position: q.position }))} />
+              <QueriesTable at={1040} rows={o.topQueries.map((q) => ({ query: q.query, clicks: q.clicks, impressions: q.impressions, position: q.position }))} />
             ) : (
               <EmptyState title="No searches yet" icon={<PixelDesk className="w-[150px]" />}>
                 Google&apos;s reports run two to three days behind. They fill in on their own.
@@ -133,7 +132,18 @@ export async function HostedAnalytics() {
                 o.rankings.length ? `${o.rankingCount} of the ${o.rankings.length} searches we track find you somewhere in Google's top 100.` : undefined
               }
             />
-            <RankingsTable rankings={o.rankings} limit={25} />
+            <RankingsList
+              at={1120}
+              rows={o.rankings.slice(0, 25).map((r) => ({
+                id: r.keyword.id,
+                keyword: r.keyword.keyword,
+                current: r.current,
+                checked: r.checked,
+                checkedOn: fmtDate(r.lastCheckedAt),
+                change: r.change,
+                volume: r.volume,
+              }))}
+            />
           </section>
         </>
       )}

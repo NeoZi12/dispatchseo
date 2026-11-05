@@ -73,11 +73,37 @@ export type ChangelogEntry = {
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
+    kind: "improved",
+    text:
+      "Analytics got the same look as the top posts on Home: where people landed, what they searched and where you " +
+      "rank are now ranked rows with their spot, impressions and clicks lined up, and the article list is a little cleaner.",
+  },
+  {
+    kind: "improved",
+    text:
+      "The Queue page now just shows what gets written next and on which day, without the reorder, set aside and " +
+      "add-topic controls. Keyword difficulty shows as the number in its colour, without the word next to it.",
+  },
+  {
+    kind: "improved",
+    text: "The Tools page now says plainly that interactive tools aren't available yet, instead of offering an upgrade for them.",
+  },
+  {
     kind: "fixed",
     text:
       "Your article list no longer shows a red \"Stopped\" row every time the writer retries or sets a topic aside. " +
       "Those are routine: the topic went live on a later try, is back in the queue, or didn't hold up to a fact check. " +
       "\"Stopped\" now only appears when something really went wrong.",
+  },
+  {
+    kind: "new",
+    text:
+      "The overview card on Home now shows your top posts: under the charts, the posts people opened from Google, " +
+      "most clicks first and then most impressions, each with its spot on Google, its impressions and its clicks for the " +
+      "range you have switched on, so a new site sees its posts ranked before the first click. A row " +
+      "opens the live post. Articles published now counts the range you have switched on and shows a calendar with " +
+      "the days an article went live in violet. The article list moved off Home to the Articles page. The range " +
+      "(last 7 days, 30 days, 3 months, 12 months or all time) is now named under the big chart too.",
   },
   {
     kind: "fixed",

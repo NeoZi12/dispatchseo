@@ -1,9 +1,7 @@
-import Link from "next/link";
 import { unstable_cache } from "next/cache";
 import { gscTag } from "@/lib/autopilot/report";
 import { db } from "@/lib/db";
 import { getActiveProject } from "@/lib/active-project";
-import { planAllowsTools, type Tier } from "@/lib/billing";
 import { aggregatePageTraffic, normalizePageUrl, type GscPageStat } from "@/lib/metrics";
 import { isKnownGone } from "@/lib/page-liveness";
 import { PixelDesk } from "@/components/pixel-dispatcher";
@@ -12,15 +10,16 @@ import { buttonClass } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeading } from "@/components/ui/page-heading";
 import { longDate } from "../article-status";
-import { loadReport } from "../mode";
 
 // Hosted-mode Tools: the site's interactive pages (a calculator, a
-// generator, a checker - each built for one search people make). Tools are
-// a Growth / Scale feature (planAllowsTools), so a Starter site gets an
-// honest page saying what they are and how to get them - no fake numbers.
-// On a plan with tools: every live tool as a card with its own Google
-// numbers for the last 28 days and a line of its daily clicks. Reads only;
-// the get_pages MCP tool already covers the same rows.
+// generator, a checker - each built for one search people make). The
+// hosted writer doesn't build tools yet, and no plan sells them (owner,
+// 2026-11-05: they'll come back on the bigger plans later). So a site that
+// already has tools (the operator's own, built in agent mode) keeps its
+// list - every live tool as a card with its own Google numbers for the last
+// 28 days and a line of its daily clicks - and every other site gets one
+// honest line: not available yet. No upgrade button, since no plan has
+// them. Reads only; the get_pages MCP tool already covers the same rows.
 
 const at = (ms: number, i = 0) => ({ "--at": `${ms}ms`, "--i": i }) as React.CSSProperties;
 
@@ -28,17 +27,15 @@ type ToolRow = { id: string; url: string; title: string | null; primary_keyword:
 
 export async function HostedTools() {
   const project = await getActiveProject();
-  const report = await loadReport(project.id);
-  const plan = report?.plan;
-  // No tier at all (self-host, billing unconfigured) is no plan gate.
-  const tier = plan && plan.tier !== "none" ? (plan.tier as Tier) : null;
-  const unbilled = plan ? plan.status === "self-host" || plan.status === "unbilled" : true;
-  const allowed = unbilled || (tier != null && planAllowsTools(tier));
+  // A failed read shows the list's own error path, not "not available".
+  const has = await toolData(project.id)
+    .then((d) => d.length > 0)
+    .catch(() => true);
 
   return (
     <div className="mx-auto max-w-5xl space-y-10">
       <PageHeading className="arrive-up" title="Tools" description="Small free tools on your site, each built for one thing people search for." />
-      {allowed ? <ToolList projectId={project.id} /> : <Upsell />}
+      {has ? <ToolList projectId={project.id} /> : <NotYet />}
     </div>
   );
 }
@@ -164,63 +161,19 @@ function ToolGlyph() {
   );
 }
 
-const EXAMPLES = [
-  {
-    name: "A calculator",
-    line: "For searches like “how much does it cost to…”. Visitors type their numbers and get their answer on the spot.",
-    d: "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2ZM7 7h10M7 12h2M11 12h2M15 12h2M7 16h2M11 16h2M15 16h2",
-  },
-  {
-    name: "A generator",
-    line: "For searches like “… template”. It builds the thing for them, ready to copy.",
-    d: "M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.8 2.8M14.9 14.9l2.8 2.8M17.7 6.3l-2.8 2.8M9.1 14.9l-2.8 2.8",
-  },
-  {
-    name: "A checker",
-    line: "For searches like “is my … right”. Paste it in, get a clear verdict and what to fix.",
-    d: "M9 12l2 2 4-4M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z",
-  },
-];
 
 /** Starter: what tools are, and the one way to get them. */
-function Upsell() {
+function NotYet() {
   return (
-    <>
-      <section className="arrive-up grid items-center gap-8 rounded-2xl border border-line-soft bg-surface p-6 sm:p-8 md:grid-cols-[minmax(0,1fr)_auto]" style={at(60)}>
-        <div className="min-w-0">
-          <h2 className="text-balance text-[1.6rem] font-semibold leading-tight tracking-tight text-ink sm:text-[1.9rem]">Tools bring in people articles can&apos;t</h2>
-          <p className="mt-3 max-w-[52ch] text-[15px] leading-relaxed text-ink-muted">
-            Some searches want a tool, not an article: a calculator, a generator, a checker. About once a month we build one for your site, made for one
-            of those searches, and it publishes like an article does. It&apos;s the kind of page people bookmark and link to.
-          </p>
-          <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-3">
-            <Link href="/billing#plans" className={buttonClass("primary", "lg")}>
-              Upgrade to get tools
-            </Link>
-            <span className="text-[14px] text-ink-muted">Included in Growth and Scale.</span>
-          </div>
-        </div>
-        <PixelDesk className="mx-auto w-[200px] md:w-[230px]" />
-      </section>
-
-      <section aria-labelledby="examples-title" className="space-y-4">
-        <h2 id="examples-title" className="arrive-up text-[15px] font-semibold tracking-tight text-ink" style={at(160)}>
-          The kind of tools we build
-        </h2>
-        <ul className="grid gap-4 sm:grid-cols-3">
-          {EXAMPLES.map((e, i) => (
-            <li key={e.name} className="arrive-up rounded-2xl border border-line-soft bg-surface p-5" style={at(220, i)}>
-              <span aria-hidden="true" className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent-soft text-accent">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
-                  <path d={e.d} />
-                </svg>
-              </span>
-              <p className="mt-4 text-[15px] font-semibold text-ink">{e.name}</p>
-              <p className="mt-1.5 text-[14px] leading-relaxed text-ink-muted">{e.line}</p>
-            </li>
-          ))}
-        </ul>
-      </section>
-    </>
+    <section className="arrive-up grid items-center gap-8 rounded-2xl border border-line-soft bg-surface p-6 sm:p-8 md:grid-cols-[minmax(0,1fr)_auto]" style={at(60)}>
+      <div className="min-w-0">
+        <h2 className="text-balance text-[1.6rem] font-semibold leading-tight tracking-tight text-ink sm:text-[1.9rem]">Tools aren&apos;t available yet</h2>
+        <p className="mt-3 max-w-[52ch] text-[15px] leading-relaxed text-ink-muted">
+          Interactive tools, like a calculator or a generator built for one search people make, aren&apos;t part of DispatchSEO right now. Your articles
+          keep coming as usual.
+        </p>
+      </div>
+      <PixelDesk className="mx-auto w-[200px] md:w-[230px]" />
+    </section>
   );
 }

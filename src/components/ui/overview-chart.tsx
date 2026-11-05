@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
 import { CountUp } from "./count-up";
-import { unpackDays } from "./overview-pack";
+import { unpackDays, type Landed, type LandedPage } from "./overview-pack";
 import { cx, FOCUS_RING } from "./styles";
 
 // The overview: the first thing on Home and on Results, shaped like Polar's
@@ -11,7 +11,7 @@ import { cx, FOCUS_RING } from "./styles";
 // a big number, the period it covers, then a tall chart of that number;
 // under it the card splits in two along a hairline, each half the same
 // shape smaller. One series per chart, each in its own colour (people green,
-// times seen blue, articles violet) carried by its line, its dots and the
+// times seen blue, articles published in the range violet) carried by its line, its dots and the
 // ring in its period line - so no legend, and no y-axis: the number above
 // says the total and hovering says the day.
 //
@@ -19,9 +19,15 @@ import { cx, FOCUS_RING } from "./styles";
 // that must not stretch (dates, dots, gridlines, the hover readout) is HTML
 // laid over it by percentage. Hand-rolled: the repo bans chart libraries.
 //
+// Under the halves, when the caller has the lists: "Your top posts" -
+// the pages those people opened, ranked by clicks for the range that's
+// switched on (clicks first, then times seen, so a site with no clicks yet
+// still gets a ranked list), each with its spot, impressions and clicks. The range is named again there, and under the big chart, so a
+// reader scrolling past the switch still knows what period they're seeing.
+//
 // It builds itself on first load (globals.css "Arrival"): gridlines fade
-// in, the line wipes in left to right with the fill settling in behind it,
-// the bars rise one after another, the numbers count up. A range switch
+// in, the lines wipe in left to right with the fill settling in behind
+// them, the numbers count up. A range switch
 // redraws only the lines, quickly.
 
 export type OverviewDay = { date: string; clicks: number; impressions: number; position?: number | null };
@@ -56,6 +62,10 @@ const ms = (iso: string) => Date.parse(iso.slice(0, 10) + "T00:00:00Z");
 function short(t: number): string {
   const d = new Date(t);
   return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
+}
+function fullDate(iso: string): string {
+  const t = ms(iso);
+  return `${short(t)}, ${new Date(t).getUTCFullYear()}`;
 }
 function period(from: number, to: number): string {
   const a = new Date(from);
@@ -121,6 +131,7 @@ export function OverviewChart({
   published = [],
   publishedCapped = false,
   page = false,
+  landed,
   connectAction,
   className = "",
 }: {
@@ -133,6 +144,9 @@ export function OverviewChart({
   page?: boolean;
   /** The list is a recent slice: say "50+" rather than a wrong total. */
   publishedCapped?: boolean;
+  /** The pages the clicks landed on, one ranked list per range (overview-pack.ts).
+   *  Given: the card grows a third section under the halves. */
+  landed?: Landed;
   /** Set when Google isn't connected: shown where the big chart would be. */
   connectAction?: React.ReactNode;
   className?: string;
@@ -167,22 +181,13 @@ export function OverviewChart({
       buckets[i].posN += w;
     }
   }
-  // Articles get coarser buckets than traffic: a month of daily bars would
-  // be thirty dashes and one bar.
-  const aSize = span > 400 ? 30 : span > 35 ? 7 : 1;
-  const aBuckets = bucketize(from, to, aSize);
-  for (const p of published) {
-    const t = ms(p.at);
-    const i = aBuckets.findIndex((b) => t >= b.start && t <= b.end);
-    if (i >= 0) {
-      aBuckets[i].articles += 1;
-      aBuckets[i].live.push(p);
-    }
-  }
-
   const clicks = buckets.reduce((s, b) => s + b.clicks, 0);
   const impressions = buckets.reduce((s, b) => s + b.impressions, 0);
-  const newInRange = aBuckets.reduce((s, b) => s + b.articles, 0);
+  const newInRange = published.filter((p) => ms(p.at) >= from && ms(p.at) <= to).length;
+  // A capped list only knows the range is complete when its oldest article
+  // is older than the range; otherwise say "18+" rather than a wrong count.
+  const oldestKnown = published.length ? Math.min(...published.map((p) => ms(p.at))) : Infinity;
+  const inRangeCapped = publishedCapped && oldestKnown >= from;
   // Change against the same length of time just before - only when that
   // window was mostly reported, so a young site doesn't "grow 900%".
   let delta: number | null = null;
@@ -199,6 +204,9 @@ export function OverviewChart({
   const now = inRange.length ? inRange[inRange.length - 1].position! : null;
   const best = inRange.reduce<OverviewDay | null>((b, d) => (b == null || d.position! < b.position! ? d : b), null);
   const sinceWord = r.days == null ? "since the start" : `on the ${r.label} before`;
+  // Named under the big chart and over the landed list: "Last 30 days",
+  // "All time".
+  const rangeName = r.days == null ? "All time" : `Last ${r.label}`;
 
   const pick = (k: RangeKey) => {
     if (k === range) return;
@@ -278,6 +286,13 @@ export function OverviewChart({
             />
           )}
         </div>
+        {connectAction || rows.length < 2 ? null : (
+          <p className="arrive-in mt-4 flex flex-wrap items-center gap-x-2 text-[12.5px] text-ink-faint" style={css({ "--at": "900ms" })} aria-live="polite">
+            <span className="font-medium text-ink-muted">{rangeName}</span>
+            <span aria-hidden="true">·</span>
+            <span>{when}</span>
+          </p>
+        )}
       </div>
 
       <div className="mt-8 grid border-t border-line-soft sm:grid-cols-2">
@@ -342,24 +357,174 @@ export function OverviewChart({
           </div>
         ) : (
         <div className={cx("px-5 py-6 sm:px-8", connectAction ? "sm:col-span-2" : "border-t border-line-soft sm:border-t-0")}>
+          {/* The range's own count is the figure, like the two beside it;
+              the all-time total is the quiet line under it. */}
           <Head
-            label="Articles live"
+            label="Articles published"
             value={
               <>
-                <CountUp value={published.length} />
-                {publishedCapped ? "+" : null}
+                <CountUp value={newInRange} />
+                {inRangeCapped ? "+" : null}
               </>
             }
-            when={newInRange ? `${newInRange} went live in this range` : "None went live in this range"}
+            when={`${rangeName === "All time" ? "Since the start" : rangeName} · ${published.length}${publishedCapped ? "+" : ""} live in total`}
             tone="accent"
           />
           <div className="mt-5">
-            <Bars buckets={aBuckets} size={aSize} redraw={switched ? range : null} />
+            <PublishCalendar from={from} to={to} published={published} redraw={switched ? range : null} />
           </div>
         </div>
         )}
       </div>
+
+      {landed && !connectAction && !page ? (
+        <LandedList rows={landed[range] ?? []} rangeName={rangeName} when={when} redraw={switched ? range : null} />
+      ) : null}
     </section>
+  );
+}
+
+/** How many landed rows show before "Show all". */
+const LANDED_SHOWN = 8;
+
+/** 12,345 in full; past 100k, "123k" so the column keeps its width. */
+export function compact(v: number): string {
+  return v >= 100_000 ? `${Math.round(v / 1000)}k` : v.toLocaleString("en-US");
+}
+
+/** A magnifier: the Impressions column's mark (an impression is showing
+ *  up in a search). Gray on purpose - the clicks carry the colour. */
+export function SearchIcon({ className }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" className={className}>
+      <circle cx="8.5" cy="8.5" r="5" fill="none" stroke="currentColor" strokeWidth="1.6" />
+      <path d="m12.3 12.3 4.2 4.2" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** A pointer mid-click: the Clicks column's mark. */
+export function ClickIcon({ className }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" className={className}>
+      <path d="M8 7.5 15.5 10l-3.2 1.3 2.6 3.4-1.6 1.2-2.6-3.4-1.9 2.8Z" fill="currentColor" fillOpacity="0.2" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+      <path d="M6 2.5v2.2M2.5 6h2.2M3.4 3.4l1.5 1.5M9.6 3.4 8.1 4.9M3.4 9.6l1.5-1.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** The pages the range's clicks landed on, best first, made to feel like a
+ *  reward: each row's click count is the big figure (the way a video's
+ *  views are), with its rank and its name on the left, and its spot on
+ *  Google beside the count. The right side is
+ *  fixed-width columns, so spots, counts and arrows line up row to row.
+ *  The whole row opens the live post in a new tab. The top three ranks
+ *  carry the green, the rest stay quiet. Rows arrive one after another and
+ *  re-arrive quickly when the range switches, like the lines above. */
+function LandedList({ rows, rangeName, when, redraw }: { rows: LandedPage[]; rangeName: string; when: string; redraw: string | null }) {
+  const [all, setAll] = useState(false);
+  const shown = all ? rows : rows.slice(0, LANDED_SHOWN);
+  const hidden = rows.length - shown.length;
+  const quick = redraw != null;
+  return (
+    <div className="border-t border-line-soft px-5 py-6 sm:px-8" aria-labelledby="landed-title">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+        <h3 id="landed-title" className="text-[14px] font-medium text-ink-muted">
+          Your top posts
+        </h3>
+        <p className="flex items-center gap-2 text-[12.5px] text-ink-faint">
+          <span aria-hidden="true" className={cx("h-2 w-2 shrink-0 rounded-full border-[1.5px]", TONE.ok.border)} />
+          <span className="font-medium text-ink-muted">{rangeName}</span>
+          <span aria-hidden="true">·</span>
+          <span>{when}</span>
+        </p>
+      </div>
+      {rows.length === 0 ? (
+        <p className="mt-5 rounded-xl border border-dashed border-line px-5 py-6 text-center text-[14px] text-ink-muted">No post showed up on Google in this range yet.</p>
+      ) : (
+        <ol key={redraw ?? "first"} className="-mx-3 mt-3 space-y-1">
+          {shown.map((p, i) => {
+            const name = p.title ?? p.path;
+            const podium = i < 3;
+            return (
+              <li key={p.path} className="arrive-up" style={css({ "--at": quick ? "0ms" : "960ms", "--i": i, "--step": quick ? "30ms" : "55ms" })}>
+                <a
+                  href={p.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={cx("group flex items-center gap-4 rounded-xl px-3 py-3.5 transition-colors hover:bg-surface-2 sm:gap-5", FOCUS_RING)}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={cx(
+                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[14px] font-semibold tabular-nums",
+                      podium ? "bg-ok/12 text-ok ring-1 ring-ok/25" : "bg-surface-3/70 text-ink-faint",
+                    )}
+                  >
+                    {i + 1}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="sr-only">Number {i + 1}: </span>
+                    <span className="block truncate text-[15px] font-medium text-ink transition-colors group-hover:text-ok" title={name}>
+                      {name}
+                    </span>
+                    {p.publishedAt ? (
+                      <span className="mt-1 block text-[12.5px] text-ink-faint">Published on {fullDate(p.publishedAt)}</span>
+                    ) : null}
+                  </span>
+                  {/* Its spot on Google: its own fixed column, the same two-line shape as
+                      the count beside it so the labels share a baseline. */}
+                  <span className="hidden w-20 shrink-0 text-center sm:block">
+                    <span className="block text-[1.125rem] font-semibold leading-7 tabular-nums text-ink-muted">
+                      {p.position == null ? "-" : `#${Math.max(1, Math.round(p.position))}`}
+                    </span>
+                    <span className="mt-0.5 block text-[11px] font-medium uppercase tracking-wider text-ink-faint">On Google</span>
+                  </span>
+                  {/* Impressions: how often Google showed it. */}
+                  <span className="hidden w-28 shrink-0 text-center sm:block">
+                    <span className="flex items-center justify-center gap-1.5">
+                      <SearchIcon className="h-4 w-4 shrink-0 text-ink-faint" />
+                      <span className="text-[1.125rem] font-semibold leading-7 tabular-nums text-ink-muted">{compact(p.impressions)}</span>
+                    </span>
+                    <span className="mt-0.5 block text-[11px] font-medium uppercase tracking-wider text-ink-faint">Impressions</span>
+                  </span>
+                  {/* Clicks: icon and figure as one right-aligned unit, one
+                      size on every row, so the numbers stack cleanly. */}
+                  <span className="w-24 shrink-0 text-right">
+                    <span className="flex items-center justify-end gap-1.5">
+                      <ClickIcon className={cx("h-[18px] w-[18px] shrink-0", podium ? "text-ok" : "text-ink-faint")} />
+                      <span className={cx("text-[1.625rem] font-semibold leading-7 tracking-tight tabular-nums", podium ? "text-ink" : "text-ink-muted")}>
+                        {p.clicks.toLocaleString("en-US")}
+                      </span>
+                    </span>
+                    <span className="mt-0.5 block text-[11px] font-medium uppercase tracking-wider text-ink-faint">
+                      {p.clicks === 1 ? "Click" : "Clicks"}
+                      <span className="sm:hidden">
+                        {" "}
+                        · {compact(p.impressions)} impressions{p.position == null ? "" : ` · #${Math.max(1, Math.round(p.position))}`}
+                      </span>
+                    </span>
+                  </span>
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 16 16"
+                    className="h-4 w-4 shrink-0 text-ink-faint transition-[color,transform] duration-150 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-ok"
+                  >
+                    <path d="M5 11 11 5M6 5h5v5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  <span className="sr-only">(opens the post in a new tab)</span>
+                </a>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      {hidden > 0 || all ? (
+        <button type="button" onClick={() => setAll((v) => !v)} className={cx("mt-3 text-[13px] font-medium text-accent", FOCUS_RING, "rounded-sm")}>
+          {all ? "Show fewer" : `Show all ${rows.length} posts`}
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -416,6 +581,7 @@ function Area({
   at,
   redraw,
   hover: hoverable = false,
+  detail,
 }: {
   buckets: Bucket[];
   /** null = no reading that period (a gap, not a zero). */
@@ -433,6 +599,8 @@ function Area({
   /** Set after a range switch: remount the line and redraw it quickly. */
   redraw: string | null;
   hover?: boolean;
+  /** Extra lines under the readout's figure, e.g. what went live that day. */
+  detail?: (b: Bucket) => React.ReactNode;
 }) {
   const gradient = useId();
   // The hover readout stays mounted once used: `hover` is where it points,
@@ -555,6 +723,7 @@ function Area({
               <span className="mt-0.5 block text-ink">
                 <span className="font-semibold tabular-nums">{vals[hover] == null ? "-" : format(vals[hover]!)}</span>
               </span>
+              {detail ? detail(buckets[hover]) : null}
             </span>
           </>
         ) : null}
@@ -564,109 +733,221 @@ function Area({
   );
 }
 
-/** Articles that went live per period: bars rising one after another, an
- *  empty period a short dash (zero is a value, not a gap). */
-function Bars({ buckets, size, redraw }: { buckets: Bucket[]; size: number; redraw: string | null }) {
+/** The days an article went live, as a calendar, publish days violet. Each
+ *  range gets its own layout, and every layout fills the half card's width:
+ *    7 days     a row of seven tall day tiles (weekday, date)
+ *    30 days    a month calendar, Monday-first, a dated cell per day
+ *    3 months   the months it touches, side by side as small calendars
+ *    longer     a week-per-column grid, capped at 12 months and starting a
+ *               little before the first article - months before anything
+ *               was published are just empty squares
+ *  Only violet days answer the pointer: hover names what went live, click
+ *  opens it. A day with several articles carries a small dot. (Tried and
+ *  dropped before this: full-height bars, a running-total line, tiles on a
+ *  timeline - none read as "the days we published".) */
+const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"];
+const WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+/** The shortest week grid: fewer weeks would stretch squares into strips. */
+const MIN_WEEKS = 16;
+function PublishCalendar({ from, to, published, redraw }: { from: number; to: number; published: LiveArticle[]; redraw: string | null }) {
   const router = useRouter();
-  // The same hover as the lines: which bar, whether shown (a 120ms fade),
-  // whether to glide there (not on the first move after entering).
   const [hover, setHover] = useState<number | null>(null);
-  const [shown, setShown] = useState(false);
-  const [glide, setGlide] = useState(false);
-  const n = buckets.length;
-  const max = Math.max(1, ...buckets.map((b) => b.articles));
-  const tk = ticks(n, 3);
-  const slot = 100 / n;
-  const xs = buckets.map((_, i) => ((i + 0.5) * W) / n);
-  const point = (i: number) => {
-    setHover(i);
-    setGlide(shown);
-    setShown(true);
-  };
-  const said = (b: Bucket) => {
-    const titles = b.live.slice(0, 3).map((a) => a.title);
-    const more = b.live.length - titles.length;
-    return `${bucketLabel(b, size)}: ${titles.join("; ")}${more > 0 ? `; and ${more} more` : ""}`;
-  };
-  const go = (b: Bucket) => {
-    const href = b.live.find((a) => a.href)?.href;
+  const span = Math.round((to - from) / DAY) + 1;
+  // Long ranges stop at a year, and start a little before the first
+  // article (but never under MIN_WEEKS) so empty months don't fill the box.
+  let start = from;
+  if (span > 92) {
+    start = Math.max(from, to - 364 * DAY);
+    const first = published.reduce((m, p) => Math.min(m, ms(p.at)), Infinity);
+    if (Number.isFinite(first)) start = Math.max(start, Math.min(first - 7 * DAY, to - (MIN_WEEKS * 7 - 1) * DAY));
+  }
+  const byDay = new Map<number, LiveArticle[]>();
+  for (const p of published) {
+    const t = ms(p.at);
+    if (t < start || t > to) continue;
+    byDay.set(t, [...(byDay.get(t) ?? []), p]);
+  }
+  const dow = (t: number) => (new Date(t).getUTCDay() + 6) % 7;
+  const go = (list: LiveArticle[]) => {
+    const href = list.find((a) => a.href)?.href;
     if (href) router.push(href);
   };
-  const motion: React.CSSProperties = {
-    transition: glide ? "left 160ms var(--ease-out-expo), transform 160ms var(--ease-out-expo), opacity 120ms ease-out" : "opacity 120ms ease-out",
-    opacity: shown ? 1 : 0,
-  };
-  const hb = hover != null && hover < n ? buckets[hover] : null;
-  const frac = hover != null && n > 1 ? hover / (n - 1) : 0.5;
+  const enter = (i: number) => css({ "--at": redraw ? "0ms" : "820ms", "--i": i, "--step": "5ms" });
 
-  return (
-    <div>
-      <div className="relative" onPointerLeave={() => setShown(false)}>
-        {/* A faint baseline; a period with nothing live is just that. */}
-        <div className="relative flex h-24 items-end border-b border-line" key={redraw ?? "first"}>
-          {buckets.map((b, i) => {
-            const on = hover === i && shown;
-            const dim = shown && hover !== i;
-            return (
-              <div
-                key={b.start}
-                className="flex h-full items-end justify-center"
-                style={{ width: `${slot}%` }}
-                onPointerEnter={b.articles ? () => point(i) : undefined}
-              >
-                {b.articles ? (
-                  <span
-                    role="link"
-                    tabIndex={0}
-                    aria-label={said(b)}
-                    onFocus={() => point(i)}
-                    onBlur={() => setShown(false)}
-                    onClick={() => go(b)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") go(b);
-                    }}
-                    // Width follows the period: chunky on a week of days,
-                    // thin across a year of weeks.
-                    className={cx(
-                      "arrive-rise block w-[60%] max-w-9 min-w-[3px] cursor-pointer rounded-t-md bg-accent outline-none transition-[opacity,box-shadow] duration-150 focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
-                      on ? "shadow-[0_0_16px_2px_rgb(167_139_250/0.55)]" : "",
-                      dim ? "opacity-55" : "",
-                    )}
-                    style={css({
-                      height: `${Math.max(12, (b.articles / max) * 100)}%`,
-                      "--at": redraw ? "0ms" : "820ms",
-                      "--i": i,
-                      "--step": `${Math.max(8, Math.round(400 / n))}ms`,
-                    })}
-                  />
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-        {hb && hb.live.length ? (
-          <div
-            className="pointer-events-none absolute bottom-full z-10 mb-2 max-w-[18rem] rounded-lg border border-line bg-surface-2 px-3 py-2 text-[12.5px] shadow-xl shadow-black/40 motion-reduce:transition-none!"
-            style={{
-              ...motion,
-              left: `${(xs[hover!] / W) * 100}%`,
-              transform: frac > 0.7 ? "translateX(calc(-100% + 12px))" : frac < 0.3 ? "translateX(-12px)" : "translateX(-50%)",
-            }}
+  /** One day. `look` is its shape; `edge` keeps its readout inside the card;
+   *  `outside` is how a day beyond the range shows (blank by default). */
+  const day = (
+    t: number,
+    i: number,
+    edge: "left" | "mid" | "right",
+    look: string,
+    children?: React.ReactNode,
+    outside = "",
+  ) => {
+    const list = t >= start && t <= to ? byDay.get(t) : undefined;
+    if (t < start || t > to) return <span key={t} aria-hidden="true" className={cx(look, outside)} />;
+    if (!list)
+      return (
+        <span key={t} aria-hidden="true" className={cx(look, "arrive-in bg-surface-2 text-ink-faint")} style={enter(i)}>
+          {children}
+        </span>
+      );
+    const on = hover === t;
+    return (
+      <span
+        key={t}
+        role="link"
+        tabIndex={0}
+        aria-label={`${short(t)}: ${list.map((a) => a.title).join("; ")}`}
+        onPointerEnter={() => setHover(t)}
+        onPointerLeave={() => setHover(null)}
+        onFocus={() => setHover(t)}
+        onBlur={() => setHover(null)}
+        onClick={() => go(list)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") go(list);
+        }}
+        className={cx(
+          look,
+          "arrive-in relative cursor-pointer bg-accent text-canvas outline-none transition-shadow duration-150 focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
+          on ? "z-10 shadow-[0_0_14px_2px_rgb(167_139_250/0.55)]" : "",
+        )}
+        style={enter(i)}
+      >
+        {children}
+        {list.length > 1 ? <span aria-hidden="true" className="absolute right-[3px] top-[3px] h-[5px] w-[5px] rounded-full bg-canvas/75" /> : null}
+        {on ? (
+          <span
+            className={cx(
+              "pointer-events-none absolute bottom-full z-20 mb-2 w-max max-w-[16rem] rounded-lg border border-line bg-surface-2 px-3 py-2 text-left text-[12.5px] font-normal shadow-xl shadow-black/40",
+              edge === "left" ? "left-0" : edge === "right" ? "right-0" : "left-1/2 -translate-x-1/2",
+            )}
           >
             <span className="block text-ink-faint">
-              {bucketLabel(hb, size)}
-              {hb.live.length > 1 ? `, ${hb.live.length} articles` : ""}
+              {short(t)}
+              {list.length > 1 ? `, ${list.length} articles` : ""}
             </span>
-            {hb.live.slice(0, 3).map((a, k) => (
+            {list.slice(0, 3).map((a, k) => (
               <span key={k} className="mt-0.5 block truncate text-ink">
                 {a.title}
               </span>
             ))}
-            {hb.live.length > 3 ? <span className="mt-0.5 block text-ink-muted">+{hb.live.length - 3} more</span> : null}
-          </div>
+            {list.length > 3 ? <span className="mt-0.5 block text-ink-muted">+{list.length - 3} more</span> : null}
+          </span>
         ) : null}
+      </span>
+    );
+  };
+  const edgeOf = (k: number, n: number): "left" | "mid" | "right" => (k < n * 0.3 ? "left" : k >= n * 0.7 ? "right" : "mid");
+
+  // ---- 7 days: a row of tall day tiles ----
+  if (span <= 7) {
+    const days = Array.from({ length: span }, (_, k) => start + k * DAY);
+    return (
+      <div key={redraw ?? "first"} className="grid gap-2" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}>
+        {days.map((t, i) =>
+          day(
+            t,
+            i,
+            edgeOf(i, days.length),
+            "flex h-24 flex-col items-center justify-center gap-1 rounded-lg",
+            <>
+              <span className="text-[11px] font-medium uppercase tracking-wider opacity-70">{WEEKDAY_NAMES[dow(t)]}</span>
+              <span className="text-[1.25rem] font-semibold leading-none tabular-nums">{new Date(t).getUTCDate()}</span>
+            </>,
+          ),
+        )}
       </div>
-      <Dates labels={tk.map((i) => ({ i, text: size === 30 ? bucketLabel(buckets[i], size) : short(buckets[i].start) }))} n={n} xs={xs} />
+    );
+  }
+
+  // ---- 30 days: one month calendar, whole weeks ----
+  if (span <= 31) {
+    const days: number[] = [];
+    for (let t = start - dow(start) * DAY; t <= to + (6 - dow(to)) * DAY; t += DAY) days.push(t);
+    return (
+      <div key={redraw ?? "first"}>
+        <div aria-hidden="true" className="grid grid-cols-7 gap-1.5 text-center text-[11px] font-medium text-ink-faint">
+          {WEEKDAYS.map((d, i) => (
+            <span key={i}>{d}</span>
+          ))}
+        </div>
+        <div className="mt-2 grid grid-cols-7 gap-1.5">
+          {days.map((t, i) =>
+            day(t, i, edgeOf(i % 7, 7), "flex h-6 items-center justify-center rounded-[5px] text-[11.5px] font-medium tabular-nums", new Date(t).getUTCDate()),
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ---- 3 months: the months it touches, side by side ----
+  if (span <= 92) {
+    const months: number[] = [];
+    for (let d = new Date(start); ; ) {
+      const m = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
+      if (m > to) break;
+      months.push(m);
+      d = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
+    }
+    let i = 0;
+    return (
+      <div key={redraw ?? "first"} className="grid gap-4" style={{ gridTemplateColumns: `repeat(${months.length}, minmax(0, 1fr))` }}>
+        {months.map((m, mi) => {
+          const md = new Date(m);
+          const last = Date.UTC(md.getUTCFullYear(), md.getUTCMonth() + 1, 0);
+          const cells: Array<number | null> = [...Array(dow(m)).fill(null)];
+          for (let t = m; t <= last; t += DAY) cells.push(t);
+          return (
+            <div key={m} className="min-w-0">
+              <p className="mb-2 text-[11.5px] font-medium text-ink-faint">{MONTHS[md.getUTCMonth()]}</p>
+              <div className="grid grid-cols-7 gap-[3px]">
+                {cells.map((t, k) =>
+                  t == null ? (
+                    <span key={`p${k}`} aria-hidden="true" />
+                  ) : (
+                    day(t, i++, edgeOf(mi * 7 + (k % 7), months.length * 7), "block aspect-square rounded-[3px]", null, "bg-surface-2/35")
+                  ),
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // ---- 12 months and all time: a column per week ----
+  const days: number[] = [];
+  for (let t = start - dow(start) * DAY; t <= to + (6 - dow(to)) * DAY; t += DAY) days.push(t);
+  const weeks = days.length / 7;
+  const gap = weeks > 30 ? 2 : 3;
+  // Columns share the full width; a cell is as tall as it is wide, up to
+  // 18px (container units: the grid knows its own width).
+  const cols = { gridTemplateColumns: `repeat(${weeks}, minmax(0, 1fr))`, columnGap: gap, rowGap: gap };
+  const cellH = `min(18px, calc((100cqw - ${(weeks - 1) * gap}px) / ${weeks}))`;
+  const labels: Array<{ col: number; text: string }> = [];
+  for (let w = 0; w < weeks; w++) {
+    const m = new Date(days[w * 7 + 6]).getUTCMonth();
+    const prev = w === 0 ? -1 : new Date(days[(w - 1) * 7 + 6]).getUTCMonth();
+    if (m !== prev && (labels.length === 0 || w - labels[labels.length - 1].col >= 3)) labels.push({ col: w, text: MONTHS[m] });
+  }
+  return (
+    <div key={redraw ?? "first"} className="@container">
+      <div className="grid grid-flow-col grid-rows-7" style={cols}>
+        {days.map((t, i) => (
+          <span key={t} className="block" style={{ height: cellH }}>
+            {day(t, i, edgeOf(Math.floor(i / 7), weeks), cx("block h-full w-full", weeks > 30 ? "rounded-[2px]" : "rounded-[3px]"))}
+          </span>
+        ))}
+      </div>
+      <div aria-hidden="true" className="mt-2 grid h-4 text-[11.5px] leading-4 text-ink-faint" style={cols}>
+        {labels.map((l) => (
+          <span key={l.col} className="whitespace-nowrap" style={{ gridColumnStart: l.col + 1 }}>
+            {l.text}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

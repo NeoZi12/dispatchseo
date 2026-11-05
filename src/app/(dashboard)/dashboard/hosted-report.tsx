@@ -1,11 +1,10 @@
 import Link from "next/link";
-import { Suspense } from "react";
 import type { Project } from "@/lib/projects";
 import type { AutopilotReport } from "@/lib/autopilot/report";
 import type { HostedQueue } from "@/lib/autopilot/queue";
 import type { OverviewData } from "./overview-data";
 import { pauseAutopilot, resumeAutopilot, suggestTopicAction } from "@/app/autopilot-actions";
-import { PixelDesk, type DispatcherMood } from "@/components/pixel-dispatcher";
+import type { DispatcherMood } from "@/components/pixel-dispatcher";
 import { ActionForm } from "@/components/ui/action-form";
 import { Badge } from "@/components/ui/badge";
 import { buttonClass } from "@/components/ui/button";
@@ -13,21 +12,18 @@ import { Callout } from "@/components/ui/callout";
 import { Card } from "@/components/ui/card";
 import { CardHeader } from "@/components/ui/card-header";
 import { DispatcherButton } from "@/components/ui/dispatcher-button";
-import { EmptyState } from "@/components/ui/empty-state";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { JourneyBar } from "@/components/ui/journey-bar";
 import { OnAir } from "@/components/ui/on-air";
-import { packDays } from "@/components/ui/overview-pack";
+import { packDays, type Landed } from "@/components/ui/overview-pack";
+import { pagePath } from "@/lib/metrics";
 import { OverviewChart, type OverviewDay } from "@/components/ui/overview-chart";
 import { PageHeading } from "@/components/ui/page-heading";
 import { SiteIcon } from "@/components/ui/site-icon";
 import { StatusPill } from "@/components/ui/status-pill";
-import { ArticleList, SortChips } from "@/components/ui/article-list";
-import { ArticleRowsSkeleton } from "@/components/ui/skeleton";
 import { MonthBoard, type CalCard } from "@/components/ui/month-board";
-import { ARTICLE_STATUS, articleHref, articleStep, dayDate, inProgress, parseSort, shortDate, sortArticles, statusLabel, stepLine } from "../article-status";
-import { loadGlances } from "../articles/article-data";
+import { ARTICLE_STATUS, articleHref, articleStep, inProgress, shortDate, statusLabel, stepLine } from "../article-status";
 import { setupGaps } from "../mode";
 import { TOPIC_LIMITS } from "@/lib/autopilot/controls";
 import type { CronHealth } from "@/lib/cron-alerts";
@@ -49,7 +45,6 @@ import type { OperatorSite } from "@/lib/autopilot/operator";
 //   setup     only while something is unfinished
 //   this month the calendar: articles on their days, queued topics dashed
 //             on the days they're due
-//   articles  title, one status word, date, clicks
 //   up next   the queue, and a box to suggest a topic
 //
 // It arrives rather than appears (globals.css "Arrival"): header, road,
@@ -224,7 +219,7 @@ export async function HostedReport({
   }
 
   const r = report;
-  const google = overview ?? { journey: null, daily: r.traffic.days };
+  const google: OverviewData = overview ?? { journey: null, daily: r.traffic.days, landed: {} };
   const plan = planLabel(r.plan);
   // A lapsed plan also reads as "no keyword source" (platform data needs an
   // active plan); the plan message already covers it, so no second card.
@@ -235,11 +230,21 @@ export async function HostedReport({
   // "Up next" in the queue's own order (the owner's drag order included).
   const nextCount = queue ? queue.upcoming.length : r.ideas.approved;
   const nextTitles = queue ? queue.upcoming.slice(0, 3).map((q) => q.title) : r.ideas.nextTitles;
-  const sort = parseSort(flags.sort ?? undefined);
-  const recent = sortArticles(r.articles, sort).slice(0, 8);
   const published = r.articles
     .filter((a) => a.status === "published" && a.publishedAt)
     .map((a) => ({ at: a.publishedAt!, title: a.title, href: articleHref(a) }));
+  // The top-posts lists name our articles by their own titles and publish
+  // dates; anything else keeps what the pages table had, or its path. Rows link to
+  // the live post either way.
+  const ours = new Map<string, { title: string; publishedAt: string | null }>();
+  for (const a of r.articles) if (a.url) ours.set(pagePath(a.url), { title: a.title, publishedAt: a.publishedAt });
+  const landed: Landed = {};
+  for (const [key, rows] of Object.entries(google.landed ?? {}) as Array<[keyof Landed, NonNullable<Landed[keyof Landed]>]>) {
+    landed[key] = rows.map((p) => {
+      const o = ours.get(p.path);
+      return o ? { ...p, title: o.title, publishedAt: o.publishedAt ?? p.publishedAt } : p;
+    });
+  }
   const tally = {
     live: month.liveThisMonth,
     writing: inProgress(r.articles).length,
@@ -312,6 +317,7 @@ export async function HostedReport({
         daily={packDays(google.daily.length ? google.daily : r.traffic.days)}
         published={published}
         publishedCapped={r.articlesTruncated}
+        landed={landed}
         connectAction={
           r.setup.google ? undefined : (
             <Link href="/google" className={buttonClass("primary", "md")}>
@@ -354,41 +360,6 @@ export async function HostedReport({
           </p>
         </div>
         <MonthBoard cards={month.cards} today={month.today} at={940} />
-      </section>
-
-      {/* ---- articles: the same list as the Articles page, latest 8 ---- */}
-      <section aria-labelledby="articles-title" className="scroll-mt-24 space-y-4">
-        <CardHeader
-          id="articles-title"
-          title="Articles"
-          description="Open one for the facts that matter. Clicks are people Google sent in the last 28 days."
-          className="arrive-up"
-          action={
-            r.articles.length ? (
-              <Link href="/articles" className={buttonClass("ghost", "sm")}>
-                All articles
-              </Link>
-            ) : null
-          }
-        />
-        {recent.length ? (
-          <>
-            {r.articles.length > 1 ? <SortChips base="/dashboard" sort={sort} anchor="articles-title" className="arrive-up" /> : null}
-            {/* Below the fold: streams in after the overview, so its
-                per-article Google reads never hold up the top of the page. */}
-            <Suspense fallback={<ArticleRowsSkeleton rows={recent.length} />}>
-              <HomeArticles projectId={project.id} articles={recent} slug={project.slug} paused={Boolean(r.paused)} />
-            </Suspense>
-          </>
-        ) : (
-          <EmptyState title="No articles yet" icon={<PixelDesk className="w-[150px]" />}>
-            {r.paused
-              ? "Resume autopilot and the first one starts on the next run."
-              : r.nextArticleAt
-                ? `The first one starts ${dayDate(r.nextArticleAt, now)} and shows up here the moment writing starts.`
-                : "The first one shows up here the moment writing starts, with its status at every step."}
-          </EmptyState>
-        )}
       </section>
 
       {/* ---- up next ---- */}
@@ -436,11 +407,6 @@ export async function HostedReport({
       </section>
     </div>
   );
-}
-
-async function HomeArticles({ projectId, articles, slug, paused }: { projectId: string; articles: AutopilotReport["articles"]; slug: string; paused: boolean }) {
-  const glances = await loadGlances(projectId, articles);
-  return <ArticleList articles={articles} glances={glances} slug={slug} paused={paused} at={0} />;
 }
 
 // What the dispatcher says when clicked. Server-rendered into its popover

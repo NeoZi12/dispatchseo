@@ -27,3 +27,27 @@ export function unpackDays(s: string): PackedDay[] {
     };
   });
 }
+
+// ---- where they landed ----
+// The pages Google's clicks landed on, one list per range of the overview
+// card, tallied on the server (the per-day page JSON is heavy; the lists
+// are light) and keyed by the same range keys the chart's switch uses.
+
+export type LandedRangeKey = "7d" | "30d" | "3m" | "12m" | "all";
+/** Days in each range; null is "all time". The chart's switch shares this. */
+export const LANDED_RANGE_DAYS: Record<LandedRangeKey, number | null> = { "7d": 7, "30d": 30, "3m": 91, "12m": 365, all: null };
+
+export type LandedPage = {
+  /** Pathname, the row's identity: www/non-www and trailing-slash variants fold together. */
+  path: string;
+  /** The variant Google saw most, to link to. */
+  url: string;
+  title: string | null;
+  clicks: number;
+  impressions: number;
+  /** Impression-weighted average spot on Google, when known. */
+  position: number | null;
+  /** When the post went live, when we know (our own pages only). */
+  publishedAt?: string | null;
+};
+export type Landed = Partial<Record<LandedRangeKey, LandedPage[]>>;

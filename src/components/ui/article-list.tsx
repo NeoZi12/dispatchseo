@@ -25,6 +25,7 @@ import { ActionForm } from "./action-form";
 import { buttonClass } from "./button";
 import { PipelineSteps } from "./pipeline-steps";
 import { StatusPill } from "./status-pill";
+import { ClickIcon, SearchIcon } from "./overview-chart";
 import { cx, FOCUS_RING } from "./styles";
 import { friendlyError } from "@/lib/autopilot/friendly";
 
@@ -109,23 +110,27 @@ export function ArticleList({
   const left = articles.length - shown.length;
   return (
     <div className="space-y-3">
-    <div className="overflow-hidden rounded-xl border border-line-soft bg-surface">
-      <div aria-hidden="true" className={`hidden gap-4 border-b border-line-soft px-5 py-2.5 text-[12px] text-ink-faint sm:grid ${GRID}`}>
-        <span>Status</span>
-        <span>Article</span>
-        <span className="text-right">Date</span>
-        <span className="text-right">Clicks</span>
-        <span />
+      <div className="overflow-hidden rounded-xl border border-line-soft bg-surface">
+        {/* Column labels in the overview's voice: tiny, tracked, faint. */}
+        <div
+          aria-hidden="true"
+          className={`hidden gap-4 border-b border-line-soft bg-canvas/30 px-5 py-2.5 text-[11px] font-medium uppercase tracking-wider text-ink-faint sm:grid ${GRID}`}
+        >
+          <span>Status</span>
+          <span>Article</span>
+          <span className="text-right">Date</span>
+          <span className="text-right">Clicks</span>
+          <span />
+        </div>
+        <ul className="divide-y divide-line-soft">
+          {shown.map((a, i) => (
+            // The first ten rise in order; the rest are simply there.
+            <li key={a.draftId || a.runId || a.createdAt} className={i < 10 ? "arrive-up" : undefined} style={i < 10 ? css({ "--at": `${at}ms`, "--i": i, "--step": "40ms" }) : undefined}>
+              <Row a={a} glance={glances[a.draftId || a.runId || a.createdAt]} slug={slug} paused={paused} />
+            </li>
+          ))}
+        </ul>
       </div>
-      <ul className="divide-y divide-line-soft">
-        {shown.map((a, i) => (
-          // The first ten rise in order; the rest are simply there.
-          <li key={a.draftId || a.runId || a.createdAt} className={i < 10 ? "arrive-up" : undefined} style={i < 10 ? css({ "--at": `${at}ms`, "--i": i, "--step": "40ms" }) : undefined}>
-            <Row a={a} glance={glances[a.draftId || a.runId || a.createdAt]} slug={slug} paused={paused} />
-          </li>
-        ))}
-      </ul>
-    </div>
       {left > 0 && pageSize ? (
         <button type="button" onClick={() => setLimit((n) => n + pageSize)} className="btn btn-secondary btn-md w-full">
           Show {Math.min(left, pageSize)} more {Math.min(left, pageSize) === 1 ? "article" : "articles"}
@@ -153,6 +158,14 @@ function Row({ a, glance, slug, paused }: { a: AutopilotArticle; glance: Article
       <summary className="al-sum">
         <div className="min-w-0 sm:order-2">
           <p className="al-title">{a.title}</p>
+          {/* The search it was written for, quiet under the title. */}
+          {a.keyword ? (
+            <p className="mt-1 flex min-w-0 items-center gap-1.5 text-[12.5px] text-ink-faint">
+              <SearchIcon className="h-3.5 w-3.5 shrink-0" />
+              <span className="sr-only">Written for the search </span>
+              <span className="truncate">{a.keyword}</span>
+            </p>
+          ) : null}
         </div>
         <div className="flex items-center gap-4 sm:contents">
           <div className="sm:order-1">
@@ -167,15 +180,21 @@ function Row({ a, glance, slug, paused }: { a: AutopilotArticle; glance: Article
             )}
           </div>
           <span className="text-[13px] text-ink-muted tabular-nums sm:order-3 sm:text-right">{shortDate(articleDate(a))}</span>
-          <span className={cx("text-[13px] tabular-nums sm:order-4 sm:text-right", live ? "text-ink" : "hidden text-ink-faint sm:block")}>
-            {live ? (
-              <>
-                {a.clicks28d.toLocaleString("en-US")} <span className="text-ink-faint">{a.clicks28d === 1 ? "click" : "clicks"}</span>
-              </>
-            ) : (
-              "-"
-            )}
-          </span>
+          {/* Clicks: the figure that rewards, icon and number as one
+              right-aligned unit so the counts stack down the column. */}
+          {live ? (
+            <span className="inline-flex items-center gap-1.5 sm:order-4 sm:justify-end">
+              <ClickIcon className={cx("h-4 w-4 shrink-0", a.clicks28d > 0 ? "text-ok" : "text-ink-faint")} />
+              <span className={cx("text-[16px] font-semibold tracking-tight tabular-nums", a.clicks28d > 0 ? "text-ink" : "text-ink-muted")}>
+                {a.clicks28d.toLocaleString("en-US")}
+              </span>
+              <span className="text-[13px] text-ink-faint sm:sr-only">{a.clicks28d === 1 ? "click" : "clicks"}</span>
+            </span>
+          ) : (
+            <span className="hidden text-right text-[13px] text-ink-faint sm:order-4 sm:block" aria-hidden="true">
+              -
+            </span>
+          )}
           <svg
             viewBox="0 0 24 24"
             fill="none"
