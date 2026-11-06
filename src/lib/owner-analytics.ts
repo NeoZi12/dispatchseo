@@ -2,6 +2,7 @@ import { db } from "./db";
 import { isCloudMode } from "./cloud";
 import { TIER_LIMITS, TIER_NAMES, polar, polarConfigured, type Tier } from "./billing";
 import { isOperator } from "./autopilot/operator";
+import { ordersByUser, polarOrders, polarOrdersError, summarize, keptUsd, type MoneySummary, type PolarOrder } from "./owner-money";
 
 // Everything /owner shows, in two reads: the site's traffic and funnel
 // (web_visits + app_events, migration 0073) and the customer ledger (auth
@@ -9,8 +10,8 @@ import { isOperator } from "./autopilot/operator";
 // telemetry across every tenant - no MCP counterpart on purpose (an MCP
 // token IS one tenant; see autopilot/operator.ts).
 
-export type Range = 7 | 30 | 90;
-export const RANGES: Range[] = [7, 30, 90];
+export type Range = 7 | 30 | 90 | 365;
+export const RANGES: Range[] = [7, 30, 90, 365];
 
 export function parseRange(raw: string | undefined): Range {
   const n = Number(raw);
@@ -65,6 +66,8 @@ export type TrafficReport = {
   appVisitors: number;
   /** Articles published per UTC day across every project, every day in the range. */
   published: Array<{ day: string; count: number }>;
+  /** The oldest visit on record (an imported one counts): before it there is no traffic data at all. */
+  since: string | null;
 };
 
 type EventRow = { at: string; distinct_id: string; event: string; props: Record<string, unknown> | null };
@@ -227,6 +230,7 @@ export async function trafficReport(range: Range, now = Date.now()): Promise<Tra
       publishedByDay(w.from, w.to),
       eventsDaily(w.from, w.to).catch(() => [] as DailyEvent[]),
     ]);
+  const first = await db().from("web_visits").select("at").order("at", { ascending: true }).limit(1);
   const filled = fill(days, w.from, w.to);
   const prevFilled = fill(prevDays, w.prevFrom, w.prevTo);
   const totals = totalsFor(filled, ev);
@@ -275,6 +279,7 @@ export async function trafficReport(range: Range, now = Date.now()): Promise<Tra
     appViews: app.views,
     appVisitors: app.visitors,
     published,
+    since: (first.data as Array<{ at: string }> | null)?.[0]?.at ?? null,
   };
 }
 
@@ -298,6 +303,8 @@ export type CustomerSite = {
   costRecentUsd: number;
   llmCostUsd: number;
   dfsCostUsd: number;
+  llmRecentUsd: number;
+  dfsRecentUsd: number;
 };
 
 export type Customer = {
@@ -328,8 +335,15 @@ export type Customer = {
   blogViewsRecent: number;
   costUsd: number;
   costRecentUsd: number;
-  /** Revenue for the range at the monthly rate, minus what the range cost. Null when nothing is billed. */
+  /** Real charges from Polar (owner-money.ts); null when Polar did not answer. */
+  money: { recent: MoneySummary; all: MoneySummary } | null;
+  /** Kept (net - refunds - Polar fee) minus metered cost. From real charges
+   *  when Polar answered; otherwise the plan rate, and marginEstimated says so. */
   marginRecentUsd: number | null;
+  marginAllUsd: number | null;
+  marginEstimated: boolean;
+  llmRecentUsd: number;
+  dfsRecentUsd: number;
   lastSeen: string | null;
   viewsRecent: number;
   daysActiveRecent: number;
@@ -345,13 +359,24 @@ export type CustomersReport = {
     trialing: number;
     churned: number;
     mrr: number;
+    /** Kept in the range (net - refunds - Polar fee), real charges. */
     revenueRecent: number;
+    chargedRecent: number;
+    feesRecent: number;
+    taxRecent: number;
+    revenueAllTime: number;
     costRecent: number;
     costAllTime: number;
     articles: number;
     articlesRecent: number;
   };
   polarChecked: boolean;
+  /** Real charges were read from Polar for this report. */
+  ordersRead: boolean;
+  /** Why they were not, in plain words. */
+  ordersError: string | null;
+  /** Kept per UTC day in the range (Polar orders), aligned with signupsByDay. */
+  revenueByDay: Array<{ day: string; usd: number }>;
   /** Accounts created per UTC day in the range (auth users: real history). */
   signupsByDay: Array<{ day: string; count: number }>;
   /** What the range cost per day, USD (LLM + platform DataForSEO); empty when 0074 is not applied. */
@@ -360,6 +385,7 @@ export type CustomersReport = {
 
 type SubRow = {
   user_id: string;
+  provider_customer_id: string | null;
   tier: Tier | null;
   status: string;
   provider_subscription_id: string | null;
@@ -494,6 +520,8 @@ function siteOf(p: ProjectRow, r: RollupRow | undefined): CustomerSite {
     costRecentUsd: llmRecent + dfsRecent,
     llmCostUsd: llm,
     dfsCostUsd: dfs,
+    llmRecentUsd: llmRecent,
+    dfsRecentUsd: dfsRecent,
   };
 }
 
@@ -503,7 +531,7 @@ export async function customersReport(range: Range, now = Date.now()): Promise<C
   const since = ISO(w.from);
   const [usersRes, subsRes, projectsRes, rollupRes, activityRes, costRes] = await Promise.all([
     db().auth.admin.listUsers({ page: 1, perPage: 1000 }),
-    db().from("subscriptions").select("user_id, tier, status, provider_subscription_id, current_period_end, cancel_at_period_end, created_at"),
+    db().from("subscriptions").select("user_id, provider_customer_id, tier, status, provider_subscription_id, current_period_end, cancel_at_period_end, created_at"),
     db().from("projects").select("id, slug, name, domain, owner_user_id, writer_mode, created_at"),
     db().rpc("owner_project_rollup", { p_since: since }),
     db().rpc("owner_user_activity", { p_since: since }),
@@ -516,7 +544,9 @@ export async function customersReport(range: Range, now = Date.now()): Promise<C
   if (activityRes.error) throw activityRes.error;
 
   const subs = (subsRes.data ?? []) as SubRow[];
-  const facts = await polarFacts(subs);
+  const [facts, orders] = await Promise.all([polarFacts(subs), polarOrders()]);
+  const customerToUser = new Map(subs.filter((s) => s.provider_customer_id).map((s) => [s.provider_customer_id as string, s.user_id]));
+  const byUser: Map<string, PolarOrder[]> = orders ? ordersByUser(orders, customerToUser, new Set(usersRes.data.users.map((u) => u.id))) : new Map();
   const subBy = new Map(subs.map((s) => [s.user_id, s]));
   const rollup = new Map(((rollupRes.data ?? []) as RollupRow[]).map((r) => [String(r.project_id), r]));
   const activity = new Map(
@@ -543,7 +573,10 @@ export async function customersReport(range: Range, now = Date.now()): Promise<C
     const sites = (sitesByOwner.get(u.id) ?? []).sort((a, b) => b.articles - a.articles);
     const act = activity.get(u.id);
     const costRecentUsd = sites.reduce((a, s) => a + s.costRecentUsd, 0);
-    const revenueRecent = plan.monthlyUsd * (range / 30);
+    const costUsd = sites.reduce((a, s) => a + s.costUsd, 0);
+    const mine = byUser.get(u.id) ?? [];
+    const money = orders ? { recent: summarize(mine, w.from), all: summarize(mine) } : null;
+    const estimate = plan.monthlyUsd > 0 ? plan.monthlyUsd * (range / 30) - costRecentUsd : null;
     return {
       userId: u.id,
       email: u.email ?? "(no email)",
@@ -556,9 +589,14 @@ export async function customersReport(range: Range, now = Date.now()): Promise<C
       clicks28d: sites.reduce((a, s) => a + s.clicks28d, 0),
       impressions28d: sites.reduce((a, s) => a + s.impressions28d, 0),
       blogViewsRecent: sites.reduce((a, s) => a + s.blogViewsRecent, 0),
-      costUsd: sites.reduce((a, s) => a + s.costUsd, 0),
+      costUsd,
       costRecentUsd,
-      marginRecentUsd: plan.monthlyUsd > 0 ? revenueRecent - costRecentUsd : null,
+      money,
+      marginRecentUsd: money ? money.recent.keptUsd - costRecentUsd : estimate,
+      marginAllUsd: money ? money.all.keptUsd - costUsd : null,
+      marginEstimated: !money,
+      llmRecentUsd: sites.reduce((a, s) => a + s.llmRecentUsd, 0),
+      dfsRecentUsd: sites.reduce((a, s) => a + s.dfsRecentUsd, 0),
       lastSeen: act?.lastSeen ?? u.last_sign_in_at ?? null,
       viewsRecent: act?.views ?? 0,
       daysActiveRecent: act?.days ?? 0,
@@ -583,7 +621,11 @@ export async function customersReport(range: Range, now = Date.now()): Promise<C
     trialing: real.filter((c) => c.plan.status === "trialing").length,
     churned: real.filter((c) => c.plan.status === "canceled" || c.plan.status === "revoked").length,
     mrr: real.reduce((a, c) => a + c.plan.monthlyUsd, 0),
-    revenueRecent: real.reduce((a, c) => a + c.plan.monthlyUsd * (range / 30), 0),
+    revenueRecent: orders ? real.reduce((a, c) => a + (c.money?.recent.keptUsd ?? 0), 0) : real.reduce((a, c) => a + c.plan.monthlyUsd * (range / 30), 0),
+    chargedRecent: real.reduce((a, c) => a + (c.money?.recent.chargedUsd ?? 0), 0),
+    feesRecent: real.reduce((a, c) => a + (c.money?.recent.feeUsd ?? 0), 0),
+    taxRecent: real.reduce((a, c) => a + (c.money?.recent.taxUsd ?? 0), 0),
+    revenueAllTime: real.reduce((a, c) => a + (c.money?.all.keptUsd ?? 0), 0),
     costRecent: customers.reduce((a, c) => a + c.costRecentUsd, 0) + orphanSites.reduce((a, s) => a + s.costRecentUsd, 0),
     costAllTime: customers.reduce((a, c) => a + c.costUsd, 0) + orphanSites.reduce((a, s) => a + s.costUsd, 0),
     articles: customers.reduce((a, c) => a + c.articles, 0) + orphanSites.reduce((a, s) => a + s.articles, 0),
@@ -607,6 +649,17 @@ export async function customersReport(range: Range, now = Date.now()): Promise<C
     orphanSites,
     totals,
     polarChecked: facts.size > 0,
+    ordersRead: orders != null,
+    ordersError: orders ? null : polarOrdersError(),
+    revenueByDay: (() => {
+      const m = new Map<string, number>();
+      const realIds = new Set(real.map((c) => c.userId));
+      for (const [uid, list] of byUser) {
+        if (!realIds.has(uid)) continue;
+        for (const o of list) m.set(o.at.slice(0, 10), (m.get(o.at.slice(0, 10)) ?? 0) + keptUsd(o));
+      }
+      return dayKeys.map((day) => ({ day, usd: m.get(day) ?? 0 }));
+    })(),
     signupsByDay: dayKeys.map((day) => ({ day, count: signupMap.get(day) ?? 0 })),
     costByDay: costRes.error ? [] : dayKeys.map((day) => ({ day, usd: costMap.get(day) ?? 0 })),
   };

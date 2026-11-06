@@ -39,11 +39,13 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 
 export function shortDate(iso: string): string {
   const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
   return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
 }
 
 export function fullDate(iso: string): string {
   const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
   return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
 }
 
@@ -59,5 +61,10 @@ export function ago(iso: string | null, now = Date.now()): string {
 }
 
 export function rangeLabel(range: number): string {
-  return range === 7 ? "Last 7 days" : range === 30 ? "Last 30 days" : "Last 90 days";
+  return range === 7 ? "Last 7 days" : range === 30 ? "Last 30 days" : range === 90 ? "Last 90 days" : "Last 12 months";
+}
+
+/** "30 d" / "12 mo" for small meta labels. */
+export function rangeShort(range: number): string {
+  return range === 365 ? "12 mo" : `${range} d`;
 }

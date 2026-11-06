@@ -164,6 +164,9 @@ const PROBES: Probe[] = [
   // writes on every request - unapplied, recordVisit() fails silently and
   // /owner shows zeros, which is exactly the drift this probe exists to name.
   { migration: "0073_owner_analytics", table: "web_visits", column: "visitor" },
+  // 0076 adds web_visits.source_id (the PostHog import's dedupe key) plus
+  // functions; the column is the part a probe can see.
+  { migration: "0076_owner_analytics_v3", table: "web_visits", column: "source_id" },
   { migration: "0075_batch_lane", table: "writer_tasks", column: "batch_id" },
 ];
 

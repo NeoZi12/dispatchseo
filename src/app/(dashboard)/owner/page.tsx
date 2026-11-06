@@ -5,6 +5,8 @@ import { requireDashboard } from "@/lib/auth-gate";
 import { isOperator } from "@/lib/autopilot/operator";
 import { isCloudMode } from "@/lib/cloud";
 import { customersReport, parseRange, RANGES, trafficReport, type CustomersReport, type TrafficReport } from "@/lib/owner-analytics";
+import { aiReport, googleReport, productProjectId, type AiReport, type GoogleReport } from "@/lib/owner-insights";
+import { AiPanel, GooglePanel } from "./insights-view";
 import { cx, FOCUS_RING } from "@/components/ui/styles";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
@@ -40,9 +42,24 @@ export default async function OwnerPage({ searchParams }: { searchParams: Promis
   // never blank the other.
   const settle = <T,>(p: Promise<T>): Promise<{ value: T; error: null } | { value: null; error: string }> =>
     p.then((value) => ({ value, error: null }), (e: unknown) => ({ value: null, error: e instanceof Error ? e.message : String(e) }));
-  const [t, c] = await Promise.all([settle(trafficReport(range, now)), settle(customersReport(range, now))]);
+  const [t, c, productId] = await Promise.all([
+    settle(trafficReport(range, now)),
+    settle(customersReport(range, now)),
+    productProjectId().catch(() => null),
+  ]);
   const traffic: TrafficReport | null = t.value;
   const customers: CustomersReport | null = c.value;
+  const allSites = [
+    ...(customers?.customers ?? []).flatMap((x) => x.sites.map((s) => ({ id: s.id, domain: s.domain, owner: x.operator ? null : x.email, userId: x.userId }))),
+    ...(customers?.orphanSites ?? []).map((s) => ({ id: s.id, domain: s.domain, owner: null, userId: null as string | null })),
+  ];
+  const [ai, google] = await Promise.all([
+    settle(aiReport(range, productId, now)),
+    settle(googleReport(range, productId, allSites, now)),
+  ]);
+  const aiData: AiReport | null = ai.value;
+  const googleData: GoogleReport | null = google.value;
+  const siteHrefs: Record<string, string> = Object.fromEntries(allSites.filter((s) => s.userId).map((s) => [s.id, `/owner/customers/${s.userId}`]));
 
   const emailOf = new Map<string, string>();
   const siteOf = new Map<string, string>();
@@ -78,7 +95,7 @@ export default async function OwnerPage({ searchParams }: { searchParams: Promis
                 FOCUS_RING,
               )}
             >
-              {r}d
+              {r === 365 ? "12m" : `${r}d`}
             </Link>
           ))}
         </nav>
@@ -102,6 +119,10 @@ export default async function OwnerPage({ searchParams }: { searchParams: Promis
           {customers ? <MoneyPanel c={customers} range={range} /> : null}
         </div>
       ) : null}
+
+      {aiData ? <AiPanel a={aiData} now={now} /> : null}
+
+      {googleData ? <GooglePanel g={googleData} hrefs={siteHrefs} /> : null}
 
       {traffic ? (
         <div className="grid gap-4 sm:gap-5 lg:grid-cols-2">

@@ -4,7 +4,7 @@ import type { Tier } from "@/lib/billing";
 import { AreaChart, MetricChart } from "./area";
 import { BarList, DeltaPill, FunnelBars, Panel, PanelHead, PublishStrip, RealShare, Sparkline, StatCells, type BarRow } from "./bits";
 import { TabbedLists } from "./tabbed";
-import { ago, compact, delta, fmt, money, pct, shortDate } from "./format";
+import { ago, compact, delta, fmt, fullDate, money, pct, rangeShort, shortDate } from "./format";
 
 // The sections of /owner, Polar-style: hairline panels, large light figures,
 // one accent per chart, numbers in mono so columns line up.
@@ -105,7 +105,7 @@ export function KpiStrip({ t, c }: { t: TrafficReport | null; c: CustomersReport
       <Kpi
         label="Cost"
         value={c ? money(c.totals.costRecent) : "–"}
-        sub={c ? (c.totals.revenueRecent ? `margin ${money(margin)} · ${pct(margin, c.totals.revenueRecent)}` : "nothing billed yet") : undefined}
+        sub={c ? (c.totals.revenueRecent ? `margin ${money(margin)}${c.ordersRead ? ` · ${pct(margin, c.totals.revenueRecent)} of kept` : " · estimate"}` : "nothing kept yet") : undefined}
         spark={c && c.costByDay.length ? { values: c.costByDay.map((d) => d.usd), tone: "gray", bars: true } : undefined}
       />
     </Panel>
@@ -116,8 +116,15 @@ export function KpiStrip({ t, c }: { t: TrafficReport | null; c: CustomersReport
 
 export function TrafficPanel({ t }: { t: TrafficReport }) {
   const days = t.days.map((d) => d.day);
+  const partial = t.since != null && new Date(t.since).getTime() > t.from;
   return (
     <Panel label="Traffic">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-line-soft px-5 py-3 text-[12.5px] sm:px-6">
+        <span className="font-medium text-ink">dispatchseo.com visits</span>
+        <span className={partial ? "text-warn" : "text-ink-faint"}>
+          {t.since ? `Recorded since ${fullDate(t.since)}${partial ? ". Earlier days have no visit data yet." : ""}` : "Nothing recorded yet."}
+        </span>
+      </div>
       <MetricChart
         days={days}
         metrics={[
@@ -170,7 +177,7 @@ export function SignupsPanel({ t, c }: { t: TrafficReport; c: CustomersReport | 
   const n = series.reduce((a, d) => a + d.count, 0);
   return (
     <Panel label="Signups and sources" className="flex flex-col">
-      <PanelHead title="Signups and sources" meta={`${n} in ${t.range} d`} />
+      <PanelHead title="Signups and sources" meta={`${n} in ${rangeShort(t.range)}`} />
       <div className="px-4 pb-5 pt-7 sm:px-6">
         <AreaChart days={series.map((d) => d.day)} values={series.map((d) => d.count)} tone="violet" kind="bars" height={150} label="Signups" />
       </div>
@@ -230,55 +237,73 @@ function planName(c: Customer): string {
 
 export function MoneyPanel({ c, range }: { c: CustomersReport; range: number }) {
   const margin = c.totals.revenueRecent - c.totals.costRecent;
-  const top = c.customers.filter((x) => !x.operator && (x.plan.status !== "none" || x.costRecentUsd > 0)).slice(0, 6);
+  const top = c.customers
+    .filter((x) => !x.operator && (x.plan.status !== "none" || x.costRecentUsd > 0))
+    .sort((a, b) => (b.money?.recent.keptUsd ?? 0) - (a.money?.recent.keptUsd ?? 0) || b.costRecentUsd - a.costRecentUsd)
+    .slice(0, 6);
+  const days = c.revenueByDay.map((d) => d.day);
   return (
-    <Panel label="Money and customers" className="flex flex-col">
-      <PanelHead title="Money and customers" meta="spend per day" />
+    <Panel label="Money" className="flex flex-col">
+      <PanelHead title="Money" meta={c.ordersRead ? "real charges · Polar" : "estimate · plan prices"} />
       <div className="px-4 pb-5 pt-7 sm:px-6">
-        {c.costByDay.length ? (
-          <AreaChart days={c.costByDay.map((d) => d.day)} values={c.costByDay.map((d) => d.usd)} unit="usd" tone="gray" kind="bars" height={150} label="Spend" />
+        {c.costByDay.length && !c.ordersRead ? (
+          <AreaChart days={c.costByDay.map((d) => d.day)} values={c.costByDay.map((d) => d.usd)} unit="usd" tone="gray" kind="bars" height={150} label="Cost" legend="Cost per day" />
+        ) : c.costByDay.length ? (
+          <AreaChart
+            days={days}
+            values={c.revenueByDay.map((d) => d.usd)}
+            previous={c.costByDay.map((d) => d.usd)}
+            unit="usd"
+            tone="green"
+            tone2="gray"
+            kind="bars"
+            height={150}
+            label="Kept"
+            legend="Kept (after tax, refunds, Polar fee)"
+            compareLabel="cost"
+          />
         ) : (
-          <p className="flex h-[150px] items-center justify-center rounded-xl border border-dashed border-line text-[13px] text-ink-faint">Daily spend appears once migration 0074 is applied.</p>
+          <p className="flex h-[150px] items-center justify-center rounded-xl border border-dashed border-line text-[13px] text-ink-faint">Daily cost appears once migration 0074 is applied.</p>
         )}
       </div>
       <StatCells
         items={[
-          { label: "MRR", value: money(c.totals.mrr) },
-          { label: `Cost, ${range} d`, value: money(c.totals.costRecent) },
+          { label: c.ordersRead ? `Kept, ${rangeShort(range)}` : `Revenue, ${rangeShort(range)} (est.)`, value: money(c.totals.revenueRecent) },
+          { label: `Cost, ${rangeShort(range)}`, value: money(c.totals.costRecent) },
           { label: "Margin", value: money(margin), tone: margin < 0 ? "danger" : margin > 0 ? "ok" : undefined },
         ]}
       />
       <div className="flex-1 px-5 pb-5 pt-4 sm:px-6">
         {top.length ? (
           <table className="w-full text-left text-[13px]">
-            <caption className="sr-only">Top customers</caption>
+            <caption className="sr-only">Customers by what they paid</caption>
             <thead>
               <tr className="text-[11px] uppercase tracking-wider text-ink-faint">
                 <th scope="col" className="pb-2 font-medium">Customer</th>
-                <th scope="col" className="hidden pb-2 font-medium sm:table-cell">Plan</th>
-                <th scope="col" className="pb-2 text-right font-medium">Price</th>
-                <th scope="col" className="pb-2 pl-3 text-right font-medium">Status</th>
+                <th scope="col" className="pb-2 text-right font-medium">Kept</th>
+                <th scope="col" className="hidden pb-2 text-right font-medium sm:table-cell">Cost</th>
+                <th scope="col" className="pb-2 pl-3 text-right font-medium">Margin</th>
               </tr>
             </thead>
             <tbody>
               {top.map((x) => (
                 <tr key={x.userId} className="border-t border-line-soft">
                   <td className="max-w-0 py-2.5 pr-3">
-                    <span className="block truncate text-ink" title={x.email}>
+                    <a href={`/owner/customers/${x.userId}`} className="block truncate text-ink hover:underline" title={x.email}>
                       {x.email}
-                    </span>
+                    </a>
                   </td>
-                  <td className="hidden py-2.5 capitalize text-ink-muted sm:table-cell">{planName(x)}</td>
-                  <td className="py-2.5 text-right font-mono tabular-nums text-ink">{x.plan.monthlyUsd ? money(x.plan.monthlyUsd) : "–"}</td>
-                  <td className="py-2.5 pl-3 text-right">
-                    <StatusChip c={x} />
+                  <td className="py-2.5 text-right font-mono tabular-nums text-ink">
+                    <Kept x={x} range={range} />
                   </td>
+                  <td className="hidden py-2.5 text-right font-mono tabular-nums text-ink-muted sm:table-cell">{money(x.costRecentUsd, { precise: true })}</td>
+                  <td className={cx("py-2.5 pl-3 text-right font-mono tabular-nums", marginClass(x.marginRecentUsd))}>{x.marginRecentUsd == null ? "–" : money(x.marginRecentUsd)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         ) : (
-          <p className="rounded-xl border border-dashed border-line px-4 py-6 text-center text-[13px] text-ink-faint">No customer has a plan yet.</p>
+          <p className="rounded-xl border border-dashed border-line px-4 py-6 text-center text-[13px] text-ink-faint">No customer has paid or cost anything yet.</p>
         )}
       </div>
     </Panel>
@@ -290,7 +315,7 @@ export function MoneyPanel({ c, range }: { c: CustomersReport; range: number }) 
 export function FunnelPanel({ t }: { t: TrafficReport }) {
   return (
     <Panel label="Funnel">
-      <PanelHead title="Funnel" meta={`${t.range} d`} sub="Distinct people at each step; the small figure is the share of the step above." />
+      <PanelHead title="Funnel" meta={rangeShort(t.range)} sub="Distinct people at each step; the small figure is the share of the step above." />
       <div className="px-3 pb-4 pt-4 sm:px-4">
         <FunnelBars steps={t.funnel} />
       </div>
@@ -465,66 +490,92 @@ function marginClass(v: number | null): string {
   return v == null ? "text-ink-faint" : v < 0 ? "text-danger" : v > 0 ? "text-ok" : "text-ink";
 }
 
-function MobileCustomer({ x, now }: { x: Customer; now: number }) {
+/** What the customer left you in the range: the real figure from Polar, or
+ *  "≈ plan price" marked as an estimate when Polar's payments are unreadable. */
+function Kept({ x, range }: { x: Customer; range: number }) {
+  if (x.money) return <>{money(x.money.recent.keptUsd)}</>;
+  if (x.plan.monthlyUsd > 0) return <span className="text-ink-muted" title="Estimate from the plan price">≈{money(x.plan.monthlyUsd * (range / 30))}</span>;
+  return <span className="text-ink-faint">–</span>;
+}
+
+function CostSplit({ x }: { x: Customer }) {
+  const fee = x.money?.recent.feeUsd ?? 0;
+  const parts = [
+    ["AI", x.llmRecentUsd],
+    ["data", x.dfsRecentUsd],
+    ["fees", fee],
+  ].filter(([, v]) => (v as number) > 0) as Array<[string, number]>;
+  if (!parts.length) return null;
+  return <span className="block text-[11px] text-ink-faint">{parts.map(([k, v]) => `${k} ${money(v, { precise: true })}`).join(" · ")}</span>;
+}
+
+function MobileCustomer({ x, now, range }: { x: Customer; now: number; range: number }) {
   return (
-    <li className={cx("px-5 py-4", x.operator && "opacity-70")}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-[14px] font-medium text-ink">
-            {x.email}
-            {x.operator ? <span className="ml-2 text-[11px] font-normal text-ink-faint">you</span> : null}
-          </p>
-          <SiteList x={x} />
-        </div>
-        <StatusChip c={x} />
-      </div>
-      <dl className="mt-3 grid grid-cols-4 gap-2 font-mono tabular-nums">
-        {[
-          ["Pays", x.plan.monthlyUsd ? money(x.plan.monthlyUsd) : "–"],
-          ["Articles", fmt(x.articles)],
-          ["Clicks", compact(x.clicks28d)],
-          ["Cost", money(x.costRecentUsd, { precise: true })],
-        ].map(([k, v]) => (
-          <div key={k} className="min-w-0">
-            <dt className="font-sans text-[11px] text-ink-faint">{k}</dt>
-            <dd className="mt-0.5 truncate text-[13.5px] text-ink">{v}</dd>
+    <li className={cx(x.operator && "opacity-70")}>
+      <a href={`/owner/customers/${x.userId}`} className="block px-5 py-4 transition-colors active:bg-surface-2/60">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-[14px] font-medium text-ink">
+              {x.email}
+              {x.operator ? <span className="ml-2 text-[11px] font-normal text-ink-faint">you</span> : null}
+            </p>
+            <SiteList x={x} />
           </div>
-        ))}
-      </dl>
-      <p className="mt-2 text-[11.5px] text-ink-faint">
-        Seen {ago(x.lastSeen, now)}
-        {x.marginRecentUsd != null ? (
-          <>
-            {" · margin "}
-            <span className={cx("font-mono tabular-nums", marginClass(x.marginRecentUsd))}>{money(x.marginRecentUsd)}</span>
-          </>
-        ) : null}
-      </p>
+          <StatusChip c={x} />
+        </div>
+        <dl className="mt-3 grid grid-cols-3 gap-2 font-mono tabular-nums">
+          {[
+            ["Kept", x.money ? money(x.money.recent.keptUsd) : x.plan.monthlyUsd > 0 ? `≈${money(x.plan.monthlyUsd * (range / 30))}` : "–", "text-ink"],
+            ["Cost", money(x.costRecentUsd, { precise: true }), "text-ink"],
+            ["Margin", x.marginRecentUsd == null ? "–" : money(x.marginRecentUsd), marginClass(x.marginRecentUsd)],
+          ].map(([k, v, cls]) => (
+            <div key={k} className="min-w-0">
+              <dt className="font-sans text-[11px] text-ink-faint">{k}</dt>
+              <dd className={cx("mt-0.5 truncate text-[14px]", cls)}>{v}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="mt-2 text-[11.5px] text-ink-faint">
+          {fmt(x.articles)} articles · {compact(x.clicks28d)} clicks · seen {ago(x.lastSeen, now)}
+        </p>
+      </a>
     </li>
   );
 }
 
 export function CustomersPanel({ c, t, range, now }: { c: CustomersReport; t: TrafficReport | null; range: number; now: number }) {
-  const active = c.customers.filter((x) => !x.operator && x.daysActiveRecent > 0).length;
+  const lifetime = c.totals.revenueAllTime - c.totals.costAllTime;
+  // Accounts that never added a site or picked a plan cost nothing and say
+  // little each; they fold into one list under the table.
+  const engaged = c.customers.filter((x) => x.operator || x.plan.status !== "none" || x.sites.length > 0 || x.costUsd > 0);
+  const idle = c.customers.filter((x) => !engaged.includes(x));
   return (
     <Panel id="customers" label="Customers">
-      <PanelHead title="Customers" meta={`${c.totals.customers} accounts`} sub={`Revenue is each plan's monthly rate${c.polarChecked ? " (yearly plans at their per-month rate, from Polar)" : ""}. Cost is LLM calls plus platform-billed DataForSEO, last ${range} days. Your own account is last and left out of totals.`} />
+      <PanelHead
+        title="Customers"
+        meta={`${c.totals.customers} accounts`}
+        sub={
+          c.ordersRead
+            ? `Kept is what each customer's real Polar charges left you: net of tax, refunds and Polar's fee. Cost is every metered AI call and DataForSEO request for their sites. Last ${rangeShort(range)} unless it says otherwise. Open a customer for the full picture.`
+            : `${c.ordersError ?? "Polar's payments could not be read."} Until then, Paid and Kept are estimates from plan prices (marked ≈). Cost is exact. Open a customer for the full picture.`
+        }
+      />
       <StatCells
         className="mt-5"
         items={[
           { label: "Paying", value: fmt(c.totals.paying), tone: c.totals.paying ? "ok" : undefined },
           { label: "On trial", value: fmt(c.totals.trialing) },
-          { label: "Active in dashboard", value: `${fmt(active)}${t ? ` · ${compact(t.appViews)} views` : ""}` },
-          { label: "Articles, all time", value: fmt(c.totals.articles) },
+          { label: "Kept, all time", value: c.ordersRead ? money(c.totals.revenueAllTime) : "–" },
+          c.ordersRead
+            ? { label: "Margin, all time", value: money(lifetime), tone: lifetime < 0 ? "danger" : lifetime > 0 ? "ok" : undefined }
+            : { label: "Cost, all time", value: money(c.totals.costAllTime) },
         ]}
       />
-      {/* Phone: one card per customer. */}
       <ol className="divide-y divide-line-soft md:hidden">
-        {c.customers.map((x) => (
-          <MobileCustomer key={x.userId} x={x} now={now} />
+        {engaged.map((x) => (
+          <MobileCustomer key={x.userId} x={x} now={now} range={range} />
         ))}
       </ol>
-      {/* Wider: the full table. */}
       <div className="hidden overflow-x-auto md:block">
         <table className="w-full text-left text-[13px]">
           <caption className="sr-only">Every customer</caption>
@@ -532,23 +583,23 @@ export function CustomersPanel({ c, t, range, now }: { c: CustomersReport; t: Tr
             <tr className="text-[11px] uppercase tracking-wider text-ink-faint">
               <th scope="col" className="px-6 pb-3 pt-4 font-medium">Customer</th>
               <th scope="col" className="px-3 pb-3 pt-4 font-medium">Status</th>
-              <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Pays / mo</th>
-              <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Articles</th>
-              <th scope="col" className="hidden px-3 pb-3 pt-4 text-right font-medium lg:table-cell">Clicks 28d</th>
-              <th scope="col" className="hidden px-3 pb-3 pt-4 text-right font-medium xl:table-cell">Blog views</th>
-              <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Cost {range}d</th>
+              <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Paid</th>
+              <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Kept</th>
+              <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Cost</th>
               <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Margin</th>
+              <th scope="col" className="hidden px-3 pb-3 pt-4 text-right font-medium xl:table-cell">Articles</th>
+              <th scope="col" className="hidden px-3 pb-3 pt-4 text-right font-medium xl:table-cell">Clicks 28d</th>
               <th scope="col" className="hidden px-6 pb-3 pt-4 text-right font-medium lg:table-cell">Last seen</th>
             </tr>
           </thead>
           <tbody>
-            {c.customers.map((x) => (
-              <tr key={x.userId} className={cx("border-t border-line-soft transition-colors hover:bg-surface-2/40", x.operator && "opacity-70")}>
-                <td className="max-w-[18rem] px-6 py-3">
-                  <span className="block truncate text-[13.5px] font-medium text-ink" title={x.email}>
+            {engaged.map((x) => (
+              <tr key={x.userId} className={cx("group border-t border-line-soft transition-colors hover:bg-surface-2/40", x.operator && "opacity-70")}>
+                <td className="max-w-[17rem] px-6 py-3">
+                  <a href={`/owner/customers/${x.userId}`} className="block truncate text-[13.5px] font-medium text-ink group-hover:underline" title={x.email}>
                     {x.email}
                     {x.operator ? <span className="ml-2 text-[11px] font-normal text-ink-faint">you</span> : null}
-                  </span>
+                  </a>
                   <SiteList x={x} />
                 </td>
                 <td className="px-3 py-3">
@@ -557,28 +608,36 @@ export function CustomersPanel({ c, t, range, now }: { c: CustomersReport; t: Tr
                     <span className="text-[12px] capitalize text-ink-faint">{x.plan.tier ?? ""}</span>
                   </div>
                   <span className="mt-1 block font-mono text-[11px] tabular-nums text-ink-faint">
-                    {x.plan.status === "trialing" && x.plan.trialEnd
-                      ? `ends ${shortDate(x.plan.trialEnd)}`
-                      : x.plan.periodEnd && x.plan.status === "active"
-                        ? `${x.plan.cancelAtPeriodEnd ? "until" : "renews"} ${shortDate(x.plan.periodEnd)}${x.plan.interval === "year" ? " · yearly" : ""}`
-                        : ""}
+                    {x.plan.monthlyUsd ? `${money(x.plan.monthlyUsd)}/mo${x.plan.interval === "year" ? " · yearly" : ""}` : ""}
                   </span>
                 </td>
-                <td className="px-3 py-3 text-right font-mono tabular-nums text-ink">{x.plan.monthlyUsd ? money(x.plan.monthlyUsd) : <span className="text-ink-faint">–</span>}</td>
                 <td className="px-3 py-3 text-right font-mono tabular-nums">
+                  <span className="text-ink">{x.money ? money(x.money.recent.chargedUsd) : <span className="text-ink-faint">–</span>}</span>
+                  {x.money?.all.chargedUsd ? <span className="block text-[11px] text-ink-faint">{money(x.money.all.chargedUsd)} total</span> : null}
+                </td>
+                <td className="px-3 py-3 text-right font-mono tabular-nums">
+                  <span className="text-ink">
+                    <Kept x={x} range={range} />
+                  </span>
+                  {x.money?.recent.taxUsd || x.money?.recent.feeUsd ? (
+                    <span className="block text-[11px] text-ink-faint">
+                      tax {money(x.money.recent.taxUsd)} · fee {money(x.money.recent.feeUsd)}
+                    </span>
+                  ) : null}
+                </td>
+                <td className="px-3 py-3 text-right font-mono tabular-nums">
+                  <span className="text-ink">{money(x.costRecentUsd, { precise: true })}</span>
+                  <CostSplit x={x} />
+                </td>
+                <td className="px-3 py-3 text-right font-mono tabular-nums">
+                  <span className={marginClass(x.marginRecentUsd)}>{x.marginRecentUsd == null ? "–" : money(x.marginRecentUsd)}</span>
+                  {x.marginAllUsd != null ? <span className={cx("block text-[11px]", "text-ink-faint")}>{money(x.marginAllUsd)} all time</span> : null}
+                </td>
+                <td className="hidden px-3 py-3 text-right font-mono tabular-nums xl:table-cell">
                   <span className="text-ink">{fmt(x.articles)}</span>
                   {x.articlesRecent ? <span className="block text-[11px] text-ink-faint">+{x.articlesRecent}</span> : null}
                 </td>
-                <td className="hidden px-3 py-3 text-right font-mono tabular-nums lg:table-cell">
-                  <span className="text-ink">{fmt(x.clicks28d)}</span>
-                  {x.impressions28d ? <span className="block text-[11px] text-ink-faint">{compact(x.impressions28d)} impr.</span> : null}
-                </td>
-                <td className="hidden px-3 py-3 text-right font-mono tabular-nums text-ink xl:table-cell">{fmt(x.blogViewsRecent)}</td>
-                <td className="px-3 py-3 text-right font-mono tabular-nums">
-                  <span className="text-ink">{money(x.costRecentUsd, { precise: true })}</span>
-                  {x.costUsd ? <span className="block text-[11px] text-ink-faint">{money(x.costUsd)} total</span> : null}
-                </td>
-                <td className={cx("px-3 py-3 text-right font-mono tabular-nums", marginClass(x.marginRecentUsd))}>{x.marginRecentUsd == null ? "–" : money(x.marginRecentUsd)}</td>
+                <td className="hidden px-3 py-3 text-right font-mono tabular-nums text-ink xl:table-cell">{fmt(x.clicks28d)}</td>
                 <td className="hidden px-6 py-3 text-right font-mono tabular-nums lg:table-cell">
                   <span className="text-ink">{ago(x.lastSeen, now)}</span>
                   {x.daysActiveRecent ? <span className="block text-[11px] text-ink-faint">{x.daysActiveRecent}d active</span> : null}
@@ -588,9 +647,30 @@ export function CustomersPanel({ c, t, range, now }: { c: CustomersReport; t: Tr
           </tbody>
         </table>
       </div>
+      {idle.length ? (
+        <details className="group/idle border-t border-line-soft">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-3.5 text-[13px] text-ink-muted hover:text-ink sm:px-6">
+            <span>
+              {idle.length} {idle.length === 1 ? "account" : "accounts"} signed up and never added a site or picked a plan
+            </span>
+            <span className="font-mono text-[12px] text-ink-faint group-open/idle:hidden">Show</span>
+            <span className="hidden font-mono text-[12px] text-ink-faint group-open/idle:inline">Hide</span>
+          </summary>
+          <ul className="grid gap-x-6 px-5 pb-4 sm:grid-cols-2 sm:px-6 lg:grid-cols-3">
+            {idle.map((x) => (
+              <li key={x.userId} className="flex items-baseline justify-between gap-3 border-t border-line-soft py-2 text-[12.5px]">
+                <a href={`/owner/customers/${x.userId}`} className="min-w-0 truncate text-ink hover:underline" title={x.email}>
+                  {x.email}
+                </a>
+                <span className="shrink-0 font-mono text-[11.5px] tabular-nums text-ink-faint">joined {shortDate(x.createdAt)}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
       {c.orphanSites.length ? (
         <div className="border-t border-line-soft px-5 py-4 sm:px-6">
-          <h3 className="text-[12.5px] text-ink-faint">Sites without an owner account</h3>
+          <h3 className="text-[12.5px] text-ink-faint">Sites without an owner account (your own)</h3>
           <ul className="mt-2 space-y-1.5">
             {c.orphanSites.map((s) => (
               <li key={s.id} className="flex items-center gap-4 text-[13px]">

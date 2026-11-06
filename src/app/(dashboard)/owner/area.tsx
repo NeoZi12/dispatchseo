@@ -27,7 +27,16 @@ export function AreaChart({
   height = 240,
   label,
   kind = "line",
+  compareLabel = "period before",
+  legend,
+  tone2,
 }: {
+  /** Legend text for the main series; defaults to the date span. */
+  legend?: string;
+  /** What the dashed second line is, in the readout and the legend. */
+  compareLabel?: string;
+  /** Draw the second line solid in this tone instead of dashed gray. */
+  tone2?: Tone;
   /** line for continuous traffic; bars for sparse daily counts (signups, spend). */
   kind?: "line" | "bars";
   days: string[];
@@ -86,7 +95,15 @@ export function AreaChart({
             </linearGradient>
           </defs>
           {prevLine ? (
-            <path d={prevLine} fill="none" stroke="var(--color-ink-faint)" strokeOpacity={0.55} strokeWidth={1.5} strokeDasharray="4 5" vectorEffect="non-scaling-stroke" />
+            <path
+              d={prevLine}
+              fill="none"
+              stroke={tone2 ? TONE_VAR[tone2] : "var(--color-ink-faint)"}
+              strokeOpacity={tone2 ? 0.9 : 0.55}
+              strokeWidth={tone2 ? 2 : 1.5}
+              strokeDasharray={tone2 ? undefined : "4 5"}
+              vectorEffect="non-scaling-stroke"
+            />
           ) : null}
           {area ? <path d={area} fill={`url(#g${gid})`} /> : null}
           {bars
@@ -131,9 +148,13 @@ export function AreaChart({
               </p>
               {previous && previous.length === n ? (
                 <p className="mt-0.5 flex items-center gap-2 text-[12px] text-ink-faint">
-                  <span className="h-0 w-3 border-t border-dashed border-ink-faint" aria-hidden="true" />
+                  {tone2 ? (
+                    <span className="h-0.5 w-3 rounded-full" style={{ background: TONE_VAR[tone2] }} aria-hidden="true" />
+                  ) : (
+                    <span className="h-0 w-3 border-t border-dashed border-ink-faint" aria-hidden="true" />
+                  )}
                   <span className="font-mono tabular-nums">{show(previous[hover], unit)}</span>
-                  <span>period before</span>
+                  <span>{compareLabel}</span>
                 </p>
               ) : null}
             </div>
@@ -167,12 +188,16 @@ export function AreaChart({
       <figcaption className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-[12px] text-ink-faint">
         <span className="flex items-center gap-2">
           <span className="h-0.5 w-3.5 rounded-full" style={{ background: color }} aria-hidden="true" />
-          {days.length ? `${shortDate(days[0])} – ${shortDate(days[days.length - 1])}` : ""}
+          {legend ?? (days.length ? `${shortDate(days[0])} – ${shortDate(days[days.length - 1])}` : "")}
         </span>
         {prevLine ? (
           <span className="flex items-center gap-2">
-            <span className="h-0 w-3.5 border-t border-dashed border-ink-faint" aria-hidden="true" />
-            Period before
+            {tone2 ? (
+              <span className="h-0.5 w-3.5 rounded-full" style={{ background: TONE_VAR[tone2] }} aria-hidden="true" />
+            ) : (
+              <span className="h-0 w-3.5 border-t border-dashed border-ink-faint" aria-hidden="true" />
+            )}
+            {compareLabel.charAt(0).toUpperCase() + compareLabel.slice(1)}
           </span>
         ) : null}
       </figcaption>

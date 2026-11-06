@@ -1,6 +1,6 @@
 import { cx } from "@/components/ui/styles";
 import { monotonePath, niceMax, TONE_VAR, type Tone } from "./curve";
-import { fmt, fullDate, pct } from "./format";
+import { fmt, fullDate, money, pct } from "./format";
 
 // Static building blocks for /owner (no client JS): the panel frame, the
 // small stat row, bar lists, the funnel, sparklines and the publish strip.
@@ -76,7 +76,13 @@ export function BarList({
   tone = "blue",
   empty,
   showValue = true,
+  format = "int",
+  hrefs,
 }: {
+  /** How the value column is written. */
+  format?: "int" | "usd";
+  /** Optional link per row key. */
+  hrefs?: Record<string, string>;
   rows: BarRow[];
   /** What the percentages are of; defaults to the rows' sum. */
   total?: number;
@@ -94,13 +100,19 @@ export function BarList({
       {rows.map((r) => (
         <li key={r.key} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 sm:grid-cols-[minmax(0,11rem)_1fr_auto]">
           <span className="min-w-0 truncate text-[13.5px] text-ink" title={typeof r.label === "string" ? r.label : r.key}>
-            {r.label}
+            {hrefs?.[r.key] ? (
+              <a href={hrefs[r.key]} className="underline decoration-line underline-offset-4 hover:decoration-ink-faint">
+                {r.label}
+              </a>
+            ) : (
+              r.label
+            )}
           </span>
           <span className="order-3 col-span-2 h-1.5 overflow-hidden rounded-full bg-surface-2 sm:order-none sm:col-span-1 sm:h-2">
             <span className="block h-full rounded-full" style={{ width: `${Math.max(2, (r.value / top) * 100)}%`, background: TONE_VAR[tone] }} />
           </span>
           <span className="flex items-baseline justify-end gap-2.5 font-mono text-[12.5px] tabular-nums">
-            {showValue ? <span className="text-ink-faint">{fmt(r.value)}</span> : null}
+            {showValue ? <span className="text-ink-faint">{format === "usd" ? money(r.value) : fmt(r.value)}</span> : null}
             <span className="w-11 text-right text-ink">{pct(r.value, whole)}</span>
           </span>
         </li>
