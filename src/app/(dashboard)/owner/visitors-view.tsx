@@ -40,7 +40,7 @@ export function VisitorsSection({ t, v, who, now }: { t: TrafficReport; v: Visit
   const shown = t.days.slice(start);
   const before = t.previousDays.slice(start);
   const days = shown.map((d) => d.day);
-  const visits: VisitRow[] = (v?.visits ?? []).slice(0, 300).map((x) => ({ ...x, who: x.userId ? who(x.userId) : null }));
+  const visits: VisitRow[] = (v?.visits ?? []).slice(0, 1000).map((x) => ({ ...x, who: x.userId ? who(x.userId) : null }));
   return (
     <Panel label="Visitors">
       <SectionHead

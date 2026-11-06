@@ -45,6 +45,38 @@ function Guess({ v }: { v: VisitRow }) {
   );
 }
 
+const PAGE_SIZE = 20;
+
+/** Page numbers to show: first, last, and the current one's neighbours; null is a gap. */
+function pageList(at: number, pages: number): Array<number | null> {
+  const keep = [...new Set([0, pages - 1, at - 1, at, at + 1])].filter((n) => n >= 0 && n < pages).sort((a, b) => a - b);
+  const out: Array<number | null> = [];
+  keep.forEach((n, i) => {
+    if (i && n - keep[i - 1] > 1) out.push(null);
+    out.push(n);
+  });
+  return out;
+}
+
+function PageButton({ children, label, onClick, disabled, current }: { children: React.ReactNode; label: string; onClick: () => void; disabled?: boolean; current?: boolean }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-current={current ? "page" : undefined}
+      disabled={disabled}
+      onClick={onClick}
+      className={cx(
+        "min-w-8 rounded-lg border px-2 py-1 font-mono text-[12.5px] tabular-nums transition-colors disabled:pointer-events-none disabled:opacity-35",
+        current ? "border-line bg-surface-3 text-ink" : "border-transparent text-ink-faint hover:border-line-soft hover:text-ink",
+        FOCUS_RING,
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
 /** "bot" as a device only repeats the verdict. */
 const deviceOf = (v: VisitRow) => (v.device && v.device !== "bot" ? v.device : null);
 
@@ -61,12 +93,14 @@ function Stay({ v }: { v: VisitRow }) {
 
 export function VisitTable({ visits, now }: { visits: VisitRow[]; now: number }) {
   const [kind, setKind] = useState<Kind | "all">("all");
-  const [shown, setShown] = useState(25);
+  const [pageNo, setPageNo] = useState(0);
   const counts = new Map<Kind, number>();
   for (const v of visits) counts.set(v.channel.kind, (counts.get(v.channel.kind) ?? 0) + 1);
   const kinds = (Object.keys(KIND_NAME) as Kind[]).filter((k) => counts.get(k));
   const list = kind === "all" ? visits : visits.filter((v) => v.channel.kind === kind);
-  const page = list.slice(0, shown);
+  const pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+  const at = Math.min(pageNo, pages - 1);
+  const page = list.slice(at * PAGE_SIZE, (at + 1) * PAGE_SIZE);
 
   if (!visits.length) {
     return <p className="mx-5 mb-6 mt-3 rounded-xl border border-dashed border-line px-4 py-6 text-center text-[13px] text-ink-faint sm:mx-6">No visit in this range yet.</p>;
@@ -83,7 +117,7 @@ export function VisitTable({ visits, now }: { visits: VisitRow[]; now: number })
             aria-selected={kind === k}
             onClick={() => {
               setKind(k);
-              setShown(25);
+              setPageNo(0);
             }}
             className={cx(
               "inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[12.5px] transition-colors",
@@ -183,12 +217,31 @@ export function VisitTable({ visits, now }: { visits: VisitRow[]; now: number })
         </table>
       </div>
 
-      {list.length > shown ? (
-        <div className="border-t border-line-soft px-5 py-3 sm:px-6">
-          <button type="button" onClick={() => setShown((n) => n + 50)} className={cx("text-[13px] text-ink-muted hover:text-ink", FOCUS_RING)}>
-            Show {Math.min(50, list.length - shown)} more of {list.length - shown}
-          </button>
-        </div>
+      {pages > 1 ? (
+        <nav aria-label="Visit pages" className="flex items-center justify-between gap-3 border-t border-line-soft px-5 py-3 sm:px-6">
+          <p className="font-mono text-[12px] tabular-nums text-ink-faint">
+            {at * PAGE_SIZE + 1}–{Math.min((at + 1) * PAGE_SIZE, list.length)} of {list.length}
+          </p>
+          <div className="flex items-center gap-1">
+            <PageButton label="Previous page" disabled={at === 0} onClick={() => setPageNo(at - 1)}>
+              ←
+            </PageButton>
+            {pageList(at, pages).map((n, i) =>
+              n === null ? (
+                <span key={`gap${i}`} className="px-1 text-[12px] text-ink-faint">
+                  …
+                </span>
+              ) : (
+                <PageButton key={n} label={`Page ${n + 1}`} current={n === at} onClick={() => setPageNo(n)}>
+                  {n + 1}
+                </PageButton>
+              ),
+            )}
+            <PageButton label="Next page" disabled={at === pages - 1} onClick={() => setPageNo(at + 1)}>
+              →
+            </PageButton>
+          </div>
+        </nav>
       ) : null}
     </div>
   );
