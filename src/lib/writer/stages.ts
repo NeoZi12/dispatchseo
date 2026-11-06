@@ -685,7 +685,10 @@ async function plan(c: Ctx): Promise<void> {
   // 700 is the floor a page needs to read as an answer rather than a stub
   // (Paperbot's own content lint refuses anything shorter; the gate below
   // holds the same line), 2500 the point past which a draft rambles.
-  parsed.target_words = Number.isFinite(parsed.target_words) ? Math.min(2500, Math.max(700, parsed.target_words)) : sheet.medianWords;
+  // 1800 at the top since 2026-11-06: the bake-off's 2,500-word drafts were
+  // 7k output tokens, the single biggest line of a run, and page one rarely
+  // needs more than 1,800 words answered well. Never padded either way.
+  parsed.target_words = Number.isFinite(parsed.target_words) ? Math.min(TARGET_WORDS_MAX, Math.max(700, parsed.target_words)) : Math.min(TARGET_WORDS_MAX, sheet.medianWords);
   // FAQ questions come from People Also Ask when the SERP has them; when it
   // has none (thin markets, Hebrew), up to three planner questions stand in,
   // or 3 of 4 articles ship without a FAQ (audit 2026-11-05). Their answers
@@ -802,6 +805,9 @@ async function plan(c: Ctx): Promise<void> {
   run.stage_outputs = Object.fromEntries(Object.entries(run.stage_outputs).filter(([k]) => !k.startsWith("plan_raw_")));
   await advanceRun(run, { key: "plan", value: { ...parsed, judge: answers, problems, not_judged: notJudged, outline_fixes: outlineFixes } }, "write", {}, total, fallbackAfter(c));
 }
+
+/** The longest article the planner may ask for, in words. */
+const TARGET_WORDS_MAX = 1800;
 
 /** The gate's title and meta limits (article-validate.ts title-length and
  *  meta-description-length). */
@@ -1622,7 +1628,25 @@ async function runChecks(c: Ctx, sheet: FactSheet, brief: SiteBrief, p: Plan, in
       issues.push({ ...where, note: `the judge could not check this claim (${v.why ?? "no answer"}); not verified against the sources: "${unit.text.slice(0, 160)}"`, blocking: false });
     } else if (v.verdict === "contradicts") issues.push({ ...where, note: `this contradicts its source; fix or remove: "${unit.text.slice(0, 160)}"`, blocking: true });
     else if (v.verdict === "says_nothing" && reasoning) issues.push({ ...where, note: `no source states this conclusion; keep it as your own reasoning, not as a fact: "${unit.text.slice(0, 160)}"`, blocking: false });
-    else if (v.verdict === "says_nothing" && !isGeneral) issues.push({ ...where, note: `no source supports this; remove the figure or the citation: "${unit.text.slice(0, 160)}"`, blocking: true });
+    else if (v.verdict === "says_nothing" && unit.cites.length && unit.figures.length === 0) {
+      // A cited sentence with no figure whose source says nothing about it
+      // is advice or framing wearing a marker it does not need ("hire an
+      // agency only after you can complete X [2]"). The marker comes off in
+      // code and the sentence stays as the writer's own reasoning; two
+      // bake-off runs on 2026-11-06 spent two patches each and still failed
+      // on exactly this. A figure-bearing one stays blocking (next branch):
+      // check 3 re-cites it when another source states the figure.
+      let fixed = unit.raw;
+      for (const x of unit.cites) fixed = fixed.split(`[${x}]`).join("");
+      fixed = fixed.replace(/[ \t]{2,}/g, " ").replace(/\s+([.,;:!?])/g, "$1");
+      if (fixed !== unit.raw) {
+        draft = spliceDraft(draft, unit.raw, fixed);
+        markerFixes.push({ from: unit.cites.join(","), to: "", claim: unit.text.slice(0, 200) });
+        unit.raw = fixed;
+        unit.cites = [];
+      }
+      issues.push({ ...where, note: `no source states this; its citation was removed and it stands as your own reasoning: "${unit.text.slice(0, 160)}"`, blocking: false });
+    } else if (v.verdict === "says_nothing" && !isGeneral) issues.push({ ...where, note: `no source supports this; remove the figure or the citation: "${unit.text.slice(0, 160)}"`, blocking: true });
     else if (v.verdict === "supports" && v.confidence < 0.5 && !isGeneral) issues.push({ ...where, note: `weakly supported; state it only as far as the source does: "${unit.text.slice(0, 160)}"`, blocking: false });
   }
   if (claimsUnchecked > 0) issues.push({ section: null, note: `${claimsUnchecked} more checkable sentences than one pass judges (${MAX_CLAIMS}); they were not checked against the sources`, blocking: false });
@@ -1643,7 +1667,7 @@ async function runChecks(c: Ctx, sheet: FactSheet, brief: SiteBrief, p: Plan, in
       // 2026-11-05 for being 68 words short of 70% of its target, after
       // every fact issue had been fixed. Never padded either way.
       minWords: 700,
-      maxWords: Math.max(2500, Math.round(p.target_words * 1.5)),
+      maxWords: Math.max(2200, Math.round(p.target_words * 1.4)),
       existingSlugs: existing.slugs,
       existingTitles: existing.titles,
       requireSources: requireSourcesFor(project),

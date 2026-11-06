@@ -486,7 +486,7 @@ export function targetWords(sources: Source[]): number {
   const counts = sources.map((s) => s.wordCount).filter((n) => n > 150).sort((a, b) => a - b);
   if (counts.length === 0) return 1200;
   const median = counts[Math.floor(counts.length / 2)];
-  return Math.min(2500, Math.max(700, Math.round(median * 1.1)));
+  return Math.min(1800, Math.max(700, Math.round(median * 1.1)));
 }
 
 export function slugify(s: string, fallback = ""): string {
