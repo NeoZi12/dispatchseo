@@ -10,6 +10,8 @@ import { fetchPage, fetchPageText, type FetchedPage, type UnreadReason } from ".
 import { generate, judge, isDryRun, parseJson, yes, no, type Answer, type Question } from "./models";
 import {
   classifyHost,
+  figureAppearsIn,
+  figuresIn,
   hostOf,
   jaccard,
   normalizeTopic,
@@ -188,8 +190,17 @@ export async function extractFacts(
       if (!haystack.includes(quote)) continue;
       if (quote.length < MIN_QUOTE_CHARS && !(lines.has(quote) && /\d/.test(quote))) continue;
     }
+    const claim = f.claim.trim().slice(0, 400);
+    // The extractor paraphrases, and its arithmetic is not evidence: "380
+    // of 1,000 analysed answers" written for a quote that says "380 answers:
+    // 38%" put a 1,000 in front of the writer that no source states, and
+    // the figure check then dropped the two sentences built on it (run 16,
+    // 2026-11-06). A claim with a figure its quote does not carry is
+    // replaced by the quote itself, so the writer only ever sees figures
+    // the gate will accept.
+    const invented = figuresIn(claim).some((fig) => !figureAppearsIn(fig, quote));
     facts.push({
-      claim: f.claim.trim().slice(0, 400),
+      claim: invented ? quote.slice(0, 400) : claim,
       quote: quote.slice(0, 600),
       url: page.url,
       kind: KINDS.has(f.kind ?? "") ? f.kind! : "example",
