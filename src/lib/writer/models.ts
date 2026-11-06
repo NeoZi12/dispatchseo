@@ -348,6 +348,21 @@ const SUBSCRIPTION: ModelSpec = { provider: "subscription", model: "claude-code"
 
 /** sha256 over every part that shapes the answer, NUL-separated so two
  *  different splits of the same text can never collide. */
+/** JSON with object keys sorted at every level, for anything a prompt
+ *  embeds from stage_outputs. A task's key hashes its prompt (agentKey), and
+ *  Postgres jsonb stores keys in its own order: the plan the chained write
+ *  stage holds in memory and the one the resumed stage reads back serialize
+ *  differently, so JSON.stringify gave the same call two keys and the batch
+ *  lane paid for the writer twice on every run (2026-11-06). */
+export function stableJson(value: unknown, indent?: number): string {
+  const sorted = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(sorted);
+    if (v && typeof v === "object") return Object.fromEntries(Object.keys(v as Record<string, unknown>).sort().map((k) => [k, sorted((v as Record<string, unknown>)[k])]));
+    return v;
+  };
+  return JSON.stringify(sorted(value), null, indent);
+}
+
 export function agentKey(input: Pick<GenerateInput, "slot" | "system" | "cachedRules" | "cachedPrefix" | "user" | "json">): string {
   return createHash("sha256")
     .update([input.slot, input.system, input.cachedRules ?? "", input.cachedPrefix ?? "", input.user, input.json ? "json" : "text"].join("\u0000"))
