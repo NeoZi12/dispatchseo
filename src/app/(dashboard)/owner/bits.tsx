@@ -158,67 +158,6 @@ export function Sparkline({ values, tone = "blue", className = "", bars = false 
   );
 }
 
-/** Each step's bar against the first; the conversion from the step above. */
-export function FunnelBars({ steps }: { steps: Array<{ label: string; count: number; note?: string }> }) {
-  const first = steps[0]?.count ?? 0;
-  return (
-    <ol className="space-y-1">
-      {steps.map((s, i) => {
-        const prev = i > 0 ? steps[i - 1].count : null;
-        const w = first ? Math.max(s.count > 0 ? 1.5 : 0, (s.count / first) * 100) : 0;
-        return (
-          <li key={s.label} className="rounded-xl px-2 py-2 transition-colors hover:bg-surface-2/50">
-            <div className="flex items-baseline justify-between gap-4">
-              <p className="min-w-0 truncate text-[13.5px] text-ink">
-                {s.label}
-                {s.note ? <span className="ml-2 hidden text-[12px] text-ink-faint sm:inline">{s.note}</span> : null}
-              </p>
-              <p className="flex shrink-0 items-baseline gap-3 font-mono tabular-nums">
-                {prev != null ? <span className="text-[12px] text-ink-faint">{prev ? pct(s.count, prev) : "–"}</span> : null}
-                <span className="w-12 text-right text-[15px] font-medium text-ink">{fmt(s.count)}</span>
-              </p>
-            </div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-2">
-              <div className="h-full rounded-full" style={{ width: `${w}%`, background: "var(--color-info)", opacity: 1 - i * 0.11 }} />
-            </div>
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
-/** People, unconfirmed browsers and crawlers as one stacked bar. */
-export function RealShare({ people, unconfirmed, bots }: { people: number; unconfirmed: number; bots: number }) {
-  const total = people + unconfirmed + bots;
-  const segs = [
-    { label: "People", n: people, color: "var(--color-ok)" },
-    { label: "Unconfirmed", n: unconfirmed, color: "var(--color-warn)" },
-    { label: "Crawlers", n: bots, color: "var(--color-surface-3)" },
-  ];
-  return (
-    <div>
-      <div className="flex h-2.5 w-full gap-0.5 overflow-hidden rounded-full bg-surface-2" role="img" aria-label={segs.map((s) => `${s.label} ${pct(s.n, total)}`).join(", ")}>
-        {total
-          ? segs.map((s) => (s.n > 0 ? <div key={s.label} style={{ width: `${(s.n / total) * 100}%`, background: s.color }} title={`${s.label}: ${fmt(s.n)}`} /> : null))
-          : null}
-      </div>
-      <dl className="mt-4 grid grid-cols-3 gap-3">
-        {segs.map((s) => (
-          <div key={s.label} className="min-w-0">
-            <dt className="flex items-center gap-1.5 text-[12px] text-ink-faint">
-              <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: s.color }} aria-hidden="true" />
-              <span className="truncate">{s.label}</span>
-            </dt>
-            <dd className="mt-1.5 font-mono text-[18px] font-medium tabular-nums text-ink">{pct(s.n, total)}</dd>
-            <dd className="font-mono text-[11.5px] tabular-nums text-ink-faint">{fmt(s.n)}</dd>
-          </div>
-        ))}
-      </dl>
-    </div>
-  );
-}
-
 /** One cell per day, violet by how many articles went live. Up to five
  *  weeks it is one row; longer ranges become a weeks-by-weekdays grid. */
 export function PublishStrip({ days }: { days: Array<{ day: string; count: number }> }) {

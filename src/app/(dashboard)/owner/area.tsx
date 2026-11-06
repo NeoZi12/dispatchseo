@@ -243,7 +243,11 @@ export function MetricChart({ days, metrics, height = 260 }: { days: string[]; m
   if (!m) return null;
   return (
     <div>
-      <div role="tablist" aria-label="Metric" className="grid grid-cols-2 gap-px border-b border-line-soft bg-line-soft lg:grid-cols-4">
+      <div
+        role="tablist"
+        aria-label="Metric"
+        className={cx("grid gap-px border-b border-line-soft bg-line-soft", metrics.length === 4 ? "grid-cols-2 lg:grid-cols-4" : metrics.length === 3 ? "grid-cols-3" : "grid-cols-2")}
+      >
         {metrics.map((x) => {
           const on = x.key === m.key;
           return (

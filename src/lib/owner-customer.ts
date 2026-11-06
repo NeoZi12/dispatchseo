@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { isOperator } from "./autopilot/operator";
-import { keptUsd, polarOrders, polarOrdersError, summarize, type MoneySummary, type PolarOrder } from "./owner-money";
+import { polar, polarConfigured } from "./billing";
+import { polarOrders, polarOrdersError, revenueUsd, summarize, type MoneySummary, type PolarOrder } from "./owner-money";
 
 // One customer, everything: what they paid (every Polar charge), what they
 // cost (every metered line item), what their sites got (articles, Google),
@@ -24,7 +25,11 @@ export type CustomerDetail = {
     cancelAtPeriodEnd: boolean;
     periodEnd: string | null;
     polarCustomerId: string | null;
+    /** The subscription's price per month (yearly plans at their monthly rate), from Polar. */
+    monthlyUsd: number | null;
   };
+  /** What the last 30 days cost, AI + DataForSEO + Polar fees. */
+  cost30Usd: number;
   qualifier: { domain: string; platform: string; aiChoice: string | null; verdict: string | null; at: string } | null;
   sites: Array<{ id: string; domain: string; name: string; hosted: boolean; createdAt: string; gscConnected: boolean; repo: string | null }>;
   orders: PolarOrder[] | null;
@@ -33,8 +38,8 @@ export type CustomerDetail = {
   cost: { totalUsd: number; llmUsd: number; dfsUsd: number; lines: CostLine[] };
   /** Set when the cost read failed (migration 0076 not applied): every cost figure is unknown, not zero. */
   costError: string | null;
-  /** Lifetime, one point per UTC day from sign-up to today: what you have kept vs what they have cost. */
-  ledger: { days: string[]; kept: number[]; cost: number[] };
+  /** Lifetime, one point per UTC day from sign-up to today: revenue so far vs cost so far (Polar fees included). */
+  ledger: { days: string[]; revenue: number[]; cost: number[] };
   articles: Array<{ title: string; url: string | null; publishedAt: string; costUsd: number | null; domain: string }>;
   articleCount: number;
   writer: { done: number; failed: number; running: number; lastError: string | null; lastErrorAt: string | null };
@@ -52,13 +57,26 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
   const u = userRes.data.user;
 
   const [subRes, projRes, qualRes, eventsRes, orders] = await Promise.all([
-    db().from("subscriptions").select("tier, status, cancel_at_period_end, current_period_end, provider_customer_id").eq("user_id", userId).maybeSingle(),
+    db().from("subscriptions").select("tier, status, cancel_at_period_end, current_period_end, provider_customer_id, provider_subscription_id").eq("user_id", userId).maybeSingle(),
     db().from("projects").select("id, domain, name, writer_mode, created_at, gsc_site_url, github_repo").eq("owner_user_id", userId),
     db().from("signup_qualifiers").select("domain, platform, ai_choice, verdict, created_at").eq("user_id", userId).order("created_at", { ascending: false }).limit(1),
     db().from("app_events").select("at, event, props").eq("distinct_id", userId).order("at", { ascending: false }).limit(60),
     polarOrders(),
   ]);
   const sub = (subRes.data ?? null) as Row | null;
+  // The plan's real price: subscriptions are readable with the main token even
+  // when payments are not, and a grandfathered price differs from the list one.
+  let monthlyUsd: number | null = null;
+  const subId = (sub?.provider_subscription_id as string | null) ?? null;
+  if (subId && polarConfigured() && (sub?.status === "active" || sub?.status === "past_due")) {
+    try {
+      const s = await polar().subscriptions.get({ id: subId });
+      const amount = (s.amount ?? 0) / 100;
+      monthlyUsd = s.recurringInterval === "year" ? amount / 12 : amount;
+    } catch {
+      monthlyUsd = null;
+    }
+  }
   const projects = ((projRes.data ?? []) as Row[]).map((p) => ({
     id: String(p.id),
     domain: String(p.domain ?? ""),
@@ -114,10 +132,12 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
     lines.set(key, line);
     costByDay.set(String(r.day), (costByDay.get(String(r.day)) ?? 0) + usd);
   }
-  const keptByDay = new Map<string, number>();
+  const revenueByDay = new Map<string, number>();
   let fees = 0;
   for (const o of mine ?? []) {
-    keptByDay.set(o.at.slice(0, 10), (keptByDay.get(o.at.slice(0, 10)) ?? 0) + keptUsd(o));
+    const d = o.at.slice(0, 10);
+    revenueByDay.set(d, (revenueByDay.get(d) ?? 0) + revenueUsd(o));
+    costByDay.set(d, (costByDay.get(d) ?? 0) + o.feeUsd);
     fees += o.feeUsd;
   }
   const allLines = [...lines.values()];
@@ -126,16 +146,16 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
   const dfsUsd = allLines.filter((l) => l.kind === "dfs").reduce((a, l) => a + l.usd, 0);
 
   const days: string[] = [];
-  const kept: number[] = [];
+  const revenue: number[] = [];
   const cost: number[] = [];
   let k = 0;
   let c = 0;
   for (let t = firstDay; t <= lastDay; t += DAY) {
     const d = ISO(t).slice(0, 10);
-    k += keptByDay.get(d) ?? 0;
+    k += revenueByDay.get(d) ?? 0;
     c += costByDay.get(d) ?? 0;
     days.push(d);
-    kept.push(Math.round(k * 100) / 100);
+    revenue.push(Math.round(k * 100) / 100);
     cost.push(Math.round(c * 100) / 100);
   }
 
@@ -169,7 +189,9 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
       cancelAtPeriodEnd: Boolean(sub?.cancel_at_period_end),
       periodEnd: (sub?.current_period_end as string | null) ?? null,
       polarCustomerId: polarCustomer,
+      monthlyUsd,
     },
+    cost30Usd: [...costByDay].filter(([day]) => day >= ISO(now - 30 * DAY).slice(0, 10)).reduce((a, [, v]) => a + v, 0),
     qualifier: q
       ? { domain: String(q.domain ?? ""), platform: String(q.platform ?? ""), aiChoice: (q.ai_choice as string | null) ?? null, verdict: (q.verdict as string | null) ?? null, at: String(q.created_at ?? "") }
       : null,
@@ -179,7 +201,7 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
     moneyError: mine ? null : polarOrdersError(),
     cost: { totalUsd: llmUsd + dfsUsd + fees, llmUsd, dfsUsd, lines: allLines.sort((a, b) => b.usd - a.usd) },
     costError: costRes.error ? costRes.error.message : null,
-    ledger: { days, kept, cost },
+    ledger: { days, revenue, cost },
     articles: ((artRes.data ?? []) as Row[]).map((a) => ({
       title: String(a.title ?? "Untitled"),
       url: (a.published_url as string | null) ?? null,

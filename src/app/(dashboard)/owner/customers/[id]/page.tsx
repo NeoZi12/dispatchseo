@@ -5,7 +5,7 @@ import { requireDashboard } from "@/lib/auth-gate";
 import { isOperator } from "@/lib/autopilot/operator";
 import { isCloudMode } from "@/lib/cloud";
 import { customerDetail } from "@/lib/owner-customer";
-import { keptUsd } from "@/lib/owner-money";
+import { revenueUsd } from "@/lib/owner-money";
 import { cx } from "@/components/ui/styles";
 import { AreaChart } from "../../area";
 import { BarList, Panel, PanelHead, StatCells } from "../../bits";
@@ -32,10 +32,22 @@ const LINE_LABEL: Record<string, string> = {
   illustrator: "AI: cover drawing",
 };
 
+// DataForSEO endpoints in plain words: what the money bought.
+const DATA_LABELS: Array<[RegExp, string]> = [
+  [/ranked_keywords/, "Data: keywords a site ranks for"],
+  [/keyword_ideas|keyword_suggestions|related_keywords/, "Data: keyword ideas"],
+  [/search_volume|keyword_overview|keyword_difficulty|bulk_keyword/, "Data: search volume and difficulty"],
+  [/serp/, "Data: Google results checks"],
+  [/backlinks/, "Data: backlinks"],
+  [/on_page/, "Data: site audit"],
+  [/domain_rank|competitors|domain_intersection/, "Data: competitors"],
+];
+
 function lineLabel(kind: string, item: string): string {
   if (kind === "fee") return item;
   if (kind === "llm") return LINE_LABEL[item] ?? `AI: ${item}`;
-  return `DataForSEO: ${item.replace(/^\/?v3\//, "").replace(/\//g, " / ")}`;
+  for (const [re, label] of DATA_LABELS) if (re.test(item)) return label;
+  return "Data: other";
 }
 
 const EVENT_WORDS: Record<string, string> = {
@@ -70,8 +82,16 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   const d = await customerDetail(id, now);
   if (!d) notFound();
 
-  const kept = d.money?.keptUsd ?? 0;
-  const margin = kept - (d.cost.totalUsd - (d.money?.feeUsd ?? 0));
+  const revenue = d.money?.revenueUsd ?? 0;
+  const margin = revenue - d.cost.totalUsd;
+  // Without Polar's payments: the plan price per month against last month's cost.
+  const monthly = d.plan.monthlyUsd ?? 0;
+  const monthlyMargin = monthly - d.cost30Usd;
+  // Cost lines grouped by their plain name (several endpoints can share one).
+  const grouped = [...d.cost.lines.reduce((m, l) => m.set(lineLabel(l.kind, l.item), (m.get(lineLabel(l.kind, l.item)) ?? 0) + l.usd), new Map<string, number>())]
+    .map(([label, usd]) => ({ key: label, label, value: usd }))
+    .filter((r) => r.value > 0)
+    .sort((a, b) => b.value - a.value);
   const status = STATUS[d.plan.status] ?? { word: "No plan", cls: "border-line bg-surface-2 text-ink-faint" };
   const perArticle = d.articleCount ? (d.cost.llmUsd + d.cost.dfsUsd) / d.articleCount : null;
   const failRate = d.writer.done + d.writer.failed ? d.writer.failed / (d.writer.done + d.writer.failed) : 0;
@@ -116,17 +136,17 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       <Panel label="Money" className="grid grid-cols-2 gap-px bg-line-soft xl:grid-cols-4">
         {[
           d.money
-            ? { label: "Charged to their card", value: money(d.money.chargedUsd), sub: `${d.money.orders} ${d.money.orders === 1 ? "payment" : "payments"} · tax ${money(d.money.taxUsd)}` }
-            : { label: "Charged to their card", value: "–", sub: d.moneyError ?? "Polar's payments could not be read." },
-          d.money
-            ? { label: "You kept", value: money(kept), sub: `after tax, ${money(d.money.refundedUsd)} refunds, ${money(d.money.feeUsd)} Polar fee` }
-            : { label: "You kept", value: "–", sub: "needs Polar's payments" },
+            ? { label: "Revenue, all time", value: money(revenue), sub: `${d.money.orders} ${d.money.orders === 1 ? "payment" : "payments"}${d.money.refundedUsd ? ` · ${money(d.money.refundedUsd)} refunded` : ""}` }
+            : { label: "Revenue", value: monthly ? `${money(monthly)}/mo` : "$0", sub: monthly ? "their plan price" : "not on a paid plan" },
+          { label: "Cost per article", value: perArticle != null ? money(perArticle) : "–", sub: `${fmt(d.articleCount)} articles live` },
           d.costError
-            ? { label: "They cost you", value: "–", sub: "Apply migration 0076 to see cost" }
-            : { label: "They cost you", value: money(d.cost.llmUsd + d.cost.dfsUsd, { precise: true }), sub: `AI ${money(d.cost.llmUsd, { precise: true })} · DataForSEO ${money(d.cost.dfsUsd, { precise: true })}` },
-          d.costError || !d.money
-            ? { label: "Margin, all time", value: "–", sub: d.costError ? "needs the cost" : "needs Polar's payments" }
-            : { label: "Margin, all time", value: money(margin), sub: kept ? `${pct(margin, kept)} of what you kept` : "nothing paid yet", tone: margin < 0 ? "text-danger" : margin > 0 ? "text-ok" : "text-ink" },
+            ? { label: "Cost, all time", value: "–", sub: "Apply migration 0076 to see cost" }
+            : { label: "Cost, all time", value: money(d.cost.totalUsd, { precise: true }), sub: `AI ${money(d.cost.llmUsd, { precise: true })} · DataForSEO ${money(d.cost.dfsUsd, { precise: true })}${d.money?.feeUsd ? ` · Polar fee ${money(d.money.feeUsd)}` : ""}` },
+          d.costError
+            ? { label: "Margin", value: "–", sub: "needs the cost" }
+            : !d.money
+            ? { label: "Margin, last 30 days", value: money(monthlyMargin), sub: `${money(monthly)} plan price − ${money(d.cost30Usd)} cost`, tone: monthlyMargin < 0 ? "text-danger" : monthlyMargin > 0 ? "text-ok" : "text-ink" }
+            : { label: "Margin, all time", value: money(margin), sub: revenue ? `${pct(margin, revenue)} of revenue` : "no revenue yet", tone: margin < 0 ? "text-danger" : margin > 0 ? "text-ok" : "text-ink" },
         ].map((k) => (
           <div key={k.label} className="min-w-0 bg-surface px-4 pb-5 pt-4 sm:px-6 sm:pt-5">
             <p className="text-[12.5px] text-ink-muted sm:text-[13px]">{k.label}</p>
@@ -138,19 +158,19 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
 
       <div className="grid gap-4 sm:gap-5 lg:grid-cols-5">
         <Panel label="Ledger" className="lg:col-span-3">
-          <PanelHead title={d.money ? "Kept vs cost, since they joined" : "Cost, since they joined"} meta="cumulative" />
+          <PanelHead title={d.money ? "Revenue vs cost, since they joined" : "Cost, since they joined"} meta="running total" />
           <div className="px-4 pb-5 pt-7 sm:px-6">
             {d.money ? (
             <AreaChart
               days={d.ledger.days}
-              values={d.ledger.kept}
+              values={d.ledger.revenue}
               previous={d.ledger.cost}
               unit="usd"
               tone="green"
               tone2="gray"
               height={200}
-              label="Kept"
-              legend="Kept"
+              label="Revenue"
+              legend="Revenue"
               compareLabel="cost"
             />
             ) : (
@@ -162,7 +182,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
           <PanelHead title="Where the cost goes" meta="all time" />
           <div className="px-5 pb-6 pt-5 sm:px-6">
             <BarList
-              rows={d.cost.lines.slice(0, 9).map((l) => ({ key: `${l.kind}:${l.item}`, label: lineLabel(l.kind, l.item), value: l.usd }))}
+              rows={grouped.slice(0, 8)}
               format="usd"
               tone="gray"
               empty={d.costError ? "Apply migration 0076 to see the cost lines." : "Nothing metered for this customer yet."}
@@ -188,11 +208,9 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
                 <tr className="text-[11px] uppercase tracking-wider text-ink-faint">
                   <th scope="col" className="pb-2 font-medium">Date</th>
                   <th scope="col" className="pb-2 font-medium">What</th>
-                  <th scope="col" className="pb-2 text-right font-medium">Charged</th>
-                  <th scope="col" className="pb-2 text-right font-medium">Tax</th>
+                  <th scope="col" className="pb-2 text-right font-medium">Revenue</th>
                   <th scope="col" className="pb-2 text-right font-medium">Polar fee</th>
                   <th scope="col" className="pb-2 text-right font-medium">Refunded</th>
-                  <th scope="col" className="pb-2 text-right font-medium">Kept</th>
                 </tr>
               </thead>
               <tbody>
@@ -202,11 +220,9 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
                     <td className="max-w-[14rem] truncate py-2.5 text-ink">
                       {o.product ?? "Order"} <span className="text-ink-faint">· {o.reason.replace(/_/g, " ")}</span>
                     </td>
-                    <td className="py-2.5 text-right font-mono tabular-nums text-ink">{money(o.totalUsd)}</td>
-                    <td className="py-2.5 text-right font-mono tabular-nums text-ink-faint">{money(o.taxUsd)}</td>
+                    <td className="py-2.5 text-right font-mono tabular-nums text-ink">{money(revenueUsd(o))}</td>
                     <td className="py-2.5 text-right font-mono tabular-nums text-ink-faint">{money(o.feeUsd)}</td>
                     <td className="py-2.5 text-right font-mono tabular-nums text-ink-faint">{o.refundedUsd ? money(o.refundedUsd) : "–"}</td>
-                    <td className="py-2.5 text-right font-mono tabular-nums text-ok">{money(keptUsd(o))}</td>
                   </tr>
                 ))}
               </tbody>

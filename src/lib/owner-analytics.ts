@@ -2,7 +2,7 @@ import { db } from "./db";
 import { isCloudMode } from "./cloud";
 import { TIER_LIMITS, TIER_NAMES, polar, polarConfigured, type Tier } from "./billing";
 import { isOperator } from "./autopilot/operator";
-import { ordersByUser, polarOrders, polarOrdersError, summarize, keptUsd, type MoneySummary, type PolarOrder } from "./owner-money";
+import { ordersByUser, polarOrders, polarOrdersError, summarize, revenueUsd, type MoneySummary, type PolarOrder } from "./owner-money";
 
 // Everything /owner shows, in two reads: the site's traffic and funnel
 // (web_visits + app_events, migration 0073) and the customer ledger (auth
@@ -337,11 +337,18 @@ export type Customer = {
   costRecentUsd: number;
   /** Real charges from Polar (owner-money.ts); null when Polar did not answer. */
   money: { recent: MoneySummary; all: MoneySummary } | null;
-  /** Kept (net - refunds - Polar fee) minus metered cost. From real charges
-   *  when Polar answered; otherwise the plan rate, and marginEstimated says so. */
-  marginRecentUsd: number | null;
+  /** What they paid in the range, tax excluded, minus refunds. From Polar's
+   *  real payments when readable; otherwise the plan price (revenueEstimated). */
+  revenueRecentUsd: number;
+  /** All time; null when Polar's payments are not readable. */
+  revenueAllUsd: number | null;
+  revenueEstimated: boolean;
+  /** Everything they cost: AI calls + DataForSEO + Polar's fee on their payments. */
+  totalCostRecentUsd: number;
+  totalCostAllUsd: number;
+  feesRecentUsd: number;
+  marginRecentUsd: number;
   marginAllUsd: number | null;
-  marginEstimated: boolean;
   llmRecentUsd: number;
   dfsRecentUsd: number;
   lastSeen: string | null;
@@ -359,12 +366,11 @@ export type CustomersReport = {
     trialing: number;
     churned: number;
     mrr: number;
-    /** Kept in the range (net - refunds - Polar fee), real charges. */
+    /** Revenue in the range: real payments, or plan prices when not readable. */
     revenueRecent: number;
-    chargedRecent: number;
     feesRecent: number;
-    taxRecent: number;
-    revenueAllTime: number;
+    /** null when Polar's payments are not readable. */
+    revenueAllTime: number | null;
     costRecent: number;
     costAllTime: number;
     articles: number;
@@ -375,7 +381,7 @@ export type CustomersReport = {
   ordersRead: boolean;
   /** Why they were not, in plain words. */
   ordersError: string | null;
-  /** Kept per UTC day in the range (Polar orders), aligned with signupsByDay. */
+  /** Revenue per UTC day in the range (Polar payments), aligned with signupsByDay. */
   revenueByDay: Array<{ day: string; usd: number }>;
   /** Accounts created per UTC day in the range (auth users: real history). */
   signupsByDay: Array<{ day: string; count: number }>;
@@ -576,7 +582,11 @@ export async function customersReport(range: Range, now = Date.now()): Promise<C
     const costUsd = sites.reduce((a, s) => a + s.costUsd, 0);
     const mine = byUser.get(u.id) ?? [];
     const money = orders ? { recent: summarize(mine, w.from), all: summarize(mine) } : null;
-    const estimate = plan.monthlyUsd > 0 ? plan.monthlyUsd * (range / 30) - costRecentUsd : null;
+    const fees = money?.recent.feeUsd ?? 0;
+    const feesAll = money?.all.feeUsd ?? 0;
+    const revenueRecentUsd = money ? money.recent.revenueUsd : plan.monthlyUsd * (range / 30);
+    const totalCostRecentUsd = costRecentUsd + fees;
+    const totalCostAllUsd = costUsd + feesAll;
     return {
       userId: u.id,
       email: u.email ?? "(no email)",
@@ -592,9 +602,14 @@ export async function customersReport(range: Range, now = Date.now()): Promise<C
       costUsd,
       costRecentUsd,
       money,
-      marginRecentUsd: money ? money.recent.keptUsd - costRecentUsd : estimate,
-      marginAllUsd: money ? money.all.keptUsd - costUsd : null,
-      marginEstimated: !money,
+      revenueRecentUsd,
+      revenueAllUsd: money ? money.all.revenueUsd : null,
+      revenueEstimated: !money,
+      totalCostRecentUsd,
+      totalCostAllUsd,
+      feesRecentUsd: fees,
+      marginRecentUsd: revenueRecentUsd - totalCostRecentUsd,
+      marginAllUsd: money ? money.all.revenueUsd - totalCostAllUsd : null,
       llmRecentUsd: sites.reduce((a, s) => a + s.llmRecentUsd, 0),
       dfsRecentUsd: sites.reduce((a, s) => a + s.dfsRecentUsd, 0),
       lastSeen: act?.lastSeen ?? u.last_sign_in_at ?? null,
@@ -621,13 +636,11 @@ export async function customersReport(range: Range, now = Date.now()): Promise<C
     trialing: real.filter((c) => c.plan.status === "trialing").length,
     churned: real.filter((c) => c.plan.status === "canceled" || c.plan.status === "revoked").length,
     mrr: real.reduce((a, c) => a + c.plan.monthlyUsd, 0),
-    revenueRecent: orders ? real.reduce((a, c) => a + (c.money?.recent.keptUsd ?? 0), 0) : real.reduce((a, c) => a + c.plan.monthlyUsd * (range / 30), 0),
-    chargedRecent: real.reduce((a, c) => a + (c.money?.recent.chargedUsd ?? 0), 0),
-    feesRecent: real.reduce((a, c) => a + (c.money?.recent.feeUsd ?? 0), 0),
-    taxRecent: real.reduce((a, c) => a + (c.money?.recent.taxUsd ?? 0), 0),
-    revenueAllTime: real.reduce((a, c) => a + (c.money?.all.keptUsd ?? 0), 0),
-    costRecent: customers.reduce((a, c) => a + c.costRecentUsd, 0) + orphanSites.reduce((a, s) => a + s.costRecentUsd, 0),
-    costAllTime: customers.reduce((a, c) => a + c.costUsd, 0) + orphanSites.reduce((a, s) => a + s.costUsd, 0),
+    revenueRecent: real.reduce((a, c) => a + c.revenueRecentUsd, 0),
+    feesRecent: customers.reduce((a, c) => a + c.feesRecentUsd, 0),
+    revenueAllTime: orders ? real.reduce((a, c) => a + (c.revenueAllUsd ?? 0), 0) : null,
+    costRecent: customers.reduce((a, c) => a + c.totalCostRecentUsd, 0) + orphanSites.reduce((a, s) => a + s.costRecentUsd, 0),
+    costAllTime: customers.reduce((a, c) => a + c.totalCostAllUsd, 0) + orphanSites.reduce((a, s) => a + s.costUsd, 0),
     articles: customers.reduce((a, c) => a + c.articles, 0) + orphanSites.reduce((a, s) => a + s.articles, 0),
     articlesRecent: customers.reduce((a, c) => a + c.articlesRecent, 0) + orphanSites.reduce((a, s) => a + s.articlesRecent, 0),
   };
@@ -656,7 +669,7 @@ export async function customersReport(range: Range, now = Date.now()): Promise<C
       const realIds = new Set(real.map((c) => c.userId));
       for (const [uid, list] of byUser) {
         if (!realIds.has(uid)) continue;
-        for (const o of list) m.set(o.at.slice(0, 10), (m.get(o.at.slice(0, 10)) ?? 0) + keptUsd(o));
+        for (const o of list) m.set(o.at.slice(0, 10), (m.get(o.at.slice(0, 10)) ?? 0) + revenueUsd(o));
       }
       return dayKeys.map((day) => ({ day, usd: m.get(day) ?? 0 }));
     })(),

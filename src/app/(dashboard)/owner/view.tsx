@@ -2,27 +2,11 @@ import { cx } from "@/components/ui/styles";
 import type { Customer, CustomersReport, TopRow, TrafficReport } from "@/lib/owner-analytics";
 import type { Tier } from "@/lib/billing";
 import { AreaChart, MetricChart } from "./area";
-import { BarList, DeltaPill, FunnelBars, Panel, PanelHead, PublishStrip, RealShare, Sparkline, StatCells, type BarRow } from "./bits";
-import { TabbedLists } from "./tabbed";
-import { ago, compact, delta, fmt, fullDate, money, pct, rangeShort, shortDate } from "./format";
+import { BarList, DeltaPill, Panel, PublishStrip, Sparkline, StatCells, type BarRow } from "./bits";
+import { ago, compact, delta, fmt, fullDate, money, rangeShort, shortDate } from "./format";
 
 // The sections of /owner, Polar-style: hairline panels, large light figures,
 // one accent per chart, numbers in mono so columns line up.
-
-const FLAG_BASE = 0x1f1e6;
-function flag(code: string): string {
-  if (!/^[A-Z]{2}$/.test(code)) return "";
-  return String.fromCodePoint(FLAG_BASE + code.charCodeAt(0) - 65, FLAG_BASE + code.charCodeAt(1) - 65);
-}
-const REGION = new Intl.DisplayNames(["en"], { type: "region" });
-function countryName(code: string): string {
-  if (!code) return "Unknown";
-  try {
-    return REGION.of(code) ?? code;
-  } catch {
-    return code;
-  }
-}
 
 const rows = (list: TopRow[], label?: (k: string) => string): BarRow[] =>
   list.map((r) => ({ key: r.key || "none", label: label ? label(r.key) : r.key || "Unknown", value: r.views }));
@@ -99,101 +83,15 @@ export function KpiStrip({ t, c }: { t: TrafficReport | null; c: CustomersReport
         sub={t ? `${fmt(t.totals.checkouts)} checkouts · ${fmt(t.totals.trials)} trials` : undefined}
         spark={c ? { values: c.signupsByDay.map((d) => d.count), tone: "violet", bars: true } : undefined}
       />
-      <Kpi label="MRR" value={c ? money(c.totals.mrr) : "–"} sub={c ? `${c.totals.paying} paying · ${c.totals.trialing} on trial · ${c.totals.churned} churned` : "cloud only"}>
+      <Kpi label="Monthly revenue" value={c ? money(c.totals.mrr) : "–"} sub={c ? `${c.totals.paying} paying · ${c.totals.trialing} on trial · ${c.totals.churned} churned` : "cloud only"}>
         {c ? <PlanMix c={c} /> : null}
       </Kpi>
       <Kpi
         label="Cost"
         value={c ? money(c.totals.costRecent) : "–"}
-        sub={c ? (c.totals.revenueRecent ? `margin ${money(margin)}${c.ordersRead ? ` · ${pct(margin, c.totals.revenueRecent)} of kept` : " · estimate"}` : "nothing kept yet") : undefined}
+        sub={c ? `revenue ${money(c.totals.revenueRecent)} · margin ${money(margin)}` : undefined}
         spark={c && c.costByDay.length ? { values: c.costByDay.map((d) => d.usd), tone: "gray", bars: true } : undefined}
       />
-    </Panel>
-  );
-}
-
-// ---------- traffic ----------
-
-export function TrafficPanel({ t }: { t: TrafficReport }) {
-  const days = t.days.map((d) => d.day);
-  const partial = t.since != null && new Date(t.since).getTime() > t.from;
-  return (
-    <Panel label="Traffic">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-line-soft px-5 py-3 text-[12.5px] sm:px-6">
-        <span className="font-medium text-ink">dispatchseo.com visits</span>
-        <span className={partial ? "text-warn" : "text-ink-faint"}>
-          {t.since ? `Recorded since ${fullDate(t.since)}${partial ? ". Earlier days have no visit data yet." : ""}` : "Nothing recorded yet."}
-        </span>
-      </div>
-      <MetricChart
-        days={days}
-        metrics={[
-          {
-            key: "visitors",
-            label: "Visitors",
-            total: fmt(t.totals.visitors),
-            delta: delta(t.totals.visitors, t.previous.visitors),
-            values: t.days.map((d) => d.humanVisitors),
-            previous: t.previousDays.map((d) => d.humanVisitors),
-            tone: "blue",
-          },
-          {
-            key: "views",
-            label: "Page views",
-            total: fmt(t.totals.views),
-            delta: delta(t.totals.views, t.previous.views),
-            values: t.days.map((d) => d.humanViews),
-            previous: t.previousDays.map((d) => d.humanViews),
-            tone: "blue",
-          },
-          {
-            key: "bots",
-            label: "Crawler hits",
-            total: compact(t.totals.botHits),
-            delta: delta(t.totals.botHits, t.previous.botHits),
-            values: t.days.map((d) => d.botHits),
-            previous: t.previousDays.map((d) => d.botHits),
-            tone: "gray",
-          },
-          {
-            key: "checkouts",
-            label: "Checkouts",
-            total: fmt(t.totals.checkouts),
-            delta: delta(t.totals.checkouts, t.previous.checkouts),
-            values: t.checkoutsByDay,
-            tone: "green",
-            kind: "bars",
-          },
-        ]}
-      />
-    </Panel>
-  );
-}
-
-// ---------- signups and sources ----------
-
-export function SignupsPanel({ t, c }: { t: TrafficReport; c: CustomersReport | null }) {
-  const series = c?.signupsByDay ?? t.days.map((d, i) => ({ day: d.day, count: t.signupEventsByDay[i] ?? 0 }));
-  const n = series.reduce((a, d) => a + d.count, 0);
-  return (
-    <Panel label="Signups and sources" className="flex flex-col">
-      <PanelHead title="Signups and sources" meta={`${n} in ${rangeShort(t.range)}`} />
-      <div className="px-4 pb-5 pt-7 sm:px-6">
-        <AreaChart days={series.map((d) => d.day)} values={series.map((d) => d.count)} tone="violet" kind="bars" height={150} label="Signups" />
-      </div>
-      <StatCells
-        items={[
-          { label: "Visit → checkout", value: pct(t.totals.checkouts, t.totals.visitors) },
-          { label: "Checkout → account", value: pct(t.totals.signups, t.totals.checkouts) },
-          { label: "Account → paying", value: pct(t.totals.paid, t.totals.signups) },
-        ]}
-      />
-      <div className="px-5 pb-6 pt-5 sm:px-6">
-        <h3 className="text-[13px] font-medium text-ink">Where visitors came from</h3>
-        <div className="mt-3.5">
-          <BarList rows={rows(t.referrers).slice(0, 7)} empty="No visits recorded yet." />
-        </div>
-      </div>
     </Panel>
   );
 }
@@ -231,138 +129,6 @@ function StatusChip({ c }: { c: Customer }) {
   return <span className={cx("inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-[11.5px] font-medium", cls)}>{word}</span>;
 }
 
-function planName(c: Customer): string {
-  return c.plan.tier ? c.plan.tier : "–";
-}
-
-export function MoneyPanel({ c, range }: { c: CustomersReport; range: number }) {
-  const margin = c.totals.revenueRecent - c.totals.costRecent;
-  const top = c.customers
-    .filter((x) => !x.operator && (x.plan.status !== "none" || x.costRecentUsd > 0))
-    .sort((a, b) => (b.money?.recent.keptUsd ?? 0) - (a.money?.recent.keptUsd ?? 0) || b.costRecentUsd - a.costRecentUsd)
-    .slice(0, 6);
-  const days = c.revenueByDay.map((d) => d.day);
-  return (
-    <Panel label="Money" className="flex flex-col">
-      <PanelHead title="Money" meta={c.ordersRead ? "real charges · Polar" : "estimate · plan prices"} />
-      <div className="px-4 pb-5 pt-7 sm:px-6">
-        {c.costByDay.length && !c.ordersRead ? (
-          <AreaChart days={c.costByDay.map((d) => d.day)} values={c.costByDay.map((d) => d.usd)} unit="usd" tone="gray" kind="bars" height={150} label="Cost" legend="Cost per day" />
-        ) : c.costByDay.length ? (
-          <AreaChart
-            days={days}
-            values={c.revenueByDay.map((d) => d.usd)}
-            previous={c.costByDay.map((d) => d.usd)}
-            unit="usd"
-            tone="green"
-            tone2="gray"
-            kind="bars"
-            height={150}
-            label="Kept"
-            legend="Kept (after tax, refunds, Polar fee)"
-            compareLabel="cost"
-          />
-        ) : (
-          <p className="flex h-[150px] items-center justify-center rounded-xl border border-dashed border-line text-[13px] text-ink-faint">Daily cost appears once migration 0074 is applied.</p>
-        )}
-      </div>
-      <StatCells
-        items={[
-          { label: c.ordersRead ? `Kept, ${rangeShort(range)}` : `Revenue, ${rangeShort(range)} (est.)`, value: money(c.totals.revenueRecent) },
-          { label: `Cost, ${rangeShort(range)}`, value: money(c.totals.costRecent) },
-          { label: "Margin", value: money(margin), tone: margin < 0 ? "danger" : margin > 0 ? "ok" : undefined },
-        ]}
-      />
-      <div className="flex-1 px-5 pb-5 pt-4 sm:px-6">
-        {top.length ? (
-          <table className="w-full text-left text-[13px]">
-            <caption className="sr-only">Customers by what they paid</caption>
-            <thead>
-              <tr className="text-[11px] uppercase tracking-wider text-ink-faint">
-                <th scope="col" className="pb-2 font-medium">Customer</th>
-                <th scope="col" className="pb-2 text-right font-medium">Kept</th>
-                <th scope="col" className="hidden pb-2 text-right font-medium sm:table-cell">Cost</th>
-                <th scope="col" className="pb-2 pl-3 text-right font-medium">Margin</th>
-              </tr>
-            </thead>
-            <tbody>
-              {top.map((x) => (
-                <tr key={x.userId} className="border-t border-line-soft">
-                  <td className="max-w-0 py-2.5 pr-3">
-                    <a href={`/owner/customers/${x.userId}`} className="block truncate text-ink hover:underline" title={x.email}>
-                      {x.email}
-                    </a>
-                  </td>
-                  <td className="py-2.5 text-right font-mono tabular-nums text-ink">
-                    <Kept x={x} range={range} />
-                  </td>
-                  <td className="hidden py-2.5 text-right font-mono tabular-nums text-ink-muted sm:table-cell">{money(x.costRecentUsd, { precise: true })}</td>
-                  <td className={cx("py-2.5 pl-3 text-right font-mono tabular-nums", marginClass(x.marginRecentUsd))}>{x.marginRecentUsd == null ? "–" : money(x.marginRecentUsd)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <p className="rounded-xl border border-dashed border-line px-4 py-6 text-center text-[13px] text-ink-faint">No customer has paid or cost anything yet.</p>
-        )}
-      </div>
-    </Panel>
-  );
-}
-
-// ---------- funnel + who is real ----------
-
-export function FunnelPanel({ t }: { t: TrafficReport }) {
-  return (
-    <Panel label="Funnel">
-      <PanelHead title="Funnel" meta={rangeShort(t.range)} sub="Distinct people at each step; the small figure is the share of the step above." />
-      <div className="px-3 pb-4 pt-4 sm:px-4">
-        <FunnelBars steps={t.funnel} />
-      </div>
-    </Panel>
-  );
-}
-
-export function RealPanel({ t }: { t: TrafficReport }) {
-  const unconfirmed = Math.max(0, t.totals.browserHits - t.totals.views);
-  return (
-    <Panel label="Who is real" className="flex flex-col">
-      <PanelHead title="Who is real" sub="Every request to the site. People ran our script; crawlers said what they are; the rest never did either." />
-      <div className="px-5 pb-5 pt-5 sm:px-6">
-        <RealShare people={t.totals.views} unconfirmed={unconfirmed} bots={t.totals.botHits} />
-      </div>
-      <div className="border-t border-line-soft">
-        <TabbedLists
-          title="Crawlers"
-          tone="gray"
-          tabs={[
-            { key: "bots", label: "Bots", rows: rows(t.crawlers).slice(0, 6), empty: "No crawler yet." },
-            { key: "pages", label: "Pages read", rows: rows(t.crawlerPages).slice(0, 6), empty: "No crawler yet." },
-            { key: "files", label: "Sitemap & llms.txt", rows: rows(t.fileReaders).slice(0, 6), empty: "Nobody read them yet." },
-          ]}
-        />
-      </div>
-    </Panel>
-  );
-}
-
-// ---------- breakdowns ----------
-
-export function AudiencePanel({ t }: { t: TrafficReport }) {
-  return (
-    <Panel label="Audience">
-      <TabbedLists
-        title="Audience"
-        tabs={[
-          { key: "pages", label: "Pages", rows: rows(t.pages).slice(0, 8), empty: "No page view yet.", total: t.totals.views },
-          { key: "countries", label: "Countries", rows: rows(t.countries, (k) => `${flag(k)}  ${countryName(k)}`.trim()).slice(0, 8), empty: "No country yet." },
-          { key: "devices", label: "Devices", rows: rows(t.devices, (k) => k.charAt(0).toUpperCase() + k.slice(1)), empty: "Nothing yet." },
-          { key: "utm", label: "Campaigns", rows: rows(t.sources), empty: "No tagged link clicked yet." },
-        ]}
-      />
-    </Panel>
-  );
-}
 
 // ---------- content + activity ----------
 
@@ -371,10 +137,11 @@ export function PublishPanel({ t, c }: { t: TrafficReport; c: CustomersReport })
   const busiest = t.published.reduce((a, d) => (d.count > a.count ? d : a), { day: "", count: 0 });
   const sites = [...c.customers.flatMap((x) => x.sites), ...c.orphanSites].filter((s) => s.articlesRecent > 0);
   return (
-    <Panel label="Articles published" className="grid lg:grid-cols-2">
+    <Panel label="Articles">
+      <SectionHead title="Articles" says="Articles that went live on every site, yours and your customers'." note={`${fmt(c.totals.articles)} live in total`} />
+      <div className="grid lg:grid-cols-2">
       <div className="min-w-0">
-        <PanelHead title="Articles published" meta={`${fmt(c.totals.articles)} live`} />
-        <div className="px-5 pb-6 pt-4 sm:px-6">
+        <div className="px-5 pb-6 pt-5 sm:px-6">
           <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <span className="text-[2.1rem] font-light leading-none tracking-tight tabular-nums text-ink">{fmt(n)}</span>
             <span className="text-[12.5px] text-ink-faint">in {t.range} days{busiest.count ? ` · busiest ${shortDate(busiest.day)}` : ""}</span>
@@ -408,6 +175,7 @@ export function PublishPanel({ t, c }: { t: TrafficReport; c: CustomersReport })
             empty="No article went live in this range."
           />
         </div>
+      </div>
       </div>
     </Panel>
   );
@@ -450,31 +218,104 @@ const DOT: Record<string, string> = {
   account_deleted: "bg-danger",
 };
 
-export function ActivityPanel({ t, who, now }: { t: TrafficReport; who: (id: string) => string; now: number }) {
+// ---------- one subject per section ----------
+
+/** A section's frame: a title, one plain sentence saying what it shows, an
+ *  optional note on the right. */
+export function SectionHead({ title, says, note }: { title: string; says: string; note?: React.ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-b border-line-soft px-5 py-4 sm:px-6">
+      <div className="min-w-0">
+        <h2 className="text-[16px] font-semibold tracking-tight text-ink">{title}</h2>
+        <p className="mt-0.5 text-[13px] text-ink-faint">{says}</p>
+      </div>
+      {note ? <div className="text-[12.5px] text-ink-faint">{note}</div> : null}
+    </div>
+  );
+}
+
+export function VisitorsSection({ t }: { t: TrafficReport }) {
+  const days = t.days.map((d) => d.day);
+  const partial = t.since != null && new Date(t.since).getTime() > t.from;
+  return (
+    <Panel label="Visitors">
+      <SectionHead
+        title="Visitors"
+        says="People who opened dispatchseo.com. Bots are not counted."
+        note={t.since ? <span className={partial ? "text-warn" : undefined}>Counting since {fullDate(t.since)}</span> : "Nothing counted yet"}
+      />
+      <MetricChart
+        days={days}
+        metrics={[
+          {
+            key: "visitors",
+            label: "Visitors",
+            total: fmt(t.totals.visitors),
+            delta: delta(t.totals.visitors, t.previous.visitors),
+            values: t.days.map((d) => d.humanVisitors),
+            previous: t.previousDays.map((d) => d.humanVisitors),
+            tone: "blue",
+          },
+          {
+            key: "views",
+            label: "Page views",
+            total: fmt(t.totals.views),
+            delta: delta(t.totals.views, t.previous.views),
+            values: t.days.map((d) => d.humanViews),
+            previous: t.previousDays.map((d) => d.humanViews),
+            tone: "blue",
+          },
+        ]}
+        height={220}
+      />
+      <div className="grid gap-px border-t border-line-soft bg-line-soft lg:grid-cols-2">
+        <div className="bg-surface px-5 pb-6 pt-5 sm:px-6">
+          <h3 className="text-[13px] font-medium text-ink">Where they came from</h3>
+          <div className="mt-4">
+            <BarList rows={rows(t.referrers).slice(0, 7)} empty="No visit yet." />
+          </div>
+        </div>
+        <div className="bg-surface px-5 pb-6 pt-5 sm:px-6">
+          <h3 className="text-[13px] font-medium text-ink">Most visited pages</h3>
+          <div className="mt-4">
+            <BarList rows={rows(t.pages).slice(0, 7)} total={t.totals.views} empty="No page view yet." />
+          </div>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+export function SignupsSection({ t, c, who, now }: { t: TrafficReport; c: CustomersReport | null; who: (id: string) => string; now: number }) {
+  const series = c?.signupsByDay ?? t.days.map((d, i) => ({ day: d.day, count: t.signupEventsByDay[i] ?? 0 }));
+  const n = series.reduce((a, d) => a + d.count, 0);
   const list = t.recent.slice(0, 8);
   return (
-    <Panel label="Activity" className="flex flex-col">
-      <PanelHead title="Activity" meta={`${t.recent.length} events`} />
-      {list.length === 0 ? (
-        <p className="m-5 rounded-xl border border-dashed border-line px-4 py-6 text-center text-[13px] text-ink-faint sm:m-6">Nothing in this range yet.</p>
-      ) : (
-        <ol className="mt-3 flex-1 px-2 pb-3 sm:px-3">
-          {list.map((e, i) => (
-            <li key={`${e.at}-${i}`} className="flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-surface-2/50">
-              <span className={cx("h-1.5 w-1.5 shrink-0 rounded-full", DOT[e.event] ?? "bg-ink-faint/50")} aria-hidden="true" />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13.5px] text-ink">
-                  {EVENT_WORDS[e.event] ?? e.event.replace(/_/g, " ")} <span className="text-ink-faint">{who(e.who)}</span>
-                </span>
-                {e.detail ? <span className="block truncate text-[12px] text-ink-faint">{e.detail}</span> : null}
-              </span>
-              <span className="shrink-0 font-mono text-[12px] tabular-nums text-ink-faint" title={new Date(e.at).toUTCString()}>
-                {ago(e.at, now)}
-              </span>
-            </li>
-          ))}
-        </ol>
-      )}
+    <Panel label="Signups">
+      <SectionHead title="Signups" says="New accounts, and what people did in the product." note={`${fmt(n)} new in ${rangeShort(t.range)}`} />
+      <div className="grid gap-px bg-line-soft lg:grid-cols-5">
+        <div className="bg-surface px-4 pb-5 pt-7 sm:px-6 lg:col-span-3">
+          <AreaChart days={series.map((d) => d.day)} values={series.map((d) => d.count)} tone="violet" kind="bars" height={190} label="Signups" legend="New accounts per day" />
+        </div>
+        <div className="bg-surface px-2 pb-3 pt-4 sm:px-3 lg:col-span-2">
+          <h3 className="px-3 text-[13px] font-medium text-ink">Latest</h3>
+          {list.length === 0 ? (
+            <p className="mx-3 mt-3 rounded-xl border border-dashed border-line px-4 py-6 text-center text-[13px] text-ink-faint">Nothing yet in this range.</p>
+          ) : (
+            <ol className="mt-1">
+              {list.map((e, i) => (
+                <li key={`${e.at}-${i}`} className="flex items-center gap-3 rounded-lg px-3 py-2">
+                  <span className={cx("h-1.5 w-1.5 shrink-0 rounded-full", DOT[e.event] ?? "bg-ink-faint/50")} aria-hidden="true" />
+                  <span className="min-w-0 flex-1 truncate text-[13px] text-ink">
+                    {EVENT_WORDS[e.event] ?? e.event.replace(/_/g, " ")} <span className="text-ink-faint">{who(e.who)}</span>
+                  </span>
+                  <span className="shrink-0 font-mono text-[11.5px] tabular-nums text-ink-faint">{ago(e.at, now)}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      </div>
     </Panel>
   );
 }
@@ -490,26 +331,18 @@ function marginClass(v: number | null): string {
   return v == null ? "text-ink-faint" : v < 0 ? "text-danger" : v > 0 ? "text-ok" : "text-ink";
 }
 
-/** What the customer left you in the range: the real figure from Polar, or
- *  "≈ plan price" marked as an estimate when Polar's payments are unreadable. */
-function Kept({ x, range }: { x: Customer; range: number }) {
-  if (x.money) return <>{money(x.money.recent.keptUsd)}</>;
-  if (x.plan.monthlyUsd > 0) return <span className="text-ink-muted" title="Estimate from the plan price">≈{money(x.plan.monthlyUsd * (range / 30))}</span>;
-  return <span className="text-ink-faint">–</span>;
-}
-
 function CostSplit({ x }: { x: Customer }) {
-  const fee = x.money?.recent.feeUsd ?? 0;
+  const fee = x.feesRecentUsd;
   const parts = [
     ["AI", x.llmRecentUsd],
     ["data", x.dfsRecentUsd],
     ["fees", fee],
   ].filter(([, v]) => (v as number) > 0) as Array<[string, number]>;
   if (!parts.length) return null;
-  return <span className="block text-[11px] text-ink-faint">{parts.map(([k, v]) => `${k} ${money(v, { precise: true })}`).join(" · ")}</span>;
+  return <span className="block whitespace-nowrap text-[11px] text-ink-faint">{parts.map(([k, v]) => `${k} ${money(v, { precise: true })}`).join(" · ")}</span>;
 }
 
-function MobileCustomer({ x, now, range }: { x: Customer; now: number; range: number }) {
+function MobileCustomer({ x, now }: { x: Customer; now: number; range: number }) {
   return (
     <li className={cx(x.operator && "opacity-70")}>
       <a href={`/owner/customers/${x.userId}`} className="block px-5 py-4 transition-colors active:bg-surface-2/60">
@@ -525,9 +358,9 @@ function MobileCustomer({ x, now, range }: { x: Customer; now: number; range: nu
         </div>
         <dl className="mt-3 grid grid-cols-3 gap-2 font-mono tabular-nums">
           {[
-            ["Kept", x.money ? money(x.money.recent.keptUsd) : x.plan.monthlyUsd > 0 ? `≈${money(x.plan.monthlyUsd * (range / 30))}` : "–", "text-ink"],
-            ["Cost", money(x.costRecentUsd, { precise: true }), "text-ink"],
-            ["Margin", x.marginRecentUsd == null ? "–" : money(x.marginRecentUsd), marginClass(x.marginRecentUsd)],
+            ["Revenue", money(x.revenueRecentUsd), "text-ink"],
+            ["Cost", money(x.totalCostRecentUsd, { precise: true }), "text-ink"],
+            ["Margin", money(x.marginRecentUsd), marginClass(x.marginRecentUsd)],
           ].map(([k, v, cls]) => (
             <div key={k} className="min-w-0">
               <dt className="font-sans text-[11px] text-ink-faint">{k}</dt>
@@ -544,31 +377,28 @@ function MobileCustomer({ x, now, range }: { x: Customer; now: number; range: nu
 }
 
 export function CustomersPanel({ c, t, range, now }: { c: CustomersReport; t: TrafficReport | null; range: number; now: number }) {
-  const lifetime = c.totals.revenueAllTime - c.totals.costAllTime;
   // Accounts that never added a site or picked a plan cost nothing and say
   // little each; they fold into one list under the table.
   const engaged = c.customers.filter((x) => x.operator || x.plan.status !== "none" || x.sites.length > 0 || x.costUsd > 0);
   const idle = c.customers.filter((x) => !engaged.includes(x));
   return (
     <Panel id="customers" label="Customers">
-      <PanelHead
+      <SectionHead
         title="Customers"
-        meta={`${c.totals.customers} accounts`}
-        sub={
+        says={
           c.ordersRead
-            ? `Kept is what each customer's real Polar charges left you: net of tax, refunds and Polar's fee. Cost is every metered AI call and DataForSEO request for their sites. Last ${rangeShort(range)} unless it says otherwise. Open a customer for the full picture.`
-            : `${c.ordersError ?? "Polar's payments could not be read."} Until then, Paid and Kept are estimates from plan prices (marked ≈). Cost is exact. Open a customer for the full picture.`
+            ? "What each customer pays you, what they cost you, and what is left."
+            : "What each customer pays you (their plan price), what they cost you, and what is left."
         }
+        note={`${fmt(engaged.filter((x) => !x.operator).length)} with a site or plan`}
       />
       <StatCells
-        className="mt-5"
+        className="border-t-0"
         items={[
-          { label: "Paying", value: fmt(c.totals.paying), tone: c.totals.paying ? "ok" : undefined },
-          { label: "On trial", value: fmt(c.totals.trialing) },
-          { label: "Kept, all time", value: c.ordersRead ? money(c.totals.revenueAllTime) : "–" },
-          c.ordersRead
-            ? { label: "Margin, all time", value: money(lifetime), tone: lifetime < 0 ? "danger" : lifetime > 0 ? "ok" : undefined }
-            : { label: "Cost, all time", value: money(c.totals.costAllTime) },
+          { label: "Paying", value: `${fmt(c.totals.paying)}${c.totals.trialing ? ` · ${fmt(c.totals.trialing)} on trial` : ""}` },
+          { label: `Revenue, ${rangeShort(range)}`, value: money(c.totals.revenueRecent) },
+          { label: `Cost, ${rangeShort(range)}`, value: money(c.totals.costRecent) },
+          { label: `Margin, ${rangeShort(range)}`, value: money(c.totals.revenueRecent - c.totals.costRecent), tone: c.totals.revenueRecent - c.totals.costRecent < 0 ? "danger" : "ok" },
         ]}
       />
       <ol className="divide-y divide-line-soft md:hidden">
@@ -583,8 +413,7 @@ export function CustomersPanel({ c, t, range, now }: { c: CustomersReport; t: Tr
             <tr className="text-[11px] uppercase tracking-wider text-ink-faint">
               <th scope="col" className="px-6 pb-3 pt-4 font-medium">Customer</th>
               <th scope="col" className="px-3 pb-3 pt-4 font-medium">Status</th>
-              <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Paid</th>
-              <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Kept</th>
+              <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Revenue</th>
               <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Cost</th>
               <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Margin</th>
               <th scope="col" className="hidden px-3 pb-3 pt-4 text-right font-medium xl:table-cell">Articles</th>
@@ -612,26 +441,16 @@ export function CustomersPanel({ c, t, range, now }: { c: CustomersReport; t: Tr
                   </span>
                 </td>
                 <td className="px-3 py-3 text-right font-mono tabular-nums">
-                  <span className="text-ink">{x.money ? money(x.money.recent.chargedUsd) : <span className="text-ink-faint">–</span>}</span>
-                  {x.money?.all.chargedUsd ? <span className="block text-[11px] text-ink-faint">{money(x.money.all.chargedUsd)} total</span> : null}
+                  <span className="text-ink">{money(x.revenueRecentUsd)}</span>
+                  {x.revenueAllUsd ? <span className="block whitespace-nowrap text-[11px] text-ink-faint">{money(x.revenueAllUsd)} total</span> : null}
                 </td>
                 <td className="px-3 py-3 text-right font-mono tabular-nums">
-                  <span className="text-ink">
-                    <Kept x={x} range={range} />
-                  </span>
-                  {x.money?.recent.taxUsd || x.money?.recent.feeUsd ? (
-                    <span className="block text-[11px] text-ink-faint">
-                      tax {money(x.money.recent.taxUsd)} · fee {money(x.money.recent.feeUsd)}
-                    </span>
-                  ) : null}
-                </td>
-                <td className="px-3 py-3 text-right font-mono tabular-nums">
-                  <span className="text-ink">{money(x.costRecentUsd, { precise: true })}</span>
+                  <span className="text-ink">{money(x.totalCostRecentUsd, { precise: true })}</span>
                   <CostSplit x={x} />
                 </td>
                 <td className="px-3 py-3 text-right font-mono tabular-nums">
-                  <span className={marginClass(x.marginRecentUsd)}>{x.marginRecentUsd == null ? "–" : money(x.marginRecentUsd)}</span>
-                  {x.marginAllUsd != null ? <span className={cx("block text-[11px]", "text-ink-faint")}>{money(x.marginAllUsd)} all time</span> : null}
+                  <span className={marginClass(x.marginRecentUsd)}>{money(x.marginRecentUsd)}</span>
+                  {x.marginAllUsd != null && x.revenueAllUsd ? <span className="block whitespace-nowrap text-[11px] text-ink-faint">{money(x.marginAllUsd)} total</span> : null}
                 </td>
                 <td className="hidden px-3 py-3 text-right font-mono tabular-nums xl:table-cell">
                   <span className="text-ink">{fmt(x.articles)}</span>

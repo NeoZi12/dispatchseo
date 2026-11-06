@@ -6,21 +6,10 @@ import { isOperator } from "@/lib/autopilot/operator";
 import { isCloudMode } from "@/lib/cloud";
 import { customersReport, parseRange, RANGES, trafficReport, type CustomersReport, type TrafficReport } from "@/lib/owner-analytics";
 import { aiReport, googleReport, productProjectId, type AiReport, type GoogleReport } from "@/lib/owner-insights";
-import { AiPanel, GooglePanel } from "./insights-view";
+import { AiSection, GoogleSection } from "./insights-view";
 import { cx, FOCUS_RING } from "@/components/ui/styles";
 import { EmptyState } from "@/components/ui/empty-state";
-import {
-  ActivityPanel,
-  AudiencePanel,
-  CustomersPanel,
-  FunnelPanel,
-  KpiStrip,
-  MoneyPanel,
-  PublishPanel,
-  RealPanel,
-  SignupsPanel,
-  TrafficPanel,
-} from "./view";
+import { CustomersPanel, KpiStrip, PublishPanel, SignupsSection, VisitorsSection } from "./view";
 import { shortDate } from "./format";
 
 // The operator's analytics: who reaches the site, who signs up, and what
@@ -104,45 +93,26 @@ export default async function OwnerPage({ searchParams }: { searchParams: Promis
       <KpiStrip t={traffic} c={customers} />
 
       {traffic ? (
-        <TrafficPanel t={traffic} />
+        <VisitorsSection t={traffic} />
       ) : (
-        <EmptyState title="No traffic data yet">
+        <EmptyState title="No visitor data yet">
           {t.error?.includes("owner_visits") || t.error?.includes("web_visits")
             ? "Migration 0073 (owner analytics) has not been applied to this database yet. Apply it and reload."
-            : `The traffic read failed: ${t.error ?? "unknown error"}.`}
+            : `The visitor read failed: ${t.error ?? "unknown error"}.`}
         </EmptyState>
       )}
 
-      {traffic ? (
-        <div className="grid gap-4 sm:gap-5 lg:grid-cols-2">
-          <SignupsPanel t={traffic} c={customers} />
-          {customers ? <MoneyPanel c={customers} range={range} /> : null}
-        </div>
-      ) : null}
-
-      {aiData ? <AiPanel a={aiData} now={now} /> : null}
-
-      {googleData ? <GooglePanel g={googleData} hrefs={siteHrefs} /> : null}
-
-      {traffic ? (
-        <div className="grid gap-4 sm:gap-5 lg:grid-cols-2">
-          <FunnelPanel t={traffic} />
-          <RealPanel t={traffic} />
-        </div>
-      ) : null}
-
-      {traffic ? (
-        <div className="grid gap-4 sm:gap-5 lg:grid-cols-2">
-          <AudiencePanel t={traffic} />
-          <ActivityPanel t={traffic} who={who} now={now} />
-        </div>
-      ) : null}
+      {traffic ? <SignupsSection t={traffic} c={customers} who={who} now={now} /> : null}
 
       {customers ? (
         <CustomersPanel c={customers} t={traffic} range={range} now={now} />
       ) : isCloudMode() ? (
         <EmptyState title="Customers could not be read">{c.error ?? "unknown error"}</EmptyState>
       ) : null}
+
+      {googleData ? <GoogleSection g={googleData} hrefs={siteHrefs} /> : null}
+
+      {aiData ? <AiSection a={aiData} now={now} /> : null}
 
       {traffic && customers ? <PublishPanel t={traffic} c={customers} /> : null}
     </div>

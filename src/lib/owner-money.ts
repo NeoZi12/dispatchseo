@@ -36,9 +36,10 @@ export type PolarOrder = {
 
 const cents = (n: number | null | undefined) => (Number(n) || 0) / 100;
 
-/** What an order leaves in your pocket: net of tax, refunds and Polar's fee. */
-export function keptUsd(o: PolarOrder): number {
-  return o.netUsd - o.refundedUsd - o.feeUsd;
+/** Revenue from an order: what the customer paid, tax excluded, minus refunds.
+ *  Polar's fee is a cost, not a reduction of revenue. */
+export function revenueUsd(o: PolarOrder): number {
+  return o.netUsd - o.refundedUsd;
 }
 
 let cache: { at: number; orders: PolarOrder[] } | null = null;
@@ -141,8 +142,8 @@ export type MoneySummary = {
   taxUsd: number;
   feeUsd: number;
   refundedUsd: number;
-  /** What you keep before your own costs: net - refunds - Polar fee. */
-  keptUsd: number;
+  /** Paid, tax excluded, minus refunds. */
+  revenueUsd: number;
   lastPaidAt: string | null;
 };
 
@@ -154,7 +155,7 @@ export function summarize(orders: PolarOrder[], since?: number): MoneySummary {
     taxUsd: list.reduce((a, o) => a + o.taxUsd, 0),
     feeUsd: list.reduce((a, o) => a + o.feeUsd, 0),
     refundedUsd: list.reduce((a, o) => a + o.refundedUsd, 0),
-    keptUsd: list.reduce((a, o) => a + keptUsd(o), 0),
+    revenueUsd: list.reduce((a, o) => a + revenueUsd(o), 0),
     lastPaidAt: list[0]?.at ?? null,
   };
 }
