@@ -73,6 +73,13 @@ export type ChangelogEntry = {
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
+    kind: "fixed",
+    text:
+      "Sites whose Search Console was never fully connected no longer show a \"we lost access\" warning. If your " +
+      "Google account holds the site under a slightly different property name, DispatchSEO now finds it and " +
+      "starts reading your traffic on its own.",
+  },
+  {
     kind: "improved",
     text:
       "Every new article gets a drawn cover that shows what the article is about, instead of its title on a " +
