@@ -77,6 +77,8 @@ export async function runWriteJob(job: Job): Promise<void> {
       await runStage(run, deadline);
     } catch (err) {
       if (isAwaitingAgent(err)) {
+        // Batch lane too: parkOnAgent queues the batch poller instead of
+        // waking the subscription workflow.
         await parkOnAgent(run, current, err.keys);
         return;
       }

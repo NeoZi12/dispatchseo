@@ -66,9 +66,18 @@ import { db } from "@/lib/db";
 // cost 0. Replay is the whole design, so the key is a hash of the prompt
 // itself: an identical call is the same task, a changed one is a new task.
 // The judge never takes this path (Jev stays server-side, ~$0.004/article).
+//
+// BATCH PROVIDER (operator-only, 0075): `provider: "batch"` rides the same
+// park-and-replay rails, but the answer comes from Anthropic's Message
+// Batches API at half the list price instead of a subscription session. The
+// call is submitted as a one-request batch, the stage parks, the batch-poll
+// job (job-handlers/batch-poll.ts) collects the result and settles the task
+// the way submit_writer_task does, and the replay finds the memoized answer.
+// The real (halved) cost is ledgered and charged to the run when the result
+// arrives; the replay itself costs 0, like the agent's.
 
 export type Slot = "judge" | "extractor" | "planner" | "writer" | "patcher" | "illustrator";
-export type Provider = "anthropic" | "openai" | "typesafe" | "dry-run" | "subscription";
+export type Provider = "anthropic" | "anthropic-batch" | "openai" | "typesafe" | "dry-run" | "subscription";
 
 type ModelSpec = {
   provider: Provider;
@@ -191,18 +200,30 @@ export type GenerateInput = {
   temperature?: number;
   deadline?: number;
   /** projects.writer_provider via writerProvider(): "agent" hands the call to
-   *  the operator's subscription session instead of the API. */
-  provider?: "api" | "agent";
+   *  the operator's subscription session instead of the API, "batch" to the
+   *  Message Batches API. */
+  provider?: "api" | "agent" | "batch";
 };
+
+/** The lanes where a call parks and the stage replays from the top once it
+ *  is answered. Both need the stage's replay guards (saved page reads, the
+ *  pending patch), so anything branching on "is this a parking lane" asks
+ *  here rather than comparing to "agent". */
+export function parksOnReplay(provider: GenerateInput["provider"]): boolean {
+  return provider === "agent" || provider === "batch";
+}
 
 export type GenerateResult = { text: string; provider: Provider; model: string; costUsd: number };
 
 /** cacheWrite1h is the part of cacheWrite written with the 1-hour TTL,
  *  billed at 2x input (5-minute writes are 1.25x). */
-type Usage = { inputTokens: number; outputTokens: number; cacheRead: number; cacheWrite: number; cacheWrite1h: number };
+export type Usage = { inputTokens: number; outputTokens: number; cacheRead: number; cacheWrite: number; cacheWrite1h: number };
 type RawResult = Usage & { text: string; truncated?: boolean };
 
 const MAX_CALL_MS = 180_000;
+
+/** Appended to a JSON call's prompt when its first answer did not parse. */
+export const JSON_RETRY_NOTE = "\n\nYour previous answer was not valid JSON. Reply with ONLY the JSON object, no prose, no code fence.";
 
 /** How hard a slot's model thinks. Prose and a plan get "medium"; a patch,
  *  an extraction and a cover are mechanical and get "low". Env-overridable
@@ -238,6 +259,7 @@ export async function generate(input: GenerateInput): Promise<GenerateResult> {
   // must reach the stage untouched, not be caught as a failed candidate and
   // ledgered as an error.
   if (input.provider === "agent") return generateViaAgent(input);
+  if (input.provider === "batch") return generateViaBatch(input);
   const candidates = slotSpecs(input.slot);
   const errors: string[] = [];
   // Money spent on candidates that threw (truncated output, no JSON after a
@@ -262,7 +284,7 @@ export async function generate(input: GenerateInput): Promise<GenerateResult> {
         if (remainingMs(input.deadline) < MIN_BUDGET_MS) throw new Error("model did not return JSON and no time is left to retry");
         const again = await callAnthropic(spec, {
           ...input,
-          user: input.user + "\n\nYour previous answer was not valid JSON. Reply with ONLY the JSON object, no prose, no code fence.",
+          user: input.user + JSON_RETRY_NOTE,
         });
         addUsage(spent, again);
         if (again.truncated) throw new Error("output was truncated at the token limit");
@@ -376,7 +398,7 @@ export async function getAgentAnswer(runId: string, key: string): Promise<string
 /** Has the subscription writer already answered exactly this call? Lets a
  *  caller tell a resume replay from a first attempt without making the call. */
 export async function agentAnswerExists(input: GenerateInput): Promise<boolean> {
-  if (input.provider !== "agent" || !input.runId || isDryRun()) return false;
+  if (!parksOnReplay(input.provider) || !input.runId || isDryRun()) return false;
   return (await getAgentAnswer(input.runId, agentKey(input))) !== undefined;
 }
 
@@ -424,9 +446,10 @@ export async function ledgerSubscriptionAnswer(projectId: string, runId: string 
   await ledger(projectId, runId, slot, SUBSCRIPTION, { ...zeroUsage(), outputTokens: Math.ceil(chars / 4) }, 0, null);
 }
 
-async function callAnthropic(spec: ModelSpec, input: GenerateInput): Promise<RawResult> {
-  const key = env("ANTHROPIC_API_KEY");
-  if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
+/** The Messages request body for one call, shared by the live call and the
+ *  batch lane so the two can never drift: same blocks, same cache
+ *  breakpoints, same effort. */
+export function anthropicBody(spec: ModelSpec, input: GenerateInput): Record<string, unknown> {
   // Cached blocks come FIRST in each part: a cache hit needs an identical
   // prefix (rules, then the per-call system, then the research), and the
   // per-call text after them differs between plan, write and patch.
@@ -451,41 +474,45 @@ async function callAnthropic(spec: ModelSpec, input: GenerateInput): Promise<Raw
     content.push({ type: "text", text: `<task>\n${input.system}\n</task>` });
   }
   content.push({ type: "text", text: input.user });
-  const timeoutMs = timeoutFor(input.deadline);
-  let res: Response;
-  try {
-    res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
-      signal: AbortSignal.timeout(timeoutMs),
-      body: JSON.stringify({
-        model: spec.model,
-        max_tokens: spec.maxOutput,
-        // Claude 5.5 models reject `temperature` (400 "deprecated for this model"), so it is never sent; callers' values stay in the type for the ledger and for older models.
-        // Thinking is on by default on these models and billed as output:
-        // the bake-off's drafts were 6-7k output tokens for 1,800 words.
-        // Each slot sends the effort its work needs (effortFor).
-        output_config: { effort: effortFor(input.slot) },
-        ...(system.length ? { system } : {}),
-        messages: [{ role: "user", content }],
-      }),
-    });
-  } catch (err) {
-    throw new Error(timeoutMessage(err, timeoutMs));
-  }
-  const body = (await res.json().catch(() => ({}))) as {
-    content?: { type: string; text?: string }[];
-    usage?: {
-      input_tokens?: number;
-      output_tokens?: number;
-      cache_read_input_tokens?: number;
-      cache_creation_input_tokens?: number;
-      cache_creation?: { ephemeral_5m_input_tokens?: number; ephemeral_1h_input_tokens?: number };
-    };
-    stop_reason?: string;
-    error?: { message?: string };
+  return {
+    model: spec.model,
+    max_tokens: spec.maxOutput,
+    // Claude 5.5 models reject `temperature` (400 "deprecated for this model"), so it is never sent; callers' values stay in the type for the ledger and for older models.
+    // Thinking is on by default on these models and billed as output:
+    // the bake-off's drafts were 6-7k output tokens for 1,800 words.
+    // Each slot sends the effort its work needs (effortFor).
+    output_config: { effort: effortFor(input.slot) },
+    ...(system.length ? { system } : {}),
+    messages: [{ role: "user", content }],
   };
-  if (!res.ok) throw new Error(`anthropic ${res.status}: ${body.error?.message ?? "no body"}`);
+}
+
+/** The fetch init callAnthropic sends, exported only so a check can prove
+ *  the batch params are the same body (scripts or a REPL, never prod code). */
+export function messagesRequestInit(spec: ModelSpec, input: GenerateInput, key: string): RequestInit {
+  return {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify(anthropicBody(spec, input)),
+  };
+}
+
+type MessageBody = {
+  content?: { type: string; text?: string }[];
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
+    cache_creation?: { ephemeral_5m_input_tokens?: number; ephemeral_1h_input_tokens?: number };
+  };
+  stop_reason?: string;
+  error?: { message?: string };
+};
+
+/** A Messages response (live, or a batch result's `message`) as text and
+ *  usage. One reader for both, so a batch answer is priced like a live one. */
+function readMessage(body: MessageBody): RawResult {
   return {
     text: (body.content ?? []).filter((c) => c.type === "text").map((c) => c.text ?? "").join(""),
     inputTokens: body.usage?.input_tokens ?? 0,
@@ -497,6 +524,225 @@ async function callAnthropic(spec: ModelSpec, input: GenerateInput): Promise<Raw
     cacheWrite1h: body.usage?.cache_creation?.ephemeral_1h_input_tokens ?? body.usage?.cache_creation_input_tokens ?? 0,
     truncated: body.stop_reason === "max_tokens",
   };
+}
+
+// --- The batch provider -------------------------------------------------------
+
+const BATCHES_URL = "https://api.anthropic.com/v1/messages/batches";
+
+/** Batch requests a task may spend (errored, expired, truncated or not-JSON
+ *  results all count) before the run fails. */
+export const BATCH_MAX_ATTEMPTS = 2;
+
+function batchHeaders(): Record<string, string> {
+  const key = env("ANTHROPIC_API_KEY");
+  if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
+  return { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" };
+}
+
+/** One batch request for one call. custom_id must match ^[a-zA-Z0-9_-]{1,64}$
+ *  and the key is a 64-char hex sha256, so the key itself is the id: one
+ *  request per batch, nothing to tell apart inside it. */
+export function batchRequest(key: string, spec: ModelSpec, input: GenerateInput): { custom_id: string; params: Record<string, unknown> } {
+  return { custom_id: key, params: anthropicBody(spec, input) };
+}
+
+async function submitBatch(key: string, spec: ModelSpec, input: GenerateInput): Promise<string> {
+  const timeoutMs = Math.min(60_000, timeoutFor(input.deadline));
+  let res: Response;
+  try {
+    res = await fetch(BATCHES_URL, {
+      method: "POST",
+      headers: batchHeaders(),
+      signal: AbortSignal.timeout(timeoutMs),
+      body: JSON.stringify({ requests: [batchRequest(key, spec, input)] }),
+    });
+  } catch (err) {
+    throw new Error(timeoutMessage(err, timeoutMs));
+  }
+  const body = (await res.json().catch(() => ({}))) as { id?: string; error?: { message?: string } };
+  // "anthropic <status>" on purpose: VENDOR_FAILURE_RE reads a 429/5xx here
+  // as infra, the same as a live call's.
+  if (!res.ok || !body.id) throw new Error(`anthropic ${res.status}: batch submit - ${body.error?.message ?? "no batch id"}`);
+  return body.id;
+}
+
+type BatchTaskRow = { id: string; status: string; attempts: number; error: string | null; batch_id: string | null };
+
+async function generateViaBatch(input: GenerateInput): Promise<GenerateResult> {
+  if (!input.runId) throw new Error("the batch writer needs a run to queue its request on");
+  const runId = input.runId;
+  const key = agentKey(input);
+  const candidates = slotSpecs(input.slot);
+  const answer = await getAgentAnswer(runId, key);
+  if (answer !== undefined) {
+    if (input.json && parseJson(answer) === undefined) {
+      await db().from("writer_tasks").update({ status: "failed", error: "stored answer is not valid JSON" }).eq("run_id", runId).eq("key", key);
+      throw new AgentTaskFailed(input.slot);
+    }
+    // No ledger row and cost 0: the poller ledgered the real tokens and
+    // charged the run when the result arrived, and every replay of the
+    // stage reads the answer again.
+    return { text: answer, provider: "anthropic-batch", model: candidates[0].model, costUsd: 0 };
+  }
+
+  const { data, error: readError } = await db().from("writer_tasks").select("id, status, attempts, error, batch_id").eq("run_id", runId).eq("key", key).maybeSingle();
+  if (readError) throw new Error(`could not read the batch writer's ${input.slot} task (is migration 0075 applied?): ${readError.message}`);
+  const row = data as BatchTaskRow | null;
+  // Queued = in flight (or a parallel twin is submitting it): wait for it.
+  if (row?.status === "queued") throw new AwaitingAgent(key);
+  if (row?.status === "done") throw new Error(`the batch writer's ${input.slot} task is done but its answer is missing`);
+  const attempts = row?.attempts ?? 0;
+  if (attempts >= BATCH_MAX_ATTEMPTS) throw new Error(`the batch writer's ${input.slot} request failed ${attempts} times: ${row?.error ?? "unknown"}`);
+
+  // One candidate per attempt: a writer request that errored or truncated on
+  // Sonnet gets Opus on its second try, like the live path's fallback.
+  const spec = candidates[Math.min(attempts, candidates.length - 1)];
+  const sent = row && /not valid JSON/.test(row.error ?? "") ? { ...input, user: input.user + JSON_RETRY_NOTE } : input;
+
+  // Claim the row BEFORE paying for a batch: a twin call with the same key
+  // (two pages with identical text) loses the claim and waits instead of
+  // submitting a second, orphaned batch.
+  let taskId: string | undefined;
+  if (!row) {
+    const { data: inserted, error } = await db()
+      .from("writer_tasks")
+      .upsert(
+        {
+          project_id: input.projectId,
+          run_id: runId,
+          key,
+          slot: input.slot,
+          instructions: agentInstructions(input),
+          research: input.cachedPrefix ?? null,
+          user_prompt: sent.user,
+          json: Boolean(input.json),
+          status: "queued",
+        },
+        { onConflict: "run_id,key", ignoreDuplicates: true },
+      )
+      .select("id")
+      .maybeSingle();
+    if (error) throw new Error(`could not queue the batch writer's ${input.slot} task: ${error.message}`);
+    taskId = (inserted as { id: string } | null)?.id;
+  } else {
+    const { data: claimed } = await db()
+      .from("writer_tasks")
+      .update({ status: "queued", batch_id: null, user_prompt: sent.user })
+      .eq("id", row.id)
+      .eq("status", "failed")
+      .select("id")
+      .maybeSingle();
+    taskId = (claimed as { id: string } | null)?.id;
+  }
+  if (!taskId) throw new AwaitingAgent(key);
+
+  let batchId: string;
+  try {
+    batchId = await submitBatch(key, spec, sent);
+  } catch (err) {
+    // Failed with the attempt NOT spent (nothing was billed): the job's retry
+    // replays the stage, which claims the row again and resubmits.
+    const message = err instanceof Error ? err.message : String(err);
+    await db().from("writer_tasks").update({ status: "failed", error: `batch submit failed: ${message}`.slice(0, 500) }).eq("id", taskId);
+    throw err;
+  }
+  const { error: saveError } = await db().from("writer_tasks").update({ batch_id: batchId, batch_model: spec.model }).eq("id", taskId);
+  if (saveError) throw new Error(`batch ${batchId} was submitted but could not be recorded on its task: ${saveError.message}`);
+  throw new AwaitingAgent(key);
+}
+
+export type BatchStatus = { status: "in_progress" | "canceling" | "ended"; createdAt: string | null };
+
+/** GET /v1/messages/batches/{id}. Throws on an HTTP error (the poll retries). */
+export async function batchStatus(batchId: string): Promise<BatchStatus> {
+  const res = await fetch(`${BATCHES_URL}/${encodeURIComponent(batchId)}`, { headers: batchHeaders(), signal: AbortSignal.timeout(30_000) });
+  const body = (await res.json().catch(() => ({}))) as { processing_status?: string; created_at?: string; error?: { message?: string } };
+  if (!res.ok) throw new Error(`anthropic ${res.status}: batch ${batchId} - ${body.error?.message ?? "no body"}`);
+  const status = body.processing_status === "ended" || body.processing_status === "canceling" ? body.processing_status : "in_progress";
+  return { status, createdAt: body.created_at ?? null };
+}
+
+export type BatchOutcome =
+  | { ok: true; text: string; usage: Usage; truncated: boolean }
+  | { ok: false; error: string };
+
+/** The result line for `customId` in an ended batch (GET .../results, JSONL).
+ *  Errored, canceled and expired requests are not billed, so they carry no
+ *  usage. A batch that ended without a line for the id reads as errored. */
+export async function batchResult(batchId: string, customId: string): Promise<BatchOutcome> {
+  const res = await fetch(`${BATCHES_URL}/${encodeURIComponent(batchId)}/results`, { headers: batchHeaders(), signal: AbortSignal.timeout(60_000) });
+  const raw = await res.text();
+  if (!res.ok) throw new Error(`anthropic ${res.status}: batch ${batchId} results - ${raw.slice(0, 200) || "no body"}`);
+  for (const line of raw.split("\n")) {
+    if (!line.trim()) continue;
+    let parsed: { custom_id?: string; result?: { type?: string; message?: MessageBody; error?: { error?: { type?: string; message?: string }; message?: string } } };
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (parsed.custom_id !== customId) continue;
+    const r = parsed.result;
+    if (r?.type === "succeeded" && r.message) {
+      const { text, truncated, ...usage } = readMessage(r.message);
+      return { ok: true, text, usage, truncated: Boolean(truncated) };
+    }
+    const detail = r?.error?.error?.message ?? r?.error?.message ?? r?.error?.error?.type ?? "";
+    return { ok: false, error: `batch request ${r?.type ?? "unknown"}${detail ? `: ${detail}` : ""}` };
+  }
+  return { ok: false, error: "batch ended without a result for this request" };
+}
+
+/** POST .../cancel. Best effort: a batch that already ended answers 4xx,
+ *  and a cancel that fails costs at most what the batch was going to cost. */
+export async function cancelBatch(batchId: string): Promise<void> {
+  try {
+    await fetch(`${BATCHES_URL}/${encodeURIComponent(batchId)}/cancel`, { method: "POST", headers: batchHeaders(), signal: AbortSignal.timeout(15_000) });
+  } catch (err) {
+    console.warn(`[writer] could not cancel batch ${batchId}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
+ * The money of one batch result, recorded where every other call's is: a
+ * model_calls row at batch prices, and the run's cost_usd directly, because
+ * the replay that consumes the answer returns cost 0 (a stage replays an
+ * answered call many times; counting it there would count it again). The
+ * run is parked while this runs, so no stage save can overwrite the charge.
+ * Returns the cost in USD.
+ */
+export async function recordBatchCall(
+  projectId: string,
+  runId: string,
+  slot: Exclude<Slot, "judge">,
+  model: string | null,
+  usage: Usage,
+  error: string | null,
+): Promise<number> {
+  const s = specs();
+  const known = [s.haiku, s.sonnet, s.opus].find((m) => m.model === model);
+  // A model renamed by env since the submit is priced as the slot's model.
+  const spec = known ?? { ...slotSpecs(slot)[0], ...(model ? { model } : {}) };
+  await ledger(projectId, runId, slot, spec, usage, 0, error, !error, true);
+  const cost = price(spec, usage, true);
+  if (cost > 0) await chargeRun(runId, cost);
+  return cost;
+}
+
+async function callAnthropic(spec: ModelSpec, input: GenerateInput): Promise<RawResult> {
+  const key = env("ANTHROPIC_API_KEY");
+  if (!key) throw new Error("ANTHROPIC_API_KEY is not set");
+  const timeoutMs = timeoutFor(input.deadline);
+  let res: Response;
+  try {
+    res = await fetch("https://api.anthropic.com/v1/messages", { ...messagesRequestInit(spec, input, key), signal: AbortSignal.timeout(timeoutMs) });
+  } catch (err) {
+    throw new Error(timeoutMessage(err, timeoutMs));
+  }
+  const body = (await res.json().catch(() => ({}))) as MessageBody;
+  if (!res.ok) throw new Error(`anthropic ${res.status}: ${body.error?.message ?? "no body"}`);
+  return readMessage(body);
 }
 
 // --- The judge ---------------------------------------------------------------
@@ -722,15 +968,19 @@ function addUsage(into: Usage, u: Usage): void {
   into.cacheWrite1h += u.cacheWrite1h;
 }
 
-function price(spec: ModelSpec, u: Usage): number {
-  return (
+/** Message Batches bill every token (input, output, cache read and write)
+ *  at half the list price. */
+const BATCH_DISCOUNT = 0.5;
+
+function price(spec: ModelSpec, u: Usage, batch = false): number {
+  const list =
     (u.inputTokens * spec.inputPerM +
       u.cacheRead * spec.inputPerM * spec.cacheReadFraction +
       (u.cacheWrite - u.cacheWrite1h) * spec.inputPerM * 1.25 +
       u.cacheWrite1h * spec.inputPerM * 2 +
       u.outputTokens * spec.outputPerM) /
-    1_000_000
-  );
+    1_000_000;
+  return batch ? list * BATCH_DISCOUNT : list;
 }
 
 /** Adds spend to a run's total directly, for money a stage never got to
@@ -754,12 +1004,14 @@ async function ledger(
   latencyMs: number,
   error: string | null,
   ok = true,
+  batch = false,
 ): Promise<void> {
   const row = {
     project_id: projectId,
     run_id: runId,
     slot,
-    provider: spec.provider,
+    // "anthropic-batch" so the ledger can tell a half-price call from a live one.
+    provider: batch ? "anthropic-batch" : spec.provider,
     model: spec.model,
     // input_tokens stays the TOTAL prompt size (fresh + cache read + cache
     // write) so older readers keep their meaning; the two cache columns
@@ -768,7 +1020,7 @@ async function ledger(
     output_tokens: u.outputTokens,
     cache_read_tokens: u.cacheRead,
     cache_write_tokens: u.cacheWrite,
-    cost_microusd: Math.round(price(spec, u) * 1_000_000),
+    cost_microusd: Math.round(price(spec, u, batch) * 1_000_000),
     latency_ms: latencyMs,
     ok,
     error: error ? error.slice(0, 500) : null,

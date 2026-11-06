@@ -63,6 +63,8 @@ async function withDeadline(run: Promise<void>): Promise<void> {
 // nothing but publish jobs never loads the crawler (and a broken import in an
 // unused feature cannot take the whole route down).
 const HANDLERS: Record<string, () => Promise<Handler>> = {
+  // A batch-lane writer run waiting on Anthropic's Message Batches API (0075).
+  "batch-poll": async () => (await import("@/lib/job-handlers/batch-poll")).runBatchPollJob,
   crawl: async () => (await import("@/lib/job-handlers/crawl")).runCrawlJob,
   finish: async () => (await import("@/lib/job-handlers/finish")).runFinishJob,
   publish: async () => (await import("@/lib/job-handlers/publish")).runPublishJob,

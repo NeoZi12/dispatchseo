@@ -25,7 +25,8 @@ import { db } from "./db";
 // mean becomes the place every feature reaches into, and then nothing can be
 // changed without changing it.
 
-export type JobKind = "crawl" | "finish" | "publish" | "verify" | "write";
+// "batch-poll" = a batch-lane writer run waiting on Anthropic's Message Batches API (job-handlers/batch-poll.ts).
+export type JobKind = "batch-poll" | "crawl" | "finish" | "publish" | "verify" | "write";
 
 export type Job = {
   id: string;

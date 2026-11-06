@@ -164,6 +164,7 @@ const PROBES: Probe[] = [
   // writes on every request - unapplied, recordVisit() fails silently and
   // /owner shows zeros, which is exactly the drift this probe exists to name.
   { migration: "0073_owner_analytics", table: "web_visits", column: "visitor" },
+  { migration: "0075_batch_lane", table: "writer_tasks", column: "batch_id" },
 ];
 
 // Migrations that genuinely CANNOT be probed through this mechanism, with the

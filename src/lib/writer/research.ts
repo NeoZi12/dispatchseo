@@ -141,7 +141,7 @@ type Extracted = { claim: string; quote: string; kind: string };
 const KINDS = new Set(["stat", "price", "step", "pitfall", "definition", "example", "opinion", "spec"]);
 
 export async function extractFacts(
-  ctx: { projectId: string; runId: string; deadline: number; provider?: "api" | "agent" },
+  ctx: { projectId: string; runId: string; deadline: number; provider?: "api" | "agent" | "batch" },
   keyword: string,
   intent: Intent,
   page: FetchedPage,

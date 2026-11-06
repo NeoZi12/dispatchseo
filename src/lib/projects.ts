@@ -197,7 +197,8 @@ export type Project = {
 
   /** Migration 0069, operator-only: 'agent' = the hosted writer's four
    *  generative calls are answered by a Claude Code session on the operator's
-   *  subscription (writer_tasks), not the Anthropic API. Flipped by SQL only.
+   *  subscription (writer_tasks), not the Anthropic API; 'batch' (0075) = by
+   *  the Message Batches API at half price. Flipped by SQL only.
    *  NULLABLE: absent on a DB that hasn't run 0069 and on the COLS_PRE_0069
    *  tier. Read it through writerProvider(). */
   writer_provider: string | null;
@@ -306,11 +307,12 @@ export const DEFAULT_PROJECT_ID = "00000000-0000-4000-8000-000000000001";
 const FALLBACK_PROJECT_SLUG = "default";
 
 /** Which engine answers the hosted writer's generative calls. Anything but an
- *  explicit 'agent' (absence pre-0069 included) is the API: the subscription
- *  path parks a run until an operator-side workflow answers it, which no
- *  customer project has, so it must never be the fallback. */
-export function writerProvider(p: Pick<Project, "writer_provider">): "api" | "agent" {
-  return p.writer_provider === "agent" ? "agent" : "api";
+ *  explicit 'agent' or 'batch' (absence pre-0069 included) is the API: the
+ *  subscription path parks a run until an operator-side workflow answers it,
+ *  which no customer project has, so it must never be the fallback. 'batch'
+ *  (0075, set by SQL) parks on Anthropic's Message Batches API at half price. */
+export function writerProvider(p: Pick<Project, "writer_provider">): "api" | "agent" | "batch" {
+  return p.writer_provider === "agent" ? "agent" : p.writer_provider === "batch" ? "batch" : "api";
 }
 
 // mcp_token deliberately excluded - only fetchProjectToken exposes it.
