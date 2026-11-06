@@ -339,8 +339,37 @@ export function capFacts(facts: Fact[], max = MAX_SHEET_FACTS): Fact[] {
   return facts.filter((f) => keep.has(f.id));
 }
 
-export function assembleSheet(keyword: string, pages: FetchedPage[], allFacts: Fact[], serp: SerpInputs, lang?: string | null): FactSheet {
-  const facts = capFacts(allFacts);
+/** host + path, no trailing slash, lower-cased: the gate's own idea of "the
+ *  same link" (article-validate.ts normalizeUrlForDedupe). */
+function sourceKey(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.hostname.toLowerCase()}${u.pathname.replace(/\/+$/, "").toLowerCase()}`;
+  } catch {
+    return url.trim().toLowerCase();
+  }
+}
+
+/** One source per page. The SERP can list a page twice (a trailing-slash
+ *  twin, the same URL on two ranks), and two sources with one link fail the
+ *  gate's sources check on every pass - a bake-off run spent two patches on
+ *  it on 2026-11-06 and no patch can touch the source list. Facts that
+ *  named the dropped twin point at the kept page. */
+function dedupeByUrl(pages: FetchedPage[], facts: Fact[]): { pages: FetchedPage[]; facts: Fact[] } {
+  const kept = new Map<string, string>();
+  const out: FetchedPage[] = [];
+  for (const p of pages) {
+    const k = sourceKey(p.url);
+    if (kept.has(k)) continue;
+    kept.set(k, p.url);
+    out.push(p);
+  }
+  return { pages: out, facts: facts.map((f) => ({ ...f, url: kept.get(sourceKey(f.url)) ?? f.url })) };
+}
+
+export function assembleSheet(keyword: string, rawPages: FetchedPage[], allFacts: Fact[], serp: SerpInputs, lang?: string | null): FactSheet {
+  const { pages, facts: unique } = dedupeByUrl(rawPages, allFacts);
+  const facts = capFacts(unique);
   const sources = buildSources(pages, facts, lang);
   return {
     keyword,

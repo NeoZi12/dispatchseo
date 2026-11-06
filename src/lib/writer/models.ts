@@ -204,6 +204,16 @@ type RawResult = Usage & { text: string; truncated?: boolean };
 
 const MAX_CALL_MS = 180_000;
 
+/** How hard a slot's model thinks. Prose and a plan get "medium"; a patch,
+ *  an extraction and a cover are mechanical and get "low". Env-overridable
+ *  per slot (WRITER_EFFORT_WRITER=high) for a bake-off. */
+type Effort = "low" | "medium" | "high";
+function effortFor(slot: Slot): Effort {
+  const override = env(`WRITER_EFFORT_${slot.toUpperCase()}`);
+  if (override === "low" || override === "medium" || override === "high") return override;
+  return slot === "writer" || slot === "planner" ? "medium" : "low";
+}
+
 /** "<research>", "</task>" and the like inside DATA lose their angle
  *  brackets, so the data can never end its own block or start a task. */
 function defangTags(text: string): string {
@@ -452,6 +462,10 @@ async function callAnthropic(spec: ModelSpec, input: GenerateInput): Promise<Raw
         model: spec.model,
         max_tokens: spec.maxOutput,
         // Claude 5.5 models reject `temperature` (400 "deprecated for this model"), so it is never sent; callers' values stay in the type for the ledger and for older models.
+        // Thinking is on by default on these models and billed as output:
+        // the bake-off's drafts were 6-7k output tokens for 1,800 words.
+        // Each slot sends the effort its work needs (effortFor).
+        output_config: { effort: effortFor(input.slot) },
         ...(system.length ? { system } : {}),
         messages: [{ role: "user", content }],
       }),
