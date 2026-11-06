@@ -1,3 +1,5 @@
+import { Polar } from "@polar-sh/sdk";
+
 import { polar, polarConfigured } from "./billing";
 
 // Every real charge from Polar, for /owner. The subscriptions table knows a
@@ -64,9 +66,17 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   });
 }
 
+// A separate read-only token (orders:read) when one is set, so reading
+// payments never means widening the token checkout and webhooks run on.
+function reader(): Polar {
+  const token = process.env.POLAR_READ_TOKEN;
+  if (!token) return polar();
+  return new Polar({ accessToken: token, server: process.env.POLAR_SERVER === "sandbox" ? "sandbox" : "production" });
+}
+
 async function walk(): Promise<PolarOrder[]> {
   const out: PolarOrder[] = [];
-  const pages = await polar().orders.list({ limit: 100 });
+  const pages = await reader().orders.list({ limit: 100 });
   for await (const page of pages) {
     for (const o of page.result.items) {
       // Only money that moved: an unpaid draft or a failed attempt is not revenue.
@@ -94,7 +104,7 @@ async function walk(): Promise<PolarOrder[]> {
 
 /** Every paid order, newest first. null when Polar is not configured or did not answer. */
 export async function polarOrders(): Promise<PolarOrder[] | null> {
-  if (!polarConfigured()) return null;
+  if (!polarConfigured() && !process.env.POLAR_READ_TOKEN) return null;
   if (cache && Date.now() - cache.at < TTL) return cache.orders;
   try {
     const orders = (await withTimeout(walk(), 10_000)).sort((a, b) => b.at.localeCompare(a.at));
@@ -104,7 +114,7 @@ export async function polarOrders(): Promise<PolarOrder[] | null> {
   } catch (e) {
     const msg = String((e as Error)?.message ?? e);
     lastError = /insufficient_scope|403/.test(msg)
-      ? "Polar's access token can't read payments: it needs the orders:read scope."
+      ? "Polar's token can't read payments yet: add a read-only POLAR_READ_TOKEN with the orders:read scope."
       : /timed out/.test(msg)
         ? "Polar did not answer in time."
         : `Polar error: ${msg.slice(0, 160)}`;
