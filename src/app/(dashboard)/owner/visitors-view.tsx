@@ -5,7 +5,7 @@ import { BarList, Panel, type BarRow } from "./bits";
 import { delta, fmt, fullDate, rangeShort } from "./format";
 import { SectionHead } from "./view";
 import { VisitTable, type VisitRow } from "./visit-table";
-import { countryLabel, KIND_COLOR } from "./visitor-labels";
+import { countryLabel, KIND_COLOR, VERDICT } from "./visitor-labels";
 
 // The top of /owner: visitors over time, then who they were - how they found
 // the site, where they are, what they opened - then every visit, one row each.
@@ -25,6 +25,34 @@ function ChannelLabel({ name, kind }: { name: string; kind: Channel["kind"] }) {
       <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: KIND_COLOR[kind] }} aria-hidden="true" />
       <span className="truncate">{name}</span>
     </span>
+  );
+}
+
+/** People vs bots among the visits, as an estimate: the evidence per visit is
+ *  in the table below (hover a verdict for the reason). */
+function Estimate({ e }: { e: VisitorsReport["estimate"] }) {
+  const total = e.person + e.bot + e.unsure;
+  if (!total) return null;
+  const order = ["person", "unsure", "bot"] as const;
+  return (
+    <div className="border-t border-line-soft px-5 py-5 sm:px-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+        <h3 className="text-[13px] font-medium text-ink">Real people, estimated</h3>
+        <p className="text-[12px] text-ink-faint">From how each browser behaved: signed in, moved or typed, automation flags, stale browsers</p>
+      </div>
+      <div className="mt-4 flex h-2.5 gap-0.5 overflow-hidden rounded-full bg-surface-2">
+        {order.map((k) => (e[k] ? <div key={k} style={{ width: `${(e[k] / total) * 100}%`, background: VERDICT[k].color }} /> : null))}
+      </div>
+      <p className="mt-3 flex flex-wrap gap-x-6 gap-y-1.5 text-[13px]">
+        {order.map((k) => (
+          <span key={k} className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full" style={{ background: VERDICT[k].color }} aria-hidden="true" />
+            <span className="font-mono tabular-nums text-ink">{e[k]}</span>
+            <span className="text-ink-muted">{k === "person" ? (e[k] === 1 ? "person" : "people") : k === "bot" ? (e[k] === 1 ? "likely bot" : "likely bots") : "can't tell yet"}</span>
+          </span>
+        ))}
+      </p>
+    </div>
   );
 }
 
@@ -81,6 +109,7 @@ export function VisitorsSection({ t, v, who, now }: { t: TrafficReport; v: Visit
         ]}
         height={280}
       />
+      {v ? <Estimate e={v.estimate} /> : null}
 
       <div className="grid gap-px border-t border-line-soft bg-line-soft md:grid-cols-2">
         <Detail title="How they found you">

@@ -10,7 +10,9 @@ import { classifyPath, recordVisit } from "@/lib/visits";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  let body: { p?: unknown; q?: unknown; r?: unknown } = {};
+  // p path, q query, r referrer (first page only), w navigator.webdriver,
+  // e the first real interaction on this page (a second, separate ping).
+  let body: { p?: unknown; q?: unknown; r?: unknown; w?: unknown; e?: unknown } = {};
   try {
     body = await req.json();
   } catch {
@@ -26,7 +28,8 @@ export async function POST(req: NextRequest) {
   // traffic (most of it) never pays the auth round trip.
   const userId = (await maybeSignedIn()) ? ((await currentUser())?.id ?? null) : null;
   await recordVisit({
-    kind: "beacon",
+    kind: body.e === 1 ? "engaged" : "beacon",
+    automated: body.w === 1,
     area,
     url,
     headers: req.headers,

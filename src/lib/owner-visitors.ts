@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { AUTOMATED_BROWSER } from "./visits";
 import { aiReferrer } from "./owner-insights";
 import { windows, type Range } from "./owner-analytics";
 
@@ -28,7 +29,19 @@ export type Visit = {
   views: number;
   /** Set when they were signed in. */
   userId: string | null;
+  /** Our best guess at whether a person was behind it, and why. */
+  verdict: Verdict;
+  why: string;
 };
+
+export type Verdict = "person" | "bot" | "unsure";
+
+// The interaction ping went live with this; a visit before it has no way to
+// show it was a person, so it can't be held against it.
+const ENGAGE_SINCE = "2026-11-07T00:00:00Z";
+// Chrome ships every 4 weeks and updates itself: a year behind the newest
+// Chrome seen is a frozen user agent, the usual mark of a scraper.
+const STALE_CHROME = 12;
 
 export type VisitorsReport = {
   visits: Visit[];
@@ -36,6 +49,8 @@ export type VisitorsReport = {
   channels: Array<{ name: string; kind: Channel["kind"]; visits: number }>;
   /** utm_campaign / utm_source pairs that brought someone, most first. */
   campaigns: Array<{ name: string; visits: number }>;
+  /** How many visits look like a person, a bot, or can't be told apart. */
+  estimate: Record<Verdict, number>;
   capped: boolean;
 };
 
@@ -103,6 +118,9 @@ export function channelOf(referrer: string | null, utmSource: string | null): Ch
 
 type Row = {
   at: string;
+  kind: string;
+  bot: boolean;
+  ua: string | null;
   visitor: string | null;
   path: string;
   referrer: string | null;
@@ -123,9 +141,11 @@ export async function visitorsReport(range: Range, now = Date.now()): Promise<Vi
   for (let off = 0; off < CAP; off += PAGE) {
     const { data, error } = await db()
       .from("web_visits")
-      .select("at, visitor, path, referrer, country, device, utm_source, utm_campaign, user_id")
-      .in("kind", ["beacon", "import"])
-      .eq("bot", false)
+      .select("at, kind, bot, ua, visitor, path, referrer, country, device, utm_source, utm_campaign, user_id")
+      .in("kind", ["beacon", "import", "engaged"])
+      // People, plus browsers that admitted to being automated (a declared
+      // crawler rendering the page, Googlebot say, is in the bot numbers already).
+      .or(`bot.eq.false,bot_name.eq."${AUTOMATED_BROWSER}"`)
       .eq("area", "site")
       .gte("at", new Date(w.from).toISOString())
       .lt("at", new Date(w.to).toISOString())
@@ -146,8 +166,15 @@ export async function visitorsReport(range: Range, now = Date.now()): Promise<Vi
     else byVisit.set(key, [r]);
   });
 
+  const chromeOf = (ua: string | null) => Number(/Chrome\/(\d+)/.exec(ua ?? "")?.[1] ?? 0) || null;
+  const newestChrome = Math.max(0, ...rows.map((r) => chromeOf(r.ua) ?? 0));
+
   const visits: Visit[] = [];
-  for (const [key, list] of byVisit) {
+  for (const [key, all] of byVisit) {
+    // The interaction pings say "a person was here", they are not page views.
+    const engaged = all.some((r) => r.kind === "engaged");
+    const list = all.filter((r) => r.kind !== "engaged");
+    if (!list.length) continue;
     const first = list[0];
     const last = list[list.length - 1];
     // The visit's source is its entry: the first external referrer or tag.
@@ -169,6 +196,7 @@ export async function visitorsReport(range: Range, now = Date.now()): Promise<Vi
       pages,
       views: list.length,
       userId: list.find((r) => r.user_id)?.user_id ?? null,
+      ...judge(list, engaged, chromeOf, newestChrome),
     });
   }
   visits.sort((a, b) => b.lastAt.localeCompare(a.lastAt));
@@ -184,10 +212,29 @@ export async function visitorsReport(range: Range, now = Date.now()): Promise<Vi
       camp.set(name, (camp.get(name) ?? 0) + 1);
     }
   }
+  const estimate: Record<Verdict, number> = { person: 0, bot: 0, unsure: 0 };
+  for (const v of visits) estimate[v.verdict]++;
   return {
     visits,
+    estimate,
     channels: [...ch.values()].sort((a, b) => b.visits - a.visits),
     campaigns: [...camp].map(([name, n]) => ({ name, visits: n })).sort((a, b) => b.visits - a.visits),
     capped: rows.length >= CAP,
   };
+}
+
+/** Person, bot or unsure, strongest evidence first. An estimate: a careful
+ *  scraper can fake all of it, and a person who leaves without touching
+ *  anything looks like a scraper. */
+function judge(list: Row[], engaged: boolean, chromeOf: (ua: string | null) => number | null, newestChrome: number): { verdict: Verdict; why: string } {
+  if (list.some((r) => r.bot)) return { verdict: "bot", why: "The browser said it was automated (webdriver)" };
+  if (list.some((r) => r.user_id)) return { verdict: "person", why: "Signed in" };
+  if (engaged) return { verdict: "person", why: "Moved the mouse, scrolled with a wheel, tapped or typed" };
+  const chrome = chromeOf(list[0].ua);
+  if (chrome && newestChrome - chrome >= STALE_CHROME) {
+    return { verdict: "bot", why: `Chrome ${chrome}, ${newestChrome - chrome} versions behind - real Chrome updates itself` };
+  }
+  if (list[0].kind === "import") return { verdict: "unsure", why: "Imported history: no interaction data" };
+  if (list[list.length - 1].at < ENGAGE_SINCE) return { verdict: "unsure", why: "From before interaction was measured" };
+  return { verdict: "unsure", why: "Loaded the page but never moved, scrolled, tapped or typed" };
 }

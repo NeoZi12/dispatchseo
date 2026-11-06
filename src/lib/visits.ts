@@ -13,7 +13,10 @@ import { db } from "./db";
 // never written. Nothing here may throw - analytics must not be able to fail
 // the page it is watching.
 
-export type VisitKind = "server" | "beacon";
+/** server: the proxy saw a request. beacon: a browser ran our script on a page.
+ *  engaged: that browser then saw a real mouse move, wheel, tap or key press
+ *  (one per page load; every reader filters kind, so these never count as views). */
+export type VisitKind = "server" | "beacon" | "engaged";
 export type VisitArea = "site" | "app" | "hosted" | "file";
 
 export type VisitInput = {
@@ -24,7 +27,12 @@ export type VisitInput = {
   userId?: string | null;
   /** Beacon only: document.referrer. Server rows read the Referer header. */
   referrer?: string | null;
+  /** Beacon only: navigator.webdriver was true - Puppeteer, Playwright,
+   *  Selenium and friends set it. A bot, whatever its user agent says. */
+  automated?: boolean;
 };
+
+export const AUTOMATED_BROWSER = "Automated browser";
 
 // Crawler files: counted (they say who is reading the sitemap) but kept out
 // of the page-view numbers.
@@ -194,17 +202,17 @@ export async function recordVisit(input: VisitInput): Promise<void> {
     // A beacon came from a script that ran; crawlers executing JS are rare
     // enough that the UA still decides, so an automated headless browser
     // that announces itself stays a bot in both kinds.
-    const bot = ua ? isbot(ua) : input.kind === "server";
+    const bot = input.automated ? true : ua ? isbot(ua) : input.kind === "server";
     const p = input.url.searchParams;
     const ownHost = h.get("host") ?? input.url.host;
     const row = {
       kind: input.kind,
       area: input.area,
       path: input.url.pathname.slice(0, 512),
-      referrer: referrerHost(input.kind === "beacon" ? input.referrer : h.get("referer"), ownHost),
+      referrer: referrerHost(input.kind === "server" ? h.get("referer") : input.referrer, ownHost),
       ua: ua || null,
       bot,
-      bot_name: bot ? botName(ua) : null,
+      bot_name: input.automated ? AUTOMATED_BROWSER : bot ? botName(ua) : null,
       device: deviceOf(ua, bot),
       country: (h.get("x-vercel-ip-country") ?? h.get("cf-ipcountry") ?? null)?.toUpperCase().slice(0, 2) ?? null,
       visitor: visitorHash(h, ua),
