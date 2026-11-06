@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Hanken_Grotesk, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { AnalyticsConsentBanner } from "@/components/analytics-consent-banner";
+import { VisitBeacon } from "@/components/visit-beacon";
 import "./globals.css";
 
 // Hanken Grotesk: the closest free match to PostHog's proprietary UI font
@@ -39,6 +40,8 @@ export default function RootLayout({
         {children}
         {/* Cookieless by design, so it needs no consent gate of its own. */}
         <Analytics />
+        {/* Our own cookieless page-view count (lib/visits.ts), read on /owner. */}
+        <VisitBeacon />
         {/* Renders nothing once the visitor has answered, and nothing at all
             on self-hosted installs (no PostHog token configured). */}
         <AnalyticsConsentBanner />

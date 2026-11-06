@@ -1,5 +1,7 @@
 import { PostHog } from "posthog-node";
 
+import { db } from "./db";
+
 // Server-side PostHog for Next.js App Router server actions/route handlers:
 // short-lived functions need flushAt/flushInterval at their minimum and an
 // explicit _shutdown() per call so a queued event isn't lost when the
@@ -38,11 +40,24 @@ async function flush(ph: PostHog): Promise<void> {
   }
 }
 
+// The same event, kept in our own app_events table (migration 0073) so the
+// owner's funnel (/owner) reads without PostHog - and on installs that never
+// configured it. Same contract as the PostHog path: after the real work, and
+// a failed insert is worth nothing to the caller.
+async function keep(distinctId: string, event: string, properties?: Record<string, unknown>): Promise<void> {
+  try {
+    await db().from("app_events").insert({ distinct_id: distinctId, event, props: properties ?? {} });
+  } catch {
+    return;
+  }
+}
+
 export async function captureServer(
   distinctId: string,
   event: string,
   properties?: Record<string, unknown>,
 ): Promise<void> {
+  await keep(distinctId, event, properties);
   const ph = client();
   if (!ph) return;
   try {

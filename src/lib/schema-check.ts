@@ -160,6 +160,10 @@ const PROBES: Probe[] = [
   { migration: "0070_writer_weekly_quota", table: "projects", column: "writer_weekly_quota" },
   { migration: "0071_page_screenshots", table: "page_screenshots", column: "taken_at" },
   { migration: "0072_article_cover_svg", table: "article_drafts", column: "cover_svg" },
+  // 0073 adds two tables and five functions; probe the table the proxy
+  // writes on every request - unapplied, recordVisit() fails silently and
+  // /owner shows zeros, which is exactly the drift this probe exists to name.
+  { migration: "0073_owner_analytics", table: "web_visits", column: "visitor" },
 ];
 
 // Migrations that genuinely CANNOT be probed through this mechanism, with the

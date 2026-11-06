@@ -345,6 +345,19 @@ function BillingIcon({ className }: IconProps) {
 // (isCloudMode is server-side) and passes `billing` down.
 const BILLING: NavLink = { href: "/billing", label: "Billing", Icon: BillingIcon };
 
+// The operator's cross-tenant analytics (/owner). Only an id in
+// OPERATOR_USER_IDS gets the row (the layout decides, via isOperator); the
+// page itself 404s for anyone else.
+function OwnerIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M12 3v9l6.4 3.7" />
+      <circle cx="12" cy="12" r="9" />
+    </svg>
+  );
+}
+const OWNER: NavLink = { href: "/owner", label: "Owner", Icon: OwnerIcon };
+
 // The current plan, as a pill on the Billing row.
 //
 // It rides that row rather than sitting in the topbar for two reasons: the
@@ -383,6 +396,7 @@ const EXTRA_TITLES: { href: string; label: string }[] = [
   { href: "/new", label: "New project" },
   { href: "/playbook", label: "Backlinks" },
   { href: "/billing", label: "Billing" },
+  { href: "/owner", label: "Owner" },
 ];
 
 function isActive(href: string, pathname: string) {
@@ -526,14 +540,17 @@ function PinnedLinks({
   pathname,
   billing,
   plan,
+  owner,
 }: {
   mode: NavMode;
   pathname: string;
   billing: boolean;
   plan: PlanChip | null;
+  owner: boolean;
 }) {
   return (
     <div className="flex shrink-0 flex-col gap-0.5 border-t border-line-soft px-3 py-3">
+      {owner ? <SidebarLink link={OWNER} pathname={pathname} big={mode === "hosted"} /> : null}
       {mode === "hosted" ? <SidebarLink link={DOCS} pathname={pathname} big /> : null}
       <SidebarLink link={FEEDBACK} pathname={pathname} big={mode === "hosted"} />
       {billing ? (
@@ -550,7 +567,10 @@ export function Sidebar({
   hasProject = true,
   plan = null,
   mode = "agent",
+  owner = false,
 }: {
+  /** Show the Owner row (cloud operators only; see OWNER). */
+  owner?: boolean;
   billing?: boolean;
   hasProject?: boolean;
   /** Which nav the active project gets (layout reads it via mode.ts). */
@@ -578,7 +598,7 @@ export function Sidebar({
       <nav className={`min-h-0 flex-1 overflow-y-auto px-3 pb-3 ${mode === "hosted" ? "pt-5" : "pt-3"}`}>
         {hasProject ? <NavGroups mode={mode} pathname={pathname} /> : <NoSiteNote />}
       </nav>
-      <PinnedLinks mode={mode} pathname={pathname} billing={billing} plan={plan} />
+      <PinnedLinks mode={mode} pathname={pathname} billing={billing} plan={plan} owner={owner} />
     </aside>
   );
 }
@@ -594,7 +614,10 @@ export function MobileNav({
   hasProject = true,
   plan = null,
   mode = "agent",
+  owner = false,
 }: {
+  /** Show the Owner row (cloud operators only; see OWNER). */
+  owner?: boolean;
   billing?: boolean;
   hasProject?: boolean;
   mode?: NavMode;
@@ -677,7 +700,7 @@ export function MobileNav({
             <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 pt-1">
               {hasProject ? <NavGroups mode={mode} pathname={pathname} /> : <NoSiteNote />}
             </nav>
-            <PinnedLinks mode={mode} pathname={pathname} billing={billing} plan={plan} />
+            <PinnedLinks mode={mode} pathname={pathname} billing={billing} plan={plan} owner={owner} />
           </div>
         </div>,
             document.body,

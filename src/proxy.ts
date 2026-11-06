@@ -1,7 +1,8 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { availableAgents } from "@/lib/agents";
 import { GONE_POSTS } from "@/lib/pruned-posts";
+import { classifyPath, recordVisit, type VisitArea } from "@/lib/visits";
 
 // Next 16 proxy (the middleware.ts successor). Gates the dashboard behind the
 // password cookie. /api/* is excluded - the MCP route and crons carry their
@@ -76,7 +77,20 @@ const CLOUD_COOKIE = /^sb-.+-auth-token/;
 //   here would 500 the entire product, which is far worse than any bug it
 //   fixes. On error we return null and the caller falls through to exactly the
 //   behaviour that shipped before this existed.
-async function persistRotatedSession(req: NextRequest): Promise<NextResponse | null> {
+// The first-party visit log (lib/visits.ts, migration 0073): one row per
+// page request, written after the response is on its way (event.waitUntil),
+// so a slow insert never delays a page and a failed one never breaks it.
+// Only navigations: the RSC payload fetch and router prefetches re-request
+// the same path and would double every count.
+function track(req: NextRequest, event: NextFetchEvent, area: VisitArea | null, userId: string | null) {
+  if (!area || req.method !== "GET") return;
+  if (req.headers.get("rsc") || req.headers.get("next-router-prefetch") || req.headers.get("purpose") === "prefetch") return;
+  event.waitUntil(recordVisit({ kind: "server", area, url: req.nextUrl, headers: req.headers, userId }));
+}
+
+type Rotated = { res: NextResponse; userId: string | null };
+
+async function persistRotatedSession(req: NextRequest): Promise<Rotated | null> {
   const url = process.env.SUPABASE_URL;
   const anonKey = process.env.SUPABASE_ANON_KEY;
   if (!url || !anonKey) return null;
@@ -91,7 +105,7 @@ async function persistRotatedSession(req: NextRequest): Promise<NextResponse | n
       },
     });
     const { data, error } = await supabase.auth.getSession();
-    if (!error && data.session) return res; // rotation (if any) is now on `res`
+    if (!error && data.session) return { res, userId: data.session.user?.id ?? null }; // rotation (if any) is now on `res`
     if (error) return null; // network/transient - let the page decide, as before
     // No session behind a present cookie: it is spent or revoked, and proven so.
     // Clear it rather than letting the customer bounce off /login forever with a
@@ -101,13 +115,13 @@ async function persistRotatedSession(req: NextRequest): Promise<NextResponse | n
     for (const c of req.cookies.getAll()) {
       if (CLOUD_COOKIE.test(c.name)) dead.cookies.delete(c.name);
     }
-    return dead;
+    return { res: dead, userId: null };
   } catch {
     return null;
   }
 }
 
-export async function proxy(req: NextRequest) {
+export async function proxy(req: NextRequest, event: NextFetchEvent) {
   // The hosted blog is reached through a customer's forwarding rule, which
   // may carry a trailing slash (/blog/ -> /hosted/<key>/blog/). Next's own
   // trailing-slash redirect would answer with a Location the customer's
@@ -115,6 +129,7 @@ export async function proxy(req: NextRequest) {
   if (req.nextUrl.pathname.startsWith("/hosted/") && req.nextUrl.pathname.length > 8 && req.nextUrl.pathname.endsWith("/")) {
     const url = req.nextUrl.clone();
     url.pathname = url.pathname.replace(/\/+$/, "");
+    track(req, event, "hosted", null);
     return NextResponse.rewrite(url);
   }
   const { pathname } = req.nextUrl;
@@ -205,6 +220,7 @@ export async function proxy(req: NextRequest) {
     ((pathname === "/" || AGENT_LANDING_PATHS.has(pathname)) &&
       process.env.LANDING_ENABLED === "true")
   ) {
+    track(req, event, classifyPath(pathname), null);
     return NextResponse.next();
   }
   const cookie = req.cookies.get("dash_auth")?.value;
@@ -222,8 +238,12 @@ export async function proxy(req: NextRequest) {
   }
   if (hasCloudSession) {
     const rotated = await persistRotatedSession(req);
-    if (rotated) return rotated;
+    if (rotated) {
+      track(req, event, "app", rotated.userId);
+      return rotated.res;
+    }
   }
+  track(req, event, "app", null);
   return NextResponse.next();
 }
 

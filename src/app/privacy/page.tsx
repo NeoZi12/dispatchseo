@@ -289,6 +289,15 @@ export default function PrivacyPage() {
           <Term>Vercel Analytics</Term> counts page views and referrers for the marketing site.
           It sets no cookie and builds no profile.
         </p>
+        <p>
+          <Term>Our own visit count.</Term> Our servers keep a log of page requests: the path,
+          the referring site, the browser&apos;s user-agent string, the country, and a visitor
+          number that is a hash of the network address and browser, salted so that it changes
+          every day and cannot be turned back into an address. The address itself is not
+          stored. It sets no cookie and reads nothing from your device. <Term>Legal basis:</Term>{" "}
+          our legitimate interest in knowing whether the site is reached, and by people or by
+          crawlers. You can object to this at {CONTACT}.
+        </p>
       </Section>
 
       <Section title="Who else processes your data">
