@@ -437,7 +437,10 @@ async function research(c: Ctx): Promise<void> {
       // the page text, and a re-fetched page rarely comes back byte-identical
       // (a timestamp, a rotating ad line): without this, every resume would
       // queue fresh tasks for the same pages and the run would never finish.
-      const agent = writerProvider(project) === "agent";
+      // The subscription lane AND the batch lane park and replay this stage
+      // (both answer a call later, from writer_tasks), so both keep the
+      // reads; only the api lane answers in the same call.
+      const agent = writerProvider(project) !== "api";
       const reads: Awaited<ReturnType<typeof readPages>>[] = agent && Array.isArray(run.stage_outputs.agent_reads) ? [...(run.stage_outputs.agent_reads as Awaited<ReturnType<typeof readPages>>[])] : [];
       let next = 0;
       for (let round = 0; round < 3 && next < urls.length; round++) {
@@ -1104,8 +1107,9 @@ async function verify(c: Ctx): Promise<void> {
   // can word an issue differently, which changes the patch prompt, which is
   // a new task - the answer already paid for would be thrown away and the
   // attempt counted twice. The replay's attempt is not counted again.
-  const agent = writerProvider(project) === "agent";
-  // API runs never carry the agent-only keys.
+  // Agent and batch lanes both park a patch and replay the stage when the
+  // answer lands; the api lane answers inline and never carries these keys.
+  const agent = writerProvider(project) !== "api";
   const clearPending = agent ? { pending_patch: null } : {};
   const appliedPatches = (): string[] => (Array.isArray(run.stage_outputs.applied_patches) ? (run.stage_outputs.applied_patches as string[]) : []);
   const pendingOf = (): { issues: Issue[] } | null => {

@@ -653,7 +653,11 @@ function validateArticleInner(submission: ArticleSubmission, context: Validation
   const TITLE_MAX = 62; // Google typically renders ~50-60px-equivalent characters of a title before truncating with "..."
   const META_MIN = 110;
   const META_MAX = 158; // same idea for the meta description snippet
-  const SECTION_FLOOR = 40; // ~2 short sentences - enough to prove a section isn't a heading with a placeholder line under it
+  // ~2 short sentences - enough to prove a section isn't a heading with a
+  // placeholder line under it. 25, not 40, since 2026-11-06: a 39-word
+  // section cost a hosted-writer run a paid patch for one word, and a
+  // reference row (a request-body table) is legitimately short.
+  const SECTION_FLOOR = 25;
   const STUFFING_MIN_OCCURRENCES = 4; // a handful of natural mentions is normal; only flag once there's real repetition to measure
   const STUFFING_DENSITY = 0.03; // 3% density is the conventional spam threshold; natural prose lands under 1-2%
   const SIMILARITY_THRESHOLD = 0.6; // 60% token overlap on a title is close enough to read as "the same article, again"

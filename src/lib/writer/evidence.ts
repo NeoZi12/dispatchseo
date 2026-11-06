@@ -267,6 +267,12 @@ const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 function figureText(text: string): string {
   return expandScale(
     normalizeDigits(text)
+      // Inline code is a literal, never a claim ("endDate": "2015-05-01"
+      // in a request body), and an ISO date's month and day are not
+      // figures either: both read as "05" and cost a run two patches on
+      // 2026-11-06. Dropped on both sides of every match.
+      .replace(/`[^`\n]*`/g, " ")
+      .replace(/\b\d{4}-\d{2}(?:-\d{2})?(?:T[\d:.]+Z?)?\b/g, " ")
       .replace(/&#(?:\d+|x[0-9a-f]+);/gi, " ")
       .replace(/\]\([^)]*\)/g, "]")
       .replace(/https?:\/\/\S+/g, " ")
