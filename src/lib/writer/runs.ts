@@ -124,15 +124,22 @@ export async function startWriterRun(input: {
 
 async function startCaps(projectId: string): Promise<string | null> {
   const startOfDay = `${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`;
-  const [{ count: running }, { count: today }] = await Promise.all([
+  const [{ count: running }, { count: today }, { data: row }] = await Promise.all([
     db().from("writer_runs").select("id", { count: "exact", head: true }).eq("project_id", projectId).eq("status", "running"),
     db().from("writer_runs").select("id", { count: "exact", head: true }).eq("project_id", projectId).gte("created_at", startOfDay),
+    db().from("projects").select("writer_weekly_quota").eq("id", projectId).maybeSingle(),
   ]);
   if ((running ?? 0) >= MAX_RUNNING_PER_PROJECT) {
     return `This site already has ${MAX_RUNNING_PER_PROJECT} articles being written. Wait for one to finish (get_writer_runs).`;
   }
-  if ((today ?? 0) >= MAX_STARTS_PER_DAY) {
-    return `This site has started ${MAX_STARTS_PER_DAY} articles today, which is its daily limit; it resets at UTC midnight.`;
+  // The operator's per-site weekly quota (writer_weekly_quota, SQL-only) is
+  // the one knob that can lift the daily start cap, and only in proportion:
+  // a bake-off at 20 a week gets six starts a day, a customer site keeps the
+  // default. The spend ceilings (usage.ts) still bound every day.
+  const quota = Number((row as { writer_weekly_quota?: number | null } | null)?.writer_weekly_quota);
+  const dailyCap = Number.isFinite(quota) && quota > 0 ? Math.max(MAX_STARTS_PER_DAY, Math.ceil(quota / 7) * 2) : MAX_STARTS_PER_DAY;
+  if ((today ?? 0) >= dailyCap) {
+    return `This site has started ${dailyCap} articles today, which is its daily limit; it resets at UTC midnight.`;
   }
   return null;
 }
