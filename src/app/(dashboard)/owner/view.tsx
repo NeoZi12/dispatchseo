@@ -3,13 +3,14 @@ import type { Customer, CustomersReport, TopRow, TrafficReport } from "@/lib/own
 import type { Tier } from "@/lib/billing";
 import { AreaChart, MetricChart } from "./area";
 import { BarList, DeltaPill, Panel, PublishStrip, Sparkline, StatCells, type BarRow } from "./bits";
-import { ago, compact, delta, fmt, fullDate, money, rangeShort, shortDate } from "./format";
+import { ago, cancelNote, compact, delta, fmt, fullDate, money, rangeShort, shortDate } from "./format";
 
 // The sections of /owner, Polar-style: hairline panels, large light figures,
 // one accent per chart, numbers in mono so columns line up.
 
 const rows = (list: TopRow[], label?: (k: string) => string): BarRow[] =>
   list.map((r) => ({ key: r.key || "none", label: label ? label(r.key) : r.key || "Unknown", value: r.views }));
+
 
 // ---------- KPI strip ----------
 
@@ -69,21 +70,14 @@ export function KpiStrip({ t, c }: { t: TrafficReport | null; c: CustomersReport
   const signups = c ? c.signupsByDay.reduce((a, d) => a + d.count, 0) : t?.totals.signups ?? 0;
   const margin = c ? c.totals.revenueRecent - c.totals.costRecent : 0;
   return (
-    <Panel label="Key numbers" className="grid grid-cols-2 gap-px bg-line-soft xl:grid-cols-4">
-      <Kpi
-        label="Visitors"
-        value={t ? fmt(t.totals.visitors) : "–"}
-        deltaValue={t ? delta(t.totals.visitors, t.previous.visitors) : null}
-        sub={t ? `${fmt(t.totals.views)} page views` : "traffic not available"}
-        spark={t ? { values: t.days.map((d) => d.humanVisitors), tone: "blue" } : undefined}
-      />
+    <Panel label="Key numbers" className="grid grid-cols-2 gap-px bg-line-soft md:grid-cols-3 [&>*:last-child]:col-span-2 md:[&>*:last-child]:col-span-1">
       <Kpi
         label="Signups"
         value={fmt(signups)}
         sub={t ? `${fmt(t.totals.checkouts)} checkouts · ${fmt(t.totals.trials)} trials` : undefined}
         spark={c ? { values: c.signupsByDay.map((d) => d.count), tone: "violet", bars: true } : undefined}
       />
-      <Kpi label="Monthly revenue" value={c ? money(c.totals.mrr) : "–"} sub={c ? `${c.totals.paying} paying · ${c.totals.trialing} on trial · ${c.totals.churned} churned` : "cloud only"}>
+      <Kpi label="Monthly revenue" value={c ? money(c.totals.mrr) : "–"} sub={c ? `${c.totals.paying} paying · ${c.totals.trialing} on trial · ${c.totals.cancelled} cancelled` : "cloud only"}>
         {c ? <PlanMix c={c} /> : null}
       </Kpi>
       <Kpi
@@ -100,22 +94,17 @@ export function KpiStrip({ t, c }: { t: TrafficReport | null; c: CustomersReport
 
 function StatusChip({ c }: { c: Customer }) {
   const tone = c.plan.tone;
-  const word =
-    c.plan.status === "active"
-      ? c.plan.cancelAtPeriodEnd
-        ? "Ending"
-        : "Active"
+  const word = c.plan.cancelled
+    ? "Cancelled"
+    : c.plan.status === "active"
+      ? "Active"
       : c.plan.status === "trialing"
-        ? c.plan.cancelAtPeriodEnd
-          ? "Trial ending"
-          : "Trial"
+        ? "Trial"
         : c.plan.status === "past_due"
           ? "Past due"
-          : c.plan.status === "canceled" || c.plan.status === "revoked"
-            ? "Churned"
-            : c.plan.status === "incomplete"
-              ? "Unfinished"
-              : "No plan";
+          : c.plan.status === "incomplete"
+            ? "Unfinished"
+            : "No plan";
   const cls =
     tone === "ok"
       ? "border-ok/30 bg-ok/10 text-ok"
@@ -234,58 +223,6 @@ export function SectionHead({ title, says, note }: { title: string; says: string
   );
 }
 
-export function VisitorsSection({ t }: { t: TrafficReport }) {
-  const days = t.days.map((d) => d.day);
-  const partial = t.since != null && new Date(t.since).getTime() > t.from;
-  return (
-    <Panel label="Visitors">
-      <SectionHead
-        title="Visitors"
-        says="People who opened dispatchseo.com. Bots are not counted."
-        note={t.since ? <span className={partial ? "text-warn" : undefined}>Counting since {fullDate(t.since)}</span> : "Nothing counted yet"}
-      />
-      <MetricChart
-        days={days}
-        metrics={[
-          {
-            key: "visitors",
-            label: "Visitors",
-            total: fmt(t.totals.visitors),
-            delta: delta(t.totals.visitors, t.previous.visitors),
-            values: t.days.map((d) => d.humanVisitors),
-            previous: t.previousDays.map((d) => d.humanVisitors),
-            tone: "blue",
-          },
-          {
-            key: "views",
-            label: "Page views",
-            total: fmt(t.totals.views),
-            delta: delta(t.totals.views, t.previous.views),
-            values: t.days.map((d) => d.humanViews),
-            previous: t.previousDays.map((d) => d.humanViews),
-            tone: "blue",
-          },
-        ]}
-        height={220}
-      />
-      <div className="grid gap-px border-t border-line-soft bg-line-soft lg:grid-cols-2">
-        <div className="bg-surface px-5 pb-6 pt-5 sm:px-6">
-          <h3 className="text-[13px] font-medium text-ink">Where they came from</h3>
-          <div className="mt-4">
-            <BarList rows={rows(t.referrers).slice(0, 7)} empty="No visit yet." />
-          </div>
-        </div>
-        <div className="bg-surface px-5 pb-6 pt-5 sm:px-6">
-          <h3 className="text-[13px] font-medium text-ink">Most visited pages</h3>
-          <div className="mt-4">
-            <BarList rows={rows(t.pages).slice(0, 7)} total={t.totals.views} empty="No page view yet." />
-          </div>
-        </div>
-      </div>
-    </Panel>
-  );
-}
-
 export function SignupsSection({ t, c, who, now }: { t: TrafficReport; c: CustomersReport | null; who: (id: string) => string; now: number }) {
   const series = c?.signupsByDay ?? t.days.map((d, i) => ({ day: d.day, count: t.signupEventsByDay[i] ?? 0 }));
   const n = series.reduce((a, d) => a + d.count, 0);
@@ -356,6 +293,7 @@ function MobileCustomer({ x, now }: { x: Customer; now: number; range: number })
           </div>
           <StatusChip c={x} />
         </div>
+        {cancelNote(x.plan) ? <p className="mt-1.5 text-[12px] text-danger/90">{cancelNote(x.plan)}</p> : null}
         <dl className="mt-3 grid grid-cols-3 gap-2 font-mono tabular-nums">
           {[
             ["Revenue", money(x.revenueRecentUsd), "text-ink"],
@@ -439,6 +377,7 @@ export function CustomersPanel({ c, t, range, now }: { c: CustomersReport; t: Tr
                   <span className="mt-1 block font-mono text-[11px] tabular-nums text-ink-faint">
                     {x.plan.monthlyUsd ? `${money(x.plan.monthlyUsd)}/mo${x.plan.interval === "year" ? " · yearly" : ""}` : ""}
                   </span>
+                  {cancelNote(x.plan) ? <span className="mt-0.5 block whitespace-nowrap text-[11.5px] text-danger/90">{cancelNote(x.plan)}</span> : null}
                 </td>
                 <td className="px-3 py-3 text-right font-mono tabular-nums">
                   <span className="text-ink">{money(x.revenueRecentUsd)}</span>

@@ -325,6 +325,11 @@ export type Customer = {
     /** Normalised to a month: the plan's monthly rate (yearly plans at their per-month rate). */
     monthlyUsd: number;
     trialEnd: string | null;
+    /** When the subscription started and when it was cancelled, from Polar. */
+    startedAt: string | null;
+    canceledAt: string | null;
+    /** Cancelled: ended, or set to end (a trial cancelled in its first hour is this). */
+    cancelled: boolean;
     source: "polar" | "plan" | "none";
   };
   sites: CustomerSite[];
@@ -364,7 +369,7 @@ export type CustomersReport = {
     customers: number;
     paying: number;
     trialing: number;
-    churned: number;
+    cancelled: number;
     mrr: number;
     /** Revenue in the range: real payments, or plan prices when not readable. */
     revenueRecent: number;
@@ -412,7 +417,7 @@ type ProjectRow = {
 
 type RollupRow = Record<string, unknown>;
 
-type PolarFacts = { amountUsd: number; interval: "month" | "year"; trialEnd: string | null };
+type PolarFacts = { amountUsd: number; interval: "month" | "year"; trialEnd: string | null; startedAt: string | null; canceledAt: string | null };
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -445,6 +450,8 @@ async function polarFacts(subs: SubRow[]): Promise<Map<string, PolarFacts>> {
       amountUsd: (s.amount ?? 0) / 100,
       interval,
       trialEnd: s.trialEnd ? new Date(s.trialEnd).toISOString() : null,
+      startedAt: s.startedAt ? new Date(s.startedAt).toISOString() : null,
+      canceledAt: s.canceledAt ? new Date(s.canceledAt).toISOString() : null,
     });
   });
   return out;
@@ -475,7 +482,7 @@ function planOf(sub: SubRow | undefined, facts: PolarFacts | undefined): Custome
       break;
     case "canceled":
     case "revoked":
-      label = "Churned";
+      label = "Cancelled";
       tone = "danger";
       break;
     case "incomplete":
@@ -486,8 +493,12 @@ function planOf(sub: SubRow | undefined, facts: PolarFacts | undefined): Custome
       label = "No plan";
       tone = "neutral";
   }
-  if (cancel && (status === "active" || status === "trialing")) {
-    label = `${label} · ending`;
+  // A cancelled trial will never be charged: it is a cancellation, not a trial.
+  if (cancel && status === "trialing") {
+    label = "Cancelled";
+    tone = "danger";
+  } else if (cancel && status === "active") {
+    label = "Cancelled";
     tone = "warn";
   }
   return {
@@ -501,6 +512,9 @@ function planOf(sub: SubRow | undefined, facts: PolarFacts | undefined): Custome
     chargeUsd: facts ? facts.amountUsd : null,
     monthlyUsd,
     trialEnd: facts?.trialEnd ?? (status === "trialing" ? sub?.current_period_end ?? null : null),
+    startedAt: facts?.startedAt ?? sub?.created_at ?? null,
+    canceledAt: facts?.canceledAt ?? null,
+    cancelled: (cancel && (status === "active" || status === "trialing")) || status === "canceled" || status === "revoked",
     source: facts ? "polar" : tier ? "plan" : "none",
   };
 }
@@ -620,7 +634,7 @@ export async function customersReport(range: Range, now = Date.now()): Promise<C
 
   // Paying first (by what they pay), then trials, then the rest by sign-up
   // date; the operator's own account sinks to the bottom of its group.
-  const order = (c: Customer) => (c.plan.status === "active" || c.plan.status === "past_due" ? 0 : c.plan.status === "trialing" ? 1 : 2);
+  const order = (c: Customer) => (c.plan.status === "active" || c.plan.status === "past_due" ? 0 : c.plan.status === "trialing" && !c.plan.cancelled ? 1 : 2);
   customers.sort((a, b) => {
     if (a.operator !== b.operator) return a.operator ? 1 : -1;
     const o = order(a) - order(b);
@@ -633,8 +647,8 @@ export async function customersReport(range: Range, now = Date.now()): Promise<C
   const totals = {
     customers: real.length,
     paying: real.filter((c) => c.plan.status === "active" || c.plan.status === "past_due").length,
-    trialing: real.filter((c) => c.plan.status === "trialing").length,
-    churned: real.filter((c) => c.plan.status === "canceled" || c.plan.status === "revoked").length,
+    trialing: real.filter((c) => c.plan.status === "trialing" && !c.plan.cancelled).length,
+    cancelled: real.filter((c) => c.plan.cancelled).length,
     mrr: real.reduce((a, c) => a + c.plan.monthlyUsd, 0),
     revenueRecent: real.reduce((a, c) => a + c.revenueRecentUsd, 0),
     feesRecent: customers.reduce((a, c) => a + c.feesRecentUsd, 0),

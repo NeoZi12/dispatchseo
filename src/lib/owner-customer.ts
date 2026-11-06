@@ -27,6 +27,9 @@ export type CustomerDetail = {
     polarCustomerId: string | null;
     /** The subscription's price per month (yearly plans at their monthly rate), from Polar. */
     monthlyUsd: number | null;
+    /** When the subscription started and was cancelled, from Polar. */
+    startedAt: string | null;
+    canceledAt: string | null;
   };
   /** What the last 30 days cost, AI + DataForSEO + Polar fees. */
   cost30Usd: number;
@@ -67,12 +70,16 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
   // The plan's real price: subscriptions are readable with the main token even
   // when payments are not, and a grandfathered price differs from the list one.
   let monthlyUsd: number | null = null;
+  let startedAt: string | null = (sub?.created_at as string | null) ?? null;
+  let canceledAt: string | null = null;
   const subId = (sub?.provider_subscription_id as string | null) ?? null;
-  if (subId && polarConfigured() && (sub?.status === "active" || sub?.status === "past_due")) {
+  if (subId && polarConfigured()) {
     try {
       const s = await polar().subscriptions.get({ id: subId });
       const amount = (s.amount ?? 0) / 100;
-      monthlyUsd = s.recurringInterval === "year" ? amount / 12 : amount;
+      if (sub?.status === "active" || sub?.status === "past_due") monthlyUsd = s.recurringInterval === "year" ? amount / 12 : amount;
+      if (s.startedAt) startedAt = new Date(s.startedAt).toISOString();
+      if (s.canceledAt) canceledAt = new Date(s.canceledAt).toISOString();
     } catch {
       monthlyUsd = null;
     }
@@ -190,6 +197,8 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
       periodEnd: (sub?.current_period_end as string | null) ?? null,
       polarCustomerId: polarCustomer,
       monthlyUsd,
+      startedAt,
+      canceledAt,
     },
     cost30Usd: [...costByDay].filter(([day]) => day >= ISO(now - 30 * DAY).slice(0, 10)).reduce((a, [, v]) => a + v, 0),
     qualifier: q

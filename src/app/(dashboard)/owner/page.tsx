@@ -9,7 +9,9 @@ import { aiReport, googleReport, productProjectId, type AiReport, type GoogleRep
 import { AiSection, GoogleSection } from "./insights-view";
 import { cx, FOCUS_RING } from "@/components/ui/styles";
 import { EmptyState } from "@/components/ui/empty-state";
-import { CustomersPanel, KpiStrip, PublishPanel, SignupsSection, VisitorsSection } from "./view";
+import { CustomersPanel, KpiStrip, PublishPanel, SignupsSection } from "./view";
+import { VisitorsSection } from "./visitors-view";
+import { visitorsReport, type VisitorsReport } from "@/lib/owner-visitors";
 import { shortDate } from "./format";
 
 // The operator's analytics: who reaches the site, who signs up, and what
@@ -31,11 +33,13 @@ export default async function OwnerPage({ searchParams }: { searchParams: Promis
   // never blank the other.
   const settle = <T,>(p: Promise<T>): Promise<{ value: T; error: null } | { value: null; error: string }> =>
     p.then((value) => ({ value, error: null }), (e: unknown) => ({ value: null, error: e instanceof Error ? e.message : String(e) }));
-  const [t, c, productId] = await Promise.all([
+  const [t, c, productId, vis] = await Promise.all([
     settle(trafficReport(range, now)),
     settle(customersReport(range, now)),
     productProjectId().catch(() => null),
+    settle(visitorsReport(range, now)),
   ]);
+  const visitors: VisitorsReport | null = vis.value;
   const traffic: TrafficReport | null = t.value;
   const customers: CustomersReport | null = c.value;
   const allSites = [
@@ -90,10 +94,8 @@ export default async function OwnerPage({ searchParams }: { searchParams: Promis
         </nav>
       </header>
 
-      <KpiStrip t={traffic} c={customers} />
-
       {traffic ? (
-        <VisitorsSection t={traffic} />
+        <VisitorsSection t={traffic} v={visitors} who={who} now={now} />
       ) : (
         <EmptyState title="No visitor data yet">
           {t.error?.includes("owner_visits") || t.error?.includes("web_visits")
@@ -101,6 +103,8 @@ export default async function OwnerPage({ searchParams }: { searchParams: Promis
             : `The visitor read failed: ${t.error ?? "unknown error"}.`}
         </EmptyState>
       )}
+
+      <KpiStrip t={traffic} c={customers} />
 
       {traffic ? <SignupsSection t={traffic} c={customers} who={who} now={now} /> : null}
 

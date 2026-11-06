@@ -68,3 +68,23 @@ export function rangeLabel(range: number): string {
 export function rangeShort(range: number): string {
   return range === 365 ? "12 mo" : `${range} d`;
 }
+
+/** A length of time in plain words: "16 min", "5 hours", "3 days". */
+export function span(ms: number): string {
+  const m = Math.max(0, Math.round(ms / 60000));
+  if (m < 1) return "under a minute";
+  if (m < 60) return `${m} min`;
+  const h = Math.round(m / 60);
+  if (h < 48) return `${h} hour${h === 1 ? "" : "s"}`;
+  const d = Math.round(h / 24);
+  return `${d} days`;
+}
+
+/** How a cancellation reads under the status chip, or null when nothing was cancelled. */
+export function cancelNote(p: { status: string; cancelAtPeriodEnd: boolean; startedAt?: string | null; canceledAt?: string | null; periodEnd: string | null }): string | null {
+  const after = p.startedAt && p.canceledAt ? span(new Date(p.canceledAt).getTime() - new Date(p.startedAt).getTime()) : null;
+  if (p.status === "trialing" && p.cancelAtPeriodEnd) return after ? `Cancelled ${after} into the trial` : "Cancelled during the trial";
+  if ((p.status === "active" || p.status === "past_due") && p.cancelAtPeriodEnd) return p.periodEnd ? `Cancelled · paid until ${shortDate(p.periodEnd)}` : "Cancelled";
+  if (p.status === "canceled" || p.status === "revoked") return p.canceledAt ? `Cancelled ${shortDate(p.canceledAt)}${after ? `, ${after} after starting` : ""}` : null;
+  return null;
+}

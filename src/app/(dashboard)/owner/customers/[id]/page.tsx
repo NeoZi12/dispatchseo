@@ -9,7 +9,7 @@ import { revenueUsd } from "@/lib/owner-money";
 import { cx } from "@/components/ui/styles";
 import { AreaChart } from "../../area";
 import { BarList, Panel, PanelHead, StatCells } from "../../bits";
-import { ago, compact, fmt, fullDate, money, pct, shortDate } from "../../format";
+import { ago, cancelNote, compact, fmt, fullDate, money, pct, shortDate } from "../../format";
 
 // One customer, the full picture: what they paid, what they cost, what their
 // sites got, how the writer did, and what they did. Operators only.
@@ -19,8 +19,8 @@ const STATUS: Record<string, { word: string; cls: string }> = {
   active: { word: "Active", cls: "border-ok/30 bg-ok/10 text-ok" },
   trialing: { word: "Trial", cls: "border-info/30 bg-info/10 text-info" },
   past_due: { word: "Past due", cls: "border-warn/30 bg-warn/10 text-warn" },
-  canceled: { word: "Churned", cls: "border-danger/30 bg-danger/10 text-danger" },
-  revoked: { word: "Churned", cls: "border-danger/30 bg-danger/10 text-danger" },
+  canceled: { word: "Cancelled", cls: "border-danger/30 bg-danger/10 text-danger" },
+  revoked: { word: "Cancelled", cls: "border-danger/30 bg-danger/10 text-danger" },
   incomplete: { word: "Unfinished", cls: "border-warn/30 bg-warn/10 text-warn" },
 };
 
@@ -92,7 +92,9 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
     .map(([label, usd]) => ({ key: label, label, value: usd }))
     .filter((r) => r.value > 0)
     .sort((a, b) => b.value - a.value);
-  const status = STATUS[d.plan.status] ?? { word: "No plan", cls: "border-line bg-surface-2 text-ink-faint" };
+  const cancelled = d.plan.cancelAtPeriodEnd && (d.plan.status === "active" || d.plan.status === "trialing");
+  const status = cancelled ? STATUS.canceled : (STATUS[d.plan.status] ?? { word: "No plan", cls: "border-line bg-surface-2 text-ink-faint" });
+  const note = cancelNote(d.plan);
   const perArticle = d.articleCount ? (d.cost.llmUsd + d.cost.dfsUsd) / d.articleCount : null;
   const failRate = d.writer.done + d.writer.failed ? d.writer.failed / (d.writer.done + d.writer.failed) : 0;
   const activeDays = d.activeDays.length;
@@ -109,14 +111,14 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
           <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] text-ink-muted">
             <span className={cx("inline-flex items-center rounded-md border px-1.5 py-0.5 text-[11.5px] font-medium", status.cls)}>
               {status.word}
-              {d.plan.cancelAtPeriodEnd ? " · ending" : ""}
             </span>
+            {note ? <span className="text-danger/90">{note}</span> : null}
             {d.plan.tier ? <span className="capitalize">{d.plan.tier}</span> : null}
             <span className="text-ink-faint">Joined {fullDate(d.createdAt)}</span>
             <span className="text-ink-faint">Last sign-in {ago(d.lastSignInAt, now)}</span>
-            {d.plan.periodEnd && (d.plan.status === "active" || d.plan.status === "trialing") ? (
+            {d.plan.periodEnd && !cancelled && (d.plan.status === "active" || d.plan.status === "trialing") ? (
               <span className="text-ink-faint">
-                {d.plan.status === "trialing" ? "Trial ends" : d.plan.cancelAtPeriodEnd ? "Ends" : "Renews"} {fullDate(d.plan.periodEnd)}
+                {d.plan.status === "trialing" ? "Trial ends" : "Renews"} {fullDate(d.plan.periodEnd)}
               </span>
             ) : null}
           </p>

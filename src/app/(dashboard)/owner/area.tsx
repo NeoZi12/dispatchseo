@@ -53,7 +53,9 @@ export function AreaChart({
   const n = values.length;
   const H = 300;
   const PAD = 14;
-  const max = niceMax(Math.max(0, ...values, ...(previous ?? [])));
+  const top = niceMax(Math.max(0, ...values, ...(previous ?? [])));
+  // Whole counts get an even top, so the middle guide is a whole number too (never "1, 1").
+  const max = unit === "usd" ? top : Math.max(2, Math.ceil(top / 2) * 2);
   const bars = kind === "bars";
   // Lines run edge to edge; bars sit in n equal slots, so their centres move in.
   const x = (i: number) => (bars ? ((i + 0.5) / Math.max(1, n)) * W : n > 1 ? (i / (n - 1)) * W : W / 2);
