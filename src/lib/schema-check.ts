@@ -174,6 +174,12 @@ const PROBES: Probe[] = [
 // deliberate exemption from the oversight that let 0039 slip through, and so
 // nobody re-audits these two every time the list is reviewed.
 export const UNPROBEABLE: Record<string, string> = {
+  // Replaces the owner_* functions of 0073 and adds two more; functions are
+  // invisible to PostgREST. Unapplied, /owner's charts show the 0073 shape
+  // (crawlers that ran the beacon count as people) and the daily signups /
+  // cost cards read "not available" - visible on the one page that uses it.
+  "0074_owner_analytics_v2":
+    "create or replace of SQL functions only - artifact is in pg_proc, not queryable via PostgREST",
   // Rewrites foreign keys to ON DELETE CASCADE. No table or column changes -
   // its artifact lives in pg_constraint. Failure mode if unapplied is a
   // failed project delete (loud, immediate, user-facing), not silent drift.

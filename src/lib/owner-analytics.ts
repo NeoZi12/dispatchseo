@@ -43,8 +43,13 @@ export type TrafficReport = {
   from: number;
   to: number;
   days: DayRow[];
+  /** The window before this one, same length, for the dotted comparison line. */
+  previousDays: DayRow[];
   totals: Totals;
   previous: Totals;
+  /** Per-day counts aligned with `days` (app_events; recorded since 2026-11-06). */
+  checkoutsByDay: number[];
+  signupEventsByDay: number[];
   pages: TopRow[];
   referrers: TopRow[];
   countries: TopRow[];
@@ -98,6 +103,25 @@ async function count(from: number, to: number, area: string, paths: string[]): P
   if (error) throw error;
   const r = ((data ?? []) as Array<Record<string, unknown>>)[0] ?? {};
   return { views: Number(r.views ?? 0), visitors: Number(r.visitors ?? 0) };
+}
+
+type DailyEvent = { day: string; event: string; n: number; actors: number };
+
+async function eventsDaily(from: number, to: number): Promise<DailyEvent[]> {
+  const { data, error } = await db().rpc("owner_events_daily", { p_from: ISO(from), p_to: ISO(to) });
+  if (error) throw error;
+  return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    day: String(r.day),
+    event: String(r.event),
+    n: Number(r.n ?? 0),
+    actors: Number(r.actors ?? 0),
+  }));
+}
+
+function seriesFor(rows: DailyEvent[], event: string, days: DayRow[]): number[] {
+  const by = new Map<string, number>();
+  for (const r of rows) if (r.event === event) by.set(r.day, r.actors);
+  return days.map((d) => by.get(d.day) ?? 0);
 }
 
 async function events(from: number, to: number): Promise<EventRow[]> {
@@ -184,7 +208,7 @@ const FUNNEL_PATHS = ["/plans", "/signup", "/onboarding", "/qualify"];
 
 export async function trafficReport(range: Range, now = Date.now()): Promise<TrafficReport> {
   const w = windows(range, now);
-  const [days, prevDays, appDays, ev, prevEv, pricing, pages, referrers, countries, devices, sources, crawlers, crawlerPages, fileReaders, published] =
+  const [days, prevDays, appDays, ev, prevEv, pricing, pages, referrers, countries, devices, sources, crawlers, crawlerPages, fileReaders, published, dailyEvents] =
     await Promise.all([
       daily(w.from, w.to, "site"),
       daily(w.prevFrom, w.prevTo, "site"),
@@ -201,10 +225,12 @@ export async function trafficReport(range: Range, now = Date.now()): Promise<Tra
       top(w.from, w.to, "site", "path", true, 8),
       top(w.from, w.to, "file", "bot_name", true, 8),
       publishedByDay(w.from, w.to),
+      eventsDaily(w.from, w.to).catch(() => [] as DailyEvent[]),
     ]);
   const filled = fill(days, w.from, w.to);
+  const prevFilled = fill(prevDays, w.prevFrom, w.prevTo);
   const totals = totalsFor(filled, ev);
-  const previous = totalsFor(fill(prevDays, w.prevFrom, w.prevTo), prevEv);
+  const previous = totalsFor(prevFilled, prevEv);
   const app = sum(appDays);
   const funnel: FunnelStep[] = [
     { label: "Visited the site", count: totals.visitors, note: "people, by day" },
@@ -231,8 +257,11 @@ export async function trafficReport(range: Range, now = Date.now()): Promise<Tra
     from: w.from,
     to: w.to,
     days: filled,
+    previousDays: prevFilled,
     totals,
     previous,
+    checkoutsByDay: seriesFor(dailyEvents, "checkout_started", filled),
+    signupEventsByDay: seriesFor(dailyEvents, "user_signed_up", filled),
     pages,
     referrers: referrers.map((r) => (r.key === "" ? { ...r, key: "Direct / none" } : r)),
     countries,
@@ -323,6 +352,10 @@ export type CustomersReport = {
     articlesRecent: number;
   };
   polarChecked: boolean;
+  /** Accounts created per UTC day in the range (auth users: real history). */
+  signupsByDay: Array<{ day: string; count: number }>;
+  /** What the range cost per day, USD (LLM + platform DataForSEO); empty when 0074 is not applied. */
+  costByDay: Array<{ day: string; usd: number }>;
 };
 
 type SubRow = {
@@ -468,12 +501,13 @@ export async function customersReport(range: Range, now = Date.now()): Promise<C
   if (!isCloudMode()) return null;
   const w = windows(range, now);
   const since = ISO(w.from);
-  const [usersRes, subsRes, projectsRes, rollupRes, activityRes] = await Promise.all([
+  const [usersRes, subsRes, projectsRes, rollupRes, activityRes, costRes] = await Promise.all([
     db().auth.admin.listUsers({ page: 1, perPage: 1000 }),
     db().from("subscriptions").select("user_id, tier, status, provider_subscription_id, current_period_end, cancel_at_period_end, created_at"),
     db().from("projects").select("id, slug, name, domain, owner_user_id, writer_mode, created_at"),
     db().rpc("owner_project_rollup", { p_since: since }),
     db().rpc("owner_user_activity", { p_since: since }),
+    db().rpc("owner_cost_daily", { p_from: since, p_to: ISO(w.to) }),
   ]);
   if (usersRes.error) throw usersRes.error;
   if (subsRes.error) throw subsRes.error;
@@ -555,5 +589,25 @@ export async function customersReport(range: Range, now = Date.now()): Promise<C
     articles: customers.reduce((a, c) => a + c.articles, 0) + orphanSites.reduce((a, s) => a + s.articles, 0),
     articlesRecent: customers.reduce((a, c) => a + c.articlesRecent, 0) + orphanSites.reduce((a, s) => a + s.articlesRecent, 0),
   };
-  return { customers, orphanSites, totals, polarChecked: facts.size > 0 };
+  const dayKeys: string[] = [];
+  for (let t = w.from; t < w.to; t += DAY) dayKeys.push(new Date(t).toISOString().slice(0, 10));
+  const signupMap = new Map<string, number>();
+  for (const u of usersRes.data.users) {
+    const key = (u.created_at ?? "").slice(0, 10);
+    if (key) signupMap.set(key, (signupMap.get(key) ?? 0) + 1);
+  }
+  const costMap = new Map<string, number>();
+  if (!costRes.error) {
+    for (const r of (costRes.data ?? []) as RollupRow[]) {
+      costMap.set(String(r.day), (Number(r.llm_microusd ?? 0) + Number(r.dfs_microusd ?? 0)) / 1e6);
+    }
+  }
+  return {
+    customers,
+    orphanSites,
+    totals,
+    polarChecked: facts.size > 0,
+    signupsByDay: dayKeys.map((day) => ({ day, count: signupMap.get(day) ?? 0 })),
+    costByDay: costRes.error ? [] : dayKeys.map((day) => ({ day, usd: costMap.get(day) ?? 0 })),
+  };
 }

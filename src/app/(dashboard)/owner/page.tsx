@@ -1,19 +1,30 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { requireDashboard } from "@/lib/auth-gate";
 import { isOperator } from "@/lib/autopilot/operator";
 import { isCloudMode } from "@/lib/cloud";
 import { customersReport, parseRange, RANGES, trafficReport, type CustomersReport, type TrafficReport } from "@/lib/owner-analytics";
+import { cx, FOCUS_RING } from "@/components/ui/styles";
 import { EmptyState } from "@/components/ui/empty-state";
-import { PageHeading } from "@/components/ui/page-heading";
-import { Tabs } from "@/components/ui/tabs";
-import { ActivitySection, CrawlersSection, CustomersSection, DashboardUseSection, FunnelSection, PublishSection, TrafficSection } from "./view";
+import {
+  ActivityPanel,
+  AudiencePanel,
+  CustomersPanel,
+  FunnelPanel,
+  KpiStrip,
+  MoneyPanel,
+  PublishPanel,
+  RealPanel,
+  SignupsPanel,
+  TrafficPanel,
+} from "./view";
+import { shortDate } from "./format";
 
 // The operator's analytics: who reaches the site, who signs up, and what
 // every customer earns and costs. Cloud: OPERATOR_USER_IDS only, 404 for
 // anyone else (the page does not exist for a customer). Self-host: the one
-// owner, whose "site" is their own dashboard host - mostly the hosted blog
-// and crawler numbers are of use there.
+// owner.
 //
 // Operator-only telemetry with no MCP counterpart, on purpose: an MCP token
 // is one tenant, and nothing here is one tenant's to read.
@@ -32,69 +43,87 @@ export default async function OwnerPage({ searchParams }: { searchParams: Promis
   const [t, c] = await Promise.all([settle(trafficReport(range, now)), settle(customersReport(range, now))]);
   const traffic: TrafficReport | null = t.value;
   const customers: CustomersReport | null = c.value;
-  const trafficError = t.error;
-  const customersError = c.error;
 
   const emailOf = new Map<string, string>();
   const siteOf = new Map<string, string>();
-  for (const c of customers?.customers ?? []) {
-    emailOf.set(c.userId, c.email);
-    for (const s of c.sites) siteOf.set(s.id, s.domain);
+  for (const x of customers?.customers ?? []) {
+    emailOf.set(x.userId, x.email);
+    for (const s of x.sites) siteOf.set(s.id, s.domain);
   }
   for (const s of customers?.orphanSites ?? []) siteOf.set(s.id, s.domain);
-  const who = (id: string) => emailOf.get(id) ?? siteOf.get(id) ?? (id.startsWith("setup:") ? "someone (before signup)" : id.length > 20 ? id.slice(0, 8) : id);
+  const who = (id: string) => emailOf.get(id) ?? siteOf.get(id) ?? (id.startsWith("setup:") ? "a visitor" : id.length > 20 ? id.slice(0, 8) : id);
+
+  const from = traffic ? new Date(traffic.from).toISOString() : null;
+  const to = traffic ? new Date(traffic.to - 1).toISOString() : null;
 
   return (
-    <div className="space-y-6">
-      <PageHeading
-        title="Owner"
-        description="Who reaches dispatchseo.com, who signs up, and what every customer earns and costs. Only you see this page."
-        actions={
-          <Tabs
-            label="Range"
-            className="border-b-0"
-            items={RANGES.map((r) => ({ href: `/owner?range=${r}`, label: `${r} days`, active: r === range }))}
-          />
-        }
-      />
+    <div className="mx-auto max-w-[1280px] space-y-4 sm:space-y-5">
+      <header className="flex flex-col gap-4 pb-2 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-[1.75rem] font-semibold leading-tight tracking-tight text-ink">Owner</h1>
+          <p className="mt-1 text-[13.5px] text-ink-muted">
+            dispatchseo.com and every customer{from && to ? <span className="text-ink-faint"> · {shortDate(from)} – {shortDate(to)}, UTC</span> : null}
+          </p>
+        </div>
+        <nav aria-label="Range" className="flex w-full rounded-xl border border-line-soft bg-surface p-1 sm:w-auto">
+          {RANGES.map((r) => (
+            <Link
+              key={r}
+              href={`/owner?range=${r}`}
+              scroll={false}
+              aria-current={r === range ? "page" : undefined}
+              className={cx(
+                "flex-1 rounded-lg px-4 py-1.5 text-center font-mono text-[12.5px] tabular-nums transition-colors sm:flex-none",
+                r === range ? "bg-surface-3 text-ink" : "text-ink-faint hover:text-ink",
+                FOCUS_RING,
+              )}
+            >
+              {r}d
+            </Link>
+          ))}
+        </nav>
+      </header>
+
+      <KpiStrip t={traffic} c={customers} />
 
       {traffic ? (
-        <>
-          <TrafficSection t={traffic} />
-          <div className="grid gap-6 lg:grid-cols-5">
-            <div className="lg:col-span-3">
-              <FunnelSection t={traffic} />
-            </div>
-            <div className="space-y-6 lg:col-span-2">
-              <PublishSection t={traffic} totalRecent={customers?.totals.articlesRecent ?? null} totalAll={customers?.totals.articles ?? null} />
-              <DashboardUseSection t={traffic} c={customers} />
-            </div>
-          </div>
-        </>
+        <TrafficPanel t={traffic} />
       ) : (
         <EmptyState title="No traffic data yet">
-          {trafficError?.includes("owner_visits") || trafficError?.includes("web_visits")
+          {t.error?.includes("owner_visits") || t.error?.includes("web_visits")
             ? "Migration 0073 (owner analytics) has not been applied to this database yet. Apply it and reload."
-            : `The traffic read failed: ${trafficError ?? "unknown error"}.`}
+            : `The traffic read failed: ${t.error ?? "unknown error"}.`}
         </EmptyState>
       )}
 
-      {customers ? (
-        <CustomersSection c={customers} range={range} now={now} />
-      ) : isCloudMode() ? (
-        <EmptyState title="Customers could not be read">{customersError ?? "unknown error"}</EmptyState>
+      {traffic ? (
+        <div className="grid gap-4 sm:gap-5 lg:grid-cols-2">
+          <SignupsPanel t={traffic} c={customers} />
+          {customers ? <MoneyPanel c={customers} range={range} /> : null}
+        </div>
       ) : null}
 
       {traffic ? (
-        <div className="grid gap-6 lg:grid-cols-5">
-          <div className="lg:col-span-3">
-            <ActivitySection t={traffic} who={who} now={now} />
-          </div>
-          <div className="lg:col-span-2">
-            <CrawlersSection t={traffic} />
-          </div>
+        <div className="grid gap-4 sm:gap-5 lg:grid-cols-2">
+          <FunnelPanel t={traffic} />
+          <RealPanel t={traffic} />
         </div>
       ) : null}
+
+      {traffic ? (
+        <div className="grid gap-4 sm:gap-5 lg:grid-cols-2">
+          <AudiencePanel t={traffic} />
+          <ActivityPanel t={traffic} who={who} now={now} />
+        </div>
+      ) : null}
+
+      {customers ? (
+        <CustomersPanel c={customers} t={traffic} range={range} now={now} />
+      ) : isCloudMode() ? (
+        <EmptyState title="Customers could not be read">{c.error ?? "unknown error"}</EmptyState>
+      ) : null}
+
+      {traffic && customers ? <PublishPanel t={traffic} c={customers} /> : null}
     </div>
   );
 }
