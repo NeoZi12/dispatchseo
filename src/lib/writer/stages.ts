@@ -447,7 +447,10 @@ async function research(c: Ctx): Promise<void> {
     } else {
       // Lazily, in rank order: read until PAGES_WANTED pages are readable,
       // extract them, and only when they still give fewer than the minimum
-      // sources read two more - three rounds at most, never past the list.
+      // sources OR fewer than the minimum facts read two more - four rounds
+      // at most, never past the list. (Until 2026-11-06 only the source
+      // count ended the loop: a run with 4 readable pages, 2 sources and 9
+      // facts parked "9 of 10 facts" with 16 page-one results never read.)
       // Agent provider: each round's pages are SAVED before extraction and
       // reused when the stage replays. The extraction task's key is a hash of
       // the page text, and a re-fetched page rarely comes back byte-identical
@@ -459,7 +462,7 @@ async function research(c: Ctx): Promise<void> {
       const agent = writerProvider(project) !== "api";
       const reads: Awaited<ReturnType<typeof readPages>>[] = agent && Array.isArray(run.stage_outputs.agent_reads) ? [...(run.stage_outputs.agent_reads as Awaited<ReturnType<typeof readPages>>[])] : [];
       let next = 0;
-      for (let round = 0; round < 3 && next < urls.length; round++) {
+      for (let round = 0; round < 4 && next < urls.length; round++) {
         let read = reads[round];
         if (!read) {
           const want = round === 0 ? PAGES_WANTED : 2;
@@ -496,7 +499,7 @@ async function research(c: Ctx): Promise<void> {
         next = read.next;
         unread.push(...read.unread);
         if (read.pages.length) await extractAll(read.pages);
-        if (new Set(found.map((f) => f.url)).size >= minSources) break;
+        if (new Set(found.map((f) => f.url)).size >= minSources && dedupeFacts(found, lang).length >= minFacts) break;
         if (c.deadline - Date.now() < 60_000) break;
       }
     }
@@ -1471,7 +1474,7 @@ async function judgeClaims(c: Ctx, sheet: FactSheet, brief: SiteBrief, units: { 
           state: { claim: unit.text, section: section ?? "", passages: passages.map((ps) => ({ id: ps.id, source: ps.source.startsWith("S") ? `this site's page [${ps.source}]` : `source [${ps.source}]`, quote: ps.quote })) },
           questions: {
             supported_by: { type: "choice", instructions: "Which passage in state.passages states state.claim, or directly implies it? Answer none when no passage does.", criteria },
-            contradicted: { type: "noul", instructions: "At least one passage in state.passages states the opposite of state.claim, or gives a different figure for the same thing." },
+            contradicted: { type: "noul", instructions: "At least one passage in state.passages asserts the opposite of state.claim, or gives a different figure for the same thing. A claim that warns against the absence or failure of what a passage recommends (a red flag, a 'walk away if', a 'do not') AGREES with that passage; it is not a contradiction." },
           },
           dry: () => {
             const pickId = passages.find((ps) => unit.cites.includes(ps.source))?.id ?? passages[0].id;
@@ -1646,8 +1649,26 @@ async function runChecks(c: Ctx, sheet: FactSheet, brief: SiteBrief, p: Plan, in
     if (v.verdict === "not_judged") {
       notJudged.push(`claim: ${v.why ?? "the judge failed"}`);
       issues.push({ ...where, note: `the judge could not check this claim (${v.why ?? "no answer"}); not verified against the sources: "${unit.text.slice(0, 160)}"`, blocking: false });
-    } else if (v.verdict === "contradicts") issues.push({ ...where, note: `this contradicts its source; fix or remove: "${unit.text.slice(0, 160)}"`, blocking: true });
-    else if (v.verdict === "says_nothing" && reasoning) issues.push({ ...where, note: `no source states this conclusion; keep it as your own reasoning, not as a fact: "${unit.text.slice(0, 160)}"`, blocking: false });
+    } else if (v.verdict === "contradicts" && (unit.figures.length > 0 || v.confidence >= 0.9 || unit.cites.length === 0)) issues.push({ ...where, note: `this contradicts its source; fix or remove: "${unit.text.slice(0, 160)}"`, blocking: true });
+    else if (v.verdict === "contradicts") {
+      // A figure-less sentence the judge calls a contradiction without
+      // being sure is nearly always a red flag phrased as a negation of the
+      // source's advice ("they cannot show case studies [4]" against "ask
+      // for case studies"). Run 9 of the 2026-11-06 bake-off spent both
+      // patches on two of these (0.82 and 0.71) and failed. The marker
+      // comes off in code and the sentence stays as the writer's own
+      // reasoning; a sure contradiction, or one with a figure, still blocks.
+      let fixed = unit.raw;
+      for (const x of unit.cites) fixed = fixed.split(`[${x}]`).join("");
+      fixed = fixed.replace(/[ \t]{2,}/g, " ").replace(/\s+([.,;:!?])/g, "$1");
+      if (fixed !== unit.raw) {
+        draft = spliceDraft(draft, unit.raw, fixed);
+        markerFixes.push({ from: unit.cites.join(","), to: "", claim: unit.text.slice(0, 200) });
+        unit.raw = fixed;
+        unit.cites = [];
+      }
+      issues.push({ ...where, note: `its source reads differently; the citation was removed and it stands as your own reasoning: "${unit.text.slice(0, 160)}"`, blocking: false });
+    } else if (v.verdict === "says_nothing" && reasoning) issues.push({ ...where, note: `no source states this conclusion; keep it as your own reasoning, not as a fact: "${unit.text.slice(0, 160)}"`, blocking: false });
     else if (v.verdict === "says_nothing" && unit.cites.length && unit.figures.length === 0) {
       // A cited sentence with no figure whose source says nothing about it
       // is advice or framing wearing a marker it does not need ("hire an
