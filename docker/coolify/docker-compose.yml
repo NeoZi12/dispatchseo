@@ -1,0 +1,198 @@
+# DispatchSEO on Coolify - the same stack as the root docker-compose.yml,
+# reshaped for a platform that owns TLS, domains, and secrets. This file is
+# Coolify-only: the magic SERVICE_* variables below only resolve there - on
+# your own machine or a bare VPS, use the root docker-compose.yml via
+# start.sh.
+#
+# Everything else in this file is STANDARD compose schema on purpose:
+# Coolify validates the file with `docker compose config` before its own
+# parsing, and that validator rejects even Coolify's own documented
+# extensions (exclude_from_hc, content:, is_directory: - see
+# coollabsio/coolify#5494), so none of them may appear here or the resource
+# fails with "invalid format" at creation.
+#
+# Point a Coolify "Public Repository" resource at this repo with:
+#
+#   Build Pack:              Docker Compose
+#   Base Directory:          /
+#   Docker Compose Location: /docker/coolify/docker-compose.yml
+#
+# then enable Configuration > General > "Preserve Repository During
+# Deployment". The migrate and cron services bind-mount files out of this
+# repo at deploy time; without that setting Coolify deploys from a directory
+# where those files do not exist and creates empty DIRECTORIES at their
+# paths instead (coollabsio/coolify#6056), which kills the schema install.
+#
+# Bind-mount paths below are written relative to the Base Directory (the
+# repo root), NOT relative to this file - that is how Coolify resolves them
+# in compose deployments, so do not "fix" them to ../../.
+#
+# Walkthrough: https://dispatchseo.com/docs/coolify
+#
+# Differences from the root compose file, all deliberate:
+#   - No caddy service and no published ports. Coolify's own proxy
+#     terminates HTTPS and routes the assigned domain to the app container
+#     (the SERVICE_FQDN_APP_3000 line); a host port would only bypass it.
+#   - No `build:` on app/builder. Coolify builds every service that carries
+#     one, and a Next.js production build wants more RAM than many Coolify
+#     boxes have spare - the prebuilt GHCR images track this repo's main
+#     branch instead. Forks that changed code should restore `build: .` on
+#     app and `build: ./docker/builder` on builder.
+#   - Secrets are Coolify magic variables (SERVICE_PASSWORD_*): generated on
+#     the first deploy, stable across redeploys, visible in the resource's
+#     Environment Variables tab. Nothing to fill in by hand.
+#   - No `name:` / `networks:`. Coolify names the stack per resource and
+#     puts its services on their own isolated network, so pinning either
+#     here would fight the platform (and break running two installs on one
+#     server).
+#
+# PERSISTENCE: everything lives in the two named volumes at the bottom -
+# dispatch-pgdata IS the database. They survive redeploys and image
+# upgrades, but Coolify's "Delete Resource" removes them with the stack, so
+# back up first: https://dispatchseo.com/docs/upgrading
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=dispatch
+      - POSTGRES_PASSWORD=${SERVICE_PASSWORD_POSTGRES}
+      - POSTGRES_DB=dispatchseo
+    volumes:
+      - dispatch-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U dispatch -d dispatchseo
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # One-shot on every deploy: applies supabase/migrations/setup.sql
+  # (idempotent - it is how upgrades pick up new tables), then tells a
+  # running PostgREST to reload its schema cache. It exits 0 when done, so
+  # Coolify lists it as "Exited" - that is this container working as
+  # designed, not a failure. (Coolify's exclude_from_hc flag exists for
+  # exactly this, but its validator rejects it - see the header.)
+  migrate:
+    image: postgres:17-alpine
+    restart: "no"
+    environment:
+      - PGHOST=postgres
+      - PGUSER=dispatch
+      - PGPASSWORD=${SERVICE_PASSWORD_POSTGRES}
+      - PGDATABASE=dispatchseo
+    volumes:
+      - ./supabase/migrations/setup.sql:/setup.sql:ro
+    command:
+      - sh
+      - -c
+      - psql -v ON_ERROR_STOP=1 -f /setup.sql && psql -c "NOTIFY pgrst, 'reload schema'"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgrest:
+    image: postgrest/postgrest:v12.2.12
+    restart: always
+    environment:
+      - PGRST_DB_URI=postgres://dispatch:${SERVICE_PASSWORD_POSTGRES}@postgres:5432/dispatchseo
+      - PGRST_DB_SCHEMAS=public
+      - PGRST_DB_ANON_ROLE=dispatch
+      - PGRST_DB_POOL=10
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  app:
+    image: ghcr.io/neozi12/dispatchseo:latest
+    restart: always
+    environment:
+      # Coolify magic: give this service a domain and route it to container
+      # port 3000. Coolify generates one under your wildcard domain on the
+      # first deploy; set your real subdomain in the service's Domains field
+      # and APP_URL follows it on the next deploy.
+      - SERVICE_FQDN_APP_3000
+      - APP_URL=${SERVICE_URL_APP_3000}
+      - POSTGREST_URL=http://postgrest:3000
+      - CRON_SECRET=${SERVICE_PASSWORD_CRON}
+      # Optional overrides - the setup wizard handles all of these in the
+      # dashboard; set one (Environment Variables tab) only to force a
+      # value. The list must stay in sync with the root compose file: this
+      # service enumerates its env explicitly, so a variable not listed here
+      # never reaches the app.
+      - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD:-}
+      - MCP_API_KEY=${MCP_API_KEY:-}
+      - GSC_SERVICE_ACCOUNT_JSON=${GSC_SERVICE_ACCOUNT_JSON:-}
+      - GSC_SITE_URL=${GSC_SITE_URL:-}
+      - DATAFORSEO_LOGIN=${DATAFORSEO_LOGIN:-}
+      - DATAFORSEO_PASSWORD=${DATAFORSEO_PASSWORD:-}
+      - GH_MERGE_TOKEN=${GH_MERGE_TOKEN:-}
+      # Builder credentials on the APP as well as the builder - the app is
+      # what resolves a token per job and hands it to the container (the
+      # root compose file documents the silent-stall failure mode when these
+      # two lists diverge).
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - CURSOR_API_KEY=${CURSOR_API_KEY:-}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - ALERT_EMAIL=${ALERT_EMAIL:-}
+      - ALERT_EMAIL_FROM=${ALERT_EMAIL_FROM:-}
+      - SEED_KEYWORDS=${SEED_KEYWORDS:-}
+      # The anonymous once-a-day install ping (src/lib/heartbeat.ts). No
+      # start.sh runs here to write an install id into .env; the app
+      # generates one and stores it in its own database instead. Set
+      # DISPATCHSEO_TELEMETRY=off to stop the ping.
+      - DISPATCH_INSTALL_ID=${DISPATCH_INSTALL_ID:-}
+      - DISPATCHSEO_TELEMETRY=${DISPATCHSEO_TELEMETRY:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgrest:
+        condition: service_started
+
+  cron:
+    image: alpine:3.21
+    restart: always
+    environment:
+      - CRON_SECRET=${SERVICE_PASSWORD_CRON}
+      - APP_INTERNAL_URL=http://app:3000
+    volumes:
+      - ./docker/cron/crontab:/etc/crontabs/root:ro
+      - ./docker/cron/hit.sh:/usr/local/bin/hit.sh:ro
+      - ./docker/cron/entrypoint.sh:/entrypoint.sh:ro
+    entrypoint:
+      - /bin/sh
+      - /entrypoint.sh
+    depends_on:
+      app:
+        condition: service_started
+
+  builder:
+    image: ghcr.io/neozi12/dispatchseo-builder:latest
+    restart: always
+    environment:
+      - CRON_SECRET=${SERVICE_PASSWORD_CRON}
+      - APP_INTERNAL_URL=http://app:3000
+      # All optional - the easiest path is pasting the agent token on the
+      # dashboard's "Turn on automatic builds" step; a value set here
+      # overrides the dashboard one.
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - CURSOR_API_KEY=${CURSOR_API_KEY:-}
+      - CODEX_MODEL=${CODEX_MODEL:-}
+      - CURSOR_MODEL=${CURSOR_MODEL:-}
+      - BUILDER_GH_TOKEN=${BUILDER_GH_TOKEN:-}
+      - BUILDER_POLL_SECONDS=${BUILDER_POLL_SECONDS:-600}
+    volumes:
+      - dispatch-builder:/data
+    depends_on:
+      app:
+        condition: service_started
+
+volumes:
+  dispatch-pgdata:
+  dispatch-builder:
