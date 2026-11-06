@@ -19,40 +19,12 @@ function Detail({ title, children }: { title: string; children: React.ReactNode 
   );
 }
 
-function ChannelLabel({ name, kind }: { name: string; kind: Channel["kind"] }) {
+function ChannelLabel({ name, kind, color }: { name: string; kind?: Channel["kind"]; color?: string }) {
   return (
     <span className="inline-flex min-w-0 items-center gap-2">
-      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: KIND_COLOR[kind] }} aria-hidden="true" />
+      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: color ?? (kind ? KIND_COLOR[kind] : undefined) }} aria-hidden="true" />
       <span className="truncate">{name}</span>
     </span>
-  );
-}
-
-/** People vs bots among the visits, as an estimate: the evidence per visit is
- *  in the table below (hover a verdict for the reason). */
-function Estimate({ e }: { e: VisitorsReport["estimate"] }) {
-  const total = e.person + e.bot + e.unsure;
-  if (!total) return null;
-  const order = ["person", "unsure", "bot"] as const;
-  return (
-    <div className="border-t border-line-soft px-5 py-5 sm:px-6">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
-        <h3 className="text-[13px] font-medium text-ink">Real people, estimated</h3>
-        <p className="text-[12px] text-ink-faint">From how each browser behaved: signed in, moved or typed, automation flags, stale browsers</p>
-      </div>
-      <div className="mt-4 flex h-2.5 gap-0.5 overflow-hidden rounded-full bg-surface-2">
-        {order.map((k) => (e[k] ? <div key={k} style={{ width: `${(e[k] / total) * 100}%`, background: VERDICT[k].color }} /> : null))}
-      </div>
-      <p className="mt-3 flex flex-wrap gap-x-6 gap-y-1.5 text-[13px]">
-        {order.map((k) => (
-          <span key={k} className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full" style={{ background: VERDICT[k].color }} aria-hidden="true" />
-            <span className="font-mono tabular-nums text-ink">{e[k]}</span>
-            <span className="text-ink-muted">{k === "person" ? (e[k] === 1 ? "person" : "people") : k === "bot" ? (e[k] === 1 ? "likely bot" : "likely bots") : "can't tell yet"}</span>
-          </span>
-        ))}
-      </p>
-    </div>
   );
 }
 
@@ -109,7 +81,6 @@ export function VisitorsSection({ t, v, who, now }: { t: TrafficReport; v: Visit
         ]}
         height={280}
       />
-      {v ? <Estimate e={v.estimate} /> : null}
 
       <div className="grid gap-px border-t border-line-soft bg-line-soft md:grid-cols-2">
         <Detail title="How they found you">
@@ -121,8 +92,14 @@ export function VisitorsSection({ t, v, who, now }: { t: TrafficReport; v: Visit
         <Detail title="Countries">
           <BarList rows={byVisitors(t.countries, countryLabel).slice(0, 7)} empty="No country yet." />
         </Detail>
-        <Detail title="Pages they opened">
-          <BarList rows={t.pages.slice(0, 7).map((r) => ({ key: r.key, label: r.key || "/", value: r.views }))} total={t.totals.views} empty="No page view yet." />
+        <Detail title="Human or bot">
+          <BarList
+            rows={(["person", "unsure", "bot"] as const).map((k) => ({ key: k, label: <ChannelLabel name={VERDICT[k].word} color={VERDICT[k].color} />, value: v?.estimate[k] ?? 0 }))}
+            empty="No visit yet."
+          />
+          <p className="mt-4 text-[12px] leading-relaxed text-ink-faint">
+            An estimate. Human: signed in, or moved the mouse, scrolled, tapped or typed. Bot: the browser said it was automated, or ran a Chrome a year out of date. Unsure: neither.
+          </p>
         </Detail>
         <Detail title="Devices">
           <BarList rows={byVisitors(t.devices, (k) => (k ? k.charAt(0).toUpperCase() + k.slice(1) : "Unknown")).slice(0, 7)} empty="Nothing yet." />
@@ -135,6 +112,11 @@ export function VisitorsSection({ t, v, who, now }: { t: TrafficReport; v: Visit
             </>
           ) : null}
         </Detail>
+        <div className="md:col-span-2">
+          <Detail title="Pages they opened">
+            <BarList rows={t.pages.slice(0, 7).map((r) => ({ key: r.key, label: r.key || "/", value: r.views }))} total={t.totals.views} empty="No page view yet." />
+          </Detail>
+        </div>
       </div>
 
       <div className="border-t border-line-soft">

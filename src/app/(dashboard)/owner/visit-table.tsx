@@ -5,7 +5,7 @@ import { useState } from "react";
 import { cx, FOCUS_RING } from "@/components/ui/styles";
 import type { Visit } from "@/lib/owner-visitors";
 import { ago, span } from "./format";
-import { countryName, flag, KIND_COLOR, KIND_NAME, VERDICT } from "./visitor-labels";
+import { countryName, flag, KIND_COLOR, KIND_NAME } from "./visitor-labels";
 
 // Every visit, newest first, filterable by how it arrived. One row per
 // person per day (the visitor hash rotates daily on purpose).
@@ -35,15 +35,6 @@ function Source({ v }: { v: VisitRow }) {
   );
 }
 
-function Verdict({ v }: { v: VisitRow }) {
-  const x = VERDICT[v.verdict];
-  return (
-    <span title={v.why} className={cx("inline-flex shrink-0 cursor-help items-center rounded-md border px-1.5 py-px text-[11px] font-medium", x.cls)}>
-      {x.word}
-    </span>
-  );
-}
-
 function Stay({ v }: { v: VisitRow }) {
   const ms = new Date(v.lastAt).getTime() - new Date(v.firstAt).getTime();
   return (
@@ -57,13 +48,11 @@ function Stay({ v }: { v: VisitRow }) {
 
 export function VisitTable({ visits, now }: { visits: VisitRow[]; now: number }) {
   const [kind, setKind] = useState<Kind | "all">("all");
-  const [verdict, setVerdict] = useState<VisitRow["verdict"] | "all">("all");
   const [shown, setShown] = useState(25);
   const counts = new Map<Kind, number>();
   for (const v of visits) counts.set(v.channel.kind, (counts.get(v.channel.kind) ?? 0) + 1);
   const kinds = (Object.keys(KIND_NAME) as Kind[]).filter((k) => counts.get(k));
-  const verdicts = (["person", "unsure", "bot"] as const).filter((k) => visits.some((v) => v.verdict === k));
-  const list = visits.filter((v) => (kind === "all" || v.channel.kind === kind) && (verdict === "all" || v.verdict === verdict));
+  const list = kind === "all" ? visits : visits.filter((v) => v.channel.kind === kind);
   const page = list.slice(0, shown);
 
   if (!visits.length) {
@@ -94,29 +83,6 @@ export function VisitTable({ visits, now }: { visits: VisitRow[]; now: number })
             <span className="font-mono tabular-nums text-ink-faint">{n}</span>
           </button>
         ))}
-        {verdicts.length > 1 ? <span className="mx-1 w-px shrink-0 self-stretch bg-line-soft" aria-hidden="true" /> : null}
-        {verdicts.length > 1
-          ? verdicts.map((k) => (
-              <button
-                key={k}
-                type="button"
-                aria-pressed={verdict === k}
-                onClick={() => {
-                  setVerdict(verdict === k ? "all" : k);
-                  setShown(25);
-                }}
-                className={cx(
-                  "inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[12.5px] transition-colors",
-                  verdict === k ? "border-line bg-surface-3 text-ink" : "border-line-soft text-ink-faint hover:text-ink",
-                  FOCUS_RING,
-                )}
-              >
-                <span className="h-1.5 w-1.5 rounded-full" style={{ background: VERDICT[k].color }} aria-hidden="true" />
-                {VERDICT[k].word}
-                <span className="font-mono tabular-nums text-ink-faint">{visits.filter((v) => v.verdict === k).length}</span>
-              </button>
-            ))
-          : null}
       </div>
 
       {/* Phones: one card per visit. */}
@@ -127,11 +93,8 @@ export function VisitTable({ visits, now }: { visits: VisitRow[]; now: number })
               <div className="min-w-0">
                 <Source v={v} />
               </div>
-              <span className="flex shrink-0 flex-col items-end gap-1.5">
-                <span className="font-mono text-[11.5px] tabular-nums text-ink-faint" title={when(v.lastAt, now)}>
-                  {ago(v.lastAt, now)}
-                </span>
-                <Verdict v={v} />
+              <span className="shrink-0 font-mono text-[11.5px] tabular-nums text-ink-faint" title={when(v.lastAt, now)}>
+                {ago(v.lastAt, now)}
               </span>
             </div>
             <p className="mt-2 truncate font-mono text-[12px] text-ink-muted" title={v.pages.join("  →  ")}>
@@ -150,8 +113,8 @@ export function VisitTable({ visits, now }: { visits: VisitRow[]; now: number })
         <table className="w-full table-fixed border-t border-line-soft text-left">
           <colgroup>
             <col className="w-[9.5rem]" />
-            <col className="w-[26%]" />
             <col className="w-[22%]" />
+            <col className="w-[24%]" />
             <col />
             <col className="w-[6.5rem]" />
           </colgroup>
@@ -172,14 +135,11 @@ export function VisitTable({ visits, now }: { visits: VisitRow[]; now: number })
                   <span className="mt-0.5 block text-[11.5px] text-ink-faint">{ago(v.lastAt, now)}</span>
                 </td>
                 <td className="px-3 py-3">
-                  <span className="flex min-w-0 items-center gap-2 text-[13.5px] text-ink">
-                    <span className="truncate">
-                      <span className="mr-1.5" aria-hidden="true">
-                        {flag(v.country)}
-                      </span>
-                      {countryName(v.country)}
+                  <span className="block truncate text-[13.5px] text-ink">
+                    <span className="mr-1.5" aria-hidden="true">
+                      {flag(v.country)}
                     </span>
-                    <Verdict v={v} />
+                    {countryName(v.country)}
                   </span>
                   <span className="mt-0.5 block truncate text-[11.5px] capitalize text-ink-faint">
                     {v.device ?? "unknown"}

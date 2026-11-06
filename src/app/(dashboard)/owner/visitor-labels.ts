@@ -1,9 +1,9 @@
 // Shared by the server section and the client visit table.
 
 export const VERDICT: Record<"person" | "bot" | "unsure", { word: string; color: string; cls: string }> = {
-  person: { word: "Person", color: "var(--color-ok)", cls: "border-ok/30 bg-ok/10 text-ok" },
+  person: { word: "Human", color: "var(--color-ok)", cls: "border-ok/30 bg-ok/10 text-ok" },
   unsure: { word: "Unsure", color: "#5c5c5c", cls: "border-line bg-surface-2 text-ink-muted" },
-  bot: { word: "Likely bot", color: "var(--color-warn)", cls: "border-warn/30 bg-warn/10 text-warn" },
+  bot: { word: "Bot", color: "var(--color-warn)", cls: "border-warn/30 bg-warn/10 text-warn" },
 };
 
 export const KIND_COLOR: Record<"ai" | "search" | "social" | "direct" | "site" | "campaign", string> = {
