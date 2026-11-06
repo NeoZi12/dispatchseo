@@ -66,14 +66,14 @@ export async function weekUsage(projectId: string, now: Date): Promise<WeekUsage
       // pick (spent a slot). Runs that produced a draft are counted above.
       db()
         .from("writer_runs")
-        .select("status, stage, failure_kind:stage_outputs->>failure_kind")
+        .select("status, stage, failure_kind:stage_outputs->>failure_kind, unreadable:stage_outputs->>unreadable_serp")
         .in("project_id", ids)
         .is("draft_id", null)
         .gte("created_at", since),
       // Spacing counts every run that got past pick, failed ones included: a
       // failing pipeline must not start a fresh (paid) run every morning. A
       // run that died AT pick spent next to nothing and must not delay a try.
-      db().from("writer_runs").select("created_at, status, stage, failure_kind:stage_outputs->>failure_kind").in("project_id", ids).order("created_at", { ascending: false }).limit(10),
+      db().from("writer_runs").select("created_at, status, stage, failure_kind:stage_outputs->>failure_kind, unreadable:stage_outputs->>unreadable_serp").in("project_id", ids).order("created_at", { ascending: false }).limit(10),
       db()
         .from("article_drafts")
         .select("created_at")
@@ -85,7 +85,7 @@ export async function weekUsage(projectId: string, now: Date): Promise<WeekUsage
     ]);
     if (draftsRes.error || runsRes.error) return ZERO;
     const drafts = (draftsRes.data ?? []) as { status: string }[];
-    const runs = (runsRes.data ?? []) as { status: string; stage: string; failure_kind: string | null }[];
+    const runs = (runsRes.data ?? []) as { status: string; stage: string; failure_kind: string | null; unreadable: string | null }[];
     const published = drafts.filter((d) => d.status === "published").length;
     const running = runs.filter((r) => r.status === "running").length;
     // A run stopped by OUR side (failure_kind "infra": DataForSEO ceiling,
@@ -93,9 +93,14 @@ export async function weekUsage(projectId: string, now: Date): Promise<WeekUsage
     // customer's article: charging it to their week meant a vendor outage on
     // Monday cost a Starter site its only article of the week (audit C2).
     // It neither counts against the quota nor delays the next try.
-    const ours = (r: { status: string; failure_kind: string | null }) => r.status === "failed" && r.failure_kind === "infra";
+    // A research park because page one could not be read (unreadable_serp,
+    // ~$0 spent) is the same kind of non-article: the scheduler hands the
+    // slot back, so the week must not count it either, or cadence overrides
+    // the returned slot and the site waits anyway.
+    const ours = (r: { status: string; failure_kind: string | null; unreadable?: string | null }) =>
+      r.status === "failed" && (r.failure_kind === "infra" || r.unreadable === "true");
     const failed = runs.filter((r) => r.status === "failed" && r.stage !== "pick" && !ours(r)).length;
-    const recent = ((lastRunsRes.data ?? []) as { created_at: string; status: string; stage: string; failure_kind: string | null }[]).filter(
+    const recent = ((lastRunsRes.data ?? []) as { created_at: string; status: string; stage: string; failure_kind: string | null; unreadable: string | null }[]).filter(
       (r) => !(r.status === "failed" && r.stage === "pick") && !ours(r),
     );
     const lastStartedAt =

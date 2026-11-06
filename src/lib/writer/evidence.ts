@@ -259,14 +259,43 @@ const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** Prose ready for figure matching: digits normalised, URLs, citation
  *  markers and numeric HTML entities out (the sanitizer writes &#123; for a
  *  brace and escapes import/export the same way - an entity's code point is
- *  never a figure), thousands separators dropped so 1,200 and 1200 agree. */
+ *  never a figure), thousands separators dropped so 1,200 and 1200 agree,
+ *  scale suffixes spelled out so "$5k" and "$5,000" agree too, and the
+ *  article's mention of its own length ("this 1,200-word guide") dropped.
+ *  Both sides of every match go through here, so a rule added here can
+ *  never make a figure pass on one side and fail on the other. */
 function figureText(text: string): string {
-  return normalizeDigits(text)
-    .replace(/&#(?:\d+|x[0-9a-f]+);/gi, " ")
-    .replace(/\]\([^)]*\)/g, "]")
-    .replace(/https?:\/\/\S+/g, " ")
-    .replace(/\[S?\d+\]/g, " ")
-    .replace(/(?<=\d),(?=\d{3}(?!\d))/g, "");
+  return expandScale(
+    normalizeDigits(text)
+      .replace(/&#(?:\d+|x[0-9a-f]+);/gi, " ")
+      .replace(/\]\([^)]*\)/g, "]")
+      .replace(/https?:\/\/\S+/g, " ")
+      .replace(/\[S?\d+\]/g, " ")
+      .replace(/(?<=\d),(?=\d{3}(?!\d))/g, "")
+      .replace(/\b(?:this|our)\s+\d+[\s-]words?\s+(?:guide|article|post|piece|read)\b/giu, " "),
+  );
+}
+
+/** "$5k" -> "$5000", "1.2M users" -> "1200000 users", "3 million" ->
+ *  "3000000". A lowercase m or a capital B counts only after a currency
+ *  sign ("5m" is five metres, "$5m" five million); a letter right after
+ *  the suffix means it is a unit ("5MB", "5km"), left alone. */
+const SCALE_RE = new RegExp(`(?<![\\p{L}\\p{N}.])(${CUR_PRE})?(\\d+(?:\\.\\d+)?)\\s?(thousand|million|billion|bn|mn|[kKmMB])(?![\\p{L}\\p{N}])`, "gu");
+
+function expandScale(text: string): string {
+  return text.replace(SCALE_RE, (m, cur: string | undefined, num: string, unit: string) => {
+    const u = unit.toLowerCase();
+    const factor =
+      unit === "k" || unit === "K" || u === "thousand"
+        ? 1e3
+        : unit === "M" || u === "million" || u === "mn" || (unit === "m" && cur)
+          ? 1e6
+          : u === "billion" || u === "bn" || (unit === "B" && cur)
+            ? 1e9
+            : 0;
+    if (!factor) return m;
+    return `${cur ?? ""}${Math.round(Number(num) * factor * 100) / 100}`;
+  });
 }
 
 /** Figures worth checking: versions (v2.1.232), money in any listed
@@ -750,4 +779,154 @@ export function splitSections(markdown: string): { heading: string; text: string
 
 export function joinSections(sections: { heading: string; text: string }[]): string {
   return sections.map((s) => (s.heading ? `## ${s.heading}\n${s.text}` : s.text)).join("\n");
+}
+
+// --- The deterministic figure check ------------------------------------------
+//
+// Verify's first step, before any judge call is paid for: every figure in
+// the draft must be written somewhere in the evidence (a fact's verbatim
+// quote, the site brief, the keyword). Four of eleven failed runs to
+// 2026-11-06 died at the fact gate on invented figures after two patches;
+// a figure stated nowhere is string work, not a judgement. What one patch
+// does not fix, code removes (verify, stages.ts).
+
+/** The article as verify holds it. */
+export type DraftText = { markdown: string; faq: { question: string; answer: string }[]; faqHeading?: string };
+
+/** One figure no evidence states. `raw` is the exact text it lives in (a
+ *  sentence, a table row, or a heading line with its #s); `where` is the
+ *  section heading ("" = intro, null = unplaced) or the FAQ item. */
+export type UnsupportedFigure = {
+  figure: string;
+  raw: string;
+  text: string;
+  kind: "sentence" | "table" | "heading";
+  /** 2 for an H2 (the patcher cannot rename it), 3+ for subheadings. */
+  level?: number;
+  section: string | null;
+  faq?: number;
+};
+
+/** Everything a figure may come from: every fact's quote (never the
+ *  extractor's paraphrase), the site's own text, and the keyword. */
+export function evidenceText(sheet: Pick<FactSheet, "facts" | "keyword">, brief: SiteBrief | null): string {
+  return sheet.facts.map((f) => f.quote).join("\n") + "\n" + briefText(brief) + "\n" + sheet.keyword;
+}
+
+/** A heading's figures, without its ordinal: "Step 12: …", "10. …" and
+ *  "Mistake #3" number the structure, they are not claims. */
+export function headingFigures(heading: string, lang?: string | null): string[] {
+  const bare = heading.replace(/^\s*(?:(?:step|part|phase|stage|day|week|month|level|tip|mistake|rule|option|method|way|no\.?|#)\s*#?\d+\b|\d+[.)])\s*[:.)-]?\s*/iu, "");
+  return figuresIn(bare, lang);
+}
+
+function locateText(d: DraftText, needle: string): { section: string | null; faq?: number } {
+  const faq = d.faq.findIndex((f) => f.answer.includes(needle) || needle.includes(`**${f.question}**`) || f.question.includes(needle));
+  if (faq >= 0) return { section: null, faq };
+  const hit = splitSections(d.markdown).find((s) => s.text.includes(needle));
+  return { section: hit ? hit.heading : null };
+}
+
+/** Every figure in the draft (sentences, table rows, FAQ, H2/H3 headings;
+ *  never the H1, which the plan fixed) that the evidence does not state. */
+export function unsupportedFigures(d: DraftText, evidence: string, lang?: string | null): UnsupportedFigure[] {
+  const out: UnsupportedFigure[] = [];
+  for (const u of claimUnits(d.markdown + renderFaq(d.faq, d.faqHeading), lang)) {
+    for (const figure of u.figures) {
+      if (figureAppearsIn(figure, evidence)) continue;
+      out.push({ figure, raw: u.raw, text: u.text, kind: u.table ? "table" : "sentence", ...locateText(d, u.raw) });
+    }
+  }
+  for (const s of splitSections(d.markdown)) {
+    if (s.heading) {
+      for (const figure of headingFigures(s.heading, lang)) {
+        if (!figureAppearsIn(figure, evidence)) out.push({ figure, raw: `## ${s.heading}`, text: s.heading, kind: "heading", level: 2, section: s.heading });
+      }
+    }
+    for (const sub of s.text.matchAll(/^(#{3,6}) (.+)$/gm)) {
+      for (const figure of headingFigures(sub[2], lang)) {
+        if (!figureAppearsIn(figure, evidence)) out.push({ figure, raw: sub[0], text: sub[2], kind: "heading", level: sub[1].length, section: s.heading });
+      }
+    }
+  }
+  return out;
+}
+
+/** A number as written in prose, with its currency, scale or percent. */
+const WRITTEN_FIGURE_RE = /(?:US\$|A\$|C\$|[$€£₪฿¥₹])?\s?\d[\d,]*(?:\.\d+)?\s?(?:%|thousand|million|billion|bn|mn|[kKmMB](?![\p{L}\p{N}])|円|€|₪|฿|¥|บาท)?/gu;
+
+/**
+ * Removes what the evidence does not support, in code: a sentence goes
+ * whole (its list marker, blockquote and TL;DR label stay), a table row goes
+ * whole (and the table, when no row is left), a FAQ item loses the sentence
+ * or, when that leaves nothing worth reading or the figure is in the
+ * question, the whole item; a heading keeps its words and loses the number.
+ */
+export function dropUnsupportedFigures(d: DraftText, list: UnsupportedFigure[], lang?: string | null): { draft: DraftText; removed: { figure: string; text: string; how: string }[] } {
+  let markdown = d.markdown;
+  let faq = d.faq.map((f) => ({ ...f }));
+  const removed: { figure: string; text: string; how: string }[] = [];
+  const bad = new Set(list.map((x) => x.figure));
+  const done = new Set<string>();
+  const dropFaq = new Set<number>();
+  for (const x of list) {
+    if (done.has(x.raw)) continue;
+    done.add(x.raw);
+    if (x.faq !== undefined && faq[x.faq]) {
+      const item = faq[x.faq];
+      if (item.answer.includes(x.raw)) {
+        item.answer = item.answer.split(x.raw).join(" ").replace(/[ \t]{2,}/g, " ").trim();
+        // parseFaq's own floor: shorter than this is not an answer.
+        const empty = item.answer.length <= 20;
+        if (empty) dropFaq.add(x.faq);
+        removed.push({ figure: x.figure, text: x.text.slice(0, 200), how: empty ? "faq item dropped" : "faq sentence dropped" });
+      } else {
+        dropFaq.add(x.faq);
+        removed.push({ figure: x.figure, text: x.text.slice(0, 200), how: "faq item dropped" });
+      }
+      continue;
+    }
+    if (x.kind === "heading") {
+      const hashes = x.raw.match(/^#+ /)?.[0] ?? "## ";
+      const words = x.text
+        .replace(WRITTEN_FIGURE_RE, (m) => (figuresIn(m, lang).some((f) => bad.has(f)) ? " " : m))
+        .replace(/\s{2,}/g, " ")
+        .replace(/^[\s,:;.)-]+|[\s,:;(-]+$/g, "")
+        .trim();
+      if (!words) continue; // nothing left to call the section: check 3 still flags it
+      const fixed = hashes + words.charAt(0).toLocaleUpperCase() + words.slice(1);
+      markdown = markdown.split("\n").map((l) => (l === x.raw ? fixed : l)).join("\n");
+      removed.push({ figure: x.figure, text: x.text.slice(0, 200), how: "number taken out of the heading" });
+      continue;
+    }
+    if (x.kind === "table") {
+      const lines = markdown.split("\n");
+      const at = lines.findIndex((l) => l.trim() === x.raw);
+      if (at < 0) continue;
+      lines.splice(at, 1);
+      // A table with its header and separator left and no row is no table.
+      let start = at - 1;
+      while (start >= 0 && /^\s*\|/.test(lines[start])) start--;
+      let end = at;
+      while (end < lines.length && /^\s*\|/.test(lines[end])) end++;
+      const block = lines.slice(start + 1, end);
+      const sep = block.findIndex((l) => /^\s*\|?\s*:?-{3,}/.test(l));
+      if (sep >= 0 && block.length === sep + 1) lines.splice(start + 1, block.length);
+      markdown = lines.join("\n");
+      removed.push({ figure: x.figure, text: x.text.slice(0, 200), how: "table row dropped" });
+      continue;
+    }
+    if (!markdown.includes(x.raw)) continue;
+    const prefix = x.raw.match(/^(?:>\s*)*(?:\*\*TL;DR:?\*\*:?\s*)?(?:[-*+]\s+|\d+\.\s+)?/i)?.[0] ?? "";
+    markdown = markdown.split(x.raw).join(prefix);
+    removed.push({ figure: x.figure, text: x.text.slice(0, 200), how: "sentence dropped" });
+  }
+  markdown = markdown
+    .split("\n")
+    // A list item or quote line whose only sentence went is no line at all.
+    .filter((l) => !/^\s*(?:[-*+]|\d+\.)\s*$/.test(l) && !/^\s*>\s*$/.test(l))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n");
+  faq = faq.filter((_, i) => !dropFaq.has(i));
+  return { draft: { ...d, markdown, faq }, removed };
 }

@@ -166,8 +166,9 @@ export async function runScheduler(
   // for the customer to wait two more days (audit C2). So does a run that
   // died at pick - the idea was refused before any work (off-topic, a
   // duplicate, blocked), the week's count ignores it, and the next idea
-  // should get the same slot today, not next time. Only when the newest run
-  // is that failure, so a real article in between keeps its spacing.
+  // should get the same slot today, not next time. A research park on an
+  // unreadable page one (under a cent) counts the same. Only when the newest
+  // run is that failure, so a real article in between keeps its spacing.
   await returnSlotAfterOurFailure(project, now);
 
   const plan = await projectPlan(project.id);
@@ -236,14 +237,17 @@ async function returnSlotAfterOurFailure(project: Project, now: Date): Promise<v
   if (!project.next_article_at || Date.parse(project.next_article_at) <= now.getTime()) return;
   const { data } = await db()
     .from("writer_runs")
-    .select("status, stage, failure_kind:stage_outputs->>failure_kind")
+    .select("status, stage, cost_usd, failure_kind:stage_outputs->>failure_kind, unreadable:stage_outputs->>unreadable_serp")
     .eq("project_id", project.id)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  const last = data as { status: string; stage: string; failure_kind: string | null } | null;
+  const last = data as { status: string; stage: string; cost_usd: number | string | null; failure_kind: string | null; unreadable: string | null } | null;
   if (last?.status !== "failed") return;
-  if (last.failure_kind !== "infra" && last.stage !== "pick") return;
+  // Research that found page one unreadable (bot walls) spent about a cent
+  // and wrote nothing: same as a refusal at pick, the next idea gets the slot.
+  const unreadableSerp = last.stage === "research" && last.unreadable === "true" && Number(last.cost_usd ?? 0) < 0.01;
+  if (last.failure_kind !== "infra" && last.stage !== "pick" && !unreadableSerp) return;
   await setNextArticleAt(project.id, now);
   project.next_article_at = now.toISOString();
 }

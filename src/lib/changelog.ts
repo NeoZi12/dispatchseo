@@ -453,6 +453,14 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
       "hiccup on your host no longer leaves it waiting unmerged. If the build keeps failing, the pull request " +
       "gets a short note naming the check that failed.",
   },
+  {
+    kind: "improved",
+    text:
+      "Fewer articles get set aside before they're written. Every number in a draft is now checked against its " +
+      "sources first, and one it can't back up is fixed or taken out instead of sinking the whole article. A " +
+      "finished article is no longer held back for being a little shorter than its target. Articles are now " +
+      "written by Claude Sonnet, which keeps the cost per article down.",
+  },
 ];
 
 // Newest first. The head of this list is what the banner announces.

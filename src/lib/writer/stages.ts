@@ -30,9 +30,11 @@ import {
   bestQuotesFor,
   briefText,
   claimUnits,
+  dropUnsupportedFigures,
+  evidenceText,
   faqHeadingFor,
   figureAppearsIn,
-  figuresIn,
+  headingFigures,
   jaccard,
   joinSections,
   linkCitations,
@@ -50,6 +52,8 @@ import {
   type Fact,
   type FactSheet,
   type SiteBrief,
+  type UnsupportedFigure,
+  unsupportedFigures,
 } from "./evidence";
 import { advanceRun, failRun, getWriterRun, recordDraft, saveScratch, suggestionIdsInFlight, VENDOR_FAILURE_RE, type FailureKind, type Stage, type WriterRun } from "./runs";
 
@@ -84,9 +88,12 @@ import { coverPrompt, dryCoverSvg, hueOf, pickHue, sanitizeCoverSvg, type Hue } 
 //             the sameness probe checks the skeleton against the site's own
 //             recent posts. A plan that cannot beat page one ends the run:
 //             "If it cannot beat page 1, DO NOT BUILD" (the agent playbook).
-//   write     the prose, raw markdown at temperature 0.8 from Opus, from the
-//             sheet and brief only. Links to anywhere else are stripped.
-//   verify    every check, then at most one patch per pass, at most two
+//   write     the prose, raw markdown from Sonnet (Opus as its fallback),
+//             from the sheet and brief only. Links to anywhere else are
+//             stripped.
+//   verify    first, in code, every figure against the evidence: one patch
+//             for the ones nothing states, then code takes out what is left.
+//             Then every check, at most one patch per pass, at most two
 //             patch attempts, never more than MAX_VERIFY_PASSES passes or
 //             RUN_MAX_USD of spend: the quality gate, figures against the quotes
 //             of the source they cite, each claim judged against the cited
@@ -466,9 +473,17 @@ async function research(c: Ctx): Promise<void> {
       }
     }
     if (extracted === 0 && rejected > 0) throw new Error(`the extractor failed on all ${rejected} pages`);
+    // Page one we could not read (bot walls, JS shells, timeouts) is a
+    // verdict on the SERP, reached for about a cent: the idea is parked as
+    // always, and `unreadable_serp` tells the scheduler to hand the week's
+    // slot to the next idea (scheduler.ts returnSlotAfterOurFailure), the way
+    // a refusal at pick does. Three of eleven failed runs to 2026-11-06.
+    const unreadable = pages.length < minSources;
+    const why = [...new Set(unread.map((u) => u.reason))].join(", ") || "no usable results";
+    const unreadableNote = `${pages.length === 0 ? "none" : `only ${pages.length}`} of the top ${urls.length} results for "${keyword}" could be read (${why}); set aside so the next idea gets this slot`;
+    const parkExtra = { unread, ...(unreadable ? { unreadable_serp: true } : {}) };
     if (pages.length === 0) {
-      const why = [...new Set(unread.map((u) => u.reason))].join(", ") || "no usable results";
-      return parkIdea(run, run.suggestion_id, `could not read any of the top ${urls.length} results for "${keyword}" (${why}), so there is nothing to ground the article in`, cost, { unread });
+      return parkIdea(run, run.suggestion_id, unreadableNote, cost, parkExtra);
     }
     // A short sheet is the keyword's verdict only when every readable page
     // was actually extracted. When some extraction calls were rejected (a
@@ -483,14 +498,14 @@ async function research(c: Ctx): Promise<void> {
     const facts = dedupeFacts(found, lang);
     if (facts.length === 0) {
       if (extractionRejected) throw thinBecauseRejected("no usable fact yet");
-      return parkIdea(run, run.suggestion_id, `read ${pages.length} pages for "${keyword}" but none yielded a usable, quotable fact`, cost, { unread });
+      return parkIdea(run, run.suggestion_id, unreadable ? unreadableNote : `read ${pages.length} pages for "${keyword}" but none yielded a usable, quotable fact`, cost, parkExtra);
     }
     sheet = assembleSheet(keyword, pages, facts, serp, lang);
     if (sheet.sources.length < minSources) {
       if (extractionRejected) throw thinBecauseRejected(`only ${sheet.sources.length} source(s) of the ${minSources} needed`);
 
       const n = sheet.sources.length;
-      return parkIdea(run, run.suggestion_id, `only ${n} page-one result${n === 1 ? "" : "s"} could be read for this keyword`, cost, { unread });
+      return parkIdea(run, run.suggestion_id, unreadable ? unreadableNote : `only ${n} page-one result${n === 1 ? "" : "s"} gave usable facts for this keyword`, cost, parkExtra);
     }
     // The pre-write gate: too few facts is the keyword's verdict (when every
     // readable page was extracted), and it is reached before the planner and
@@ -581,8 +596,13 @@ async function plan(c: Ctx): Promise<void> {
     json: true,
     temperature: 0.4,
     deadline: c.deadline,
+    // The writer's rules ride along so planner, writer and patcher send one
+    // identical cached prefix (models.ts PROMPT CACHING); they also tell the
+    // planner what the article it plans will be held to.
+    cachedRules: writerRules(project.language_code),
     cachedPrefix: prefix,
     system:
+      "The RULES in the system prompt bind the article a writer will produce from your plan; plan for them. " +
       "You plan one article for a website so that it beats the current page-one results for its keyword by doing the searcher's job completely AND adding something none of them has. You have the research (sources, verbatim facts, what page one covers, the questions people ask) and the site brief. Reply with JSON only:\n" +
       JSON.stringify({
         angle: "one sentence: the specific stance or promise this article makes that page one does not",
@@ -713,16 +733,42 @@ async function plan(c: Ctx): Promise<void> {
   if (yes(answers.template, 0.6)) problems.push("the section headings are a generic template; rephrase each as this reader's question, decision or outcome");
 
   // Title, slug and meta are fixed here and can never be patched later, so
-  // the gate's checks on them run NOW, against a stub body; a collision is
-  // fixed in code, the rest goes back to the planner.
-  if (existing.slugs.includes(parsed.slug)) parsed.slug = `${parsed.slug}-${new Date().getUTCFullYear()}`;
+  // the gate's checks on them run NOW, against a stub body. What code can
+  // fix, code fixes, and none of it costs a re-plan: 19 planner calls for 13
+  // drafts in prod (to 2026-11-06), most of them to "work the exact phrase
+  // into the title", which is string work. Only a blocking check code could
+  // not settle (a near-duplicate title, a slug that will not shape) goes
+  // back to the planner; the advisory lengths are trimmed or left.
   if (!parsed.gain) parsed.gain = { type: "", backed_by: [], where: "" };
   if (typeof parsed.gain.where !== "string" || !parsed.gain.where) parsed.gain.where = parsed.sections[parsed.sections.length - 1]?.heading ?? "";
-  const stubReport = validateArticle(
-    { title: parsed.title, slug: parsed.slug, metaDescription: parsed.meta_description ?? "", primaryKeyword: sheet.keyword, markdown: `# ${parsed.title}\n\n${parsed.angle}`, faq: [], sources: [] },
-    { existingSlugs: existing.slugs, existingTitles: existing.titles, requireSources: false, siteName: project.name, lang: project.language_code },
-  );
-  for (const chk of stubReport.checks) if (!chk.passed && OUTLINE_CHECKS.has(chk.id)) problems.push(chk.fix);
+  const outline = () =>
+    validateArticle(
+      { title: parsed.title, slug: parsed.slug, metaDescription: parsed.meta_description ?? "", primaryKeyword: sheet.keyword, markdown: `# ${parsed.title}\n\n${parsed.angle}`, faq: [], sources: [] },
+      { existingSlugs: existing.slugs, existingTitles: existing.titles, requireSources: false, siteName: project.name, lang: project.language_code },
+    );
+  let stubReport = outline();
+  const failing = (id: string) => stubReport.checks.some((chk) => chk.id === id && !chk.passed);
+  const outlineFixes: string[] = [];
+  if (failing("keyword-in-title")) {
+    parsed.title = titleWithKeyword(parsed.title, sheet.keyword);
+    outlineFixes.push("keyword-in-title");
+  }
+  if (parsed.title.length > TITLE_MAX) {
+    parsed.title = trimAtWord(parsed.title, TITLE_MAX);
+    outlineFixes.push("title-length");
+  }
+  if ((parsed.meta_description ?? "").length > META_MAX) {
+    parsed.meta_description = trimAtWord(parsed.meta_description, META_MAX);
+    outlineFixes.push("meta-description-length");
+  }
+  stubReport = outline();
+  if (failing("slug-shape") || failing("slug-not-stopword-soup")) {
+    parsed.slug = slugify(sheet.keyword, parsed.slug);
+    outlineFixes.push("slug");
+  }
+  if (existing.slugs.includes(parsed.slug)) parsed.slug = `${parsed.slug}-${new Date().getUTCFullYear()}`;
+  stubReport = outline();
+  for (const chk of stubReport.checks) if (!chk.passed && OUTLINE_CHECKS.has(chk.id) && chk.severity === "blocking") problems.push(chk.fix);
 
   // Outline sameness probe against the site's own recent posts, before a
   // word of prose is paid for.
@@ -745,7 +791,34 @@ async function plan(c: Ctx): Promise<void> {
   }
   // The raw planner answers served their purpose (a retry's memo).
   run.stage_outputs = Object.fromEntries(Object.entries(run.stage_outputs).filter(([k]) => !k.startsWith("plan_raw_")));
-  await advanceRun(run, { key: "plan", value: { ...parsed, judge: answers, problems, not_judged: notJudged } }, "write", {}, total, fallbackAfter(c));
+  await advanceRun(run, { key: "plan", value: { ...parsed, judge: answers, problems, not_judged: notJudged, outline_fixes: outlineFixes } }, "write", {}, total, fallbackAfter(c));
+}
+
+/** The gate's title and meta limits (article-validate.ts title-length and
+ *  meta-description-length). */
+const TITLE_MAX = 62;
+const META_MAX = 158;
+
+/** The keyword phrase, then the planner's title: "Keyword phrase: title".
+ *  The gate wants the exact phrase in the title, and the phrase in front is
+ *  also where a searcher's eye lands. */
+function titleWithKeyword(title: string, keyword: string): string {
+  const phrase = keyword.trim().replace(/\s+/g, " ");
+  const lead = phrase.charAt(0).toLocaleUpperCase() + phrase.slice(1);
+  const rest = title.trim();
+  if (!rest) return lead;
+  return trimAtWord(`${lead}: ${rest}`, TITLE_MAX);
+}
+
+/** At most `max` characters, cut at a word boundary, never ending on a
+ *  dangling separator. A single word longer than `max` is kept whole. */
+function trimAtWord(text: string, max: number): string {
+  const t = text.trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max + 1);
+  const space = cut.lastIndexOf(" ");
+  const head = space > 0 ? cut.slice(0, space) : t.slice(0, max);
+  return head.replace(/[\s,:;|·–-]+$/u, "").trim();
 }
 
 // --- write ---------------------------------------------------------------------
@@ -1035,6 +1108,57 @@ async function verify(c: Ctx): Promise<void> {
     if (fresh?.draft_id) return;
     return parkIdea(run, run.suggestion_id, reason, cost, { draft, last_issues: passes, dropped_faq: dropped, marker_fixes: markerFixes, patch_attempts: attempts });
   };
+
+  // The deterministic figure check, once per run, before the first judge
+  // call: a figure no evidence states gets ONE patch, and what the patch did
+  // not fix is taken out by code. That patch is bounded by its own state
+  // marker below, so it does NOT count against MAX_PATCHES: the judge pass
+  // keeps both of its patches, or the check would raise the very failure
+  // ("still failing after 2 patches") it exists to remove.
+  // "patching" is saved with the spent attempt, so a resume (a killed
+  // handler, a vendor retry, the agent's answer arriving) re-asks the same
+  // question - same draft, same issues, same agent key - without counting it
+  // again. Check 3 in runChecks stays as the net for anything left.
+  const figureState = (run.stage_outputs.figure_check as { state?: string } | undefined)?.state;
+  if (figureState !== "done") {
+    const lang = project.language_code;
+    const evidence = evidenceText(sheet, brief);
+    let unsupported = unsupportedFigures(draft, evidence, lang);
+    const found = unsupported.length;
+    // FAQ items are dropped in code anyway, and the patcher never sees an
+    // H2's own line (it rewrites section bodies), so neither is patched.
+    const patchable = unsupported.filter((u) => u.faq === undefined && !(u.kind === "heading" && u.level === 2));
+    let patched = false;
+    const figureWarnings: unknown[] = [];
+    if (patchable.length) {
+      const spent = Number(run.cost_usd) + cost;
+      if (spent >= RUN_MAX_USD) return backstop(`spend cap: this run reached $${spent.toFixed(2)} before the figure check (WRITER_RUN_MAX_USD ${RUN_MAX_USD})`);
+      if (figureState !== "patching") {
+        if (c.deadline - Date.now() < 90_000) throw new Error("not enough time left in this tick to patch the figures; retrying");
+        if (!(await save({ figure_check: { state: "patching" } }, run.rewrites + 1))) return;
+      }
+      const call = patchCall(c, sheet, brief, p, draft, patchable.map(figureIssue));
+      try {
+        const { text, costUsd } = await generate(call.input);
+        cost += costUsd;
+        draft = await call.finish(text);
+        patched = true;
+      } catch (err) {
+        if (isAwaitingAgent(err) || isAgentTaskFailed(err)) throw err;
+        const message = err instanceof Error ? err.message : String(err);
+        // Not billed, not the article's fault: the job retries, and the
+        // saved "patching" state means the retry is not a second attempt.
+        if (PATCH_INFRA_RE.test(message)) throw err;
+        figureWarnings.push({ at: new Date().toISOString(), stage: "verify", message: `figure patch failed, figures taken out in code instead: ${message}`.slice(0, 500) });
+      }
+      unsupported = unsupportedFigures(draft, evidence, lang);
+    }
+    const fixed = unsupported.length ? dropUnsupportedFigures(draft, unsupported, lang) : { draft, removed: [] };
+    draft = fixed.draft as Draft;
+    const log = { state: "done", found, patched, taken_out: fixed.removed, residual: unsupportedFigures(draft, evidence, lang).length };
+    if (!(await save({ figure_check: log, ...(figureWarnings.length ? { warnings: [...warningsOf(run), ...figureWarnings] } : {}) }))) return;
+  }
+
   for (let pass = Number(run.stage_outputs.verify_passes ?? 0) - (pendingOf() ? 1 : 0); ; pass++) {
     if (pass >= MAX_VERIFY_PASSES) return backstop(`verify ran ${pass} passes without an accepted article (ceiling ${MAX_VERIFY_PASSES}, patches spent ${attempts})`);
     const spent = Number(run.cost_usd) + cost;
@@ -1090,7 +1214,7 @@ async function verify(c: Ctx): Promise<void> {
     const blocking = checked.issues.filter((i) => i.blocking);
     passes.push({ pass, at: new Date().toISOString(), issues: checked.issues });
     if (blocking.length === 0) {
-      const record = { ...checked.record, dropped_faq: dropped, marker_fixes: markerFixes, patch_attempts: attempts, passes: passes.length };
+      const record = { ...checked.record, dropped_faq: dropped, marker_fixes: markerFixes, patch_attempts: attempts, passes: passes.length, figure_check: run.stage_outputs.figure_check ?? null };
       return handoff(c, draft, p, checked.report, record, cost);
     }
     if (attempts >= MAX_PATCHES) {
@@ -1167,6 +1291,16 @@ async function verify(c: Ctx): Promise<void> {
     draft = patched.draft;
     if (!(await save({ ...clearPending, ...(key ? { applied_patches: [...appliedPatches(), key] } : {}) }))) return;
   }
+}
+
+/** One unsupported figure as a patch issue: the exact sentence, the exact
+ *  figure, and the only two allowed fixes. */
+function figureIssue(u: UnsupportedFigure): Issue {
+  return {
+    section: u.section,
+    note: `the figure "${u.figure}" in "${u.text.slice(0, 200)}" is stated by no FACT quote or site page: remove the figure, or replace it with the figure a quote gives; never invent one`,
+    blocking: true,
+  };
 }
 
 function warningsOf(run: WriterRun): unknown[] {
@@ -1384,7 +1518,7 @@ async function runChecks(c: Ctx, sheet: FactSheet, brief: SiteBrief, p: Plan, in
   // What the research and the site brief state, for the figure checks below
   // and for telling the writer's reasoning from an unsourced claim.
   const site = briefText(brief);
-  const everything = sheet.facts.map((f) => f.quote).join("\n") + "\n" + site + "\n" + sheet.keyword;
+  const everything = evidenceText(sheet, brief);
   const checkable = units.filter((u) => u.cites.length > 0 || u.figures.length > 0);
   const ranked = checkable.map((u, i) => ({ u, i, w: (u.cites.length ? 2 : 0) + (u.figures.length ? 1 : 0) })).sort((a, b) => b.w - a.w || a.i - b.i);
   const judged = ranked.slice(0, MAX_CLAIMS).map((x) => x.u);
@@ -1394,6 +1528,56 @@ async function runChecks(c: Ctx, sheet: FactSheet, brief: SiteBrief, p: Plan, in
   // resumes here at no cost - and the verdict cache makes a second pass of
   // the same draft nearly free.
   if (c.deadline - Date.now() < 60_000) throw new Error("not enough time left in this tick to judge the claims; retrying");
+  // 8. (asked now, read at the end) The judge's rubric on the whole
+  //    article, with the coverage map and the plan in hand - this is the
+  //    information-gain check. Sent alongside the claim calls rather than
+  //    after them, so its latency hides under theirs: the article it reads
+  //    differs from the post-claims one only in swapped citation numbers.
+  //    "original" needs a coverage map to judge against; without one it is
+  //    skipped and recorded, never passed. gain_present reads the VERBATIM
+  //    quotes the gain was planned on.
+  const covers = pageOneCovers(sheet);
+  const sectionList = splitSections(draft.markdown).filter((s) => s.heading).slice(0, 12);
+  const rubric: Record<string, Question> = {
+    answers_first: { type: "score", instructions: "How well does the opening of state.article answer what someone searching state.keyword wants?", criteria: ["Scene-setting or a definition; the answer comes later or never", "The answer is there but vague or buried", "A specific, actionable answer in the first few sentences"] },
+    specificity: { type: "score", instructions: "How specific and actionable is state.article as a whole?", criteria: ["Generic advice that would fit any topic", "Some concrete steps or figures, mixed with filler", "Concrete steps, thresholds, named options or figures in almost every section"] },
+    gain_present: { type: "noul", instructions: "state.article actually delivers the promised information gain described in state.gain (its type, the section it lives in, and the verbatim evidence it was planned on), concretely rather than as a label." },
+    generic_voice: { type: "noul", instructions: "state.article reads as generic machine-generated text.", criteria: { true: "Interchangeable phrasing, hedged generalities, lists of obvious tips, a summary conclusion.", false: "Specific, direct, takes positions, reads as written by someone who knows the subject." } },
+    language_ok: { type: "noul", instructions: `state.article is written in the language with code "${lang}" throughout.` },
+  };
+  if (covers.length) {
+    rubric.original = { type: "noul", instructions: "state.article contains substantive information or a worked example that is NOT among the subtopics in state.page_one_covers.", criteria: { true: "At least one section delivers a rule, example, table, verdict or site-specific data page one lacks.", false: "Everything in it is a restatement of what page one covers." } };
+  } else notJudged.push(`original: ${TOO_FEW_SOURCES}`);
+  sectionList.forEach((_, i) => {
+    // The heading is writer output (steerable by a fetched page), so it rides
+    // in state, never in the question text.
+    rubric[`useful_${i}`] = { type: "noul", instructions: `The section of state.article whose heading is state.sections[${i}] gives the reader at least one specific thing to do, decide or check.`, criteria: { true: "A step, a threshold, a recommendation with its condition, a figure, or a named option.", false: "Only general statements that could appear under any heading." } };
+  });
+  const rubricCall = judge({
+    projectId: project.id,
+    runId: c.run.id,
+    deadline: c.deadline,
+    state: {
+      keyword: sheet.keyword,
+      page_one_covers: covers,
+      gain: { type: p.gain.type, where: p.gain.where, evidence: gainEvidence(p.gain.backed_by ?? [], sheet, brief).map((e) => e.quote) },
+      sections: sectionList.map((x) => x.heading),
+      article: draft.markdown + renderFaq(draft.faq, draft.faqHeading),
+    },
+    questions: rubric,
+    dry: () => ({
+      answers_first: { type: "score", score: 2, confidence: 0.9, probabilities: { "2": 0.9 } },
+      specificity: { type: "score", score: 2, confidence: 0.9, probabilities: { "2": 0.9 } },
+      original: { type: "noul", noul: 0.9 },
+      gain_present: { type: "noul", noul: 0.9 },
+      generic_voice: { type: "noul", noul: 0.05 },
+      language_ok: { type: "noul", noul: 0.99 },
+      ...Object.fromEntries(sectionList.map((_, i) => [`useful_${i}`, { type: "noul", noul: 0.9 } as Answer])),
+    }),
+  }).then(
+    (r) => ({ r }),
+    (e: unknown) => ({ e }),
+  );
   const { verdicts, costUsd: claimCost } = await judgeClaims(c, sheet, brief, judged.map((unit) => ({ unit, section: locate(unit.raw).section })));
   judgeCost += claimCost;
   const markerFixes: MarkerFix[] = [];
@@ -1444,9 +1628,12 @@ async function runChecks(c: Ctx, sheet: FactSheet, brief: SiteBrief, p: Plan, in
     { title: p.title, slug: p.slug, metaDescription: p.meta_description ?? "", primaryKeyword: sheet.keyword, markdown: full, faq: draft.faq, sources: sheet.sources.map((s) => ({ url: s.url, title: s.title ?? undefined })) },
     {
       archetype: p.archetype,
-      // Never under 700 whatever the target: a 900-word target let a
-      // 689-word article through and Paperbot's build refused it.
-      minWords: Math.max(700, Math.round(p.target_words * 0.7)),
+      // 700 flat: the floor every site's build accepts (a 689-word article
+      // failed Paperbot's). The SERP-median target is guidance in the prompt,
+      // never a park: a finished 1,000-word article was set aside on
+      // 2026-11-05 for being 68 words short of 70% of its target, after
+      // every fact issue had been fixed. Never padded either way.
+      minWords: 700,
       maxWords: Math.max(2500, Math.round(p.target_words * 1.5)),
       existingSlugs: existing.slugs,
       existingTitles: existing.titles,
@@ -1508,11 +1695,11 @@ async function runChecks(c: Ctx, sheet: FactSheet, brief: SiteBrief, p: Plan, in
   }
   for (const s of sections) {
     if (!s.heading) continue;
-    for (const fig of figuresIn(s.heading, lang)) {
+    for (const fig of headingFigures(s.heading, lang)) {
       if (!figureAppearsIn(fig, everything)) issues.push({ section: s.heading, note: `the heading "${s.heading}" carries the figure "${fig}" that no source states; reword the heading's figure out (keep its meaning)`, blocking: true });
     }
     for (const sub of s.text.matchAll(/^###+ (.+)$/gm)) {
-      for (const fig of figuresIn(sub[1], lang)) {
+      for (const fig of headingFigures(sub[1], lang)) {
         if (!figureAppearsIn(fig, everything)) issues.push({ section: s.heading, note: `the subheading "${sub[1]}" carries the figure "${fig}" that no source states; reword it`, blocking: true });
       }
     }
@@ -1614,50 +1801,10 @@ async function runChecks(c: Ctx, sheet: FactSheet, brief: SiteBrief, p: Plan, in
     }
   }
 
-  // 8. The judge's rubric on the whole article, with the coverage map and
-  //    the plan in hand - this is the information-gain check. "original"
-  //    needs a coverage map to judge against; without one it is skipped and
-  //    recorded, never passed. gain_present reads the VERBATIM quotes the
-  //    gain was planned on.
-  const covers = pageOneCovers(sheet);
-  const sectionList = sections.filter((s) => s.heading).slice(0, 12);
-  const rubric: Record<string, Question> = {
-    answers_first: { type: "score", instructions: "How well does the opening of state.article answer what someone searching state.keyword wants?", criteria: ["Scene-setting or a definition; the answer comes later or never", "The answer is there but vague or buried", "A specific, actionable answer in the first few sentences"] },
-    specificity: { type: "score", instructions: "How specific and actionable is state.article as a whole?", criteria: ["Generic advice that would fit any topic", "Some concrete steps or figures, mixed with filler", "Concrete steps, thresholds, named options or figures in almost every section"] },
-    gain_present: { type: "noul", instructions: "state.article actually delivers the promised information gain described in state.gain (its type, the section it lives in, and the verbatim evidence it was planned on), concretely rather than as a label." },
-    generic_voice: { type: "noul", instructions: "state.article reads as generic machine-generated text.", criteria: { true: "Interchangeable phrasing, hedged generalities, lists of obvious tips, a summary conclusion.", false: "Specific, direct, takes positions, reads as written by someone who knows the subject." } },
-    language_ok: { type: "noul", instructions: `state.article is written in the language with code "${lang}" throughout.` },
-  };
-  if (covers.length) {
-    rubric.original = { type: "noul", instructions: "state.article contains substantive information or a worked example that is NOT among the subtopics in state.page_one_covers.", criteria: { true: "At least one section delivers a rule, example, table, verdict or site-specific data page one lacks.", false: "Everything in it is a restatement of what page one covers." } };
-  } else notJudged.push(`original: ${TOO_FEW_SOURCES}`);
-  sectionList.forEach((_, i) => {
-    // The heading is writer output (steerable by a fetched page), so it rides
-    // in state, never in the question text.
-    rubric[`useful_${i}`] = { type: "noul", instructions: `The section of state.article whose heading is state.sections[${i}] gives the reader at least one specific thing to do, decide or check.`, criteria: { true: "A step, a threshold, a recommendation with its condition, a figure, or a named option.", false: "Only general statements that could appear under any heading." } };
-  });
-  const { answers, costUsd } = await judge({
-    projectId: project.id,
-    runId: c.run.id,
-    deadline: c.deadline,
-    state: {
-      keyword: sheet.keyword,
-      page_one_covers: covers,
-      gain: { type: p.gain.type, where: p.gain.where, evidence: gainEvidence(p.gain.backed_by ?? [], sheet, brief).map((e) => e.quote) },
-      sections: sectionList.map((x) => x.heading),
-      article: full,
-    },
-    questions: rubric,
-    dry: () => ({
-      answers_first: { type: "score", score: 2, confidence: 0.9, probabilities: { "2": 0.9 } },
-      specificity: { type: "score", score: 2, confidence: 0.9, probabilities: { "2": 0.9 } },
-      original: { type: "noul", noul: 0.9 },
-      gain_present: { type: "noul", noul: 0.9 },
-      generic_voice: { type: "noul", noul: 0.05 },
-      language_ok: { type: "noul", noul: 0.99 },
-      ...Object.fromEntries(sectionList.map((_, i) => [`useful_${i}`, { type: "noul", noul: 0.9 } as Answer])),
-    }),
-  });
+  // 8. The rubric was asked alongside the claims (above); its answers are read here.
+  const rubricDone = await rubricCall;
+  if ("e" in rubricDone) throw rubricDone.e;
+  const { answers, costUsd } = rubricDone.r;
   judgeCost += costUsd;
   if (scoreOf(answers.answers_first) < 1.2) issues.push({ section: "", note: "rewrite the opening to answer the search in the first two or three sentences, specifically", blocking: true });
   if (scoreOf(answers.specificity) < 1.0) issues.push({ section: null, note: "the article is too generic: add concrete steps, thresholds, named options and figures from the facts", blocking: true });
