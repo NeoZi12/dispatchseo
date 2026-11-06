@@ -139,7 +139,11 @@ const FACT_SHEET_TTL_MS = 45 * 86_400_000;
 const CLIENT_KIND = "dispatchseo-writer";
 /** More than this fraction of 8-word shingles shared with ONE source, or a
  *  verbatim run this long outside a quote, is a rewrite of that page. */
-const OVERLAP_FRACTION_LIMIT = 0.04;
+// 8%: the writer is handed verbatim quotes and told to use them, so some
+// phrase reuse is inherent; 4% flagged three sections per source on most
+// bake-off runs of 2026-11-06 and cost a patch each time. A single run of
+// OVERLAP_RUN_LIMIT words is still a copy and still blocks.
+const OVERLAP_FRACTION_LIMIT = 0.08;
 const OVERLAP_RUN_LIMIT = 25;
 
 export type Plan = {
@@ -1220,7 +1224,17 @@ async function verify(c: Ctx): Promise<void> {
         continue;
       }
       draft = patchedDraft;
-      if (!(await save({ pending_patch: null, applied_patches: [...appliedPatches(), key] }))) return;
+      // The patcher reads the same sheet the writer did and can put back a
+      // figure no source states; the figure check above ran once, before
+      // the first judge pass, so nothing caught it and the run failed on a
+      // figure the check had already settled (run 16, 2026-11-06). Taken
+      // out in code after every patch, before the next judge pass.
+      const late = unsupportedFigures(draft, evidenceText(sheet, brief), project.language_code);
+      const lateFix = late.length ? dropUnsupportedFigures(draft, late, project.language_code) : null;
+      if (lateFix) draft = lateFix.draft as Draft;
+      const fc = (run.stage_outputs.figure_check as Record<string, unknown> | undefined) ?? {};
+      const fcLog = lateFix ? { figure_check: { ...fc, taken_out: [...((fc.taken_out as unknown[] | undefined) ?? []), ...lateFix.removed] } } : {};
+      if (!(await save({ pending_patch: null, applied_patches: [...appliedPatches(), key], ...fcLog }))) return;
       continue;
     }
     const checked = await runChecks(c, sheet, brief, p, draft);
