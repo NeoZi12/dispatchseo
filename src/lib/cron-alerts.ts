@@ -42,6 +42,14 @@ export type CronJob =
 // trend scans, tool validations) have no schedule to be late against, so
 // anything not listed here defaults to never-stale. (weekly-opportunities has
 // no entry here on purpose - see RETIRED_JOBS below.)
+// Jobs whose idle ticks are liveness proof. Most claim-only rows mean "work
+// was handed out somewhere else" (a builder dispatch), so they rightly leave
+// the staleness clock on the last real outcome. The queue drain is different:
+// its idle tick ran in full - claimed nothing because nothing was due, and
+// checked for wedged rows - so it proves the drain is alive. Its ok/failed
+// state still comes from the last real run.
+const IDLE_TICK_PROVES_LIVENESS = new Set(["jobs"]);
+
 const STALE_HOURS: Record<string, number> = {
   "daily-ranks": 36,
   // The hosted writer's daily scheduler (api/cron/autopilot, 05:30 UTC on
@@ -49,12 +57,13 @@ const STALE_HOURS: Record<string, number> = {
   // it stops, every hosted site stops getting articles and nothing else says so.
   autopilot: 36,
   // The article queue drain, scheduled every 10 minutes in both
-  // .github/workflows/jobs.yml and docker/cron/crontab. Idle ticks report as
-  // claim-only, so this clock is only ever advanced by a tick that actually
-  // processed something - which means the threshold has to tolerate a genuinely
-  // quiet queue. 6h is far longer than any real gap between a crawl, a finish
-  // and a publish on an active project, and short enough that a wedged drain
-  // is noticed the same working day.
+  // .github/workflows/jobs.yml and docker/cron/crontab. Its idle ticks still
+  // report as claim-only (so they can never clear a real failure), but they DO
+  // advance this clock - see IDLE_TICK_PROVES_LIVENESS. So 6h here means "the
+  // drain stopped ticking", never "the queue was quiet": with weekly article
+  // cadence an empty queue for a day is normal, and counting only busy ticks
+  // painted "jobs overdue" red every quiet afternoon (2026-11-06). Stuck work
+  // has its own loud signal - the drain's wedged-row check on every tick.
   jobs: 6,
   // The backend's own SEO scheduler (api/cron/seo-dispatch), every 3h. It is
   // now the thing that WAKES every connected repo's builders, so its silence is
@@ -1020,9 +1029,10 @@ export async function getCronHealth(projectSlug?: string): Promise<CronHealth[]>
       // builder legitimately go quiet for weeks when nothing is approved, so
       // they cannot carry a blanket schedule, but "work was handed out and
       // never once finished for a day and a half" is overdue for any of them.
-      const clockFrom = claimed
-        ? (lastRealAt.get(job) ?? oldestClaimAt.get(job) ?? (row.created_at as string))
-        : (row.created_at as string);
+      const clockFrom =
+        claimed && !IDLE_TICK_PROVES_LIVENESS.has(baseJobName(job))
+          ? (lastRealAt.get(job) ?? oldestClaimAt.get(job) ?? (row.created_at as string))
+          : (row.created_at as string);
       const ageHours = staleAgeHours(new Date(clockFrom).getTime());
       const staleLimit = STALE_HOURS[baseJobName(job)] ?? (claimed ? 36 : Infinity);
       // A claim/deferral says "handed out" or "ran and produced nothing" - it is
