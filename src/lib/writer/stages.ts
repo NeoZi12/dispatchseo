@@ -190,7 +190,7 @@ const fallbackAfter = (c: Ctx) => new Date(c.deadline + 60_000);
 
 // --- pick ----------------------------------------------------------------------
 
-async function pick(c: Ctx, exclude: string[] = []): Promise<void> {
+async function pick(c: Ctx, exclude: string[] = [], spent = 0): Promise<void> {
   const { project, run } = c;
   let keyword = run.keyword;
   let titleHint = run.title_hint;
@@ -241,8 +241,20 @@ async function pick(c: Ctx, exclude: string[] = []): Promise<void> {
   // writer too, not only research: an idea queued before the topic was
   // blocked, or a keyword passed straight to write_article, must not become
   // an article the owner said they never want. Checked before any model call.
+  // An idea the pick refuses (blocked, off-topic, a rewrite of an existing
+  // page) is parked and, when this run chose it from the queue, the run
+  // takes the NEXT idea instead of ending: a refusal costs a judge call,
+  // not a slot. A run started FOR one idea has nothing else to take, and
+  // four refusals in a row end the run the old way.
+  const refuse = async (reason: string, cost: number): Promise<void> => {
+    if (!run.suggestion_id && suggestionId && exclude.length < 3) {
+      await parkSuggestion(run, suggestionId, reason);
+      return pick(c, [...exclude, suggestionId], spent + cost);
+    }
+    return parkIdea(run, suggestionId, reason, spent + cost);
+  };
   const blocked = matchesBlockedTopic(keyword, blockedTopicsOf(project));
-  if (blocked) return parkIdea(run, suggestionId, `"${keyword}" falls under a topic the owner blocked ("${blocked}")`);
+  if (blocked) return refuse(`"${keyword}" falls under a topic the owner blocked ("${blocked}")`, 0);
 
   const { profile, fromDb } = await loadSiteProfile(project);
   const existing = await existingTitles(project.id);
@@ -258,9 +270,9 @@ async function pick(c: Ctx, exclude: string[] = []): Promise<void> {
     { name: profile.name, about: `${profile.short} ${profile.long}`.trim(), hasProfile: fromDb },
     similar,
   );
-  if (!verdict.onTopic) return parkIdea(run, suggestionId, `"${keyword}" was judged off-topic for ${profile.name}`, verdict.costUsd);
+  if (!verdict.onTopic) return refuse(`"${keyword}" was judged off-topic for ${profile.name}`, verdict.costUsd);
   if (verdict.sameAs) {
-    return parkIdea(run, suggestionId, `"${keyword}" is the same topic as the existing page "${verdict.sameAs}" - a refresh, not a new article`, verdict.costUsd);
+    return refuse(`"${keyword}" is the same topic as the existing page "${verdict.sameAs}" - a refresh, not a new article`, verdict.costUsd);
   }
 
   try {
@@ -269,7 +281,7 @@ async function pick(c: Ctx, exclude: string[] = []): Promise<void> {
       { key: "pick", value: { keyword, title_hint: titleHint, rationale, intent: verdict.intent } },
       "research",
       { keyword, title_hint: titleHint, suggestion_id: suggestionId },
-      verdict.costUsd,
+      verdict.costUsd + spent,
       fallbackAfter(c),
     );
   } catch (e) {
@@ -280,7 +292,7 @@ async function pick(c: Ctx, exclude: string[] = []): Promise<void> {
       // lane, the week's slot - seen 2026-11-06). A run started FOR this one
       // idea has nothing else to take, and three losses in a row is a queue
       // that is being drained faster than it fills: both still fail.
-      if (!run.suggestion_id && suggestionId && exclude.length < 3) return pick(c, [...exclude, suggestionId]);
+      if (!run.suggestion_id && suggestionId && exclude.length < 3) return pick(c, [...exclude, suggestionId], spent + verdict.costUsd);
       return failRun(run, "another run is already writing that idea");
     }
     throw e;
@@ -298,19 +310,23 @@ async function pick(c: Ctx, exclude: string[] = []): Promise<void> {
  *  idea stops burning model spend, but the run still costs no slot and the
  *  owner keeps "Try again". */
 export async function parkIdea(run: WriterRun, suggestionId: string | null, reason: string, costUsd = 0, extra: Record<string, unknown> = {}, kind: FailureKind = "content"): Promise<void> {
-
-  if (suggestionId) {
-    const { data } = await db().from("suggestions").select("rationale").eq("id", suggestionId).eq("project_id", run.project_id).maybeSingle();
-    const prior = (data as { rationale: string | null } | null)?.rationale ?? "";
-    const { error } = await db()
-      .from("suggestions")
-      .update({ status: "parked", rationale: `[writer did not build: ${reason}]\n${prior}`.slice(0, 4000) })
-      .eq("id", suggestionId)
-      .eq("project_id", run.project_id);
-    if (error) console.warn(`[writer] could not park idea ${suggestionId}: ${error.message}`);
-  }
+  if (suggestionId) await parkSuggestion(run, suggestionId, reason);
   await failRun(run, reason, costUsd, kind, { park_reason: reason, ...extra });
+}
 
+/** The idea alone: status "parked" with the reason, the run untouched. The
+ *  pick stage uses this to refuse an idea and take the next one in the same
+ *  run (two runs died at pick on one off-topic idea on 2026-11-06, both for
+ *  nothing, and the slot was spent). */
+async function parkSuggestion(run: WriterRun, suggestionId: string, reason: string): Promise<void> {
+  const { data } = await db().from("suggestions").select("rationale").eq("id", suggestionId).eq("project_id", run.project_id).maybeSingle();
+  const prior = (data as { rationale: string | null } | null)?.rationale ?? "";
+  const { error } = await db()
+    .from("suggestions")
+    .update({ status: "parked", rationale: `[writer did not build: ${reason}]\n${prior}`.slice(0, 4000) })
+    .eq("id", suggestionId)
+    .eq("project_id", run.project_id);
+  if (error) console.warn(`[writer] could not park idea ${suggestionId}: ${error.message}`);
 }
 
 /** Ends the run because a vendor or the platform said no, not the content. */
