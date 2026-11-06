@@ -166,8 +166,10 @@ export async function visitorsReport(range: Range, now = Date.now()): Promise<Vi
     else byVisit.set(key, [r]);
   });
 
-  const chromeOf = (ua: string | null) => Number(/Chrome\/(\d+)/.exec(ua ?? "")?.[1] ?? 0) || null;
-  const newestChrome = Math.max(0, ...rows.map((r) => chromeOf(r.ua) ?? 0));
+  // Real Chrome only: "HeadlessChrome/153" is often a pre-release build and
+  // would make every real browser look out of date.
+  const chromeOf = (ua: string | null) => Number(/(?<!Headless)Chrome\/(\d+)/.exec(ua ?? "")?.[1] ?? 0) || null;
+  const newestChrome = Math.max(0, ...rows.filter((r) => !r.bot).map((r) => chromeOf(r.ua) ?? 0));
 
   const visits: Visit[] = [];
   for (const [key, all] of byVisit) {

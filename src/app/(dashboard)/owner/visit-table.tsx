@@ -5,7 +5,7 @@ import { useState } from "react";
 import { cx, FOCUS_RING } from "@/components/ui/styles";
 import type { Visit } from "@/lib/owner-visitors";
 import { ago, span } from "./format";
-import { countryName, flag, KIND_COLOR, KIND_NAME } from "./visitor-labels";
+import { countryName, flag, KIND_COLOR, KIND_NAME, VERDICT } from "./visitor-labels";
 
 // Every visit, newest first, filterable by how it arrived. One row per
 // person per day (the visitor hash rotates daily on purpose).
@@ -34,6 +34,19 @@ function Source({ v }: { v: VisitRow }) {
     </>
   );
 }
+
+/** Human, Bot or Unsure, our guess for this visit; the reason on hover. */
+function Guess({ v }: { v: VisitRow }) {
+  return (
+    <span title={v.why} className="inline-flex cursor-help items-center gap-1.5 whitespace-nowrap">
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: VERDICT[v.verdict].color }} aria-hidden="true" />
+      <span className={v.verdict === "person" ? "text-ok" : v.verdict === "bot" ? "text-warn" : "text-ink-muted"}>{VERDICT[v.verdict].word}</span>
+    </span>
+  );
+}
+
+/** "bot" as a device only repeats the verdict. */
+const deviceOf = (v: VisitRow) => (v.device && v.device !== "bot" ? v.device : null);
 
 function Stay({ v }: { v: VisitRow }) {
   const ms = new Date(v.lastAt).getTime() - new Date(v.firstAt).getTime();
@@ -101,7 +114,8 @@ export function VisitTable({ visits, now }: { visits: VisitRow[]; now: number })
               {v.landing}
             </p>
             <p className="mt-1 text-[12px] text-ink-faint">
-              {flag(v.country)} {countryName(v.country)} · {v.device ?? "unknown"} · {v.views} {v.views === 1 ? "page" : "pages"}
+              <Guess v={v} /> · {flag(v.country)} {countryName(v.country)}
+              {deviceOf(v) ? ` · ${deviceOf(v)}` : ""} · {v.views} {v.views === 1 ? "page" : "pages"}
               {v.who ? <span className="text-info"> · {v.who}</span> : null}
             </p>
           </li>
@@ -141,8 +155,9 @@ export function VisitTable({ visits, now }: { visits: VisitRow[]; now: number })
                     </span>
                     {countryName(v.country)}
                   </span>
-                  <span className="mt-0.5 block truncate text-[11.5px] capitalize text-ink-faint">
-                    {v.device ?? "unknown"}
+                  <span className="mt-0.5 block truncate text-[11.5px] text-ink-faint">
+                    <Guess v={v} />
+                    {deviceOf(v) ? <span className="capitalize"> · {deviceOf(v)}</span> : null}
                     {v.who ? <span className="normal-case text-info"> · {v.who}</span> : null}
                   </span>
                 </td>

@@ -97,9 +97,6 @@ export function VisitorsSection({ t, v, who, now }: { t: TrafficReport; v: Visit
             rows={(["person", "unsure", "bot"] as const).map((k) => ({ key: k, label: <ChannelLabel name={VERDICT[k].word} color={VERDICT[k].color} />, value: v?.estimate[k] ?? 0 }))}
             empty="No visit yet."
           />
-          <p className="mt-4 text-[12px] leading-relaxed text-ink-faint">
-            An estimate. Human: signed in, or moved the mouse, scrolled, tapped or typed. Bot: the browser said it was automated, or ran a Chrome a year out of date. Unsure: neither.
-          </p>
         </Detail>
         <Detail title="Devices">
           <BarList rows={byVisitors(t.devices, (k) => (k ? k.charAt(0).toUpperCase() + k.slice(1) : "Unknown")).slice(0, 7)} empty="Nothing yet." />
