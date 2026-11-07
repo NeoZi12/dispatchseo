@@ -1,3 +1,4 @@
+import { submitHostedSitemap } from "@/lib/gsc-sitemaps";
 import { db } from "@/lib/db";
 import type { Project } from "@/lib/projects";
 import { hostedArticleUrl } from "@/lib/hosted-blog";
@@ -67,6 +68,14 @@ export async function runHostedPublish(project: Project, draftId: string): Promi
   // Live on our side this instant: start rank-tracking its keyword now (a
   // hosted site's keywords are tracked only once published - tracking.ts).
   await trackPublishedKeyword(project, row);
+
+  // Tell Google the blog's sitemap exists, on the owner's own connection
+  // (lib/gsc-sitemaps.ts). Best-effort: a grant without the write scope is
+  // silence, and nothing here can hold the article back.
+  await submitHostedSitemap(project).then(
+    (r) => { if (r !== "submitted" && r !== "no-scope") console.log(`[publish-hosted] sitemap for ${project.slug}: ${r}`); },
+    () => undefined,
+  );
 
   if (row.suggestion_id) await ideaDone(project.id, row.suggestion_id, now, false);
 
