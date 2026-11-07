@@ -1239,6 +1239,12 @@ async function verify(c: Ctx): Promise<void> {
     }
     const checked = await runChecks(c, sheet, brief, p, draft);
     cost += checked.costUsd;
+    // The voice rubric ("reads as generic generated text") gets ONE patch.
+    // A second rarely moves the judge: the 2026-11-07 onboarding test lost
+    // a factually clean, well-structured article to three identical
+    // verdicts in a row ($0.07). From the second pass on it ships as a
+    // warning the owner can read, not as a failure.
+    if (attempts >= 1) for (const i of checked.issues) if (i.blocking && i.note.startsWith("it reads as generic generated text")) i.blocking = false;
     // Code fixes first. A wrong citation number was already swapped by
     // runChecks (checked.draft); a FAQ item with a blocking issue is
     // dropped here, never patched, and the article is checked again - the
