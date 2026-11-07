@@ -398,9 +398,20 @@ export function assembleSheet(keyword: string, rawPages: FetchedPage[], allFacts
  *  from the sources, their facts with them, and everything derived from the
  *  sources (coverage, the length target) recomputed from what is left. */
 export function sheetForSite(sheet: FactSheet, own: string, lang?: string | null): FactSheet {
-  const sources = sheet.sources.filter((s) => !sameDomain(s.host, own));
+  // One source per link here too: a sheet cached (45 days) before
+  // dedupeByUrl existed still carries the SERP's trailing-slash twins, and
+  // served run 18 of the 2026-11-06 bake-off two sources with one URL - the
+  // same gate failure the dedupe was written for, from the cache this time.
+  const kept = new Map<string, string>();
+  const unique = sheet.sources.filter((s) => {
+    const k = sourceKey(s.url);
+    if (kept.has(k)) return false;
+    kept.set(k, s.url);
+    return true;
+  });
+  const sources = unique.filter((s) => !sameDomain(s.host, own));
   if (sources.length === sheet.sources.length) return sheet;
-  const facts = sheet.facts.filter((f) => sources.some((s) => s.url === f.url));
+  const facts = sheet.facts.map((f) => ({ ...f, url: kept.get(sourceKey(f.url)) ?? f.url })).filter((f) => sources.some((s) => s.url === f.url));
   return { ...sheet, sources, facts, coverage: coverageMap(sources, sheet.keyword, lang), medianWords: targetWords(sources) };
 }
 
