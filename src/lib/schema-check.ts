@@ -173,6 +173,9 @@ const PROBES: Probe[] = [
   // 0078: the free plan's memory (lib/free-gate.ts). Four tables; the claims
   // table is the one setup reads before every free launch.
   { migration: "0078_free_plan_gate", table: "free_claims", column: "key" },
+  // 0080: the audit hardening's one new table; the policy/grant changes in the
+  // same migration are invisible to PostgREST, this table stands in for them.
+  { migration: "0080_audit_hardening", table: "rate_limits", column: "hits" },
 ];
 
 // Migrations that genuinely CANNOT be probed through this mechanism, with the
