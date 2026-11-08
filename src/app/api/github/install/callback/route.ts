@@ -149,18 +149,19 @@ export async function GET(req: Request): Promise<Response> {
       // No code at all means GITHUB's redirect did not carry one - an App
       // CONFIGURATION fact about us, not evidence about the caller. Failing
       // closed on it blocked every legitimate install the moment the client
-      // credentials were set (2026-07-28, launch morning). Absence now falls
-      // through to the freshness/suspension gate, which is exactly the
-      // protection that shipped before the OAuth proof existed and still closes
-      // every orphan-installation class. A code that IS present and does not
-      // verify is real evidence, and still fails closed.
+      // credentials were set (2026-07-28, launch morning), so absence became an
+      // opt-in refusal for a while. The default is strict again: with the
+      // client credentials configured a missing code is refused, unless the
+      // operator sets GITHUB_APP_REQUIRE_INSTALL_PROOF=0 to fall back to the
+      // freshness/suspension gate (see requireInstallProof). A code that IS
+      // present and does not verify is real evidence, and always fails closed.
       if (!proofCode && userAuthConfigured()) {
         console.error(
           `[github-install] no ?code on the callback for installation ${installationId} ` +
             `(setup_action=${setupAction ?? "none"}, state=${state ? "present" : "none"}). ` +
             `Check that "Request user authorization (OAuth) during installation" is enabled on ` +
             `the App and that its Callback URL points here. ` +
-            `${requireInstallProof() ? "REFUSING (GITHUB_APP_REQUIRE_INSTALL_PROOF=1)." : "Falling back to the freshness gate."}`,
+            `${requireInstallProof() ? "REFUSING (install proof required; set GITHUB_APP_REQUIRE_INSTALL_PROOF=0 to fall back to the freshness gate)." : "Falling back to the freshness gate."}`,
         );
       }
       const proven = await provenCaller();
@@ -235,7 +236,7 @@ export async function GET(req: Request): Promise<Response> {
       console.error(
         `[github-install] no ?code on the stateless callback for installation ${installationId} ` +
           `(setup_action=${setupAction ?? "none"}). ` +
-          `${requireInstallProof() ? "REFUSING (GITHUB_APP_REQUIRE_INSTALL_PROOF=1)." : "Falling back to the freshness gate."}`,
+          `${requireInstallProof() ? "REFUSING (install proof required; set GITHUB_APP_REQUIRE_INSTALL_PROOF=0 to fall back to the freshness gate)." : "Falling back to the freshness gate."}`,
       );
     }
     // Freshness is NOT relaxed for a proven caller here, unlike the state path

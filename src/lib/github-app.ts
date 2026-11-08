@@ -218,23 +218,24 @@ export function userAuthConfigured(): boolean {
 
 // Whether a MISSING ?code should refuse the install outright.
 //
-// Two-state on purpose. A present-but-invalid code is always refused - that is
-// evidence about the caller and needs no opt-in. A missing code is ambiguous:
-// it means GitHub's redirect did not carry one, which is far more often our own
-// App configuration than an attacker stripping a parameter. Failing closed on
-// it blocked every legitimate install on launch morning.
+// A present-but-invalid code is always refused - that is evidence about the
+// caller and needs no opt-in. A missing code is the ambiguous case: it means
+// GitHub's redirect did not carry one, which is more often our own App
+// configuration than an attacker stripping a parameter.
 //
-// So enforcement of the ambiguous case is opt-in, and the operator turns it on
-// only after seeing a real install verify successfully (the Vercel log prints
-// which branch ran). Until then the callback falls back to the freshness /
-// suspension gate, which still closes every orphan-installation class.
+// History: on launch morning (2026-07-28) failing closed on a missing code
+// blocked every legitimate install, so enforcement became an operator opt-in
+// (GITHUB_APP_REQUIRE_INSTALL_PROOF=1) while the callback leaned on the
+// freshness / suspension gate. That was the operator's documented choice, not a
+// silent downgrade.
 //
-// This is deliberately an explicit, documented, operator-controlled state
-// rather than a silent permanent downgrade - the difference between "we chose
-// the weaker check for now and wrote it down" and "the strong check quietly
-// stopped applying". Set GITHUB_APP_REQUIRE_INSTALL_PROOF=1 to close it.
+// The default is now strict: whenever the App's client credentials are
+// configured (userAuthConfigured), a missing code is refused. Setting
+// GITHUB_APP_REQUIRE_INSTALL_PROOF=0 is the explicit relax switch that falls
+// back to the freshness gate - an operator decision that has to be written
+// down, never the state a deploy lands in by omission.
 export function requireInstallProof(): boolean {
-  return userAuthConfigured() && process.env.GITHUB_APP_REQUIRE_INSTALL_PROOF === "1";
+  return userAuthConfigured() && process.env.GITHUB_APP_REQUIRE_INSTALL_PROOF !== "0";
 }
 
 export async function callerControlsInstallation(
