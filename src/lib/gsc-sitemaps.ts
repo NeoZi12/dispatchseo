@@ -1,4 +1,4 @@
-import { oauthSearchConsole } from "@/lib/gsc-oauth";
+import { oauthSearchConsole, setupScopesEnabled } from "@/lib/gsc-oauth";
 import { fetchProjectUrl } from "@/lib/url-guard";
 import { readCapped } from "@/lib/hosted-theme";
 import { serviceAccountWriteClient } from "@/lib/gsc";
@@ -166,5 +166,11 @@ export async function checkSitemap(project: Project): Promise<SitemapFreshness |
   const last = reads.length ? Math.max(...reads) : null;
   if (last !== null && Date.now() - last < SITEMAP_STALE_DAYS * 86_400_000) return null;
   const resubmit = hosted ? await submitHostedSitemap(project) : await submitSiteSitemap(project);
+  // An owner's grant made while the deploy asks only for the read-only scope
+  // (GOOGLE_SETUP_SCOPES unset, i.e. before Google verified the app) cannot
+  // resubmit, and nothing the owner does in Search Console changes that - so
+  // there is no card to show, only the quiet log. The operator's service
+  // account path is unaffected: its "no-scope" IS a permission to grant.
+  if (resubmit === "no-scope" && project.gsc_oauth_refresh_token && !setupScopesEnabled()) return null;
   return { lastReadAt: last === null ? null : new Date(last).toISOString(), sitemap, resubmit };
 }

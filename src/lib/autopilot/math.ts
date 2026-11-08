@@ -257,6 +257,11 @@ export function rampQuota(i: RampInput): RampVerdict {
   const plan = Math.max(0, i.planQuota);
   if (plan === 0) return { quota: 0, stage: "full", reason: null };
   const cap = (q: number) => Math.min(plan, q);
+  // No Search Console, no index data: indexedAt comes from the URL
+  // Inspection API alone, so without a connection every article reads as
+  // "not indexed" and the brake below would pause a healthy site at week 8
+  // (found 2026-11-08). Such a site stays at one a week instead.
+  if (!i.gscConnected) return { quota: cap(1), stage: "no-gsc", reason: "one a week until Search Console data arrives" };
   // The brake reads first: a site Google is not indexing slows down (and
   // stops) whatever its age.
   const at56 = indexRate(i.articles, i.now, 56);
@@ -267,7 +272,6 @@ export function rampQuota(i: RampInput): RampVerdict {
   if (at28.n >= BRAKE_MIN_ARTICLES && at28.rate < BRAKE_INDEX_RATE) {
     return { quota: cap(1), stage: "brake", reason: `only ${Math.round(at28.rate * 100)}% of its ${at28.n} articles older than 4 weeks are indexed - one a week until Google catches up` };
   }
-  if (!i.gscConnected) return { quota: cap(1), stage: "no-gsc", reason: "one a week until Search Console data arrives" };
   const weeks = i.firstStartAt ? Math.floor((i.now.getTime() - Date.parse(i.firstStartAt)) / (7 * DAY_MS)) : 0;
   if (weeks < RAMP_WEEKS_SLOW) return { quota: cap(1), stage: "ramp-1", reason: "a new site starts at one a week" };
   if (weeks < RAMP_WEEKS_MEDIUM) return { quota: cap(2), stage: "ramp-2", reason: "two a week in its second month" };
