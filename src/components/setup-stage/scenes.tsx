@@ -525,7 +525,11 @@ export function AccountScene({
           autoComplete="email"
           className={cx(CONTROL, "h-12 flex-1 rounded-xl text-[15px]")}
         />
-        <button type="submit" className={cx(BTN_QUIET, "h-12")} disabled={busy}>
+        <button
+          type="submit"
+          className={cx(/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim()) ? BTN_PRIMARY : BTN_QUIET, "h-12 whitespace-nowrap px-5 py-0 text-[15px] transition-all duration-300")}
+          disabled={busy}
+        >
           Email me a link
         </button>
       </form>
