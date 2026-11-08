@@ -111,6 +111,7 @@ export function GithubScene({ onContinue, handoffHref, busy, error }: { onContin
   return (
     <SceneCard
       id="github"
+      actionFirst
       title="Connect GitHub"
       lead="Three clicks on GitHub, then you’re back here."
       action={

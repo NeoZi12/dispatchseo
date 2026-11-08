@@ -115,15 +115,19 @@ export function Companion({ say, hop = false, className }: { say: ReactNode; hop
 }
 
 /** One scene's card: headline, one sentence, the content, the one action. */
-export function SceneCard({ title, lead, children, action, id }: { title: ReactNode; lead?: ReactNode; children?: ReactNode; action?: ReactNode; id: string }) {
+/** `actionFirst`: the button sits right under the title, above the content -
+ *  for a scene whose content is a guide to read AFTER clicking (GitHub). */
+export function SceneCard({ title, lead, children, action, id, actionFirst = false }: { title: ReactNode; lead?: ReactNode; children?: ReactNode; action?: ReactNode; id: string; actionFirst?: boolean }) {
+  const actionRow = action ? <div className={cx(actionFirst ? "mt-6" : "mt-7", "flex flex-wrap items-center justify-center gap-3")}>{action}</div> : null;
   return (
     <section key={id} aria-labelledby={`${id}-title`} className={cx("rounded-3xl border border-line-soft bg-surface p-6 text-center sm:p-8", s.sceneIn)}>
       <h1 id={`${id}-title`} className="text-[26px] font-semibold leading-tight tracking-tight text-ink sm:text-[30px]">
         {title}
       </h1>
       {lead ? <p className="mx-auto mt-2 max-w-[34rem] text-[15px] leading-relaxed text-ink-muted">{lead}</p> : null}
-      {children ? <div className="mt-6 text-left">{children}</div> : null}
-      {action ? <div className="mt-7 flex flex-wrap items-center justify-center gap-3">{action}</div> : null}
+      {actionFirst ? actionRow : null}
+      {children ? <div className={cx(actionFirst ? "mt-7" : "mt-6", "text-left")}>{children}</div> : null}
+      {actionFirst ? null : actionRow}
     </section>
   );
 }
