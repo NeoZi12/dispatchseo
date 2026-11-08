@@ -290,6 +290,9 @@ export type FilterContext = {
   existingTexts: string[];
   /** Override of MIN_VOLUME for research's one widened retry. */
   minVolume?: number;
+  /** The capped page types this run may still queue (pageTypeRoom); taken
+   *  as ideas are kept. Absent = no caps (self-promo is blocked regardless). */
+  pageTypeRoom?: PageTypeRoom;
 };
 
 /** Research's one widened pass when the normal filter keeps nothing (audit
@@ -405,6 +408,10 @@ export function filterCandidates(
   const kept: Candidate[] = [];
   const keptTexts: string[] = [];
   for (const c of seen.values()) {
+    // Page-type guards first: a self-promotional shape is never worth the
+    // rest of the checks (and never worth a KD lookup - kdRecoveryKeys).
+    const type = pageTypeOf(c.keyword);
+    if (type === "self-promo") { dropped.blocked++; continue; }
     if (!(c.volume >= (ctx.minVolume ?? MIN_VOLUME))) { dropped.volume++; continue; }
     // Unknown KD is not "easy": DataForSEO leaves it empty on thin data, and
     // a young site cannot afford to guess.
@@ -417,6 +424,16 @@ export function filterCandidates(
     // article (word overlap 0.67).
     const against = [...ctx.existingTexts, ...keptTexts];
     if (against.some((t) => jaccard(t, c.keyword) >= DUPLICATE_JACCARD)) { dropped["near-duplicate"]++; continue; }
+    // The capped shapes take room only once everything else passed; the room
+    // lives on the context, so it holds across every rung of one run.
+    if (ctx.pageTypeRoom && type === "versus") {
+      if (ctx.pageTypeRoom.versus <= 0) { dropped.blocked++; continue; }
+      ctx.pageTypeRoom.versus--;
+    }
+    if (ctx.pageTypeRoom && (type === "glossary" || type === "listicle")) {
+      if (ctx.pageTypeRoom.listLike <= 0) { dropped.blocked++; continue; }
+      ctx.pageTypeRoom.listLike--;
+    }
     kept.push(c);
     keptTexts.push(c.keyword);
   }
@@ -438,7 +455,7 @@ export function kdRecoveryKeys(raw: Candidate[], ctx: FilterContext, cap: number
     const k = normalizeKeyword(c.keyword);
     if (!k || c.kd !== null || scored.has(k)) continue;
     if (!(c.volume >= (ctx.minVolume ?? MIN_VOLUME))) continue;
-    if (!languageOk(c, ctx.languageCode) || matchesBlockedTopic(k, ctx.blockedTopics) || ctx.takenKeywords.has(k)) continue;
+    if (pageTypeOf(k) === "self-promo" || !languageOk(c, ctx.languageCode) || matchesBlockedTopic(k, ctx.blockedTopics) || ctx.takenKeywords.has(k)) continue;
     best.set(k, Math.max(best.get(k) ?? 0, c.volume));
   }
   return [...best.entries()]
@@ -472,11 +489,67 @@ export const FIT_MIN = 0.7;
 export const EVERGREEN_MIN = 0.5;
 export const ACCEPTED_INTENTS = ["informational", "commercial"] as const;
 
-export type JudgedCandidate = { fit: number; intent: string | null; evergreen: number };
+export type JudgedCandidate = { fit: number; intent: string | null; evergreen: number; /** the article would pitch the site against its competitors (0-1) */ pitch?: number };
 
-/** The judge's three answers, read with the spec's thresholds. */
+/** At or above this, the judge says the page pitches the site against its
+ *  competitors: refused whatever else it scores (page-type guards below). */
+export const PITCH_MAX = 0.5;
+
+/** The judge's answers, read with the spec's thresholds. */
 export function passesJudge(j: JudgedCandidate): boolean {
-  return j.fit >= FIT_MIN && (ACCEPTED_INTENTS as readonly string[]).includes(j.intent ?? "") && j.evergreen >= EVERGREEN_MIN;
+  return j.fit >= FIT_MIN && (ACCEPTED_INTENTS as readonly string[]).includes(j.intent ?? "") && j.evergreen >= EVERGREEN_MIN && (j.pitch ?? 0) < PITCH_MAX;
+}
+
+// --- Page-type guards ----------------------------------------------------------
+//
+// The page shapes a spam update reads as "exists because a template could
+// produce it" (2026-11-08 research on dispatchseo.com's August demotion: 11 of
+// 17 posts were "<competitor> alternative" pages, plus self-promotional "best
+// X tools" lists; Lily Ray's 2026 study names the same templates). Enforced
+// here in code, on every keyword research produces (model proposals and
+// DataForSEO expansions alike), not left to a prompt line:
+//   self-promo   alternatives / competitors / best-or-top tools, software,
+//                apps / "top 10" lists - never queued;
+//   versus       a neutral "X vs Y" - none in a site's first 8 weeks, then at
+//                most one per 4 weeks (ClockedCode's comparisons that worked
+//                were neutral and rare);
+//   glossary     "what is X" - with listicles, at most 2 of any 10 ideas;
+//   listicle     "best ...", "N ways/tips/ideas ..." - same shared cap.
+
+export type PageType = "self-promo" | "versus" | "glossary" | "listicle";
+
+export function pageTypeOf(keyword: string): PageType | null {
+  const k = keyword.toLowerCase().replace(/\s+/g, " ").trim();
+  if (/\b(alternatives?|competitors?)\b/.test(k)) return "self-promo";
+  if (/\b(best|top)\b.*\b(tools?|software|apps?|platforms?|plugins?|extensions?|saas|services)\b/.test(k)) return "self-promo";
+  if (/\btop\s+\d+\b/.test(k)) return "self-promo";
+  if (/\b(vs\.?|versus)\b/.test(k)) return "versus";
+  if (/^(what\s+(is|are|does)|meaning\s+of|definition\s+of)\b/.test(k)) return "glossary";
+  // "best time to ..." / "best way to ..." are questions, not lists.
+  if (/^(best|top)\b(?!\s+(time|way|age|place|month|season|day|temperature|setting|size)s?\b)/.test(k) || /\b\d+\s+(best|ways|tips|ideas|reasons|examples|mistakes)\b/.test(k)) return "listicle";
+  return null;
+}
+
+/** How many more capped page types this research run may queue for a site. */
+export type PageTypeRoom = { versus: number; listLike: number };
+
+/** Weeks a site must have before its first "X vs Y". */
+export const VERSUS_MIN_AGE_DAYS = 56;
+/** Days between two "X vs Y" ideas on one site. */
+export const VERSUS_EVERY_DAYS = 28;
+/** Glossary + listicle ideas allowed among a site's last LIST_WINDOW. */
+export const LIST_LIKE_MAX = 2;
+export const LIST_WINDOW = 10;
+
+/** The room, from the site's age and its recent ideas (newest first). */
+export function pageTypeRoom(siteAgeDays: number, recent: Array<{ keyword: string; createdAt: string }>, now: Date): PageTypeRoom {
+  const versusRecently = recent.some((r) => pageTypeOf(r.keyword) === "versus" && now.getTime() - Date.parse(r.createdAt) < VERSUS_EVERY_DAYS * DAY_MS);
+  const versus = siteAgeDays < VERSUS_MIN_AGE_DAYS || versusRecently ? 0 : 1;
+  const listLike = recent.slice(0, LIST_WINDOW).filter((r) => {
+    const t = pageTypeOf(r.keyword);
+    return t === "glossary" || t === "listicle";
+  }).length;
+  return { versus, listLike: Math.max(0, LIST_LIKE_MAX - listLike) };
 }
 
 /** "best crm for startups" -> "Best crm for startups": the working title an

@@ -21,6 +21,9 @@ import { generate, judge, JUDGE_MAX_QUESTIONS_PER_CALL, choiceOf, isDryRun, miss
 import { writerMode, type Project } from "@/lib/projects";
 import {
   BACKLOG_TARGET,
+  LIST_WINDOW,
+  PITCH_MAX,
+  pageTypeRoom,
   backlogNeeded,
   backlogShort,
   DAY_MS,
@@ -87,8 +90,9 @@ const MAX_SEEDS = 8;
 const MODEL_FIRST_KEYWORDS = 30;
 const MODEL_FIRST_JUDGE_CALLS = 3;
 const LABS_LIMIT = 50;
-/** Three questions per candidate, so 13 candidates fill one Jev call. */
-const QUESTIONS_PER_CANDIDATE = 3;
+/** Four questions per candidate (fit, intent, evergreen, pitch), so 10
+ *  candidates fill one Jev call. */
+const QUESTIONS_PER_CANDIDATE = 4;
 const CANDIDATES_PER_CALL = Math.floor(JUDGE_MAX_QUESTIONS_PER_CALL / QUESTIONS_PER_CANDIDATE);
 /** The most Jev calls one research run makes, across every rung of the
  *  thin-market ladder (up to 13 candidates each). Judging goes past the first
@@ -442,12 +446,28 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
   // on its own may land approved. Unknown DR reads as DR 0 (kd-zones does).
   const kdCeiling = kdZones(dr?.dr ?? null).autoApprove;
   const existing = await existingTopics(project.id);
+  // The page-type guards' room (math.ts pageTypeRoom): the site's age on
+  // the engine and its ten newest ideas (rejected ones never shipped).
+  const { data: recentIdeas } = await db()
+    .from("suggestions")
+    .select("primary_keyword, created_at")
+    .eq("project_id", project.id)
+    .eq("type", "guide")
+    .neq("status", "rejected")
+    .order("created_at", { ascending: false })
+    .limit(LIST_WINDOW);
+  const siteAgeDays = project.created_at ? (now.getTime() - Date.parse(project.created_at)) / DAY_MS : 0;
   const filterCtx: FilterContext = {
     kdCeiling,
     languageCode: lang,
     blockedTopics: blockedTopicsOf(project),
     takenKeywords: existing.keywords,
     existingTexts: existing.texts,
+    pageTypeRoom: pageTypeRoom(
+      siteAgeDays,
+      ((recentIdeas ?? []) as { primary_keyword: string | null; created_at: string }[]).map((r) => ({ keyword: r.primary_keyword ?? "", createdAt: r.created_at })),
+      now,
+    ),
   };
   /** The widest bar any rung applies (rungs 3 and 4): volume 10, KD +5. */
   const widest: FilterContext = { ...filterCtx, kdCeiling: kdCeiling + WIDEN_KD_BY, minVolume: WIDEN2_MIN_VOLUME };
@@ -1122,6 +1142,7 @@ function rejectionReason(c: JudgedCandidate): string {
   if (c.fit < FIT_MIN) why.push(`fit ${c.fit.toFixed(2)} (needs ${FIT_MIN})`);
   if (c.intent !== "informational" && c.intent !== "commercial") why.push(`${c.intent ?? "unclear"} intent`);
   if (c.evergreen < EVERGREEN_MIN) why.push(`not evergreen (${c.evergreen.toFixed(2)})`);
+  if ((c.pitch ?? 0) >= PITCH_MAX) why.push("pitches the site against its competitors");
   return why.join(", ") || "did not pass the judge";
 }
 
@@ -1354,6 +1375,13 @@ export async function judgeCandidates(
       type: "noul",
       instructions: `Candidate ${i} ("${c.keyword}"): people will still search this a year from now (not a passing news event or a dated version).`,
     };
+    // Page-type guard (math.ts PITCH_MAX): the shapes code cannot spot from
+    // the words alone - a review of rivals, a "why us" comparison.
+    questions[`pitch_${i}`] = {
+      type: "noul",
+      instructions: `Candidate ${i} ("${c.keyword}"): the natural article for this search would rank, review or pitch this site or its products against its competitors, or list competing companies' products.`,
+      criteria: { true: "a competitor comparison, an alternatives list, a vendor roundup, or a page whose point is that this site beats others", false: "a page that helps the reader with their own problem, question or decision on its own terms" },
+    };
   });
   const verdict = await judge({
     projectId: project.id,
@@ -1369,6 +1397,7 @@ export async function judgeCandidates(
         a[`fit_${i}`] = { type: "noul", noul: 0.82 };
         a[`intent_${i}`] = { type: "choice", choice: "informational", confidence: 0.9, probabilities: { informational: 0.9, commercial: 0.1 } };
         a[`evergreen_${i}`] = { type: "noul", noul: 0.8 };
+        a[`pitch_${i}`] = { type: "noul", noul: 0.05 };
       });
       return a;
     },
@@ -1380,6 +1409,7 @@ export async function judgeCandidates(
       fit: num(verdict.answers[`fit_${i}`]),
       intent: choiceOf(verdict.answers[`intent_${i}`]),
       evergreen: num(verdict.answers[`evergreen_${i}`]),
+      pitch: num(verdict.answers[`pitch_${i}`]),
     })),
   };
 }
