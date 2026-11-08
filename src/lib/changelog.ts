@@ -75,6 +75,14 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "improved",
     text:
+      "Setup now recognises far more kinds of site. Astro, Nuxt, SvelteKit, Hugo, Jekyll, Eleventy, " +
+      "Docusaurus, Gatsby, Vite and Lovable apps, Laravel, Rails and Django all count as a fit when the " +
+      "code is on GitHub - not just Next.js. A site that only loads its images from Shopify or Wix is no " +
+      "longer mistaken for one.",
+  },
+  {
+    kind: "improved",
+    text:
       "Your blog and its cover pictures now wear your site's own colours. DispatchSEO reads your " +
       "brand colour and whether your site is light or dark when it first looks at it, and every " +
       "article's cover is drawn to match - a black-and-white site gets black-and-white covers.",

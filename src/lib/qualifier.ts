@@ -48,6 +48,21 @@ const PLATFORM_SUPPORT: Record<string, Support> = {
   // see one, so Ghost owners fell into "unknown" and were waved through to
   // checkout - the exact churn the qualifier exists to prevent.
   ghost: "no",
+  // Hosted builders with no repo behind them (site-platform.ts BUILDERS).
+  // Listed one by one because a missing key defaults to "ready".
+  hubspot: "no",
+  weebly: "no",
+  godaddy: "no",
+  duda: "no",
+  jimdo: "no",
+  tilda: "no",
+  strikingly: "no",
+  googlesites: "no",
+  blogger: "no",
+  substack: "no",
+  medium: "no",
+  bigcommerce: "no",
+  hostinger: "no",
   unknown: "ready", // we could not tell; our probe is not good enough to refuse someone on
   unreachable: "ready", // ditto - a new domain that is not live yet is a normal case
 };
