@@ -28,7 +28,7 @@ import { setupGaps } from "../mode";
 import { TOPIC_LIMITS } from "@/lib/autopilot/controls";
 import type { CronHealth } from "@/lib/cron-alerts";
 import { siteIssueLine } from "@/lib/autopilot/friendly";
-import { articlesPerWeekFor } from "@/lib/billing";
+import { articlesPerWeekFor, FREE_ARTICLES_PER_MONTH } from "@/lib/billing";
 import type { OperatorSite } from "@/lib/autopilot/operator";
 import { OperatorIssue } from "./operator-issue";
 
