@@ -460,9 +460,12 @@ takes over once this is unset.
 Password for the bundled Postgres container. **Only takes effect before
 the first boot** - it's baked into the `dispatch-pgdata` volume at
 creation, and changing it afterward requires wiping that volume
-(`docker compose down -v`, which deletes all data). The default is fine for
-most setups: Postgres is reachable only inside the compose network, never
-from the host or the internet.
+(`docker compose down -v`, which deletes all data). `start.sh` generates a
+random one into `.env` on a fresh install (no `dispatch-pgdata` volume yet);
+an existing install keeps the password it was created with until you rotate
+it (dump, set `POSTGRES_PASSWORD`, recreate the volume, restore). Postgres
+and PostgREST sit on an internal network that only the app joins - never the
+host, the builder container or the internet.
 
 </Field>
 

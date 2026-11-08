@@ -415,7 +415,7 @@ jobs:
           cat > "$RUNNER_TEMP/codex-home/config.toml" <<'TOML'
           [mcp_servers.playwright]
           command = "npx"
-          args = ["-y", "@playwright/mcp@latest", "--headless", "--isolated"]
+          args = ["-y", "@playwright/mcp@0.0.84", "--headless", "--isolated"]
           # Nobody is here to approve a tool call on a scheduled runner, and
           # without this every call comes back "user cancelled MCP tool call".
           default_tools_approval_mode = "approve"
@@ -694,6 +694,20 @@ jobs:
             echo "::error::project-mode endpoint returned HTTP $code"; exit 1
           fi
 
+          # Same denylist as seo-auto-merge: a tool never needs CI, dependency
+          # manifests, lockfiles, build or deploy config, and a change to any of
+          # them would run on every later build. The validate job itself ran this
+          # PR's code, so the merge decision cannot rest on its label alone.
+          denied=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json files --jq '
+            [.files[].path | select(
+              startswith(".github/") or startswith(".dispatchseo/") or
+              test("(^|/)(package\\.json|pnpm-lock\\.yaml|package-lock\\.json|yarn\\.lock|bun\\.lockb|bun\\.lock|vercel\\.json|\\.npmrc)$") or
+              test("(^|/)next\\.config\\.[^/]*$") or test("(^|/)Dockerfile[^/]*$")
+            )] | join(" ")')
+          if [ -n "$denied" ]; then
+            echo "PR #$PR_NUMBER touches protected file(s): $denied - leaving it open for manual review."
+            exit 0
+          fi
           labels=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json labels -q '.labels[].name')
           # Both conditions: tool-validated present AND no failure flag. A stale
           # tool-validated from an earlier commit must never merge a newer,

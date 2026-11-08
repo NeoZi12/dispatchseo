@@ -52,7 +52,7 @@ function configSteps({ guardIf, variant }) {
           cat > "$RUNNER_TEMP/codex-home/config.toml" <<'TOML'
           [mcp_servers.playwright]
           command = "npx"
-          args = ["-y", "@playwright/mcp@latest", "--headless", "--isolated"]
+          args = ["-y", "@playwright/mcp@0.0.84", "--headless", "--isolated"]
           # Nobody is here to approve a tool call on a scheduled runner, and
           # without this every call comes back "user cancelled MCP tool call".
           default_tools_approval_mode = "approve"
