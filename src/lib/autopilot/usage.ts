@@ -4,6 +4,7 @@ import { planGate, polarConfigured, projectPlan } from "@/lib/billing";
 import { writerMode, type Project } from "@/lib/projects";
 import { missingCredentials } from "@/lib/writer/models";
 import { cadence, weekStartUtc, spacingDaysFor } from "./math";
+import { rampFor } from "./ramp";
 
 // What a site has used of its weekly article quota, and the one gate every
 // writer start passes (startWriterRun calls writerStartGate - so the MCP
@@ -176,11 +177,13 @@ export async function writerStartGate(project: Project, opts: { gated?: boolean 
   if (isCloudMode() && plan.articlesPerWeek === 0) return "plan inactive: this site's plan includes no articles right now.";
   if (writerMode(project) === "hosted" && !opts.gated) {
     const usage = await weekUsage(project.id, now);
-    const verdict = cadence({ now, quota: plan.articlesPerWeek, countThisWeek: usage.count, lastStartedAt: usage.lastStartedAt });
+    const ramp = await rampFor(project.id, plan.articlesPerWeek, now);
+    if (ramp.stage === "pause") return `This site is held: ${ramp.reason}.`;
+    const verdict = cadence({ now, quota: ramp.quota, countThisWeek: usage.count, lastStartedAt: usage.lastStartedAt });
     if (!verdict.write) {
       const when = verdict.nextAt ? ` The next one can start ${verdict.nextAt.toISOString().slice(0, 10)}.` : "";
       return verdict.reason === "quota met"
-        ? `This site has used its ${plan.articlesPerWeek} article${plan.articlesPerWeek === 1 ? "" : "s"} for this week.${when}`
+        ? `This site has used its ${ramp.quota} article${ramp.quota === 1 ? "" : "s"} for this week${ramp.reason ? ` (${ramp.reason})` : ""}.${when}`
         : verdict.reason === "spacing"
           ? `Articles for one site start at least ${spacingDaysFor(plan.articlesPerWeek) === 1 ? "a day" : `${spacingDaysFor(plan.articlesPerWeek)} days`} apart.${when}`
           : "This site's plan includes no articles right now.";

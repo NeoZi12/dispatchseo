@@ -208,6 +208,115 @@ export type HostedArticleStat = {
   indexedAt: string | null;
 };
 
+// --- Ramp and index-rate brake ---------------------------------------------------
+//
+// A new site never starts at its plan's full pace, and a site Google is not
+// indexing slows down instead of piling up pages nobody will see (2026-11-08
+// spam-safety research: dispatchseo.com was demoted publishing ~1 a day on a
+// 22%-indexed site; ClockedCode grew at ~76% indexed). Applied as a ceiling
+// on the plan's weekly quota by every caller of cadence() - the scheduler,
+// manual starts, the queue projection - so neither a quota override nor a
+// manual start can skip it.
+//   weeks 1-4 of a site's engine life   1 a week
+//   weeks 5-8                           2 a week
+//   after that                          the plan's number, once >= 60% of its
+//                                       engine articles (14+ days old) are
+//                                       indexed; 2 a week until then
+//   no Search Console data              1 a week (nothing to judge by)
+//   brake: of the articles 28+ days old (6 or more), under 40% indexed - 1 a
+//   week; the same at 56+ days old - pause, with the reason.
+
+export const RAMP_WEEKS_SLOW = 4;
+export const RAMP_WEEKS_MEDIUM = 8;
+export const RAMP_FULL_INDEX_RATE = 0.6;
+export const BRAKE_INDEX_RATE = 0.4;
+export const BRAKE_MIN_ARTICLES = 6;
+
+export type RampInput = {
+  planQuota: number;
+  now: Date;
+  /** When the engine started this site's first article (null = none yet). */
+  firstStartAt: string | null;
+  /** Search Console data arrives for the site (rows in the last two weeks). */
+  gscConnected: boolean;
+  /** The site's published engine articles with their indexed date. */
+  articles: Array<{ publishedAt: string; indexedAt: string | null }>;
+};
+export type RampVerdict = { quota: number; stage: "ramp-1" | "ramp-2" | "full" | "awaiting-index" | "no-gsc" | "brake" | "pause"; reason: string | null };
+
+function indexRate(articles: RampInput["articles"], now: Date, minAgeDays: number): { n: number; rate: number } {
+  const old = articles.filter((a) => now.getTime() - Date.parse(a.publishedAt) >= minAgeDays * DAY_MS);
+  const indexed = old.filter((a) => a.indexedAt).length;
+  return { n: old.length, rate: old.length ? indexed / old.length : 0 };
+}
+
+export function rampQuota(i: RampInput): RampVerdict {
+  const plan = Math.max(0, i.planQuota);
+  if (plan === 0) return { quota: 0, stage: "full", reason: null };
+  const cap = (q: number) => Math.min(plan, q);
+  // The brake reads first: a site Google is not indexing slows down (and
+  // stops) whatever its age.
+  const at56 = indexRate(i.articles, i.now, 56);
+  if (at56.n >= BRAKE_MIN_ARTICLES && at56.rate < BRAKE_INDEX_RATE) {
+    return { quota: 0, stage: "pause", reason: `only ${Math.round(at56.rate * 100)}% of its ${at56.n} articles older than 8 weeks are in Google's index` };
+  }
+  const at28 = indexRate(i.articles, i.now, 28);
+  if (at28.n >= BRAKE_MIN_ARTICLES && at28.rate < BRAKE_INDEX_RATE) {
+    return { quota: cap(1), stage: "brake", reason: `only ${Math.round(at28.rate * 100)}% of its ${at28.n} articles older than 4 weeks are indexed - one a week until Google catches up` };
+  }
+  if (!i.gscConnected) return { quota: cap(1), stage: "no-gsc", reason: "one a week until Search Console data arrives" };
+  const weeks = i.firstStartAt ? Math.floor((i.now.getTime() - Date.parse(i.firstStartAt)) / (7 * DAY_MS)) : 0;
+  if (weeks < RAMP_WEEKS_SLOW) return { quota: cap(1), stage: "ramp-1", reason: "a new site starts at one a week" };
+  if (weeks < RAMP_WEEKS_MEDIUM) return { quota: cap(2), stage: "ramp-2", reason: "two a week in its second month" };
+  const at14 = indexRate(i.articles, i.now, 14);
+  if (at14.n < 3 || at14.rate < RAMP_FULL_INDEX_RATE) {
+    return { quota: cap(2), stage: "awaiting-index", reason: `two a week until 60% of its articles are indexed (${Math.round(at14.rate * 100)}% now)` };
+  }
+  return { quota: plan, stage: "full", reason: null };
+}
+
+/**
+ * The collapse rule for a SMALL site, which gscCollapse's 500-impression floor
+ * never sees: the last 14 settled days down 60% or more against the 14 before,
+ * on a base of at least 50. Same anchoring and gap tolerance as gscCollapse.
+ */
+export const SMALL_COLLAPSE_MIN_BASE = 50;
+export const SMALL_COLLAPSE_RATIO = 0.4;
+export function smallSiteCollapse(rows: GscDay[], now: Date): CollapseVerdict {
+  const byDate = new Map<string, number>();
+  for (const r of rows) byDate.set(r.date, Number(r.impressions) || 0);
+  const settledBy = new Date(utcDay(now).getTime() - GSC_SETTLE_DAYS * DAY_MS).toISOString().slice(0, 10);
+  const latest = [...byDate.keys()].filter((d) => d <= settledBy).sort().at(-1);
+  if (!latest) return { collapsed: false, why: "no settled Search Console days yet" };
+  const latestMs = Date.parse(`${latest}T00:00:00Z`);
+  if (now.getTime() - latestMs > (7 + GSC_SETTLE_DAYS) * DAY_MS) return { collapsed: false, why: "Search Console data is over a week old" };
+  const day = (offset: number) => new Date(latestMs - offset * DAY_MS).toISOString().slice(0, 10);
+  let last = 0;
+  let prior = 0;
+  let missingLast = 0;
+  let priorDays = 0;
+  for (let k = 0; k < 14; k++) {
+    const v = byDate.get(day(k));
+    if (v === undefined) missingLast++;
+    else last += v;
+  }
+  if (missingLast > 1) return { collapsed: false, why: "days are missing in the last 14 - not judging on gaps" };
+  for (let k = 14; k < 28; k++) {
+    const v = byDate.get(day(k));
+    if (v === undefined) continue;
+    prior += v;
+    priorDays++;
+  }
+  if (priorDays < 10) return { collapsed: false, why: "fewer than 10 days of history before the last two weeks" };
+  const base = (prior / priorDays) * 14;
+  if (base < SMALL_COLLAPSE_MIN_BASE) return { collapsed: false, why: "too little traffic for the ratio to mean anything" };
+  if (last <= SMALL_COLLAPSE_RATIO * base) {
+    const pct = Math.round((1 - last / base) * 100);
+    return { collapsed: true, last7: last, expected7: Math.round(base), prior28: Math.round(base * 2), reason: `Search Console impressions fell ${pct}% (last 14 days ${last.toLocaleString("en-US")} against ~${Math.round(base).toLocaleString("en-US")} the 14 days before)` };
+  }
+  return { collapsed: false, why: "impressions within range" };
+}
+
 /**
  * Three hosted articles in a row, each indexed for 21+ days, none with a
  * single impression: the writer is producing pages Google indexes and then

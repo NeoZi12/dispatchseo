@@ -5,6 +5,7 @@ import { suggestionIdsInFlight } from "@/lib/writer/runs";
 import type { Project } from "@/lib/projects";
 import { upcomingStarts, weekStartUtc } from "./math";
 import { weekUsage } from "./usage";
+import { rampFor } from "./ramp";
 
 // The hosted writer's queue, as the owner sees it on /queue and the agent
 // reads it in get_autopilot (`upcoming`, `parked`): every idea the scheduler
@@ -114,7 +115,8 @@ export async function getHostedQueue(project: Pick<Project, "id" | "next_article
   const queued = ((approvedRes.data ?? []) as Row[]).filter((r) => !taken.has(r.id));
 
   const paused = Boolean(project.writer_paused_at);
-  const quota = plan.articlesPerWeek;
+  // The projection uses the same ceiling the scheduler will (ramp.ts).
+  const quota = (await rampFor(project.id, plan.articlesPerWeek, now)).quota;
   let starts: Date[] = [];
   if (!paused && quota > 0) {
     const floor = project.next_article_at ? new Date(project.next_article_at) : null;

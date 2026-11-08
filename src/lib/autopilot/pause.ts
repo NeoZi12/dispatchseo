@@ -6,6 +6,7 @@ import { writerMode, type Project } from "@/lib/projects";
 import {
   DAY_MS,
   gscCollapse,
+  smallSiteCollapse,
   RESUME_GRACE_DAYS,
   withinResumeGrace,
   zeroImpressionStreak,
@@ -45,7 +46,7 @@ import {
 const CLIENT_KIND = "dispatchseo-writer";
 
 export type AutoPauseResult = { paused: false; reason?: string } | { paused: true; reason: string };
-type PauseRule = "collapse" | "zero-impressions";
+type PauseRule = "collapse" | "zero-impressions" | "low-index";
 
 export async function evaluateAutoPause(project: Project, now = new Date()): Promise<AutoPauseResult> {
   if (writerMode(project) !== "hosted") return { paused: false, reason: "not a hosted project" };
@@ -78,7 +79,11 @@ export async function evaluateAutoPause(project: Project, now = new Date()): Pro
   const gsc = (gscRes.data ?? []) as GscDay[];
 
   if (!withinResumeGrace(project.writer_resumed_at, now)) {
-    const collapse = gscCollapse(gsc.filter((d) => Date.parse(d.date) >= now.getTime() - 45 * DAY_MS), now);
+    // The big-site rule needs 500 impressions in the prior 28 days; a small
+    // site is judged by its own (14 days against 14, on a base of 50).
+    const recent = gsc.filter((d) => Date.parse(d.date) >= now.getTime() - 45 * DAY_MS);
+    const big = gscCollapse(recent, now);
+    const collapse = big.collapsed ? big : smallSiteCollapse(recent, now);
     if (collapse.collapsed) {
       await pauseWriter(
         project.id,

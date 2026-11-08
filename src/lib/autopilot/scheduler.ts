@@ -11,6 +11,8 @@ import { cadence } from "./math";
 import { generateSiteProfile } from "./profile";
 import { keywordDataBlocked, RESEARCH_EVERY_MS, runResearch, type ResearchOutcome } from "./research";
 import { weekUsage } from "./usage";
+import { rampFor } from "./ramp";
+import { pauseWriter } from "./pause";
 
 export { weekUsage, type WeekUsage } from "./usage";
 
@@ -172,8 +174,14 @@ export async function runScheduler(
   await returnSlotAfterOurFailure(project, now);
 
   const plan = await projectPlan(project.id);
+  // The ramp and index-rate brake cap the plan's weekly number (ramp.ts).
+  const ramp = await rampFor(project.id, plan.articlesPerWeek, now);
+  if (ramp.stage === "pause") {
+    await pauseWriter(project.id, `Auto-paused: ${ramp.reason}. More pages on a site Google is not indexing will not help - check Search Console's Pages report, then resume.`, { auto: true, slug: project.slug, rule: "low-index" });
+    return { skipped: `paused: ${ramp.reason}`, next_article_at: null };
+  }
   const usage = await weekUsage(project.id, now);
-  const verdict = cadence({ now, quota: plan.articlesPerWeek, countThisWeek: usage.count, lastStartedAt: usage.lastStartedAt });
+  const verdict = cadence({ now, quota: ramp.quota, countThisWeek: usage.count, lastStartedAt: usage.lastStartedAt });
   if (!verdict.write) {
     await setNextArticleAt(project.id, verdict.nextAt);
     return { skipped: verdict.reason, next_article_at: verdict.nextAt?.toISOString() ?? null, profile: profileOutcome };
@@ -271,8 +279,9 @@ export async function startHostedRunClaimed(
   const dfsBlocked = await keywordDataBlocked(project);
   if (dfsBlocked) return { refused: `Not now: ${dfsBlocked}.` };
   const plan = await projectPlan(project.id);
+  const ramp = await rampFor(project.id, plan.articlesPerWeek, now);
   const usage = await weekUsage(project.id, now);
-  const verdict = cadence({ now, quota: plan.articlesPerWeek, countThisWeek: usage.count, lastStartedAt: usage.lastStartedAt });
+  const verdict = cadence({ now, quota: ramp.quota, countThisWeek: usage.count, lastStartedAt: usage.lastStartedAt });
   if (!verdict.write) return { refused: "This site's next article can't start yet (weekly quota or spacing between articles)." };
   const previous = project.next_article_at;
   let q = db().from("projects").update({ next_article_at: verdict.nextAfter.toISOString() }).eq("id", project.id);
