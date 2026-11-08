@@ -23,7 +23,9 @@ import {
   BACKLOG_TARGET,
   LIST_WINDOW,
   PITCH_MAX,
+  pageTypeOf,
   pageTypeRoom,
+  TARGET_APPROVED_IDEAS,
   backlogNeeded,
   backlogShort,
   DAY_MS,
@@ -409,6 +411,12 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
   if (!fromDb) return { skipped: "no site profile yet" };
 
   const stamp = () => db().from("projects").update({ last_research_at: now.toISOString() }).eq("id", project.id);
+
+  // The site's own demand first (Search Console), before anything is bought.
+  const gscDemand = await queueSearchConsoleDemand(project, profile, now).catch((e) => {
+    console.warn(`[autopilot] search console demand for ${project.slug} failed: ${e instanceof Error ? e.message : String(e)}`);
+    return { queued: 0, costUsd: 0 };
+  });
 
   // Two counts. The visible queue (approved) is what the writer takes next
   // and what the owner sees; the backlog behind it (pending, promoted as the
@@ -1273,6 +1281,99 @@ export function homePageHeadings(linkCandidates: unknown): string[] {
 
 /** The site's own seeds, best evidence first, at most MAX_SEEDS - minus the
  *  `dead` ones (seedKey form), whose slots go to the next seed in line. */
+// --- Search Console demand ------------------------------------------------------
+//
+// The site's own impressions count as measured demand (owner's decision,
+// 2026-11-08, amending "never queue without measured volume and KD"): it is
+// how ClockedCode found its winners - fresh problems with no recorded volume
+// that Google was already showing the site for. A query qualifies with
+// >= 30 impressions over 28 days while the site's best page sits below the
+// top 10 (seen, not yet answered), on a site with 28+ days of data; it still
+// passes the page-type guards, the blocked topics, the duplicate checks and
+// the judge, and at most half of a site's ideas come from here. No keyword
+// data is bought: one judge call is the whole cost.
+
+export const GSC_DEMAND_TAG = "(the site's own Search Console demand)";
+const GSC_DEMAND_MIN_IMPRESSIONS = 30;
+const GSC_DEMAND_MIN_DAYS = 28;
+const GSC_DEMAND_MAX_SHARE = 0.5;
+const GSC_DEMAND_MAX_PER_RUN = 6;
+
+async function queueSearchConsoleDemand(project: Project, profile: SiteProfile, now: Date): Promise<{ queued: number; costUsd: number }> {
+  const since = new Date(now.getTime() - GSC_DEMAND_MIN_DAYS * DAY_MS).toISOString().slice(0, 10);
+  const { data: days, error } = await db().from("gsc_stats").select("date, top_queries").eq("project_id", project.id).gte("date", since);
+  if (error || !days || days.length < GSC_DEMAND_MIN_DAYS - 3) return { queued: 0, costUsd: 0 };
+  const agg = new Map<string, { impressions: number; posWeighted: number }>();
+  for (const d of days as { top_queries: { query: string; impressions: number; position: number }[] | null }[]) {
+    for (const q of d.top_queries ?? []) {
+      const k = normalizeKeyword(q.query ?? "");
+      const words = k.split(" ").filter(Boolean);
+      // Searches people type, not pasted paths, commands or error dumps.
+      if (words.length < 2 || words.length > 8 || /[\\/:"%<>{}|]/.test(q.query ?? "")) continue;
+      const a = agg.get(k) ?? { impressions: 0, posWeighted: 0 };
+      a.impressions += Number(q.impressions) || 0;
+      a.posWeighted += (Number(q.position) || 100) * (Number(q.impressions) || 0);
+      agg.set(k, a);
+    }
+  }
+  const existing = await existingTopics(project.id);
+  const blocked = blockedTopicsOf(project);
+  const pool = [...agg.entries()]
+    .map(([keyword, a]) => ({ keyword, impressions: a.impressions, position: a.impressions ? a.posWeighted / a.impressions : 100 }))
+    .filter((c) => c.impressions >= GSC_DEMAND_MIN_IMPRESSIONS && c.position > 10)
+    .filter((c) => !pageTypeOf(c.keyword) && !matchesBlockedTopic(c.keyword, blocked) && !existing.keywords.has(c.keyword))
+    .filter((c) => !existing.texts.some((x) => jaccardWords(x, c.keyword) >= 0.6))
+    .sort((a, b) => b.impressions - a.impressions);
+  if (!pool.length) return { queued: 0, costUsd: 0 };
+
+  // The share cap: at most half of the site's ideas from this source.
+  const { data: ideas } = await db().from("suggestions").select("rationale").eq("project_id", project.id).eq("type", "guide").neq("status", "rejected").limit(1000);
+  const total = (ideas ?? []).length;
+  const fromHere = ((ideas ?? []) as { rationale: string | null }[]).filter((r) => (r.rationale ?? "").includes(GSC_DEMAND_TAG)).length;
+  const room = Math.min(GSC_DEMAND_MAX_PER_RUN, Math.max(0, Math.floor((total + GSC_DEMAND_MAX_PER_RUN) * GSC_DEMAND_MAX_SHARE) - fromHere));
+  if (room <= 0) return { queued: 0, costUsd: 0 };
+
+  const batch = pool.slice(0, Math.min(CANDIDATES_PER_CALL, room * 2));
+  const verdicts = await judgeCandidates(project, profile, batch.map((c) => ({ keyword: c.keyword, volume: null, kd: null })));
+  const { count: approvedNow } = await db().from("suggestions").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("type", "guide").eq("status", "approved");
+  let visibleRoom = Math.max(0, TARGET_APPROVED_IDEAS - (approvedNow ?? 0));
+  let queued = 0;
+  for (const [i, c] of batch.entries()) {
+    if (queued >= room) break;
+    const v = verdicts.results[i];
+    if (!v || !passesJudge(v)) continue;
+    const visible = visibleRoom > 0;
+    const { error: insertError } = await db().from("suggestions").insert({
+      project_id: project.id,
+      type: "guide",
+      status: visible ? "approved" : "pending",
+      title: sentenceTitle(c.keyword),
+      primary_keyword: c.keyword,
+      keyword_volume: null,
+      keyword_difficulty: null,
+      rationale: `autopilot research: fit ${v.fit.toFixed(2)}, ${c.impressions} Search Console impressions in 28 days at average position ${c.position.toFixed(1)} ${GSC_DEMAND_TAG}`,
+      source: "autopilot",
+      spec: { intent: v.intent, rank: queued, gsc: { impressions: c.impressions, position: Math.round(c.position * 10) / 10 } },
+    });
+    if (insertError) {
+      if (isDuplicateKeyError(insertError)) continue;
+      throw new Error(`could not queue a Search Console idea: ${insertError.message}`);
+    }
+    queued++;
+    if (visible) visibleRoom--;
+  }
+  return { queued, costUsd: verdicts.costUsd };
+}
+
+function jaccardWords(a: string, b: string): number {
+  const x = new Set(normalizeKeyword(a).split(" ").filter(Boolean));
+  const y = new Set(normalizeKeyword(b).split(" ").filter(Boolean));
+  let inter = 0;
+  for (const w of x) if (y.has(w)) inter++;
+  const union = x.size + y.size - inter;
+  return union ? inter / union : 0;
+}
+
 async function seedsFor(project: Project, profile: SiteProfile, dead: Set<string> = new Set()): Promise<{ seeds: string[]; skippedDead: number }> {
   const [gscRes, approvedRes, trackedRes, digestRes] = await Promise.all([
     db().from("gsc_stats").select("top_queries").eq("project_id", project.id).order("date", { ascending: false }).limit(1).maybeSingle(),
