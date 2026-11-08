@@ -147,6 +147,30 @@ export async function connectProject(
 }
 
 export async function disconnectProject(projectSlug: string): Promise<void> {
+  // Revoke the grant at Google before forgetting it, so "Disconnect" really
+  // ends our access instead of leaving a live refresh token behind. Best
+  // effort: a failed revoke is logged, never thrown, and the column is
+  // nulled either way.
+  try {
+    const { data } = await db()
+      .from("projects")
+      .select("gsc_oauth_refresh_token")
+      .eq("slug", projectSlug)
+      .maybeSingle();
+    const stored = (data as { gsc_oauth_refresh_token: string | null } | null)?.gsc_oauth_refresh_token;
+    if (stored) {
+      const token = await decryptSecret(stored);
+      const res = await fetch("https://oauth2.googleapis.com/revoke", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ token }).toString(),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) console.warn(`[gsc-oauth] revoke for ${projectSlug} returned HTTP ${res.status}`);
+    }
+  } catch (e) {
+    console.warn(`[gsc-oauth] revoke for ${projectSlug} failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
   await db()
     .from("projects")
     .update({ gsc_oauth_refresh_token: null })
@@ -172,6 +196,31 @@ export async function setTrackedProperty(
   const trimmed = siteUrl.trim();
   if (!isGscPropertyShape(trimmed)) {
     return "That doesn't look like a Search Console property. Use the exact string Search Console shows - either `sc-domain:example.com` or `https://example.com/`.";
+  }
+  // With a Google account connected, the property must be one that account
+  // actually lists. A tenant naming a property they don't own is either a
+  // typo or a probe, and either way the value must not land on the project.
+  // Without a token the shape check is all there is: in cloud the shared
+  // service account is no longer reachable for a tenant's project
+  // (gscClientForProject), so a bare string reads nothing.
+  const { data: tokenRow, error: tokenErr } = await db()
+    .from("projects")
+    .select("gsc_oauth_refresh_token")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (tokenErr) return tokenErr.message;
+  const refresh = (tokenRow as { gsc_oauth_refresh_token: string | null } | null)?.gsc_oauth_refresh_token;
+  if (refresh) {
+    let listed: string[];
+    try {
+      listed = (await oauthListSites(refresh)).map((x) => x.siteUrl).filter(Boolean);
+    } catch {
+      return "Could not read the connected Google account's properties right now - try again in a minute.";
+    }
+    if (!listed.includes(trimmed)) {
+      const some = listed.slice(0, 10);
+      return `That property isn't in the Google account connected to this project. Connect the account that owns it, or pick one of: ${some.length ? some.join(", ") : "(the account lists no properties)"}`;
+    }
   }
   const { error } = await db()
     .from("projects")

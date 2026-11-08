@@ -139,8 +139,8 @@ async function runProject(project: Project): Promise<Record<string, unknown>> {
   if (!readiness.ready) return { skipped: readiness.skipped };
   // Resolve the client once: OAuth for a connected cloud project, service
   // account otherwise. Both the snapshot and index-inspection calls share it.
-  // readiness checked immediately above - safe to fall back to the service
-  // account for a project that has demonstrably synced through it before.
+  // Readiness above already skipped every cloud tenant without OAuth, so this
+  // never throws for them (only the operator's own projects reach the SA).
   const sc = await gscClientForProject(project, { afterReadinessCheck: true });
   // One-time launch-date backfill, now that a GSC client provably works for
   // this project: while the row still holds its creation default, detect the

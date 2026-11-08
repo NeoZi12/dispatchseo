@@ -2,6 +2,7 @@ import { db } from "./db";
 import { gscAccessProbe } from "./gsc";
 import { isCloudMode } from "./cloud";
 import { oauthListSites, setTrackedProperty } from "./gsc-oauth";
+import { isOperator } from "./autopilot/operator";
 
 // The cron-side setup gate for everything GSC. Rule: an automation may only
 // run against a project whose prerequisite is verifiably ready - incomplete
@@ -50,17 +51,33 @@ export async function gscCronReadiness(project: {
 
   const site = project.gsc_site_url;
   if (!site) return { ready: false, skipped: "no GSC property connected" };
+
+  // Cloud tenant with no OAuth token: stop here, BEFORE the rows-exist
+  // shortcut. The only credential left for such a project is the shared
+  // PLATFORM service account, which a cloud customer never grants - and
+  // gsc_site_url is tenant-writable (set_gsc_property, the /google picker),
+  // so reading through it would hand the tenant any property the operator's
+  // service account can see. Existing gsc_stats rows prove nothing about the
+  // service account: a tenant's own OAuth sync writes them, so connect ->
+  // disconnect -> point the property elsewhere used to pass the old
+  // "worked before" check and read someone else's data. The probe below is
+  // the same oracle, so it stays out of reach too. Only the operator's own
+  // projects (OPERATOR_USER_IDS) keep the service-account path.
+  if (isCloudMode() && project.owner_user_id && !isOperator(project.owner_user_id)) {
+    return {
+      ready: false,
+      skipped:
+        "setup incomplete: connect Google Search Console for this project - automations stay paused until then",
+    };
+  }
+
   if (workedBefore) return { ready: true };
 
-  // Cloud tenant that has never had GSC data and holds no OAuth token: stop
-  // here. Falling through to the probe would test the property with the shared
-  // PLATFORM service account - which is both the wrong credential (a cloud
-  // customer never grants it) and an access oracle: gsc_site_url is
-  // tenant-writable, so a customer could probe arbitrary properties and learn
-  // which ones the operator's service account can read. Deliberately placed
-  // AFTER the rows-exist check, so a project that HAS synced before and now
-  // fails still counts as a regression and stays loud (CLAUDE.md's readiness
-  // split), rather than being downgraded to a quiet skip.
+  // Operator-owned cloud project that has never had GSC data: same stop.
+  // Placed AFTER the rows-exist check on purpose, so an operator project that
+  // HAS synced before and now fails is a regression and stays loud
+  // (CLAUDE.md's readiness split), rather than being downgraded to a quiet
+  // skip.
   if (isCloudMode() && project.owner_user_id) {
     return {
       ready: false,

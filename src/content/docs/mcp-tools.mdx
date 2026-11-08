@@ -1113,6 +1113,10 @@ Onboarding guesses `sc-domain:<domain>`, but plenty of real properties
 are URL-prefix (`https://example.com/`) - if GSC data never arrives and
 access checks keep failing, the guess was probably wrong.
 
+The property must belong to the Google account connected to this
+project. When an account is connected, a property it doesn't list is
+refused, and the error names up to 10 properties it does list.
+
 <Fields>
   <Field name="site_url" type="string" required="true">
     The property exactly as Search Console names it.

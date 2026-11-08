@@ -2870,7 +2870,10 @@ const mcpHandler = createMcpHandler(
           "Onboarding guesses `sc-domain:<domain>`, but many real properties " +
           "are URL-prefix (`https://example.com/`) - if GSC data never arrives " +
           "and access checks keep failing, the guess is likely wrong. Pass the " +
-          "property exactly as Search Console names it. Same write as the " +
+          "property exactly as Search Console names it. The property must " +
+          "belong to the Google account connected to this project: when one " +
+          "is connected, anything that account doesn't list is refused (the " +
+          "error names up to 10 properties it does list). Same write as the " +
           "dashboard's 'use this property' button on /google.",
         inputSchema: {
           site_url: z

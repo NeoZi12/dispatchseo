@@ -3,6 +3,7 @@ import { instanceSettings } from "./dashboard-auth";
 import { decryptSecret } from "./crypto";
 import { isCloudMode } from "./cloud";
 import { oauthSearchConsole } from "./gsc-oauth";
+import { isOperator } from "./autopilot/operator";
 
 // Google Search Console (Search Analytics) client. Reads clicks/impressions
 // per project: ONE service account serves every project - its email just
@@ -106,34 +107,36 @@ export async function gscClientForProject(
     gsc_oauth_refresh_token: string | null;
     owner_user_id?: string | null;
   },
-  // Set ONLY by callers that have already passed gscCronReadiness for this
-  // project. Not a bypass - see below for why that gate is the real boundary.
+  // Kept so existing callers compile. It used to let a gated caller fall
+  // through to the service account; it no longer bypasses anything (below).
   opts: { afterReadinessCheck?: boolean } = {},
 ): Promise<GscClient> {
+  void opts;
   if (isCloudMode() && project.gsc_oauth_refresh_token) {
     return oauthSearchConsole(project.gsc_oauth_refresh_token);
   }
-  // In cloud, a TENANT's project must not read through the shared service
+  // In cloud, a TENANT's project never reads through the shared service
   // account. gsc_site_url is tenant-writable (set_gsc_property over MCP, the
-  // wizard's picker), so an unguarded fallback let a customer point their
-  // project at any property the platform SA can read - the operator's own
-  // included - and receive its clicks, impressions, top queries and top pages.
+  // wizard's picker), so a fallback lets a customer point their project at
+  // any property the platform SA can read - the operator's own included -
+  // and receive its clicks, impressions, top queries and top pages.
   //
-  // What actually stops that is gscCronReadiness: a cloud project with an
-  // owner, no OAuth token and NO existing gsc_stats rows is skipped outright,
-  // so a fresh tenant can never bootstrap SA-sourced data whatever property
-  // they name. Callers that ran that gate are safe to fall through here, and
-  // must declare it - that is what afterReadinessCheck means.
+  // This used to be waived for callers that had passed gscCronReadiness
+  // (afterReadinessCheck), on the theory that existing gsc_stats rows proved
+  // the SA path had worked before. They prove nothing: a tenant's own OAuth
+  // sync writes those rows, so connect -> disconnect -> set_gsc_property
+  // with another property sailed through. Now the only cloud projects that
+  // reach the service account are the operator's (OPERATOR_USER_IDS), and
+  // gscCronReadiness skips every other token-less cloud project before any
+  // caller gets here, so the crons see an informational skip, not this throw.
   //
-  // The ungated live path (analytics-data.ts's getFresh24h, rendered straight
-  // onto the Analytics page) has no such gate, so it keeps the hard refusal.
-  //
-  // Refusing unconditionally here was wrong and broke production: the
-  // operator's OWN cloud project carries an owner_user_id and legitimately
-  // reads through the service account, and since it has plenty of gsc_stats
-  // rows, readiness passed it straight into the throw - hourly-gsc started
-  // failing for the operator within the hour (2026-07-27).
-  if (isCloudMode() && project.owner_user_id && !opts.afterReadinessCheck) {
+  // History: refusing EVERY owned cloud project here broke production - the
+  // operator's own cloud project carries an owner_user_id and legitimately
+  // reads through the service account, and since it had plenty of gsc_stats
+  // rows, readiness passed it straight into the throw; hourly-gsc started
+  // failing for the operator within the hour (2026-07-27). The isOperator
+  // exemption is what keeps that path alive.
+  if (isCloudMode() && project.owner_user_id && !isOperator(project.owner_user_id)) {
     throw new Error("Connect Google Search Console for this project first.");
   }
   return searchConsole();

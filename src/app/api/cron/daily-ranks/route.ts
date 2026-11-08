@@ -92,7 +92,7 @@ async function runRanks(
       project.gsc_site_url!,
       tracked.map((k) => k.keyword),
       7,
-      // gscReady checked above - safe to fall back to the service account.
+      // gscReady checked above: token-less cloud tenants skipped there.
       await gscClientForProject(project, { afterReadinessCheck: true }),
     );
     // No impressions in the window = unknown, not "not ranking" - skip those
