@@ -897,8 +897,11 @@ function hardenAgentMdxOnce(prose: string): string {
       }
       return part
         // An escaped brace (\{) is already a literal in MDX; touching it
-        // would turn "\{" into "\&#123;", which renders as "&#123;".
-        .replace(/(?<!\\)[{}]/g, (ch) => (ch === "{" ? "&#123;" : "&#125;"))
+        // would turn "\{" into "\&#123;", which renders as "&#123;". Only
+        // an ODD run of backslashes escapes the brace: "\\{" is an escaped
+        // backslash followed by a live brace, which must still be encoded
+        // (security review, 2026-11-08).
+        .replace(/(\\*)([{}])/g, (m: string, bs: string, ch: string) => (bs.length % 2 === 1 ? m : bs + (ch === "{" ? "&#123;" : "&#125;")))
         // Not part of a kept tag, so text - and text MDX would choke on.
         .replace(/</g, "&lt;")
         .replace(/^(import|export)(?=[ \t])/gm, (kw: string) => `&#${kw.charCodeAt(0)};${kw.slice(1)}`);
