@@ -366,7 +366,10 @@ RULEEOF
     # No --max-turns equivalent exists (OpenAI closed the request for one as
     # not-planned), so the timeout below is the only ceiling - same 90 minutes
     # the Claude branch gets.
-    ( cd "$dir" && OPENAI_API_KEY="$agent_token" CODEX_HOME="$codex_home" timeout 5400 \
+    # `env -u CRON_SECRET` on all three agent runs: the agent executes
+    # repo-controlled instructions, and the claim secret is the owner's master
+    # key to every cron and report endpoint. The report() curls keep it.
+    ( cd "$dir" && env -u CRON_SECRET OPENAI_API_KEY="$agent_token" CODEX_HOME="$codex_home" timeout 5400 \
         codex exec "$CODEX_FILE_RULE$prompt" \
           --sandbox danger-full-access \
           --skip-git-repo-check \
@@ -390,7 +393,7 @@ RULEEOF
     #
     # No --max-turns equivalent exists, so the timeout is the only ceiling -
     # the same 90 minutes the other two branches get.
-    ( cd "$dir" && CURSOR_API_KEY="$agent_token" timeout 5400 \
+    ( cd "$dir" && env -u CRON_SECRET CURSOR_API_KEY="$agent_token" timeout 5400 \
         cursor-agent -p "$prompt" \
           --output-format json \
           --trust --force --approve-mcps \
@@ -402,7 +405,7 @@ RULEEOF
     msg=$(jq -r '.result // empty' "$out" 2>/dev/null | tail -c 400)
     [ -n "$msg" ] || msg=$(tail -c 400 "$out.err" 2>/dev/null)
   else
-    ( cd "$dir" && MCP_TIMEOUT=120000 CLAUDE_CODE_OAUTH_TOKEN="$agent_token" timeout 5400 \
+    ( cd "$dir" && env -u CRON_SECRET MCP_TIMEOUT=120000 CLAUDE_CODE_OAUTH_TOKEN="$agent_token" timeout 5400 \
         claude -p "$prompt" \
           --mcp-config "$cfg" \
           --permission-mode bypassPermissions \

@@ -83,6 +83,40 @@ if ! grep -q '^CRON_SECRET=..*' .env; then
   echo "CRON_SECRET=$SECRET" >> .env
 fi
 
+# The database password. Postgres bakes it into the data volume the first time
+# that volume is created, so it can only be generated on a FRESH install: an
+# existing volume keeps whatever password it was created with, and writing a
+# new one here would lock the app out of its own database. "Fresh" = the
+# compose project's postgres volume does not exist yet. `docker volume ls`
+# first, so a stopped Docker daemon (inspect fails for that reason too) is
+# never mistaken for a fresh install.
+if ! grep -q '^POSTGRES_PASSWORD=..*' .env && docker volume ls -q >/dev/null 2>&1; then
+  if ! docker volume inspect dispatchseo_dispatch-pgdata >/dev/null 2>&1; then
+    if command -v openssl >/dev/null 2>&1; then
+      PGPASS=$(openssl rand -hex 24)
+    else
+      PGPASS=$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')
+    fi
+    [ -n "$PGPASS" ] || { echo "Could not generate POSTGRES_PASSWORD (no openssl, no /dev/urandom)"; exit 1; }
+    echo "POSTGRES_PASSWORD=$PGPASS" >> .env
+  else
+    echo "  Note: the database still uses the default password. To rotate it: dump it (docker compose exec postgres pg_dump -U dispatch dispatchseo > backup.sql), set POSTGRES_PASSWORD in .env, recreate the volume (docker compose down -v), start again and restore the dump."
+  fi
+fi
+
+# One-time token for the first-run /setup page, so whoever reaches the
+# dashboard before its owner cannot claim the instance. Generated once on any
+# install; re-runs keep the existing value and print it at the end.
+if ! grep -q '^SETUP_TOKEN=..*' .env; then
+  if command -v openssl >/dev/null 2>&1; then
+    STOKEN=$(openssl rand -hex 16)
+  else
+    STOKEN=$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')
+  fi
+  [ -n "$STOKEN" ] || { echo "Could not generate SETUP_TOKEN (no openssl, no /dev/urandom)"; exit 1; }
+  echo "SETUP_TOKEN=$STOKEN" >> .env
+fi
+
 # A random id for the once-a-day "this install is alive" ping (see
 # docker/cron/crontab and src/lib/heartbeat.ts). It identifies this INSTALL and
 # nothing else - it is not derived from your domain, your email or your data,
@@ -253,3 +287,6 @@ echo '  The setup wizard takes it from there.
 
   (first boot can take ~20 seconds before the page answers - just refresh)
 '
+SETUP_TOKEN_VALUE=$(grep '^SETUP_TOKEN=' .env | tail -n 1 | cut -d= -f2-)
+echo "  Setup token (enter it on the /setup page): $SETUP_TOKEN_VALUE"
+echo ''

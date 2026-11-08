@@ -44,7 +44,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
-    networks: [dispatch]
+    networks: [data]
 
   migrate:
     image: postgres:17-alpine
@@ -67,7 +67,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    networks: [dispatch]
+    networks: [data]
 
   postgrest:
     image: postgrest/postgrest:v12.2.12
@@ -82,7 +82,7 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
-    networks: [dispatch]
+    networks: [data]
 
   app:
     # Prebuilt image when pullable (public repo), local build otherwise -
@@ -125,6 +125,11 @@ services:
       # never sees them - this service enumerates its env explicitly.
       DISPATCH_INSTALL_ID: ${DISPATCH_INSTALL_ID:-}
       DISPATCHSEO_TELEMETRY: ${DISPATCHSEO_TELEMETRY:-}
+      # Generated into .env by start.sh. SETUP_TOKEN gates the first-run
+      # /setup page (start.sh prints it); POSTGRES_PASSWORD is the database
+      # password the stack was created with.
+      SETUP_TOKEN: ${SETUP_TOKEN:-}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dispatch-local-only}
     ports:
       # Bind to LOOPBACK, not 0.0.0.0. A bare "4005:3000" publishes the
       # dashboard on every interface, and Docker writes its own DOCKER-chain
@@ -144,7 +149,7 @@ services:
         condition: service_completed_successfully
       postgrest:
         condition: service_started
-    networks: [dispatch]
+    networks: [dispatch, data]
 
   cron:
     image: alpine:3.21
@@ -220,3 +225,10 @@ volumes:
 
 networks:
   dispatch:
+  # The database tier. internal: true means no route off the box and nothing
+  # outside this network can reach it: postgres, postgrest and migrate live
+  # ONLY here, and the app is the one service on both networks. The builder
+  # runs LLM-driven agents and the cron/caddy containers face the outside, so
+  # none of them can reach the database or PostgREST directly - only the app.
+  data:
+    internal: true

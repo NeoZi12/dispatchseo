@@ -40,6 +40,18 @@ def fail(msg):
     sys.exit(1)
 
 
+def check_path(path):
+    # Writes are confined to the working directory (the job's repo clone): an
+    # absolute path or any `..` segment could reach the builder's own files,
+    # another project's clone, or the mounted credentials.
+    if not path:
+        fail("empty file path")
+    if os.path.isabs(path) or path.startswith("~"):
+        fail("refusing absolute path %s - paths must be relative to the repo" % path)
+    if ".." in path.replace("\\", "/").split("/"):
+        fail("refusing path %s - '..' segments are not allowed" % path)
+
+
 def main():
     text = sys.stdin.read()
     lines = text.split("\n")
@@ -104,6 +116,8 @@ def main():
 
     if not actions:
         fail("patch contained no Add/Update/Delete section")
+    for _, path, _ in actions:
+        check_path(path)
 
     for kind, path, payload in actions:
         if kind == "add":
