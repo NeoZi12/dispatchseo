@@ -1,7 +1,14 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { COOKIE_NAME, cookieSecure, cookieValue } from "@/lib/dashboard-auth";
-import { claimInstance, getSetupState, setupTokenRequired } from "@/lib/setup";
+import {
+  SETUP_TOKEN_NEEDED,
+  WRONG_SETUP_TOKEN,
+  claimInstance,
+  getSetupState,
+  setupTokenRequired,
+} from "@/lib/setup";
+import { clientIp } from "@/lib/login-lockout";
 import { missingMigrations } from "@/lib/schema-check";
 import { DispatchMark } from "@/components/logo";
 import { PixelDispatcher } from "@/components/pixel-dispatcher";
@@ -16,9 +23,9 @@ import { isCloudMode } from "@/lib/cloud";
 // are container-failure triage now, not steps.
 // Public by design: it only ever renders instructions or the claim form,
 // and claiming is race-safe (single-row PK). The first visitor claims the
-// instance, so when SETUP_TOKEN is set (start.sh prints it) the form asks
-// for it and claimInstance() refuses without it. Once the instance is
-// claimed it redirects to /login and never shows again.
+// instance, so the claim needs SETUP_TOKEN (start.sh prints it) unless the
+// visitor is on the same machine (loopback) - claimInstance() enforces both.
+// Once the instance is claimed it redirects to /login and never shows again.
 export const dynamic = "force-dynamic";
 
 async function claim(formData: FormData) {
@@ -35,8 +42,12 @@ async function claim(formData: FormData) {
   const host = h.get("x-forwarded-host") ?? h.get("host");
   const proto = h.get("x-forwarded-proto") ?? "https";
   const appUrl = host ? `${proto}://${host}` : null;
-  const result = await claimInstance(password, appUrl, setupToken);
-  if ("error" in result) redirect(result.error === "Wrong setup token" ? "/setup?error=token" : "/login");
+  const result = await claimInstance(password, appUrl, setupToken, clientIp(h));
+  if ("error" in result) {
+    if (result.error === WRONG_SETUP_TOKEN) redirect("/setup?error=token");
+    if (result.error === SETUP_TOKEN_NEEDED) redirect("/setup?error=network");
+    redirect("/login");
+  }
   const jar = await cookies();
   jar.set(COOKIE_NAME, await cookieValue(), {
     httpOnly: true,
@@ -224,15 +235,19 @@ export default async function SetupPage({
                 <p className="text-sm text-red-400">Passwords don't match.</p>
               )}
               {error === "token" && (
-                <p className="text-sm text-red-400">Wrong setup token.</p>
+                <p className="text-sm text-red-400">{WRONG_SETUP_TOKEN}.</p>
+              )}
+              {error === "network" && (
+                <p className="text-sm text-red-400">{SETUP_TOKEN_NEEDED}</p>
               )}
               <button className={`w-full ${primaryAction}`}>Claim instance</button>
             </form>
             {!needsToken && (
               <p className="text-sm text-neutral-500">
-                Whoever opens this page first claims the instance. If it can be
-                reached from the internet, set <Code>SETUP_TOKEN</Code> before
-                first boot so the claim needs a token only you have.
+                Whoever opens this page first claims the instance, so without a
+                setup token it only accepts a claim from the machine it runs on.
+                Claiming from anywhere else? Set <Code>SETUP_TOKEN</Code> in the
+                environment (start.sh prints one) and reload this page.
               </p>
             )}
           </div>

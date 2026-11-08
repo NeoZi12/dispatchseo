@@ -57,14 +57,27 @@ export async function getSetupState(): Promise<SetupState> {
 // Insert-only: a concurrent claimer hits the single-row primary key and
 // gets "already-claimed" instead of overwriting.
 //
-// The first visitor to /setup claims the instance, so an install reachable
-// from the internet sets SETUP_TOKEN (start.sh generates and prints it) and
-// the claim then needs that token too. Unset = the old open first boot.
+// The first visitor to /setup claims the instance, so the claim needs
+// SETUP_TOKEN (start.sh generates and prints it). With no token configured
+// there is no open first boot any more: only a visitor on the same machine
+// (a loopback client address) may claim. Inside docker the app sees the
+// bridge gateway, never loopback - fine, start.sh always writes a token; a
+// bare `pnpm start` on a VPS, or any other host, must set one.
+export const WRONG_SETUP_TOKEN = "Wrong setup token";
+export const SETUP_TOKEN_NEEDED =
+  "This instance is reachable from the network. Set SETUP_TOKEN in the environment (start.sh prints one) and reload this page.";
+
 export async function claimInstance(
   password: string,
   appUrl?: string | null,
   setupToken?: string | null,
-): Promise<{ cronSecret: string } | { error: "already-claimed" } | { error: "Wrong setup token" }> {
+  clientAddress?: string | null,
+): Promise<
+  | { cronSecret: string }
+  | { error: "already-claimed" }
+  | { error: typeof WRONG_SETUP_TOKEN }
+  | { error: typeof SETUP_TOKEN_NEEDED }
+> {
   // Cloud never claims a self-host password. This is the real lock behind the
   // /setup page's redirect: the page guard only stops the form rendering, but
   // this server action is invocable directly, so the mode check must live here
@@ -72,7 +85,11 @@ export async function claimInstance(
   if (isCloudMode()) return { error: "already-claimed" };
   const state = await getSetupState();
   if (state !== "unclaimed") return { error: "already-claimed" };
-  if (setupTokenRequired() && !setupTokenMatches(setupToken ?? "")) return { error: "Wrong setup token" };
+  if (setupTokenRequired()) {
+    if (!setupTokenMatches(setupToken ?? "")) return { error: WRONG_SETUP_TOKEN };
+  } else if (!isLoopback(clientAddress)) {
+    return { error: SETUP_TOKEN_NEEDED };
+  }
   const cronSecret = randomBytes(24).toString("hex");
   const row = {
     id: true,
@@ -98,13 +115,19 @@ export async function claimInstance(
 
 /** Does the first-boot claim need a setup token (SETUP_TOKEN set)? */
 export function setupTokenRequired(): boolean {
-  return Boolean(process.env.SETUP_TOKEN);
+  return Boolean(process.env.SETUP_TOKEN?.trim());
+}
+
+/** A client address on this machine (clientIp() from login-lockout.ts). */
+export function isLoopback(address: string | null | undefined): boolean {
+  const a = (address ?? "").trim().toLowerCase();
+  return a === "127.0.0.1" || a === "::1" || a === "::ffff:127.0.0.1";
 }
 
 // Constant-time compare; a length mismatch is a refusal, not an early exit
 // through timingSafeEqual (which throws on unequal lengths).
 function setupTokenMatches(submitted: string): boolean {
-  const expected = Buffer.from(process.env.SETUP_TOKEN ?? "", "utf8");
+  const expected = Buffer.from((process.env.SETUP_TOKEN ?? "").trim(), "utf8");
   const got = Buffer.from(submitted.trim(), "utf8");
   if (expected.length === 0 || got.length !== expected.length) return false;
   return timingSafeEqual(got, expected);
