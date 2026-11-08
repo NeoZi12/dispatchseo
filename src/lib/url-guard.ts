@@ -1,3 +1,5 @@
+import { fetch as pinnedFetch } from "undici";
+import { pinnedAgent } from "@/lib/writer/fetch";
 // Guards every place a user-influenced URL meets a server-side fetch: pages are
 // logged via MCP (log_page) and later fetched by the sameness gate and the build
 // brief, pending pages are probed for liveness, and a brand-new project's domain
@@ -95,6 +97,16 @@ export function isGscPropertyShape(site: string): boolean {
 // an unreachable page as "sits this one out".
 const MAX_REDIRECTS = 3;
 
+/** True when the URL names a port (WHATWG URL drops the scheme's default,
+ *  so `https://x:443/` reads as no port). Unparseable counts as refused. */
+export function hasExplicitPort(url: string | URL): boolean {
+  try {
+    return (typeof url === "string" ? new URL(url) : url).port !== "";
+  } catch {
+    return true;
+  }
+}
+
 export async function fetchProjectUrl(
   url: string,
   domain: string,
@@ -103,13 +115,20 @@ export async function fetchProjectUrl(
   let target = url;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     if (!isProjectUrl(target, domain)) return null;
+    // Default ports only, on every hop: a tenant's site has no business
+    // steering us at :8080 or :6379 on whatever its name resolves to.
+    if (hasExplicitPort(target)) return null;
     let res: Response;
     try {
-      res = await fetch(target, {
+      // pinnedAgent resolves the name once, refuses any private answer and
+      // connects to that same vetted address - isProjectUrl's lexical check
+      // alone loses to DNS rebinding (writer/fetch.ts).
+      res = (await pinnedFetch(target, {
+        dispatcher: pinnedAgent,
         redirect: "manual",
         signal: AbortSignal.timeout(init.timeoutMs),
         headers: { "user-agent": init.userAgent },
-      });
+      })) as unknown as Response;
     } catch {
       return null;
     }

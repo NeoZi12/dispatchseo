@@ -25,7 +25,10 @@ function pinnedLookup(hostname: string, options: LookupOptions, callback: (err: 
   });
 }
 
-const pinnedAgent = new Agent({ connect: { lookup: pinnedLookup } });
+// Exported for every other fetch of a tenant-controlled host (url-guard's
+// fetchProjectUrl, the theme CSS reader, the site check, the WordPress
+// publisher), so they all share the one rebinding-proof lookup.
+export const pinnedAgent = new Agent({ connect: { lookup: pinnedLookup } });
 
 // Fetching other people's pages for the fact sheet.
 //

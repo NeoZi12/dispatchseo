@@ -36,7 +36,9 @@
 // followed by hand, never with fetch's redirect:"follow"), every read is
 // capped, and every call carries a timeout.
 
+import { fetch as pinnedFetch } from "undici";
 import { isPrivateHost } from "./url-guard";
+import { pinnedAgent } from "./writer/fetch";
 
 export type WordPressCredentials = {
   url: string;
@@ -410,7 +412,7 @@ async function wpFetch(creds: WordPressCredentials, path: string, opts: WpFetchO
     accept: "application/json",
     authorization: authHeader,
   };
-  let requestBody: BodyInit | undefined;
+  let requestBody: string | Uint8Array | undefined;
   const method = opts.method ?? (opts.json !== undefined || opts.rawBody ? "POST" : "GET");
   if (opts.json !== undefined) {
     headers["content-type"] = "application/json";
@@ -435,7 +437,10 @@ async function wpFetch(creds: WordPressCredentials, path: string, opts: WpFetchO
 
     let res: Response;
     try {
-      res = await fetch(target, {
+      // Pinned DNS on every hop: isPrivateHost is lexical, the agent's lookup
+      // refuses a name that RESOLVES private (writer/fetch.ts).
+      res = (await pinnedFetch(target, {
+        dispatcher: pinnedAgent,
         method,
         redirect: "manual",
         headers,
@@ -446,7 +451,7 @@ async function wpFetch(creds: WordPressCredentials, path: string, opts: WpFetchO
         // yet re-validated is not a case worth supporting.
         body: hop === 0 ? requestBody : undefined,
         signal: AbortSignal.timeout(timeoutMs),
-      });
+      })) as unknown as Response;
     } catch {
       return fail("unreachable", UNREACHABLE_MSG);
     }

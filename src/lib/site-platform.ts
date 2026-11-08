@@ -1,4 +1,6 @@
+import { fetch as pinnedFetch } from "undici";
 import { isPrivateHost } from "./url-guard";
+import { pinnedAgent } from "./writer/fetch";
 
 // What a site is built on, decided from ONE homepage fetch (plus one optional
 // /wp-json/ probe). Two callers, one definition:
@@ -99,12 +101,15 @@ async function guardedFetch(
     if (isPrivateHost(host)) return null;
     let res: Response;
     try {
-      res = await fetch(url, {
+      // Pinned DNS on every hop: isPrivateHost is lexical, the agent's lookup
+      // refuses a name that RESOLVES private (writer/fetch.ts).
+      res = (await pinnedFetch(url, {
+        dispatcher: pinnedAgent,
         method: "GET",
         redirect: "manual",
         headers: { "user-agent": UA, accept: "text/html,application/json;q=0.9,*/*;q=0.8" },
         signal: AbortSignal.timeout(TIMEOUT_MS),
-      });
+      })) as unknown as Response;
     } catch {
       return null;
     }

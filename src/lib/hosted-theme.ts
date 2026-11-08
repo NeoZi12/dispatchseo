@@ -1,4 +1,6 @@
-import { fetchProjectUrl, isPrivateHost, isProjectUrl } from "@/lib/url-guard";
+import { fetch as pinnedFetch } from "undici";
+import { fetchProjectUrl, hasExplicitPort, isPrivateHost, isProjectUrl } from "@/lib/url-guard";
+import { pinnedAgent } from "@/lib/writer/fetch";
 import type { Project } from "@/lib/projects";
 
 // The hosted blog's colours and logo, read from the site itself.
@@ -377,10 +379,16 @@ async function fetchPublicCss(url: string): Promise<Response | null> {
     } catch {
       return null;
     }
-    if ((u.protocol !== "https:" && u.protocol !== "http:") || isPrivateHost(u.hostname)) return null;
+    if ((u.protocol !== "https:" && u.protocol !== "http:") || isPrivateHost(u.hostname) || hasExplicitPort(u)) return null;
     let res: Response;
     try {
-      res = await fetch(u, { redirect: "manual", signal: AbortSignal.timeout(5_000), headers: { "user-agent": "DispatchSEO-Theme/1.0 (+https://dispatchseo.com)" } });
+      // Pinned DNS on every hop, same as fetchProjectUrl.
+      res = (await pinnedFetch(u, {
+        dispatcher: pinnedAgent,
+        redirect: "manual",
+        signal: AbortSignal.timeout(5_000),
+        headers: { "user-agent": "DispatchSEO-Theme/1.0 (+https://dispatchseo.com)" },
+      })) as unknown as Response;
     } catch {
       return null;
     }
