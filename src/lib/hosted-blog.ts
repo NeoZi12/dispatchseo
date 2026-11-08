@@ -41,13 +41,15 @@ import { isFreePlan, projectPlan } from "@/lib/billing";
 // involved in rendering, and the theme is read once per site.
 //
 // THE CREDIT. A site on the free tier carries "Made with DispatchSEO" under
-// the product card (the rail on wide screens, the card after the article
-// below that) - the same quiet line ClockedCode's own generated posts show.
+// the product card after the article - the same quiet line ClockedCode's own
+// generated posts show.
 // It is the free tier's price and its marketing channel: free articles in
 // exchange for a credit on every page they publish. A paid plan (any live
 // subscription) shows nothing, and a self-host instance shows nothing - the
-// credit is the cloud's deal, not a condition of the licence. The link is
-// nofollow by decision (2026-11-06): the credit is for readers, never a
+// credit is the cloud's deal, not a condition of the licence. ONE credit per
+// page (after the article, every screen size - the rail's card carries none)
+// and the link is sponsored + nofollow (2026-11-06, tightened 2026-11-08 by
+// the spam-safety research): the credit is for readers, never a
 // link scheme in Google's eyes, which would put the customer's site at
 // risk rather than ours.
 
@@ -248,7 +250,7 @@ h1{font-size:clamp(28px,4.2vw,36px);line-height:1.15;letter-spacing:-.02em;font-
 .toc ul{border-inline-start:1px solid var(--line)}
 .toc .k{font:500 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 12px}
 aside.rail{display:none}
-@media(min-width:1024px){main.rail .toc-inline{display:none}aside.rail{display:block}aside.rail>div{position:sticky;top:88px;display:flex;flex-direction:column;gap:32px;max-height:calc(100vh - 7rem)}.toc{min-height:0;overflow-y:auto}.promo.below,.credit.below{display:none}}
+@media(min-width:1024px){main.rail .toc-inline{display:none}aside.rail{display:block}aside.rail>div{position:sticky;top:88px;display:flex;flex-direction:column;gap:32px;max-height:calc(100vh - 7rem)}.toc{min-height:0;overflow-y:auto}.promo.below{display:none}}
 .promo{border-radius:14px;background:var(--card);padding:20px}
 .promo img{width:28px;height:28px;border-radius:7px;object-fit:cover;display:block}
 .promo .name{margin:12px 0 0;font-weight:600;font-size:15px;color:var(--ink)}
@@ -369,18 +371,23 @@ ${opts.body}
 </html>`;
 }
 
-function promo(site: Site, cls = ""): string {
+function promo(site: Site, cls = "", withCredit = true): string {
   const ticks = promoTicks(site);
   const logo = site.theme.logo ? `<img src="${esc(site.theme.logo)}" alt="" width="28" height="28">` : "";
   const card = `<aside class="promo ${cls}" aria-label="About ${esc(site.name)}">${logo}<p class="name">${esc(site.name)}</p><p class="line">${esc(site.tagline || site.short)}</p><ul>${ticks.map((t) => `<li><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10.5 8 14.5 16 5.5"/></svg><span>${esc(t)}</span></li>`).join("")}</ul><a class="cta" href="${esc(site.ctaUrl)}">${esc(site.ctaLabel)}</a></aside>`;
-  return site.credit ? card + credit(site, cls) : card;
+  return site.credit && withCredit ? card + credit(site, cls) : card;
 }
 
 /** The free tier's line under the card (header: THE CREDIT). The ref names
  *  the site so the dashboard can tell which blogs send readers. */
+/** The DispatchSEO mark, 20x32 and inlined: the credit loads nothing from
+ *  our domain (spam-safety research, 2026-11-08: one shared remote asset on
+ *  every customer page is a network footprint). */
+const MARK_DATA_URI = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAgCAMAAAAlvKiEAAACwVBMVEVMaXEAAAAPCRoQChwpIDoBAAYGAgsPChsPChoAAAAHBA6NMcgoHzqNMccQChsAAAADAQgqIDsEAggCAQgCAAY7MFAHBQ8HBA6PMcmOMMmOMch1KpaNMMgAAAAOCRoGAw4nHzkAAAMIBQ4AAAIJBRAGAwt5Kq2fS8yyadYEAwmPMMsEAguaWLCKL8ZyJqUBAQd8KLaILcOUPcUGAgt1JK8rIj5qIJ57JbcBAARnIJ0MBxiFLLgHBBAGAgsiGjUnHzYGBA0BAAYQCRt0ZY14KqeEL7tbTm1IO2BJPGFNHW1IPF47L1F4Yos8MVAIBBKdONuhO954YYqqQuaSULh0K5RBNli+fPE9MVONMca6eO+OMMi+e/N1K5QqITwpITsqITsRCx0rITwpIDsQCxwSCx0QCxsoIDqOMskRCxwFBw88MVIoIDkqIDsPChoEBw8EBxARDB0rIjwOCBePMsoKBRMRCx49MlMPChwQChuPMskpIDopITwnIDkqIT2LMMcnHjqLMMYQCh0LBhQrIj4kGjU7L1ENCBcYEiYmHDlUSGZ/bpg+MlR+bZiAb5k8MFJEOFpDN1krIj0SCh6PMcoJBRIJBhMPCRpWSWcOCRm/fPQJBRNFOVwDBw4RDB4DBg6NMcmPMct1K5UnHzgtJD8gGDApIDweFy4qID01K0Y3LUgqIjxVSGZUSGSXQsaDLL6CKb0rITt/LrR7KLMoHjwoHzsaFCk8MlFUSWRANVZlI5SAbpk9MFECBQt9bpQAAAiEK7+Bb5lCN1gKBxJyJqYKBxWFMLxGOl22Z+o0KkiAbphEOVt/bZhFGWRLPmFEN1kEAQoTDR9TSGQ9MVIEAA8SCxx+La1WSWhVSWYQDB2EMbMQChm8Z/AMCBYiGy+NMcc9MlSRa6WLMceNMsh0K5YGAxGOMcp2LJeJL8SLMcZ3LZYGBxAUf2zIAAAAXXRSTlMAAv7+/qFz/v4x+/7+/v4wn/5zuLf++/r+/v7+/jL7oP6G72Xu7P3+/p7+cfv+/qD+/f5y/v7+/qD+/P7lb/7+dLj+/v7+/v7+/v7+/v7+/v7+/v7+/v7+/v7+/v5YuVyKAAAACXBIWXMAAAsSAAALEgHS3X78AAACCUlEQVQoz2NgAAJVFSUGdKCso6emiC6orbFeSwBdUEh9nYQmhuBaA10MlWxGmwxZ0QWNN5qZ6GOotLY0h6rct8cKKmjb3bLZAsxKPu5az8wIUbnNbgtEZfLRwx1QQQf79q02wiLCjiLJnmfaoYJFe3u6dh3oPdl7uqvHqz/jEFBoWrKb8+7dfaJZWZdEvfsmnPOoyGVgqJjhc+LgEb+pU2bNKplaMuX8hLMcQMNnBPq6X543J29eXl5efl5T/yknBvGiW9O7586cny6TLlUsOb+ydPYxdgbx28HTy+4+WBjzcuEz6cfSIdOaJ3IwiAXdvFY2+0n+q8zMzHwgvDMxkYlBLODq9fsJ0fOjuIuLFxRLLihNLGRi4PJ36QyfG/m84UVdAxA+nBSbyM7AtX/nxazQhIpUIAAS5W2JsUAzK1K3l2WERfBW8vJyy1SmTxIEamdoTO7MSph579HT9HTuyVKVpSCVDAz8a1p3XLiRkJBRkHAlIaVNMJ4dJLi6xTQpKTY+KT4uKS4pvjCWDyjIubI+FggSWTbExyauSkyMBwuuqI/NiY1liUuMTawFSYO0cy5bXh0bH58THxsXHwdkJYEFlyyNi2dhiQOD+HieiSDbZWcsTkriiUvKiYuNi6uKW5zcBIoO+eSq7Jq0tJrstLRshUXJcpA4LklJSEjJaExJSCkoSEhgYAAAKFW+dLPdE5gAAAAASUVORK5CYII=";
+
 function credit(site: Site, cls = ""): string {
   const href = `https://dispatchseo.com/?ref=${encodeURIComponent(site.origin.replace(/^https?:\/\//, ""))}`;
-  return `<p class="credit ${cls}">${esc(stringsFor(site.lang).madeWith)} <a href="${href}" rel="nofollow noopener"><img src="https://dispatchseo.com/dispatch-mark.png" alt="" width="10" height="16" loading="lazy"><span>DispatchSEO</span></a></p>`;
+  return `<p class="credit ${cls}">${esc(stringsFor(site.lang).madeWith)} <a href="${href}" rel="sponsored nofollow noopener"><img src="${MARK_DATA_URI}" alt="" width="10" height="16"><span>DispatchSEO</span></a></p>`;
 }
 
 /** Up to three short lines for the card: the site profile's categories
@@ -452,7 +459,7 @@ ${rail ? promo(site, "below") : ""}
 ${bio}
 <div class="endnav">${back}</div>
 </article>
-${rail ? `<aside class="rail"><div>${tocHtml(headings, "rail", t.onThisPage)}${promo(site)}</div></aside>` : ""}`;
+${rail ? `<aside class="rail"><div>${tocHtml(headings, "rail", t.onThisPage)}${promo(site, "", false)}</div></aside>` : ""}`;
   const head = cover ? `<meta property="og:image" content="${esc(cover)}">` : "";
   return shell(site, { title: post.title, description: post.meta_description ?? "", canonical, body, head, rail, spy: rail });
 }
