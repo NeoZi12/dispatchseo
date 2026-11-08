@@ -74,6 +74,14 @@ export type ChangelogEntry = {
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "improved",
+    text: "Your first article arrives faster: it is written right away instead of waiting in line for an hour or so. Later articles keep the usual pace.",
+  },
+  {
+    kind: "new",
+    text: "An email tells you the moment your first article is live, with a button to read it.",
+  },
+  {
+    kind: "improved",
     text: "The home page on a phone breathes more evenly and keeps the hand-drawn sketches beside the pixel desk, which used to appear only on desktop.",
   },
   {

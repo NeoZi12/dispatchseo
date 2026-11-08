@@ -19,6 +19,7 @@ import { trackPublishedKeyword } from "@/lib/autopilot/tracking";
 import { submitSiteSitemap } from "@/lib/gsc-sitemaps";
 import { ideaDone } from "@/lib/writer/runs";
 import { warmScreenshotsLater } from "@/lib/page-screenshot";
+import { notifyFirstArticleLive } from "@/lib/first-article-email";
 
 // Confirms a published article is actually reachable - and, once it is, files
 // it as a real page of the site.
@@ -159,6 +160,8 @@ export async function runVerifyJob(job: Job): Promise<void> {
     .from("article_drafts")
     .update({ status: "published", published_at: now, updated_at: now })
     .eq("id", draftId);
+  // The owner's "your first article is up" email (first-article-email.ts).
+  await notifyFirstArticleLive(scopeProject, { draftId, url, title: row.title });
 
   // The dashboard's preview of it, taken once now so opening the article
   // never waits on a browser (page-screenshot.ts).
@@ -346,6 +349,8 @@ async function verifyRepoArticle(job: Job, draftId: string): Promise<void> {
       .from("article_drafts")
       .update({ status: "published", published_at: now, published_url: url, updated_at: now })
       .eq("id", draftId);
+    // The owner's "your first article is up" email (first-article-email.ts).
+    await notifyFirstArticleLive(project, { draftId, url, title: row.title });
     // The dashboard's preview of it (page-screenshot.ts).
     warmScreenshotsLater(row.project_id, [url], 1);
     return;

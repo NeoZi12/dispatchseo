@@ -9,6 +9,7 @@ import { trackPublishedKeyword } from "@/lib/autopilot/tracking";
 import { ideaDone } from "@/lib/writer/runs";
 import { warmScreenshotsLater } from "@/lib/page-screenshot";
 import { linkOlderHostedArticles } from "@/lib/backlinks";
+import { notifyFirstArticleLive } from "@/lib/first-article-email";
 
 // The hosted half of the publish job: the article is served by us under the
 // site's own /blog (src/lib/hosted-blog.ts), so "publishing" is a render for
@@ -92,6 +93,8 @@ export async function runHostedPublish(project: Project, draftId: string): Promi
   // Its closest older articles link to it now that it is live (backlinks.ts) -
   // only if it IS live: a discard that won the race above leaves nothing to
   // link to. Best-effort: the article is published whatever happens here.
+  // The owner's "your first article is up" email (first-article-email.ts).
+  if (flipped?.length) await notifyFirstArticleLive(project, { draftId: row.id, url, title: row.title });
   if (flipped?.length) await linkOlderHostedArticles(project, row, url).then(
     (done) => { if (done.length) console.log(`[publish-hosted] ${project.slug}: linked from ${done.map((d) => `${d.sourceUrl} ("${d.anchor}")`).join(", ")}`); },
     (e) => console.warn(`[publish-hosted] ${project.slug}: older-article links skipped: ${e instanceof Error ? e.message : String(e)}`),

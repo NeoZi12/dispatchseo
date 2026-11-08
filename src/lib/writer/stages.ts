@@ -57,6 +57,7 @@ import {
   usesOwnerFact,
 } from "./evidence";
 import { advanceRun, failRun, getWriterRun, recordDraft, saveScratch, suggestionIdsInFlight, VENDOR_FAILURE_RE, type FailureKind, type Stage, type WriterRun } from "./runs";
+import { mergeRunOutput } from "./agent-tasks";
 
 import { matchesBlockedTopic } from "@/lib/autopilot/math";
 import { isHubPage } from "./research";
@@ -187,7 +188,46 @@ export async function runStage(run: WriterRun, deadline: number): Promise<void> 
   }
   const project = await getProjectById(run.project_id);
   if (!project) throw new Error("project no longer exists");
-  await STAGE_FNS[run.stage]({ project, run, deadline });
+  const lane = await laneOf(project, run);
+  // A "live" lane is handed to every stage as the project's provider, so
+  // each writerProvider(project) below answers "api" for this run only.
+  await STAGE_FNS[run.stage]({ project: lane === "live" ? { ...project, writer_provider: "live" } : project, run, deadline });
+}
+
+/**
+ * A site's FIRST article skips the Batch lane (owner, 2026-11-08): a new
+ * customer is waiting for it, and Batch adds 40-90 minutes. Every later
+ * article stays on Batch at half price. Full price is fine here: the first
+ * article is one per site, and Claude spend sits inside the monthly free API
+ * credit (claude-credit.ts).
+ *
+ * Decided ONCE per run and stamped as stage_outputs.lane, because a run must
+ * never change lanes mid-way: the batch lane parks and replays stages, the
+ * live lane answers inline, and their saved state is not interchangeable.
+ * Only a run still at `pick` with nothing saved is decided fresh; an unstamped
+ * run already past that (started before this shipped) keeps its old lane.
+ * "First" = no earlier run of this site reached done, so a first run that
+ * failed leaves the next one on the fast lane too. Agent and explicit live
+ * sites are never touched.
+ */
+async function laneOf(project: Project, run: WriterRun): Promise<"live" | "default"> {
+  const stamped = run.stage_outputs.lane;
+  if (stamped === "live" || stamped === "default") return stamped;
+  let lane: "live" | "default" = "default";
+  const fresh = run.stage === "pick" && Object.keys(run.stage_outputs).length === 0;
+  if (fresh && writerProvider(project) === "batch") {
+    const { count, error } = await db()
+      .from("writer_runs")
+      .select("id", { count: "exact", head: true })
+      .eq("project_id", project.id)
+      .eq("status", "done")
+      .neq("id", run.id);
+    // A failed count keeps the cheap lane: the article is only slower.
+    if (!error && (count ?? 0) === 0) lane = "live";
+  }
+  await mergeRunOutput(run.id, { lane });
+  run.stage_outputs = { ...run.stage_outputs, lane };
+  return lane;
 }
 
 const ctxOf = ({ project, run, deadline }: Ctx) => ({ projectId: project.id, runId: run.id, deadline, provider: writerProvider(project) });
