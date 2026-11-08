@@ -46,6 +46,7 @@ import {
 } from "@/lib/content-prefs";
 import { mergeContentPrefs, saveContentPrefs } from "@/lib/content-prefs-store";
 import { hardenAgentMdx } from "@/lib/writer/evidence";
+import { mdxSafety } from "@/lib/writer/mdx-safety";
 import { renderInstructions, WORKFLOWS } from "@/lib/instructions";
 import { backendBaseUrl, getPipelinePack, hasDataforseo } from "@/lib/pipeline-pack";
 import { deferStep, DEFERRABLE_IDS, getSetupStep, undeferStep } from "@/lib/setup-path";
@@ -1206,6 +1207,31 @@ const mcpHandler = createMcpHandler(
           siteName: p.name,
         });
 
+        // The MDX allowlist (writer/mdx-safety.ts), on everything that reaches
+        // the customer's .mdx file - body and FAQ: anything that runs or
+        // reaches code fails the gate like any other blocking check, with the
+        // lines named, so the agent can fix it and resubmit.
+        {
+          const faqText = submission.faq.map((f) => `### ${f.question}\n\n${f.answer}`).join("\n\n");
+          const mdx = await mdxSafety(`${submission.markdown}\n\n${faqText}`);
+          if (!mdx.ok) {
+            const check = {
+              id: "mdx-safe",
+              severity: "blocking" as const,
+              passed: false,
+              title: "No code in the article",
+              detail: `The article contains ${mdx.problems.join("; ")}.`,
+              fix:
+                `Remove ${mdx.problems.join("; ")}. Write plain markdown: no import/export lines, no {…} expressions, ` +
+                "no event handlers or javascript:/data: URLs, components with plain string attributes only, and links only to " +
+                "http(s) pages, mailto, or your own site's paths.",
+            };
+            report.checks.push(check);
+            report.blocking.push(check);
+            report.ok = false;
+          }
+        }
+
         // A rejected submission is stored too (below), so an agent looping on
         // a failing article - or anyone with a token - could fill the table
         // with rejected rows. Past the day's allowance the verdict still comes
@@ -1239,6 +1265,22 @@ const mcpHandler = createMcpHandler(
           if (capped) return fail(capped);
         }
 
+        // The second layer (hardenAgentMdx) runs on what is ACCEPTED - what
+        // can reach a customer's file; a rejected draft is kept as sent, for
+        // "why was it refused" to be answerable. It refuses an input that
+        // outlasts its loop; that is a rejection, never a stored article.
+        let hardened = { markdown: submission.markdown, faq: submission.faq };
+        if (report.ok) {
+          try {
+            hardened = {
+              markdown: hardenAgentMdx(submission.markdown),
+              faq: submission.faq.map((f) => ({ question: hardenAgentMdx(f.question), answer: hardenAgentMdx(f.answer) })),
+            };
+          } catch (e) {
+            return fail(`Not published: ${e instanceof Error ? e.message : String(e)}. Write plain markdown without raw HTML.`);
+          }
+        }
+
         const now = new Date().toISOString();
         const row = {
           project_id: p.id,
@@ -1252,8 +1294,8 @@ const mcpHandler = createMcpHandler(
           // the agent wrote; what reaches the customer's .mdx can neither run
           // nor break the build. Own-site relative links and the site's MDX
           // components survive it.
-          markdown: hardenAgentMdx(submission.markdown),
-          faq: submission.faq.map((f) => ({ question: hardenAgentMdx(f.question), answer: hardenAgentMdx(f.answer) })),
+          markdown: hardened.markdown,
+          faq: hardened.faq,
           sources: submission.sources,
           cover_brief: input.cover_brief ?? null,
           validation: report,

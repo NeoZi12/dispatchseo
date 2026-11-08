@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { db } from "@/lib/db";
 import { draftPicturePath, loadPictureCover, renderCoverPng, storePictureCover } from "@/lib/cover-art";
 import { normalizeTheme } from "@/lib/hosted-theme";
@@ -65,19 +66,29 @@ export async function GET(_req: Request, { params }: { params: Promise<{ draftId
   const siteName = projectRow?.name ?? "";
   const theme = projectRow?.hosted_theme ? normalizeTheme(projectRow.hosted_theme) : null;
 
-  const png = await renderCoverPng({
+  const inputs = {
     subjectSvg: draft.cover_svg ?? null,
     title: draft.title ?? "",
     siteName,
     seed: draft.slug || draftId,
     theme: theme && theme.source !== "default" ? { accent: theme.accent, mode: theme.mode } : null,
-  });
+  };
+  // The kept render is keyed by what it was drawn from, so a new title, a
+  // re-read theme or a drawing attached later gets a fresh picture; the old
+  // object is a few KB left behind.
+  const fingerprint = createHash("sha1").update(JSON.stringify(inputs)).digest("hex").slice(0, 10);
+  const keptPath = `${draftPicturePath(draftId)}.${fingerprint}.png`;
+  const kept = await loadPictureCover(keptPath).catch(() => null);
+  if (kept) {
+    return new Response(new Uint8Array(kept.bytes), { headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=3600" } });
+  }
+  const png = await renderCoverPng(inputs);
   // Kept in the covers bucket as drafts/<id>.png, where loadPictureCover above
   // finds it next time: a render costs real CPU, and a request with a
   // cache-busting query reached it every time (security audit 2026-11-08).
   // A painted picture stored later under drafts/<id> still wins (it is tried
   // first). Best-effort: a storage failure only means another render.
-  await storePictureCover(`${draftPicturePath(draftId)}.png`, Buffer.from(png), "image/png").catch(() => false);
+  await storePictureCover(keptPath, Buffer.from(png), "image/png").catch(() => false);
   return new Response(new Uint8Array(png), {
     headers: {
       "Content-Type": "image/png",

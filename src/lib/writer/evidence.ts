@@ -702,8 +702,7 @@ function stripTagsToFixedPoint(text: string): string {
 
 export function sanitizeWriterMarkdown(markdown: string): string {
   return withProseOnly(markdown, (prose) =>
-    prose
-      .replace(/<!--[\s\S]*?-->/g, "")
+    stripHtmlComments(prose)
       // MDX 2+ dropped CommonMark's <https://...> autolinks: it reads one as a
       // JSX tag and the customer's build fails. Rewritten to [url](url) before
       // the link judgment below, so the destination rules (and restrictLinks'
@@ -720,7 +719,7 @@ export function sanitizeWriterMarkdown(markdown: string): string {
         return /^https?:\/\//i.test(url) ? `[${label}](${url})` : label;
       })
       // Reference-style definitions carry destinations too; none survive.
-      .replace(/^\s*\[[^\]\n]+\]:\s*\S+.*$/gm, "")
+      .replace(/^[ \t]{0,3}\[[^\]\n]+\]:[ \t]*\S+.*$/gm, "")
       // Links and images, judged POSITIVELY: a destination must start with
       // http(s):// as literally written, and contain no backslash escape and
       // no character entity. CommonMark decodes both inside destinations, so
@@ -744,8 +743,26 @@ export function sanitizeWriterMarkdown(markdown: string): string {
       // would become "\\{", which MDX reads as an escaped backslash and then
       // a live expression. &#123; cannot be undone by anything before it.
       .replace(/[{}]/g, (ch) => (ch === "{" ? "&#123;" : "&#125;"))
-      .replace(/^(\s*)(import|export)(?=\s)/gm, (m, ws: string, kw: string) => `${ws}&#${kw.charCodeAt(0)};${kw.slice(1)}`),
+      // micromark recognises ESM only at column 1 followed by a space or
+      // tab, so this is exact - and unlike `^(\s*)` it cannot backtrack
+      // across a 200k-newline body (19 s per request, security review).
+      .replace(/^(import|export)(?=[ \t])/gm, (kw: string) => `&#${kw.charCodeAt(0)};${kw.slice(1)}`),
   );
+}
+
+/** HTML comments removed in one linear pass: `/<!--[\s\S]*?-->/` is
+ *  quadratic on a body of unclosed "<!--" openers. */
+export function stripHtmlComments(s: string): string {
+  let out = "";
+  let i = 0;
+  for (;;) {
+    const open = s.indexOf("<!--", i);
+    if (open < 0) return out + s.slice(i);
+    const close = s.indexOf("-->", open + 4);
+    out += s.slice(i, open);
+    if (close < 0) return out;
+    i = close + 3;
+  }
 }
 
 /**
@@ -778,9 +795,16 @@ export function sanitizeWriterMarkdown(markdown: string): string {
  */
 const MD_LINK_RE =
   /!?\[([^\]\n]*)\]\(\s*(?:<([^>\n]*)>|([^()\s]*(?:\([^()\s]*\)[^()\s]*)*))(?:\s+(?:"[^"\n]*"|'[^'\n]*'))?\s*\)/g;
-const AGENT_DROP_NAMES = /^<\/?\s*(script|iframe|style|object|embed|form|meta|link|base|svg|math|template|noscript)\b/i;
+// Lowercase names only: in MDX a capitalised <Link> is the site's own
+// component, not the HTML <link> element.
+const AGENT_DROP_NAMES = /^<\/?\s*(script|iframe|style|object|embed|form|meta|link|base|svg|math|template|noscript)\b/;
 const AGENT_BAD_SCHEME_RE = /(javascript|vbscript|data|livescript|mocha):/;
-const AGENT_HANDLER_RE = /[\s"'/]on[a-z]+\s*=/i;
+/** An on* attribute that is a handler, not a prop that happens to start
+ *  with "on" (once, only, online, one). */
+export function isHandlerAttr(name: string): boolean {
+  return /^on[a-z]+$/i.test(name) && !/^(once|only|online|one|onto)$/i.test(name);
+}
+const AGENT_HANDLER_RE = /[\s"'/](on[a-z]+)\s*=/gi;
 const NAMED_ENTITIES: Record<string, string> = { lt: "<", gt: ">", quot: '"', apos: "'", amp: "&", colon: ":", tab: "\t", newline: "\n", sol: "/", nbsp: " " };
 
 /** Entities decoded (numeric, hex and the handful used in scheme tricks),
@@ -809,13 +833,14 @@ function codePoint(cp: number): string {
 function dangerousAgentTag(tag: string): boolean {
   const decoded = decodeEntitiesLoose(tag);
   const flat = decoded.replace(/[\s\u0000-\u001f\u007f]+/g, "").toLowerCase();
-  return AGENT_DROP_NAMES.test(decoded) || AGENT_BAD_SCHEME_RE.test(flat) || AGENT_HANDLER_RE.test(decoded) || /[{}]/.test(decoded);
+  const handler = [...decoded.matchAll(AGENT_HANDLER_RE)].some((m) => isHandlerAttr(m[1]));
+  return AGENT_DROP_NAMES.test(decoded) || AGENT_BAD_SCHEME_RE.test(flat) || handler || /[{}]/.test(decoded);
 }
 
 /** A link destination an agent article may keep: http(s), mailto, or
  *  relative (no scheme at all), judged decoded and flattened; never a
  *  backslash. */
-function safeAgentDest(raw: string): boolean {
+export function safeAgentDest(raw: string): boolean {
   const dest = decodeEntitiesLoose(raw).replace(/[\s\u0000-\u001f\u007f]+/g, "");
   if (!dest || /[\\]/.test(dest)) return false;
   if (/^(https?:\/\/|mailto:)/i.test(dest)) return true;
@@ -831,15 +856,20 @@ export function hardenAgentMdx(markdown: string): string {
       prev = text;
       text = hardenAgentMdxOnce(text);
     } while (text !== prev && ++rounds < 6);
+    // Still changing after six rounds is an input built to outlast the loop:
+    // refuse it (the caller rejects the article) rather than return whatever
+    // the sixth round left - a cap that returns is a cap that fails open.
+    if (text !== prev) throw new Error("the article's markup could not be made safe");
     return text;
   });
 }
 
 function hardenAgentMdxOnce(prose: string): string {
-  const linksJudged = prose
-    .replace(/<!--[\s\S]*?-->/g, "")
-    // Reference definitions: kept only with a safe destination.
-    .replace(/^(\s*\[[^\]\n]+\]:\s*)(\S+)(.*)$/gm, (m, _head: string, dest: string) => (safeAgentDest(dest) ? m : ""))
+  const linksJudged = stripHtmlComments(prose)
+    // Reference definitions: kept only with a safe destination. Up to three
+    // spaces of indent, as CommonMark allows - never `\s*`, which backtracks
+    // across a body of blank lines.
+    .replace(/^([ \t]{0,3}\[[^\]\n]+\]:[ \t]*)(\S+)(.*)$/gm, (m, _head: string, dest: string) => (safeAgentDest(dest) ? m : ""))
     // Links and images: a bad destination collapses to the label.
     .replace(MD_LINK_RE, (m, label: string, angled: string | undefined, bare: string | undefined) => (safeAgentDest(angled ?? bare ?? "") ? m : label));
   const parts = linksJudged.split(/(<\/?[A-Za-z][^<>]*>)/g);
@@ -866,10 +896,12 @@ function hardenAgentMdxOnce(prose: string): string {
         return part;
       }
       return part
-        .replace(/[{}]/g, (ch) => (ch === "{" ? "&#123;" : "&#125;"))
+        // An escaped brace (\{) is already a literal in MDX; touching it
+        // would turn "\{" into "\&#123;", which renders as "&#123;".
+        .replace(/(?<!\\)[{}]/g, (ch) => (ch === "{" ? "&#123;" : "&#125;"))
         // Not part of a kept tag, so text - and text MDX would choke on.
         .replace(/</g, "&lt;")
-        .replace(/^(\s*)(import|export)(?=\s)/gm, (m, ws: string, kw: string) => `${ws}&#${kw.charCodeAt(0)};${kw.slice(1)}`);
+        .replace(/^(import|export)(?=[ \t])/gm, (kw: string) => `&#${kw.charCodeAt(0)};${kw.slice(1)}`);
     })
     .join("");
 }

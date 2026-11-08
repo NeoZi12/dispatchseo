@@ -117,7 +117,10 @@ export async function startWriterRun(input: {
   // closed - a legitimate single start is never over it).
   const over = await overCapsAfterInsert(input.projectId, run).catch(() => "could not confirm this site's start caps");
   if (over) {
-    await failRun(run, over).catch(() => {});
+    // Deleted, not failed: a failed row would itself count toward today's
+    // cap, so N refused racers would lock the site out until midnight.
+    // Nothing has been queued for this run yet.
+    await db().from("writer_runs").delete().eq("id", run.id).eq("status", "running");
     return { refused: over };
   }
   // A free article is entered in the owner's ledger the moment it starts
