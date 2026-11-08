@@ -140,6 +140,23 @@ async function recordIfFree(project: { id: string; domain: string | null }, run:
   if (!ownerId) return "the free plan needs an owner account";
   const { recordFreeStart } = await import("@/lib/free-gate");
   await recordFreeStart(ownerId, run.project_id, project.domain);
+  // Check-then-record is not atomic, so look again AFTER recording: two
+  // starts racing through the gate both see the other here and both refuse
+  // (fail closed - only a deliberate race ever gets here; the scheduler
+  // starts one run at a time).
+  const { FREE_ARTICLES_PER_MONTH, freeSpacingDays } = await import("@/lib/billing");
+  const now = Date.now();
+  const monthStart = new Date(Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), 1)).toISOString();
+  const { data, error } = await db()
+    .from("free_article_starts")
+    .select("started_at")
+    .eq("owner_user_id", ownerId)
+    .order("started_at", { ascending: false })
+    .limit(FREE_ARTICLES_PER_MONTH + 2);
+  if (error) return "could not confirm the free article";
+  const starts = ((data ?? []) as { started_at: string }[]).map((r) => r.started_at);
+  const recent = starts.filter((s) => now - Date.parse(s) < freeSpacingDays() * 86_400_000).length;
+  if (starts.filter((s) => s >= monthStart).length > FREE_ARTICLES_PER_MONTH || recent > 1) return "another free article started at the same moment";
   return null;
 }
 
