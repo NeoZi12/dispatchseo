@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { TIER_LIMITS, TIER_NAMES, articlesPerWeekFor, priceLabel } from "@/lib/billing";
+import { FREE_ARTICLES_PER_MONTH, TIER_LIMITS, TIER_NAMES, articlesPerWeekFor, priceLabel } from "@/lib/billing";
 
 // The free tier's one upgrade surface (billing.ts isFreePlan decides who
 // sees it). Every lock in the hosted dashboard is this panel: the site's own
@@ -22,8 +22,12 @@ const at = (ms: number) => ({ "--at": `${ms}ms` }) as React.CSSProperties;
 // DispatchSEO" credit (hosted-blog.ts) only shows on free ones. Change a
 // line here only when the engine changes with it.
 const STARTER_PER_WEEK = articlesPerWeekFor("starter");
+// A month is 52/12 weeks; floor so the line never promises a fraction more.
+const STARTER_PER_MONTH = Math.floor((STARTER_PER_WEEK * 52) / 12);
+// "2x the free plan" only once the engine gives free sites articles.
+const VS_FREE = FREE_ARTICLES_PER_MONTH > 0 ? Math.floor(STARTER_PER_MONTH / FREE_ARTICLES_PER_MONTH) : 0;
 const PERKS: { label: string; icon: keyof typeof ICONS }[] = [
-  { label: STARTER_PER_WEEK === 1 ? "A new article every week" : `${STARTER_PER_WEEK} new articles a week`, icon: "pen" },
+  { label: `${STARTER_PER_WEEK === 1 ? "Weekly articles" : `${STARTER_PER_WEEK} articles a week`}${VS_FREE >= 2 ? `, ${VS_FREE}× the free plan` : ""}`, icon: "pen" },
   // Research (research.ts) and rank tracking (daily-ranks) both sit behind
   // planGate, so neither runs for a free site.
   { label: "Fresh keyword research every week", icon: "search" },
@@ -82,7 +86,8 @@ export function UpgradePanel({
           </h2>
           {note ? <p className="mt-2 text-[15px] text-ink-muted">{note}</p> : null}
 
-          <ul className="mt-7 space-y-3">
+          <p className="mt-7 text-[13px] font-semibold uppercase tracking-[0.08em] text-ok">Grow faster with {TIER_NAMES.starter}</p>
+          <ul className="mt-3 space-y-3">
             {PERKS.map((p) => {
               const Icon = ICONS[p.icon];
               return (
