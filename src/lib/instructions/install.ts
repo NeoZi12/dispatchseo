@@ -272,8 +272,10 @@ to ~10-15.
 
 Then enable PR creation for Actions: repo Settings -> Actions -> General ->
 "Allow GitHub Actions to create and approve pull requests"
-(\`gh api -X PUT repos/{{REPO}}/actions/permissions/workflow -f default_workflow_permissions=write -F can_approve_pull_request_reviews=true\`
-does it from the CLI; fall back to telling the owner where to click).
+(\`gh api -X PUT repos/{{REPO}}/actions/permissions/workflow -F can_approve_pull_request_reviews=true\`
+does it from the CLI; fall back to telling the owner where to click). Do NOT
+change the repo's default workflow token permission - every pipeline workflow
+declares its own \`permissions:\`, so a read-only default is correct.
 
 Then pre-create the pipeline's labels - \`gh pr create --label\` fails on a
 label that doesn't exist yet, so a repo without them passes install and dies
@@ -311,11 +313,10 @@ with step=\`repo_settings\`.
    - **Actions can open PRs** (required in BOTH modes - the daily builder
      opens every content PR from inside a workflow; semi vs auto only
      changes who merges): \`gh api repos/{{REPO}}/actions/permissions/workflow\`
-     shows \`default_workflow_permissions: write\` and
-     \`can_approve_pull_request_reviews: true\` (the approve half is what
-     auto-merge needs - if the project is semi mode and the owner
-     deliberately leaves approval off, write permission alone passes this
-     check; note it so flipping to auto later knows to revisit). If your
+     shows \`can_approve_pull_request_reviews: true\` - GitHub's single
+     "create and approve pull requests" switch, needed in every mode because
+     it is what lets GITHUB_TOKEN open a PR at all. The default workflow
+     token permission may stay read-only. If your
      Part 3 PUT was permission-blocked, send the owner to
      https://github.com/{{REPO}}/settings/actions with the exact toggle
      name ("Allow GitHub Actions to create and approve pull requests"),

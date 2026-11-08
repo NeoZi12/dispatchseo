@@ -481,15 +481,15 @@ export async function mergePr(
 // Server-side proof that a repo is actually ready for the pipeline.
 // mark_pipeline_installed is what UNLOCKS the owner's dashboard, so it
 // refuses the stamp on any problem this can verify from here - the agent's
-// self-reported checklist is not taken on faith. Mode-aware: requireApprove
-// (auto-merge on) additionally demands the approve half of the Actions
-// toggle. Unverifiable situations (no merge token connected, GitHub down)
+// self-reported checklist is not taken on faith. requireApprove is kept for
+// callers but no longer changes anything: GitHub has ONE toggle for
+// "create and approve pull requests", so every mode needs it on. Unverifiable situations (no merge token connected, GitHub down)
 // return checked:false with no problems - the agent's own gh-based
 // checklist is the verifier of record then; a network hiccup must not
 // hard-block an honest install.
 export async function verifyPipelinePrereqs(
   repo: string,
-  requireApprove: boolean,
+  _requireApprove: boolean,
   ref?: RepoRef,
 ): Promise<{ checked: boolean; problems: string[] }> {
   const token = await tokenForRef(ref ?? repo);
@@ -550,17 +550,15 @@ export async function verifyPipelinePrereqs(
       }
     }
     if (perms.ok) {
+      // The repo's DEFAULT token permission is deliberately not checked: every
+      // pack workflow declares its own job-level permissions, so a read-only
+      // default is fine. What gates PR creation by GITHUB_TOKEN is this flag.
       const p = (await perms.json()) as {
-        default_workflow_permissions?: string;
         can_approve_pull_request_reviews?: boolean;
       };
-      if (p.default_workflow_permissions !== "write") {
+      if (!p.can_approve_pull_request_reviews) {
         problems.push(
           "GitHub Actions cannot open PRs - enable 'Allow GitHub Actions to create and approve pull requests' in the repo's Settings → Actions → General",
-        );
-      } else if (requireApprove && !p.can_approve_pull_request_reviews) {
-        problems.push(
-          "auto mode needs the approve half of 'Allow GitHub Actions to create and approve pull requests' (auto-merge approves PRs from a workflow)",
         );
       }
     }

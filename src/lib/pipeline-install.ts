@@ -260,14 +260,20 @@ export async function installPipelineToRepo(
     await gh(token, "POST", `/repos/${repo}/labels`, label).catch(() => {});
   }
 
-  // Best-effort: allow Actions to open PRs. Unclear whether App tokens may
-  // set this at all (likely needs Administration, which we deliberately do
-  // not request) - a failure stays a dashboard checklist item, never a
+  // Best-effort: allow Actions to open PRs. The builders and the install
+  // canary open their PRs with GITHUB_TOKEN, and GitHub gates that behind the
+  // single "Allow GitHub Actions to create and approve pull requests" switch,
+  // which the API names can_approve_pull_request_reviews - no pack workflow
+  // approves a review, but creating a PR needs the same flag. The default
+  // token permission is deliberately left at whatever the owner chose: every
+  // pack workflow declares its own job-level `permissions:` block, so a
+  // read-only default costs the pipeline nothing. Unclear whether App tokens
+  // may set this at all (likely needs Administration, which we deliberately
+  // do not request) - a failure stays a dashboard checklist item, never a
   // blocked install.
   let actionsPerm: InstallResult["actions_pr_permission"] = "manual-needed";
   try {
     const put = await gh(token, "PUT", `/repos/${repo}/actions/permissions/workflow`, {
-      default_workflow_permissions: "write",
       can_approve_pull_request_reviews: true,
     });
     if (put.status === 204) actionsPerm = "set";

@@ -72,7 +72,7 @@ import { WRITE_GUIDE_CHAT, WRITE_GUIDE_CHAT_STEPS } from "./write-guide-chat";
 import { SETUP_CHAT, SETUP_CHAT_STEPS } from "./setup-chat";
 import { RESEARCH_CHAT, RESEARCH_CHAT_STEPS } from "./research-chat";
 
-export const INSTRUCTIONS_VERSION = "2026-09-27.1";
+export const INSTRUCTIONS_VERSION = "2026-11-08.1";
 
 export const WORKFLOWS = [
   "install",
