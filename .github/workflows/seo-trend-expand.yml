@@ -34,7 +34,7 @@ jobs:
       id-token: write
       actions: read # the outcome report reads which step failed
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # >>> agent-steps: resolve (GENERATED - edit scripts/agent-ci/ and regenerate; never edit between these markers)
       # Which coding agent runs this workflow - resolved at RUN time from the

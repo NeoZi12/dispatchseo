@@ -50,7 +50,7 @@ jobs:
       id-token: write
       actions: read # the outcome report reads which step failed
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The agent commits below. Pin an identity that maps to a real GitHub
       # account - Vercel refuses to deploy commits from unknown author emails,

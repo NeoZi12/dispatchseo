@@ -80,7 +80,7 @@ jobs:
           fi
           echo "sha=$(echo "$info" | jq -r .sha)" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # The resolved PR head, so both trigger modes exercise the same code.
           ref: ${{ steps.pr.outputs.sha }}

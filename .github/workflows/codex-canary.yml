@@ -46,7 +46,7 @@ jobs:
     continue-on-error: true
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The MCP server, in Codex's own config format. CODEX_HOME redirects the
       # whole config directory, which is the only scoping Codex offers - there

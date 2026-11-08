@@ -44,7 +44,7 @@ jobs:
           --health-timeout 3s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: setup.sql is regenerated (not stale)
         run: |
           node scripts/generate-setup-sql.mjs
