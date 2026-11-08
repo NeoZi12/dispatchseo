@@ -95,13 +95,13 @@ import { gscAccessProbe } from "@/lib/gsc";
 import { setTrackedProperty } from "@/lib/gsc-oauth";
 import { expandKeyword } from "@/lib/suggest";
 import {
-  checkSerpDailyCapReached,
+  CHECK_SERP_DAILY_CAP,
   KEYWORD_IDEAS_DAILY_CAP,
-  keywordIdeasDailyCapReached,
   platformUsageStatus,
   recordCheckSerpCall,
   recordKeywordIdeasCall,
 } from "@/lib/dataforseo-usage";
+import { rateLimitHit, rateLimitKey } from "@/lib/rate-limit";
 import { getDomainRating } from "@/lib/domain-rating";
 import { getAuthority, needsLinkMove } from "@/lib/authority";
 import { validateArticle } from "@/lib/article-validate";
@@ -415,9 +415,10 @@ const mcpHandler = createMcpHandler(
             .describe(
               "guide = an article; tool = a free interactive widget; backlink = an outreach target; update = a change to an existing page.",
             ),
-          title: z.string().describe("The proposed page or tool title, as it would read on the site."),
+          title: z.string().max(300).describe("The proposed page or tool title, as it would read on the site."),
           primary_keyword: z
             .string()
+            .max(2000)
             .optional()
             .describe("The single keyword this item targets."),
           volume: z
@@ -433,6 +434,7 @@ const mcpHandler = createMcpHandler(
             .describe("Keyword difficulty (0-100) for primary_keyword, from the research source."),
           rationale: z
             .string()
+            .max(2000)
             .optional()
             .describe(
               "Why this is worth doing: volume, KD, intent, SERP weakness - and who types the query and why that person overlaps the site's buyer.",
@@ -584,6 +586,7 @@ const mcpHandler = createMcpHandler(
             ),
           result_pr_url: z
             .string()
+            .max(500)
             .optional()
             .describe("The pull request this item produced. Pass it alongside status 'done'."),
           decided_by: z
@@ -1867,7 +1870,7 @@ const mcpHandler = createMcpHandler(
           keywords: z
             .array(
               z.object({
-                keyword: z.string().describe("The search term to track, exactly as a user would type it."),
+                keyword: z.string().max(200).describe("The search term to track, exactly as a user would type it."),
                 volume: z
                   .number()
                   .int()
@@ -1877,11 +1880,13 @@ const mcpHandler = createMcpHandler(
                 cpc: z.number().optional().describe("Cost per click in USD, from the research source."),
                 intent: z
                   .string()
+                  .max(200)
                   .optional()
                   .describe("Search intent for this term, e.g. informational, commercial, transactional."),
               }),
             )
             .min(1)
+            .max(200)
             .describe("One entry per keyword to start tracking. Send the whole batch in a single call."),
         },
       },
@@ -2006,7 +2011,7 @@ const mcpHandler = createMcpHandler(
           "today's build slot.",
         inputSchema: {
           url: z.string().describe("The page's full public URL on the site."),
-          title: z.string().optional().describe("The page title as published."),
+          title: z.string().max(300).optional().describe("The page title as published."),
           type: z
             .enum(["guide", "tool", "landing"])
             .optional()
@@ -2102,10 +2107,12 @@ const mcpHandler = createMcpHandler(
         inputSchema: {
           requested_urls: z
             .array(z.string())
+            .max(500)
             .optional()
             .describe("URLs indexing was just requested for, so they aren't re-submitted on the next run."),
           already_indexed_urls: z
             .array(z.string())
+            .max(500)
             .optional()
             .describe("URLs found to be indexed already, so they drop out of the queue without a request being spent."),
         },
@@ -2246,13 +2253,15 @@ const mcpHandler = createMcpHandler(
           "Add a backlink prospect (a domain worth pursuing a link from), status 'new'. " +
           "reason should say why it's relevant or where it was found.",
         inputSchema: {
-          domain: z.string().describe("The prospect site's domain, without protocol or www."),
+          domain: z.string().max(500).describe("The prospect site's domain, without protocol or www."),
           url: z
             .string()
+            .max(500)
             .optional()
             .describe("The specific page to pitch - a submission form, a resource list, a relevant article."),
           reason: z
             .string()
+            .max(2000)
             .optional()
             .describe("Why this site would plausibly link here: what it already covers, and the angle to pitch."),
           domain_rating: z
@@ -2405,7 +2414,9 @@ const mcpHandler = createMcpHandler(
         // actually billed to the platform account; BYO and self-host projects
         // are unaffected.
         const billedToPlatform = provider.kind === "dataforseo" && provider.creds.billedTo === "platform";
-        if (billedToPlatform && (await checkSerpDailyCapReached(p.id))) {
+        // Atomic claim, same as keyword_ideas: the old read-then-record check
+        // let a parallel burst past the cap.
+        if (billedToPlatform && !(await rateLimitHit(rateLimitKey("serp", p.id), CHECK_SERP_DAILY_CAP, 86400))) {
           return fail(
             "Daily check_serp cap reached (30/day on the shared DataForSEO plan) - resets at UTC " +
               "midnight. Use track_keywords for anything worth ongoing monitoring (the rank cron " +
@@ -2690,7 +2701,11 @@ const mcpHandler = createMcpHandler(
         // unattended loop here the most expensive mistake available through
         // this server. Named refusal, never a silent empty list: a caller told
         // "no ideas" retries, a caller told "tomorrow" stops.
-        if (await keywordIdeasDailyCapReached(p.id)) {
+        // Atomic claim (rate_limit_hit, migration 0080), not read-then-record:
+        // parallel calls used to all read "under the cap" before any of them
+        // recorded, so a burst sailed past it. recordKeywordIdeasCall below
+        // stays for the usage accounting.
+        if (!(await rateLimitHit(rateLimitKey("kwi", p.id), KEYWORD_IDEAS_DAILY_CAP, 86400))) {
           return fail(
             `You have used today's ${KEYWORD_IDEAS_DAILY_CAP} keyword_ideas calls for this site; it resets at UTC midnight. ` +
               "Work with the ideas you already have, or use check_serp and suggest_keywords, which are not capped this way.",
@@ -3550,7 +3565,8 @@ const mcpHandler = createMcpHandler(
         title: "Merge PR",
         description:
           "Squash-merge an open SEO PR on the project's repo - the dashboard's " +
-          "one-tap merge. Only merge PRs listed by get_next_actions, and only " +
+          "one-tap merge. Only DispatchSEO pipeline PRs (open, labelled `seo`) " +
+          "can be merged; anything else is refused. Only merge PRs listed by get_next_actions, and only " +
           "when the user asked for it or its checks are green. Requires the " +
           "server's GH_MERGE_TOKEN; without it this fails and the PR page link " +
           "is the fallback.",
@@ -3560,6 +3576,17 @@ const mcpHandler = createMcpHandler(
       },
       async ({ number }) => {
         const p = currentProject();
+        // Only the pipeline's own PRs: every PR DispatchSEO opens carries the
+        // `seo` label (repo-publish.ts, the pipeline templates), and
+        // openSeoPrs is that list. A tool call - possibly steered by text the
+        // agent read on the web - must never merge an arbitrary PR on the
+        // owner's repo with the server's merge token.
+        const pipelinePrs = await openSeoPrs(p, { live: true });
+        if (!pipelinePrs.some((pr) => pr.number === number)) {
+          return fail(
+            "merge_pr only merges DispatchSEO pipeline PRs (open PRs labelled `seo`). Merge other PRs in GitHub.",
+          );
+        }
         const result = await mergePr(p, number);
         if (!result.ok) return fail(result.message);
         return ok(result);
@@ -5030,8 +5057,21 @@ const mcpHandler = createMcpHandler(
         const p = currentProject();
         // Two days, the same floor the daily pass's early refill keeps: a thin
         // site's run can also buy a seed-proposal call and up to 20 Labs calls.
-        if (p.last_research_at && Date.now() - Date.parse(p.last_research_at) < 2 * 86_400_000) {
-          return fail(`Research already ran at ${p.last_research_at}; it can run again two days after that.`);
+        // One conditional update claims the slot: read-then-stamp let parallel
+        // calls all see an old last_research_at and each buy a full run.
+        const nowIso = new Date().toISOString();
+        const cutoffIso = new Date(Date.now() - 2 * 86_400_000).toISOString();
+        const { data: claimed, error: claimErr } = await db()
+          .from("projects")
+          .update({ last_research_at: nowIso })
+          .eq("id", p.id)
+          .or(`last_research_at.is.null,last_research_at.lt.${cutoffIso}`)
+          .select("id");
+        if (claimErr) return fail(`Could not start research: ${claimErr.message}`);
+        if (!claimed || claimed.length === 0) {
+          const { data: row } = await db().from("projects").select("last_research_at").eq("id", p.id).maybeSingle();
+          const last = (row as { last_research_at: string | null } | null)?.last_research_at ?? p.last_research_at;
+          return fail(`Research already ran at ${last}; it can run again two days after that.`);
         }
         const outcome = await runResearch(p);
         return "skipped" in outcome ? fail(`Research did not run: ${outcome.skipped}.`) : ok(outcome);
@@ -5109,7 +5149,32 @@ async function authed(req: Request): Promise<Response> {
   const client = new URL(req.url).searchParams.get("client") === "chat" ? "chat" : "agent";
   if (client === "chat") noteChatSeen(project);
   if (client === "agent") noteAgentSeen(project);
-  return projectStore.run(project, () => clientKindStore.run(client, () => mcpHandler(req)));
+  // JSON-RPC batches are refused: one HTTP request carrying many tool calls
+  // would slip every per-call limit and log line that assumes one call per
+  // request. The body is read once here, so the handler gets a fresh Request
+  // with the same bytes.
+  let forward = req;
+  if (req.method === "POST") {
+    const text = await req.clone().text();
+    let parsed: unknown = undefined;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = undefined; // not JSON: pass through untouched
+    }
+    if (Array.isArray(parsed)) {
+      return Response.json(
+        { jsonrpc: "2.0", id: null, error: { code: -32600, message: "Batch requests are not supported" } },
+        { status: 400 },
+      );
+    }
+    if (parsed !== undefined) {
+      const headers = new Headers(req.headers);
+      headers.delete("content-length"); // recomputed from the re-sent body
+      forward = new Request(req.url, { method: req.method, headers, body: text, signal: req.signal });
+    }
+  }
+  return projectStore.run(project, () => clientKindStore.run(client, () => mcpHandler(forward)));
 }
 
 /** The "Connected" light for the Claude/ChatGPT app (migration 0060). Every

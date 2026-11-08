@@ -1410,6 +1410,10 @@ when the user asked for it or its checks are green. Requires the
 server's merge token to be configured; without it, this fails and the
 PR page link is the fallback.
 
+It only merges DispatchSEO pipeline PRs: open PRs labelled `seo`, which
+is how every PR the pipeline opens is marked. Any other PR number is
+refused - merge those in GitHub.
+
 <Fields>
   <Field name="number" type="number" required="true">
     The PR number to merge.
