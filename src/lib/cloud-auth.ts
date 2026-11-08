@@ -33,6 +33,9 @@ export async function supabaseAuth() {
   if (!url || !key) throw new Error("Cloud auth needs SUPABASE_URL and SUPABASE_ANON_KEY");
   const jar = await cookies();
   return createServerClient(url, key, {
+    // HttpOnly + Secure: no browser Supabase client exists, so nothing in page
+    // JS needs these, and the hosted blogs share this origin.
+    cookieOptions: { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/" },
     cookies: {
       getAll() {
         return jar.getAll();

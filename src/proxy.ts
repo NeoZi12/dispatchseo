@@ -97,6 +97,9 @@ async function persistRotatedSession(req: NextRequest): Promise<Rotated | null> 
   try {
     const res = NextResponse.next({ request: req });
     const supabase = createServerClient(url, anonKey, {
+      // HttpOnly + Secure: no browser Supabase client exists, so nothing in
+      // page JS needs these, and the hosted blogs share this origin.
+      cookieOptions: { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/" },
       cookies: {
         getAll: () => req.cookies.getAll(),
         setAll: (toSet) => {
