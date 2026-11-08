@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { db } from "./db";
 import { bustInstanceCache, hashPassword } from "./dashboard-auth";
 import { missingMigrations } from "./schema-check";
@@ -56,10 +56,15 @@ export async function getSetupState(): Promise<SetupState> {
 // connected repo so self-hosted pipelines phone the right backend).
 // Insert-only: a concurrent claimer hits the single-row primary key and
 // gets "already-claimed" instead of overwriting.
+//
+// The first visitor to /setup claims the instance, so an install reachable
+// from the internet sets SETUP_TOKEN (start.sh generates and prints it) and
+// the claim then needs that token too. Unset = the old open first boot.
 export async function claimInstance(
   password: string,
   appUrl?: string | null,
-): Promise<{ cronSecret: string } | { error: "already-claimed" }> {
+  setupToken?: string | null,
+): Promise<{ cronSecret: string } | { error: "already-claimed" } | { error: "Wrong setup token" }> {
   // Cloud never claims a self-host password. This is the real lock behind the
   // /setup page's redirect: the page guard only stops the form rendering, but
   // this server action is invocable directly, so the mode check must live here
@@ -67,6 +72,7 @@ export async function claimInstance(
   if (isCloudMode()) return { error: "already-claimed" };
   const state = await getSetupState();
   if (state !== "unclaimed") return { error: "already-claimed" };
+  if (setupTokenRequired() && !setupTokenMatches(setupToken ?? "")) return { error: "Wrong setup token" };
   const cronSecret = randomBytes(24).toString("hex");
   const row = {
     id: true,
@@ -88,4 +94,18 @@ export async function claimInstance(
   if (error) return { error: "already-claimed" };
   bustInstanceCache();
   return { cronSecret };
+}
+
+/** Does the first-boot claim need a setup token (SETUP_TOKEN set)? */
+export function setupTokenRequired(): boolean {
+  return Boolean(process.env.SETUP_TOKEN);
+}
+
+// Constant-time compare; a length mismatch is a refusal, not an early exit
+// through timingSafeEqual (which throws on unequal lengths).
+function setupTokenMatches(submitted: string): boolean {
+  const expected = Buffer.from(process.env.SETUP_TOKEN ?? "", "utf8");
+  const got = Buffer.from(submitted.trim(), "utf8");
+  if (expected.length === 0 || got.length !== expected.length) return false;
+  return timingSafeEqual(got, expected);
 }

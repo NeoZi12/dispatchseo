@@ -1,7 +1,7 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { COOKIE_NAME, cookieSecure, cookieValue } from "@/lib/dashboard-auth";
-import { claimInstance, getSetupState } from "@/lib/setup";
+import { claimInstance, getSetupState, setupTokenRequired } from "@/lib/setup";
 import { missingMigrations } from "@/lib/schema-check";
 import { DispatchMark } from "@/components/logo";
 import { PixelDispatcher } from "@/components/pixel-dispatcher";
@@ -15,14 +15,17 @@ import { isCloudMode } from "@/lib/cloud";
 // used to live here is gone with that install path; the two database states
 // are container-failure triage now, not steps.
 // Public by design: it only ever renders instructions or the claim form,
-// and claiming is race-safe (single-row PK). Once the instance is claimed
-// it redirects to /login and never shows again.
+// and claiming is race-safe (single-row PK). The first visitor claims the
+// instance, so when SETUP_TOKEN is set (start.sh prints it) the form asks
+// for it and claimInstance() refuses without it. Once the instance is
+// claimed it redirects to /login and never shows again.
 export const dynamic = "force-dynamic";
 
 async function claim(formData: FormData) {
   "use server";
   const password = String(formData.get("password") ?? "");
   const confirm = String(formData.get("confirm") ?? "");
+  const setupToken = String(formData.get("setup_token") ?? "");
   if (password.length < 10) redirect("/setup?error=short");
   if (password !== confirm) redirect("/setup?error=mismatch");
   // Capture this deploy's own public URL from the claim request itself -
@@ -32,8 +35,8 @@ async function claim(formData: FormData) {
   const host = h.get("x-forwarded-host") ?? h.get("host");
   const proto = h.get("x-forwarded-proto") ?? "https";
   const appUrl = host ? `${proto}://${host}` : null;
-  const result = await claimInstance(password, appUrl);
-  if ("error" in result) redirect("/login");
+  const result = await claimInstance(password, appUrl, setupToken);
+  if ("error" in result) redirect(result.error === "Wrong setup token" ? "/setup?error=token" : "/login");
   const jar = await cookies();
   jar.set(COOKIE_NAME, await cookieValue(), {
     httpOnly: true,
@@ -90,6 +93,7 @@ export default async function SetupPage({
   // Which migrations the probe says are absent - names the exact gap on the
   // tables screen so a partial migrate run is diagnosable at a glance.
   const missing = state === "no-tables" ? await missingMigrations() : [];
+  const needsToken = setupTokenRequired();
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-neutral-950 p-6">
@@ -190,6 +194,23 @@ export default async function SetupPage({
               </p>
             </div>
             <form action={claim} className="space-y-4">
+              {needsToken && (
+                <div className="space-y-1.5">
+                  <label htmlFor="setup_token" className="block text-sm font-medium text-neutral-300">
+                    Setup token
+                  </label>
+                  <input
+                    id="setup_token"
+                    name="setup_token"
+                    type="text"
+                    required
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="w-full rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-3 font-mono text-base text-white placeholder-neutral-500 focus:border-neutral-400 focus:outline-none"
+                  />
+                  <p className="text-sm text-neutral-500">Printed by start.sh when the stack booted</p>
+                </div>
+              )}
               <PasswordInput
                 name="password"
                 placeholder="Choose a password (10+ characters)"
@@ -202,8 +223,18 @@ export default async function SetupPage({
               {error === "mismatch" && (
                 <p className="text-sm text-red-400">Passwords don't match.</p>
               )}
+              {error === "token" && (
+                <p className="text-sm text-red-400">Wrong setup token.</p>
+              )}
               <button className={`w-full ${primaryAction}`}>Claim instance</button>
             </form>
+            {!needsToken && (
+              <p className="text-sm text-neutral-500">
+                Whoever opens this page first claims the instance. If it can be
+                reached from the internet, set <Code>SETUP_TOKEN</Code> before
+                first boot so the claim needs a token only you have.
+              </p>
+            )}
           </div>
         )}
       </div>
