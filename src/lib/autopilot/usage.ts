@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { isCloudMode } from "@/lib/cloud";
-import { polarConfigured, projectPlan, writerGate } from "@/lib/billing";
+import { ownerUserIdForProject, polarConfigured, projectPlan, writerGate } from "@/lib/billing";
 import { writerMode, type Project } from "@/lib/projects";
 import { missingCredentials } from "@/lib/writer/models";
 import { cadence, weekStartUtc, spacingDaysFor } from "./math";
@@ -172,6 +172,14 @@ export async function writerStartGate(project: Project, opts: { gated?: boolean 
     if (!polarConfigured()) return "plan inactive: billing is not configured on this deploy, so no article can be started.";
     const gate = await writerGate(project.id);
     if (!gate.allowed) return `plan inactive: ${gate.reason}.`;
+    // The free tier's durable ledger (free-gate.ts): starts are counted per
+    // OWNER across every site they ever had, so deleting and re-adding a site
+    // never resets the month or the spacing. Fails closed.
+    if (gate.free) {
+      const ownerId = await ownerUserIdForProject(project.id);
+      const { freeStartAllowed } = await import("@/lib/free-gate");
+      if (!ownerId || !(await freeStartAllowed(ownerId))) return "The free plan's articles for now are used up (2 a month, about two weeks apart). Upgrade for more.";
+    }
   }
   const plan = await projectPlan(project.id);
   if (isCloudMode() && plan.articlesPerWeek === 0) return "plan inactive: this site's plan includes no articles right now.";

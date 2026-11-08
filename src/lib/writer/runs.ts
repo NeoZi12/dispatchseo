@@ -112,6 +112,14 @@ export async function startWriterRun(input: {
     throw new Error(`could not start the writer: ${error.message}`);
   }
   const run = data as WriterRun;
+  // A free article is entered in the owner's ledger the moment it starts
+  // (free-gate.ts). No record, no run: an uncounted free start is exactly
+  // the hole the ledger closes.
+  const freeRefusal = await recordIfFree(project, run).catch((e) => `could not record the free article: ${e instanceof Error ? e.message : String(e)}`);
+  if (freeRefusal) {
+    await failRun(run, freeRefusal).catch(() => {});
+    return { refused: freeRefusal };
+  }
   try {
     await queueStage(run.project_id, run.id, "pick");
   } catch (e) {
@@ -120,6 +128,19 @@ export async function startWriterRun(input: {
     throw e;
   }
   return { run };
+}
+
+async function recordIfFree(project: { id: string; domain: string | null }, run: WriterRun): Promise<string | null> {
+  const { isCloudMode } = await import("@/lib/cloud");
+  if (!isCloudMode()) return null;
+  const { writerGate, ownerUserIdForProject } = await import("@/lib/billing");
+  const gate = await writerGate(project.id);
+  if (!gate.allowed || !gate.free) return null;
+  const ownerId = await ownerUserIdForProject(project.id);
+  if (!ownerId) return "the free plan needs an owner account";
+  const { recordFreeStart } = await import("@/lib/free-gate");
+  await recordFreeStart(ownerId, run.project_id, project.domain);
+  return null;
 }
 
 async function startCaps(projectId: string): Promise<string | null> {

@@ -7,6 +7,7 @@ import {
   ownerUserIdForProject,
   polarConfigured,
   FREE_ARTICLES_PER_MONTH,
+  freeSignupsOpen,
   writerGate,
   type Tier,
 } from "./billing";
@@ -109,6 +110,16 @@ export async function recordDataforseoUsage(
     p_cost_microusd: Math.round(costUsd * 1_000_000),
   });
   if (error) throw new Error(`record_dataforseo_usage failed: ${error.message}`);
+  // A free owner's spend also goes to their durable per-owner month
+  // (free-gate.ts), which survives deleting the site: the per-project rows
+  // above go with it, and a delete-and-re-add would otherwise reset the cap.
+  if (costUsd > 0 && isCloudMode() && freeSignupsOpen()) {
+    const ownerId = await ownerUserIdForProject(projectId);
+    if (ownerId && !isActive(await getSubscription(ownerId))) {
+      const { recordFreeOwnerSpend } = await import("./free-gate");
+      await recordFreeOwnerSpend(ownerId, costUsd * 1_000_000);
+    }
+  }
 }
 
 // check_serp's own fire-and-forget recorder: cost is always 0 (it's a rate
@@ -251,7 +262,14 @@ export async function platformBudgetGate(
   // writer never gets here for such an owner (writerGate says no first).
   if (!isActive(sub)) {
     if (FREE_ARTICLES_PER_MONTH <= 0) return { allowed: true };
-    const spent = await monthToDateCostMicrousd(ownerId);
+    // The durable per-owner month too, once free signups are open: the
+    // larger of the two, so a deleted site's spend still counts. Its read
+    // error is Infinity - denied, never a free pass.
+    const now = new Date();
+    const durable = freeSignupsOpen()
+      ? await import("./free-gate").then((m) => m.freeOwnerSpendMicrousd(ownerId, new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))))
+      : 0;
+    const spent = Math.max(await monthToDateCostMicrousd(ownerId), durable);
     return spent >= FREE_DATAFORSEO_BUDGET_MICROUSD
       ? { allowed: false, reason: `DataForSEO usage budget reached for the free plan this month (${(FREE_DATAFORSEO_BUDGET_MICROUSD / 1_000_000).toFixed(2)})` }
       : { allowed: true };
