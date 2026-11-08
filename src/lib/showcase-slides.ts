@@ -15,55 +15,48 @@ export type Slide = {
   fit?: "contain";
 };
 
+// Real screenshots of ClockedCode, the owner's own site on the autopilot
+// (captured 2026-11-08). Results first, because that is what a visitor came
+// for: the traffic, then the articles bringing it, then what an article looks
+// like, then how topics are picked. Every re-shoot gets a NEW filename: the
+// browser and next/image cache an image by its URL, so overwriting a file in
+// place keeps serving the old picture.
+// Framing rule (v5): every shot fills the window edge to edge - cards are
+// cropped just inside their own border, the queue and the article keep a
+// thin margin of their own page - at exactly the stage's 3020x1370 shape,
+// captured at 3x and scaled down so the text stays sharp. The traffic card
+// drops the publishing calendar and shortens the main chart to fit; the
+// article's cover is cropped to a wide band. Keep the window at 3020/1370.
+// The article shot is the live page as it is (painted FLUX.2 klein cover,
+// deployed to clockedcode.com 2026-11-08; date + read time kept), minus the
+// tag pills, the description and ClockedCode's own upsell box.
 export const SLIDES: Slide[] = [
   {
-    id: "home",
-    title: "Your site, briefed daily",
-    caption: "What moved, what shipped, what needs you.",
-    image: "/screenshots/home.png",
-    alt: "The dashboard Home page: the agent's daily briefing in plain language, the SEO journey stage, publishing pace, and stat tiles for clicks, impressions, keywords tracked, and guides published",
-    fit: "contain",
-  },
-  {
     id: "traffic",
-    title: "Watch your traffic grow",
-    caption: "Clicks and impressions, straight from Google.",
-    image: "/screenshots/search-traffic.png",
-    alt: "Search traffic chart showing clicks and impressions from Google over 30 days",
+    title: "Watch Google send you visitors",
+    caption: "Your visitors and impressions from Google, day by day.",
+    image: "/screenshots/landing-traffic-v5.png",
+    alt: "Overview charts for one site: 414 people from Google in 30 days (up 26%) and 59,316 impressions on Google",
   },
   {
-    id: "guides",
-    title: "Daily guides, on autopilot",
-    caption: "Written, shipped, and indexed - one a day.",
-    image: "/screenshots/guides.png",
-    alt: "A published guide article, 'Claude Code in GitHub Actions', with an on-this-page table of contents, written and shipped by the pipeline",
+    id: "top-posts",
+    title: "See which articles bring people in",
+    caption: "Clicks, impressions and your spot on Google, per article.",
+    image: "/screenshots/landing-top-posts-v5.png",
+    alt: "The top posts list: each article with its position on Google, impressions and clicks over the last 30 days",
   },
   {
-    id: "tools",
-    title: "Interactive tools that earn links",
-    caption: "Calculators and generators, built and shipped for you.",
-    image: "/screenshots/tools.jpeg",
-    alt: "A published interactive tool, the CLAUDE.md Generator, a seven-question quiz that outputs a tuned CLAUDE.md file",
+    id: "article",
+    title: "Real articles, live on your site",
+    caption: "Written for your site and published for you.",
+    image: "/screenshots/landing-article-v8.png",
+    alt: "A published article on clockedcode.com, 'Claude Code Stuck on Compacting? How to Fix It', with its illustrated cover and its on-this-page contents",
   },
   {
-    id: "automations",
-    title: "Every automation has an off switch",
-    caption: "Auto, semi, or manual - you set the gates.",
-    image: "/screenshots/automations.png",
-    alt: "Automations page with per-feature toggles for auto-approval and daily builds",
-  },
-  {
-    id: "trends",
-    title: "Catch trends early",
-    caption: "Rising topics in your niche become guides.",
-    image: "/screenshots/trends.png",
-    alt: "Trends page showing trending subjects on the radar with ideas ready to queue",
-  },
-  {
-    id: "ai-visibility",
-    title: "Track AI visibility",
-    caption: "Know when AI assistants cite you.",
-    image: "/screenshots/ai-visibility.png",
-    alt: "AI visibility page tracking how often AI assistants cite the site",
+    id: "queue",
+    title: "Topics people actually search for",
+    caption: "Every topic comes with its monthly searches and difficulty.",
+    image: "/screenshots/landing-queue-v6.png",
+    alt: "The queue of upcoming articles, each with its keyword, monthly searches, difficulty score and the day it will be written",
   },
 ];

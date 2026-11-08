@@ -42,6 +42,15 @@ export function DomainCta() {
 
   return (
     <form className="domain-cta" onSubmit={submit}>
+      {/* Handwritten nudge at the one thing to do on the page: purple
+          "Type your domain" left of the field, a pen-drawn arrow curving into
+          it. Decorative only (the input has its own label); desktop only -
+          a phone has no room beside the field (landing.css). */}
+      <span className="cta-note" aria-hidden="true">Type your domain</span>
+      <svg className="cta-note-arrow" viewBox="0 0 72 48" aria-hidden="true">
+        <path d="M5 25c9-7 21-9.5 32-7.5 8.5 1.6 15.5 5.2 22 10.6" />
+        <path d="M59.4 28.4c-3.8.4-7.8.1-11.2-1.2M59.4 28.4c-.2-3.6-1.2-7.2-3-10.2" />
+      </svg>
       <div className="domain-group">
         <span className="domain-ic">
           {showFavicon ? (
@@ -72,18 +81,18 @@ export function DomainCta() {
         />
       </div>
       <button type="submit" className="btn btn-solid">
-        Automate my SEO
+        Get free traffic
       </button>
-      {/* Said at the very first touchpoint, because getting this wrong twice
-          sent a WordPress owner into a dead-end trial. WordPress joined the
-          list on 2026-08-19; the site builders genuinely still cannot work. */}
+      {/* The free plan's terms, said once, under the button. Which sites
+          work (GitHub-repo sites only since 2026-11-05) is left to the FAQ
+          and the setup flow - the owner wants this line to be the offer. */}
       {/* One row, no wider than the button, by design: the hero is the
           headline and the sub; this is the small print. What is NOT supported
           (Wix, Squarespace, Shopify...) lives in the FAQ and in /qualify, which
           everyone passes before paying - the builder names used to sit here
           and made the line spill past the form on both sides. */}
       <p className="domain-note">
-        7-day free trial &middot; WordPress or any GitHub repo
+        2 free articles every month &middot; No card
       </p>
     </form>
   );

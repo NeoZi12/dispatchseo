@@ -154,7 +154,13 @@ html:has(.ld) { scroll-behavior: smooth; }
 .ld .cta-row { display: flex; gap: 12px; justify-content: center; align-items: stretch; flex-wrap: wrap; }
 .ld .email-group { display: flex; background: var(--card); border: 1.5px solid var(--line3); border-radius: 12px; padding: 5px; width: min(430px, 100%); transition: border-color 0.15s; }
 .ld .email-group:focus-within { border-color: var(--vio); }
-.ld .domain-cta { display: flex; flex-direction: column; align-items: stretch; gap: 8px; width: min(250px, 100%); margin: 0 auto; }
+.ld .domain-cta { display: flex; flex-direction: column; align-items: stretch; gap: 8px; width: min(250px, 100%); margin: 0 auto; position: relative; }
+/* Handwritten "Type your domain" + pen arrow into the field (domain-cta.tsx).
+   Sits off the form's left edge, so it needs the desktop's side room. */
+.ld .cta-note { position: absolute; right: calc(100% + 84px); top: 9px; font-family: var(--font-hand), "Comic Sans MS", cursive; font-weight: 600; font-size: 30px; line-height: 1; color: var(--vio2); white-space: nowrap; transform: rotate(-4deg); transform-origin: right center; pointer-events: none; }
+.ld .cta-note-arrow { position: absolute; right: calc(100% + 10px); top: 0px; width: 68px; height: 46px; overflow: visible; filter: url(#ld-sketch); pointer-events: none; }
+.ld .cta-note-arrow path { fill: none; stroke: var(--vio2); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+@media (max-width: 980px) { .ld .cta-note, .ld .cta-note-arrow { display: none; } }
 .ld .domain-cta .btn { padding: 10px 18px; font-size: 15px; }
 .ld .domain-group { display: flex; align-items: center; gap: 2px; background: var(--card); border: 1.5px solid var(--line3); border-radius: 12px; padding: 4px 4px 4px 16px; transition: border-color 0.15s; }
 .ld .domain-group:focus-within { border-color: var(--vio); }
@@ -168,6 +174,40 @@ html:has(.ld) { scroll-behavior: smooth; }
    width from the centre. Under 560px it wraps inside the form instead. */
 .ld .domain-note { text-align: center; font-size: 13.5px; color: var(--dim); white-space: nowrap; width: max-content; max-width: 90vw; position: relative; left: 50%; transform: translateX(-50%); }
 @media (max-width: 560px) { .ld .domain-note { white-space: normal; width: auto; max-width: none; left: auto; transform: none; } }
+/* Desktop: the hero fills the first screen at any window height. Content is
+   centred vertically, and every gap between the blocks (mascot, title, sub,
+   CTA, trust row) grows and shrinks with the window height, so a tall window
+   gets room to breathe and a short one still fits. Bottom padding keeps clear
+   of the Discord link pinned to the first screen's bottom-left. */
+@media (min-width: 981px) {
+  .ld .hero { justify-content: center; padding-top: clamp(16px, 3vh, 44px); padding-bottom: clamp(76px, 10vh, 120px); }
+  .ld .pixel-stage { margin-bottom: clamp(10px, 3.2vh, 34px); }
+  .ld .hero h1 { margin-bottom: clamp(14px, 3vh, 30px); }
+  .ld .hero .sub { margin-bottom: clamp(24px, 5.2vh, 52px); }
+}
+/* Short desktop windows: the title also scales with the window height. */
+@media (min-width: 981px) and (max-height: 820px) {
+  .ld .hero h1 { font-size: clamp(38px, min(6.4vw, 8.6vh), 70px); }
+}
+/* Very short windows: shrink the mascot scene so the trust row still fits. */
+@media (min-width: 981px) and (max-height: 640px) {
+  .ld .pixel-stage { width: min(300px, 70vw); }
+}
+/* GitHub stars trust row, under the CTA: overlapping stargazer faces on the
+   left, five stars over the live count on the right. The stars are the only
+   colour in the hero besides the slab. */
+.ld .gh-proof { display: inline-flex; align-items: center; gap: 14px; margin-top: clamp(18px, 5vh, 52px); text-decoration: none; color: var(--mut); }
+.ld .gh-faces { display: flex; }
+.ld .gh-faces img { width: 44px; height: 44px; border-radius: 999px; border: 3px solid var(--bg, #0b0b0d); object-fit: cover; background: var(--card2); }
+.ld .gh-faces img + img { margin-left: -12px; }
+.ld .gh-proof-text { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; text-align: left; }
+.ld .gh-proof-stars { color: #f5b942; font-size: 19px; letter-spacing: 2px; line-height: 1; }
+.ld .gh-proof-text > span:last-child { font-size: 15px; line-height: 1.3; }
+.ld .gh-proof b { color: var(--txt); font-weight: 800; font-variant-numeric: tabular-nums; }
+.ld .gh-proof:hover .gh-proof-text > span:last-child { color: var(--txt); }
+/* Phone: faces on top, stars and count centred under them - side by side the
+   count wrapped into the faces at 390px. */
+@media (max-width: 560px) { .ld .gh-proof { flex-direction: column; gap: 10px; margin-top: 22px; } .ld .gh-faces img { width: 38px; height: 38px; } .ld .gh-proof-text { align-items: center; text-align: center; } .ld .gh-proof-text > span:last-child { font-size: 14px; } }
 .ld .email-group input[type="email"] { border: 0; outline: 0; flex: 1; padding: 8px 14px; font-family: var(--body); font-size: 15.5px; background: transparent; color: var(--txt); min-width: 0; }
 .ld .email-group input[type="email"]::placeholder { color: var(--dim); }
 .ld .email-group .btn { border-radius: 8px; white-space: nowrap; }
@@ -210,7 +250,18 @@ html:has(.ld) { scroll-behavior: smooth; }
 .ld .who-card { border: 1px solid var(--line); border-radius: 22px; padding: 46px 38px 50px; background: var(--card); }
 .ld .who-doodle { display: block; width: 74px; height: 74px; margin-bottom: 30px; }
 /* 24-unit viewBox rendered at 74px: 1.1 here ≈ a 3.4px drawn stroke */
-.ld .who-doodle path, .ld .who-doodle circle { fill: none; stroke: currentColor; stroke-width: 1.1; stroke-linecap: round; stroke-linejoin: round; }
+/* Hand-drawn icons (64-unit viewBox at 74px): a marker-weight stroke, a
+   lighter second pass on some edges (.re, the pen going over a line twice),
+   an ink wobble from the #ld-sketch filter, and each one tilted a little. */
+.ld .who-doodle { filter: url(#ld-sketch); }
+.ld .who-doodle path { fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.ld .who-doodle path.re { stroke-width: 1.6; opacity: 0.5; }
+.ld .who-card:nth-child(1) .who-doodle { transform: rotate(-5deg); }
+.ld .who-card:nth-child(2) .who-doodle { transform: rotate(3deg); }
+.ld .who-card:nth-child(3) .who-doodle { transform: rotate(-3deg); }
+.ld .who-card:nth-child(4) .who-doodle { transform: rotate(4deg); }
+.ld .who-card:nth-child(5) .who-doodle { transform: rotate(-4deg); }
+.ld .ld-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
 .ld .who-doodle.pink { color: #f472b6; }
 .ld .who-doodle.vio { color: var(--vio2); }
 .ld .who-doodle.blue { color: #60a5fa; }
@@ -249,6 +300,8 @@ html:has(.ld) { scroll-behavior: smooth; }
 .ld .show-chrome { display: flex; gap: 6px; padding: 13px 16px; background: var(--card2); border-bottom: 1px solid var(--line); }
 .ld .show-chrome i { width: 10px; height: 10px; border-radius: 50%; background: #2a2a30; display: block; }
 .ld .show-media { position: relative; }
+/* 3020:1370 is also the exact shape the screenshots are captured at, so each
+   one fills the window edge to edge. Re-shoots must keep this shape. */
 .ld .show-stack { position: relative; width: 100%; aspect-ratio: 3020 / 1370; background: #000; }
 .ld .show-slide { position: absolute; inset: 0; opacity: 0; transition: opacity 0.6s ease; }
 .ld .show-slide.active { opacity: 1; z-index: 1; }
@@ -296,8 +349,26 @@ html:has(.ld) { scroll-behavior: smooth; }
 
 /* ---------- pricing ---------- */
 .ld .plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; align-items: stretch; }
+/* Free + three paid plans side by side. The lists are short (6-7 ticks), so
+   four columns still read at the 1120px measure. */
+.ld .plans.plans-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.ld .plans.plans-4 .plan li { white-space: normal; font-size: 15px; }
+.ld .plans.plans-4 .plan { padding: 28px 22px; }
 .ld .plan { border: 1px solid var(--line); border-radius: 16px; padding: 30px 26px; background: var(--card); display: flex; flex-direction: column; position: relative; }
 .ld .plan.hero-plan { border: 2px solid var(--vio); }
+/* The mascot sitting on the Growth card (card-mascot.tsx): 5px pixels, body
+   above the top border, the two leg rows hanging over it. He sits still; the eyes
+   shut for a moment every few seconds. */
+.ld .plan-mascot { position: absolute; top: -51px; right: 30px; width: 60px; height: 60px; z-index: 2; image-rendering: pixelated; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45)); }
+.ld .card-mascot .cm-eyes-shut { opacity: 0; }
+.ld .card-mascot .cm-eyes-open { animation: cm-blink-open 4.2s steps(1, end) infinite; }
+.ld .card-mascot .cm-eyes-shut { animation: cm-blink-shut 4.2s steps(1, end) infinite; }
+@keyframes cm-blink-open { 0%, 93% { opacity: 1; } 94%, 97% { opacity: 0; } 98% { opacity: 1; } }
+@keyframes cm-blink-shut { 0%, 93% { opacity: 0; } 94%, 97% { opacity: 1; } 98% { opacity: 0; } }
+/* ...and on the final CTA button, a size down (4px pixels). */
+.ld .final-cta-wrap { position: relative; display: inline-flex; }
+.ld .cta-mascot { position: absolute; top: -41px; right: 16px; width: 48px; height: 48px; z-index: 2; filter: drop-shadow(0 5px 8px rgba(0, 0, 0, 0.45)); pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .ld .card-mascot g { animation: none !important; } }
 .ld .plan .p-badge { position: absolute; top: -12px; left: 24px; font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; background: var(--vio); color: #fff; border-radius: 999px; padding: 4px 12px; }
 .ld .plan .p-badge.soft { background: var(--card); color: var(--mut); border: 1px solid var(--line2); }
 .ld .plan h3 { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
@@ -357,6 +428,11 @@ html:has(.ld) { scroll-behavior: smooth; }
    rows, so below 981px the plans collapse to the four things that actually
    differ plus one shared list. Hidden here, switched on in the media query. */
 .ld .plans-m { display: none; }
+/* Phone: the free plan as its own strip above the paid scoreboard. */
+.ld .pm-free { border: 1px solid var(--line2); border-radius: 14px; background: var(--card); padding: 18px 18px 16px; margin-bottom: 18px; }
+.ld .pm-free-top { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+.ld .pm-free p { font-size: 14px; color: var(--mut); line-height: 1.55; margin-bottom: 14px; }
+.ld .pm-free .btn { width: 100%; }
 .ld .pm-table { width: 100%; table-layout: fixed; border-collapse: collapse; }
 .ld .pm-table th, .ld .pm-table td { padding: 10px 6px; text-align: center; vertical-align: middle; border-bottom: 1px solid var(--line); }
 .ld .pm-table thead th { padding: 16px 6px 14px; border-bottom: 1px solid var(--line2); vertical-align: bottom; }
@@ -644,6 +720,11 @@ html:has(.ld) { scroll-behavior: smooth; }
    blurple is somebody else's brand colour, not part of ours, and it appears
    nowhere but this component. */
 .ld .discord-hero { --dc: #5865f2; position: absolute; left: 22px; bottom: 22px; z-index: 40; display: flex; }
+/* Desktop: pin the link to the bottom of the FIRST screen, not the hero's
+   bottom. When the hero's content runs taller than a short laptop window, a
+   hero-bottom anchor got pushed below the fold and showed cut in half. The
+   link sits at the far left, clear of the centred hero column. */
+@media (min-width: 981px) { .ld .discord-hero { bottom: auto; top: calc(100vh - var(--nav-h) - 70px); top: calc(100svh - var(--nav-h) - 70px); } }
 .ld .dc-link { display: inline-flex; align-items: center; gap: 9px; padding: 11px 15px 11px 13px; background: var(--card); border: 1.5px solid var(--line3); border-radius: 14px; box-shadow: 0 14px 34px -12px rgba(0, 0, 0, 0.7); font-family: var(--disp); font-weight: 700; font-size: 14px; letter-spacing: -0.01em; color: var(--txt); text-decoration: none; white-space: nowrap; transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, color 0.16s ease; }
 .ld .dc-link:hover { transform: translateY(-2px); border-color: var(--dc); color: #fff; box-shadow: 0 20px 44px -14px rgba(88, 101, 242, 0.45); }
 .ld .dc-link:focus-visible { outline: 2px solid var(--vio2); outline-offset: 3px; }

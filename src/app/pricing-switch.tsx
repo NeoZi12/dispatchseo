@@ -40,7 +40,9 @@ export function PricingSwitch({
           onClick={() => setInterval("year")}
         >
           Yearly
-          <span className="pt-tag">save {savingsPct}%</span>
+          {/* "up to": the yearly saving differs per tier (see TIER_LIMITS),
+              so the caller passes the largest and the tag says so. */}
+          <span className="pt-tag">save up to {savingsPct}%</span>
         </button>
       </div>
       {children}
