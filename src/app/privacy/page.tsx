@@ -131,6 +131,68 @@ export default function PrivacyPage() {
         </Section>
       )}
 
+      <Section title="How DispatchSEO uses Google user data (Google API Services disclosure)">
+        <p>
+          This section describes how DispatchSEO accesses, uses, stores and shares Google user
+          data from Google Search Console, who we share it with, how long we keep it, and how
+          you can delete it or revoke our access. It applies to every Google account connected to
+          the hosted service at dispatchseo.com.
+        </p>
+        <p>
+          DispatchSEO&apos;s use and transfer to any other app of information received from
+          Google APIs adheres to the{" "}
+          <a
+            className="text-white underline"
+            href="https://developers.google.com/terms/api-services-user-data-policy"
+          >
+            Google API Services User Data Policy
+          </a>
+          , including the Limited Use requirements.
+        </p>
+        <p>
+          <Term>What we request.</Term> Three scopes, each on Google&apos;s consent screen:{" "}
+          <code>webmasters.readonly</code> to read Search Console, <code>webmasters</code> to
+          add your site as a property and submit your sitemap, and <code>siteverification</code>{" "}
+          to verify your domain during setup. The previous paragraph on Search Console data lists
+          exactly what we read and the three things we write.
+        </p>
+        <p>
+          <Term>What we use it for.</Term> Google user data powers four features you can see.
+          The clicks, impressions and queries appear on your dashboard and on each article&apos;s
+          page. Topic selection treats a query your site already appears for, without a page in
+          the top ten, as demand for an article. The writer&apos;s research includes up to 20 of
+          your own queries related to the keyword, so the article answers what people already
+          search for on your site. Publishing pace slows down, and pauses, when Google is not
+          indexing your articles. The write permissions exist so Google finds your new articles
+          without you opening Search Console: we submit the sitemap and verify the domain for
+          you.
+        </p>
+        <p>
+          <Term>Who else processes it.</Term> The query lists used in research travel inside
+          the article prompt to Anthropic, our AI model provider, together with the keyword and
+          the public pages read for the article. Anthropic processes these prompts under its
+          commercial terms, which exclude training on customer data and limit retention to 30
+          days. Everything else stays in our database at Supabase in the EU. No other vendor
+          receives Google user data. We never use it for advertising, never sell it or pass it
+          to data brokers, and never use it to train general-purpose AI models. No human at
+          DispatchSEO reads it except with your permission, for security purposes, or where the
+          law requires it.
+        </p>
+        <p>
+          <Term>How long we keep it, and how to stop.</Term> We keep a site&apos;s Search
+          Console statistics while the site is connected and delete them when you delete the
+          site or your account. The query lists used for an article stay with that
+          article&apos;s run record for the same period. You can withdraw access at any time:
+          disconnect Google on the dashboard&apos;s Google page, or remove DispatchSEO at{" "}
+          <a className="text-white underline" href="https://myaccount.google.com/permissions">
+            myaccount.google.com/permissions
+          </a>
+          . Either way we delete the refresh token and revoke it at Google; the articles already
+          on your site stay yours. If we ever change how we use Google user data, we will ask
+          for your consent again before the new use begins.
+        </p>
+      </Section>
+
       <Section title="What we collect, why, and on what legal basis">
         <p>
           Providing this data is voluntary, but most of it is necessary to give you the
@@ -400,62 +462,6 @@ export default function PrivacyPage() {
             {CONTACT}
           </a>
           .
-        </p>
-      </Section>
-
-      <Section title="Google API Services disclosure">
-        <p>
-          DispatchSEO&apos;s use and transfer to any other app of information received from
-          Google APIs adheres to the{" "}
-          <a
-            className="text-white underline"
-            href="https://developers.google.com/terms/api-services-user-data-policy"
-          >
-            Google API Services User Data Policy
-          </a>
-          , including the Limited Use requirements.
-        </p>
-        <p>
-          <Term>What we request.</Term> Three scopes, each on Google&apos;s consent screen:{" "}
-          <code>webmasters.readonly</code> to read Search Console, <code>webmasters</code> to
-          add your site as a property and submit your sitemap, and <code>siteverification</code>{" "}
-          to verify your domain during setup. The previous paragraph on Search Console data lists
-          exactly what we read and the three things we write.
-        </p>
-        <p>
-          <Term>What we use it for.</Term> Google user data powers four features you can see.
-          The clicks, impressions and queries appear on your dashboard and on each article&apos;s
-          page. Topic selection treats a query your site already appears for, without a page in
-          the top ten, as demand for an article. The writer&apos;s research includes up to 20 of
-          your own queries related to the keyword, so the article answers what people already
-          search for on your site. Publishing pace slows down, and pauses, when Google is not
-          indexing your articles. The write permissions exist so Google finds your new articles
-          without you opening Search Console: we submit the sitemap and verify the domain for
-          you.
-        </p>
-        <p>
-          <Term>Who else processes it.</Term> The query lists used in research travel inside
-          the article prompt to Anthropic, our AI model provider, together with the keyword and
-          the public pages read for the article. Anthropic processes these prompts under its
-          commercial terms, which exclude training on customer data and limit retention to 30
-          days. Everything else stays in our database at Supabase in the EU. No other vendor
-          receives Google user data. We never use it for advertising, never sell it or pass it
-          to data brokers, and never use it to train general-purpose AI models. No human at
-          DispatchSEO reads it except with your permission, for security purposes, or where the
-          law requires it.
-        </p>
-        <p>
-          <Term>How long we keep it, and how to stop.</Term> We keep a site&apos;s Search
-          Console statistics while the site is connected and delete them when you delete the
-          site or your account. The query lists used for an article stay with that
-          article&apos;s run record for the same period. You can withdraw access at any time:
-          disconnect Google on the dashboard&apos;s Google page, or remove DispatchSEO at{" "}
-          <a className="text-white underline" href="https://myaccount.google.com/permissions">
-            myaccount.google.com/permissions
-          </a>
-          . Either way we delete the refresh token and revoke it at Google; the articles already
-          on your site stay yours. If we ever change how we use Google user data, we will ask
-          for your consent again before the new use begins.
         </p>
       </Section>
 
