@@ -94,27 +94,68 @@ export async function POST(req: Request): Promise<Response> {
     // Retries can arrive out of order (a delayed subscription.active landing
     // after subscription.revoked), so the event body is only a pointer: the
     // live subscription fetched from Polar is the only authoritative state.
-    // A failed fetch answers 500 so Polar retries the delivery.
-    let live;
-    try {
-      live = await polar().subscriptions.get({ id: sub.id });
-    } catch (e) {
-      console.error(
-        `[polar-webhook] ${event.type}: could not fetch subscription ${sub.id}: ${e instanceof Error ? e.message : String(e)}`,
-      );
-      return Response.json({ error: "subscription fetch failed" }, { status: 500 });
-    }
+    //
+    // When that fetch fails, the rule is "never block a revocation, never
+    // retry forever, never grant from a snapshot":
+    //   - every failure is reported (banner + email rails);
+    //   - an event whose own status grants no access (canceled, revoked,
+    //     past_due, ...) is applied from the body as before - failing toward
+    //     less access - and answered 200;
+    //   - an access-granting event is not applied: a transient error (network,
+    //     429, 5xx) answers 500 so Polar retries, a permanent one (401, 403,
+    //     404) answers 200 because no retry can fix it.
     // Store the subscription's real status - isActive() treats "active" and
     // "trialing" as access-granting, everything else (past_due, canceled,
     // revoked, incomplete) as gated.
-    const state = {
-      status: live.status as string,
-      tier: tierForProductId(live.productId),
-      providerCustomerId: live.customerId ?? null,
-      providerSubscriptionId: live.id,
-      currentPeriodEnd: live.currentPeriodEnd ? new Date(live.currentPeriodEnd).toISOString() : null,
-      cancelAtPeriodEnd: Boolean(live.cancelAtPeriodEnd),
-    };
+    const toState = (s: PolarSubscription) => ({
+      status: s.status as string,
+      tier: tierForProductId(s.productId),
+      providerCustomerId: s.customerId ?? null,
+      providerSubscriptionId: s.id,
+      currentPeriodEnd: s.currentPeriodEnd ? new Date(s.currentPeriodEnd).toISOString() : null,
+      cancelAtPeriodEnd: Boolean(s.cancelAtPeriodEnd),
+    });
+    let state: ReturnType<typeof toState>;
+    try {
+      const live = await polar().subscriptions.get({ id: sub.id });
+      state = toState({
+        id: live.id,
+        status: live.status,
+        productId: live.productId,
+        customerId: live.customerId,
+        currentPeriodEnd: live.currentPeriodEnd ? new Date(live.currentPeriodEnd).toISOString() : null,
+        cancelAtPeriodEnd: live.cancelAtPeriodEnd,
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      const httpStatus = (e as { statusCode?: unknown } | null)?.statusCode;
+      const permanent = httpStatus === 401 || httpStatus === 403 || httpStatus === 404;
+      const grants = sub.status === "active" || sub.status === "trialing";
+      console.error(`[polar-webhook] ${event.type}: could not fetch subscription ${sub.id}: ${message}`);
+      await reportCronRun(
+        "polar-webhook",
+        {
+          error:
+            `${event.type}: could not fetch live subscription ${sub.id} from Polar ` +
+            `(${httpStatus ?? "no HTTP status"}): ${message}. ` +
+            (grants
+              ? permanent
+                ? `Event status "${sub.status}" was NOT applied; reconcile the account by hand.`
+                : `Event status "${sub.status}" was NOT applied; Polar will retry.`
+              : `Applied the event's own status "${sub.status}" (it grants no access).`),
+          event: event.type,
+          subscriptionId: sub.id,
+          permanent,
+        },
+        true,
+      );
+      if (grants) {
+        return permanent
+          ? Response.json({ ok: false, skipped: "subscription fetch failed permanently" })
+          : Response.json({ error: "subscription fetch failed" }, { status: 500 });
+      }
+      state = toState(sub);
+    }
     if (userId) {
       // Never over a DIFFERENT live plan on the same account (see
       // applyUnlessSecondPlan) - an event for an old subscription must not
