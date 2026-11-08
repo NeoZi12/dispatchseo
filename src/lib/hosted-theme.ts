@@ -443,7 +443,10 @@ export function extractThemeFromHtml(html: string, pageUrl: string, css = ""): H
   // A dark body background declared inline is the other common tell.
   if (/<(?:body|html)[^>]*(?:class|style)=["'][^"']*(?:\bdark\b|bg-neutral-9|bg-black|bg-gray-9|bg-slate-9|background:\s*#0)/i.test(head)) mode = "dark";
 
-  const logo = abs(link(["apple-touch-icon", "icon", "shortcut icon"])) ?? abs(meta("og:image", "property"));
+  // The site's icon only. og:image is a share picture - a photo of a dog, a
+  // van, a team - and shrunk to 26px beside the site name it reads as a smudge
+  // (Starlight Vet's blog header, 2026-11-08); no logo is better than that.
+  const logo = abs(link(["apple-touch-icon", "icon", "shortcut icon"]));
   return { accent: readableAccent(accent, mode), mode, logo, source: "site" };
 }
 
@@ -467,8 +470,15 @@ export async function readSiteTheme(project: Pick<Project, "domain">): Promise<{
   } catch {
     origin = url.replace(/\/$/, "");
   }
-  // The site's own stylesheets, read in parallel and capped: the brand
-  // colour of most sites lives here, not in a meta tag.
+  // What a visitor sees outranks what the stylesheets declare (header), and
+  // when the browser read settles the accent the stylesheets are not fetched.
+  const rendered = await readRenderedColors(res.url || url);
+  const seen = rendered ? themeFromRendered(rendered) : null;
+  if (seen?.accent) {
+    const base = extractThemeFromHtml(html, res.url || url);
+    return { theme: { ...base, accent: readableAccent(seen.accent, seen.mode), mode: seen.mode }, origin };
+  }
+  // The fallback: the site's own stylesheets, read in parallel and capped.
   const sheets = await Promise.all(
     siteStylesheets(html, res.url || url).map(async (href) => {
       const own = isProjectUrl(href, project.domain);
@@ -485,12 +495,6 @@ export async function readSiteTheme(project: Pick<Project, "domain">): Promise<{
     }),
   );
   const fromCss = extractThemeFromHtml(html, res.url || url, sheets.join("\n"));
-  // What a visitor sees outranks what the stylesheets declare (header).
-  const rendered = await readRenderedColors(res.url || url);
-  if (rendered) {
-    const seen = themeFromRendered(rendered);
-    if (seen.accent) return { theme: { ...fromCss, accent: readableAccent(seen.accent, seen.mode), mode: seen.mode }, origin };
-    return { theme: { ...fromCss, mode: seen.mode }, origin };
-  }
-  return { theme: fromCss, origin };
+  // The browser still knows the mode when it found no accent.
+  return { theme: seen ? { ...fromCss, mode: seen.mode } : fromCss, origin };
 }

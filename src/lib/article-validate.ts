@@ -386,6 +386,35 @@ function occurrencesOfPhrase(haystack: string[], phrase: string[]): number {
   return count;
 }
 
+/** The phrase's words in order, each within `maxGap` words of the one
+ *  before: "questions to ask YOUR vet about A new puppy" carries "questions
+ *  to ask vet about new puppy". A search keyword is often not how a person
+ *  writes, and a search engine matches it loosely; demanding the raw string
+ *  in a title made the writer glue the keyword on in front of a natural
+ *  title ("Questions to ask vet about new puppy: Questions to Ask the
+ *  Vet", 2026-11-08). The first word must still lead the run. */
+function phraseNearlyIn(haystack: string[], phrase: string[], maxGap = 2): boolean {
+  if (phrase.length === 0) return false;
+  for (let i = 0; i < haystack.length; i++) {
+    if (haystack[i] !== phrase[0]) continue;
+    let at = i;
+    let ok = true;
+    for (let j = 1; j < phrase.length && ok; j++) {
+      let found = -1;
+      for (let k = at + 1; k <= at + 1 + maxGap && k < haystack.length; k++) {
+        if (haystack[k] === phrase[j]) {
+          found = k;
+          break;
+        }
+      }
+      if (found < 0) ok = false;
+      else at = found;
+    }
+    if (ok) return true;
+  }
+  return false;
+}
+
 function jaccard(a: Set<string>, b: Set<string>): number {
   let inter = 0;
   for (const x of a) if (b.has(x)) inter++;
@@ -764,14 +793,15 @@ function validateArticleInner(submission: ArticleSubmission, context: Validation
             fix: "Set primaryKeyword to the exact phrase this article should rank for, then make sure it appears in the title.",
           };
         }
-        const passed = occurrencesOfPhrase(plainWordsLower(submission.title), kwTokens) > 0;
+        const titleWords = plainWordsLower(submission.title);
+        const passed = occurrencesOfPhrase(titleWords, kwTokens) > 0 || phraseNearlyIn(titleWords, kwTokens);
         return {
           passed,
           title: "Primary keyword appears in the title",
           detail: passed
             ? `"${submission.primaryKeyword}" appears in the title.`
             : `The title does not contain "${submission.primaryKeyword}".`,
-          fix: passed ? "" : `Work the exact phrase "${submission.primaryKeyword}" into the title.`,
+          fix: passed ? "" : `Work "${submission.primaryKeyword}" into the title: its words in this order, at most two small words between any two of them.`,
         };
       },
     },
