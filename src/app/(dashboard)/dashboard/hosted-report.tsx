@@ -29,6 +29,7 @@ import { TOPIC_LIMITS } from "@/lib/autopilot/controls";
 import type { CronHealth } from "@/lib/cron-alerts";
 import { siteIssueLine } from "@/lib/autopilot/friendly";
 import type { OperatorSite } from "@/lib/autopilot/operator";
+import { OperatorIssue } from "./operator-issue";
 
 // The hosted-mode Home, modelled on Polar's overview: the numbers are the
 // main event, and everything is readable in three seconds.
@@ -536,7 +537,7 @@ function OperatorStrip({ sites }: { sites: OperatorSite[] }) {
       <CardHeader
         id="ops-title"
         title="All sites"
-        description={sites.length ? `${sites.length} ${sites.length === 1 ? "site needs" : "sites need"} a look. Only operators see this.` : "Every hosted site is healthy. Only operators see this."}
+        description={sites.length ? `${sites.length} ${sites.length === 1 ? "site needs" : "sites need"} a look. Only operators see this. A dismissed line comes back if its job fails again.` : "Every hosted site is healthy. Only operators see this."}
       />
       {sites.length ? (
         <ul className="mt-4 divide-y divide-line-soft">
@@ -546,9 +547,7 @@ function OperatorStrip({ sites }: { sites: OperatorSite[] }) {
                 {site.name} <span className="font-normal text-ink-faint">{site.domain}</span>
               </p>
               {site.issues.map((i) => (
-                <p key={i.job} className="break-words text-[13px] text-ink-muted">
-                  <span className="font-mono text-ink-faint">{i.job}</span> {i.error}
-                </p>
+                <OperatorIssue key={i.job} job={i.job} error={i.error} />
               ))}
             </li>
           ))}
