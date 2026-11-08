@@ -257,7 +257,7 @@ run_job() { # run_job <base64 job json>
         echo ''
         echo '[mcp_servers.dataforseo]'
         echo 'command = "npx"'
-        echo 'args = ["-y", "dataforseo-mcp-server@latest"]'
+        echo 'args = ["-y", "dataforseo-mcp-server@3.1.3"]'
         echo "env = { DATAFORSEO_USERNAME = \"$dfl\", DATAFORSEO_PASSWORD = \"$dfp\", ENABLED_MODULES = \"SERP,DATAFORSEO_LABS,BACKLINKS\" }"
         echo 'default_tools_approval_mode = "approve"'
       fi
@@ -279,7 +279,7 @@ run_job() { # run_job <base64 job json>
       jq -n --arg url "$APP/api/mcp" --arg tok "$SEO_MCP_API_KEY" \
         --arg dfl "$DATAFORSEO_LOGIN" --arg dfp "$DATAFORSEO_PASSWORD" '{mcpServers:{
         "seo-manager":{type:"http",url:$url,headers:{Authorization:("Bearer " + $tok)}},
-        "dataforseo":{type:"stdio",command:"npx",args:["-y","dataforseo-mcp-server@latest"],
+        "dataforseo":{type:"stdio",command:"npx",args:["-y","dataforseo-mcp-server@3.1.3"],
           env:{DATAFORSEO_USERNAME:$dfl,DATAFORSEO_PASSWORD:$dfp,ENABLED_MODULES:"SERP,DATAFORSEO_LABS,BACKLINKS"}}}}' > "$cfg"
     else
       jq -n --arg url "$APP/api/mcp" --arg tok "$SEO_MCP_API_KEY" '{mcpServers:{
@@ -294,7 +294,7 @@ run_job() { # run_job <base64 job json>
   elif [ -n "$DATAFORSEO_LOGIN" ]; then
     jq -n --arg url "$APP/api/mcp" '{mcpServers:{
       "seo-manager":{type:"http",url:$url,headers:{Authorization:"Bearer ${SEO_MCP_API_KEY}"}},
-      "dataforseo":{type:"stdio",command:"npx",args:["-y","dataforseo-mcp-server@latest"],
+      "dataforseo":{type:"stdio",command:"npx",args:["-y","dataforseo-mcp-server@3.1.3"],
         env:{DATAFORSEO_USERNAME:"${DATAFORSEO_LOGIN}",DATAFORSEO_PASSWORD:"${DATAFORSEO_PASSWORD}",ENABLED_MODULES:"SERP,DATAFORSEO_LABS,BACKLINKS"}}}}' > "$cfg"
   else
     jq -n --arg url "$APP/api/mcp" '{mcpServers:{

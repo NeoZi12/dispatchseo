@@ -21,3 +21,11 @@ hidden directories (`.github/`, `.claude/`), so use `ls -a`.
   three build workflows detect it themselves at run time (a `Detect this
   repo's package manager` step), so it is *not* an install-time adaptation -
   the playbook tells the agent to leave those steps alone.
+
+**Recommend branch protection on the connected repo's default branch.**
+Require a pull request before merging, and require the pipeline's validation
+status (the PR's build check, plus `seo-tool-validate` for tool PRs) to pass.
+The builders only ever open PRs and never push to the default branch, so
+protection costs the pipeline nothing; what it buys is that nothing an agent
+writes, and nothing a leaked workflow token pushes, reaches the live site
+without passing the same gates the auto-merge sweep already waits for.

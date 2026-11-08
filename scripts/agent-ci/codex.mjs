@@ -154,7 +154,7 @@ function invokeStep({ name, guardIf, prompt, env, continueOnError }) {
     lines.push(`        # account), which it can only do if it is reachable.`);
     lines.push(`        continue-on-error: true`);
   }
-  lines.push(`        uses: openai/codex-action@v1`);
+  lines.push(`        uses: openai/codex-action@bdf19a4a223ec2549a3e2274a0cf61556bc07675 # v1`);
   lines.push(`        with:`);
   lines.push(`          openai-api-key: \${{ secrets.OPENAI_API_KEY }}`);
   lines.push(`          # Same rule as the Claude twin's allowed_bots: this workflow is fired`);

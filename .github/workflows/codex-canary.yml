@@ -87,7 +87,7 @@ jobs:
       - name: Run Codex against the MCP server
         id: codex
         continue-on-error: true
-        uses: openai/codex-action@v1
+        uses: openai/codex-action@bdf19a4a223ec2549a3e2274a0cf61556bc07675 # v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           model: ${{ inputs.model }}

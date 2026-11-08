@@ -47,6 +47,6 @@ web_search = true
 # spelling exactly as written or that substitution misses.
 [mcp_servers.dataforseo]
 command = "npx"
-args = ["-y", "dataforseo-mcp-server@latest"]
+args = ["-y", "dataforseo-mcp-server@3.1.3"]
 env = { DATAFORSEO_USERNAME = "${DATAFORSEO_LOGIN}", DATAFORSEO_PASSWORD = "${DATAFORSEO_PASSWORD}", ENABLED_MODULES = "SERP,DATAFORSEO_LABS,BACKLINKS" }
 default_tools_approval_mode = "approve"

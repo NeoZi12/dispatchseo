@@ -173,8 +173,13 @@ jobs:
 
             # 1. Eligibility gate, by PR shape:
             #    - Tool PR (seo-tool label): must carry tool-validated - the
-            #      live smoke-test's pass verdict. Tools legitimately touch
-            #      registries/components, so no path check applies.
+            #      live smoke-test's pass verdict - AND a successful
+            #      seo-tool-validate run for the PR's exact head SHA (any
+            #      write-token holder can apply a label; a workflow run result
+            #      cannot be forged), AND touch no file on the denylist below.
+            #      Tools legitimately touch registries/components, so there is
+            #      no allowlist - only the paths that change how the repo
+            #      builds, deploys or runs CI are refused.
             #    - Guide PR: every changed file must live under one of the
             #      allowed publish dirs above; anything else forces manual
             #      review.
@@ -182,6 +187,30 @@ jobs:
             if [[ " $labels " == *" seo-tool "* ]]; then
               if [[ " $labels " != *" tool-validated "* ]]; then
                 echo "PR #$n is a tool PR without a tool-validated verdict yet - waiting for validation."
+                echo "::endgroup::"
+                continue
+              fi
+              # Denylist: CI, dependency manifests/lockfiles, build and deploy
+              # config, and DispatchSEO's own repo config. A tool never needs
+              # these, and a change to any of them runs on every later build.
+              # File names match at any depth, so a monorepo app's own
+              # package.json or next.config is covered too.
+              denied=$(gh pr view "$n" --repo "$REPO" --json files --jq '
+                [.files[].path | select(
+                  startswith(".github/") or startswith(".dispatchseo/") or
+                  test("(^|/)(package\\.json|pnpm-lock\\.yaml|package-lock\\.json|yarn\\.lock|bun\\.lockb|bun\\.lock|vercel\\.json|\\.npmrc)$") or
+                  test("(^|/)next\\.config\\.[^/]*$") or test("(^|/)Dockerfile[^/]*$")
+                )] | join(" ")')
+              if [ -n "$denied" ]; then
+                echo "PR #$n is a tool PR that touches protected file(s): $denied - leaving for manual review."
+                echo "::endgroup::"
+                continue
+              fi
+              head_sha=$(gh pr view "$n" --repo "$REPO" --json headRefOid --jq .headRefOid)
+              validated=$(gh run list --repo "$REPO" --workflow seo-tool-validate.yml --commit "$head_sha" \
+                --status success --json databaseId --jq length) || validated=0
+              if [ "${validated:-0}" -le 0 ]; then
+                echo "PR #$n carries tool-validated but has no successful seo-tool-validate run for head $head_sha - waiting for validation."
                 echo "::endgroup::"
                 continue
               fi

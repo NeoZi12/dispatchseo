@@ -10,7 +10,7 @@
     "dataforseo": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "dataforseo-mcp-server@latest"],
+      "args": ["-y", "dataforseo-mcp-server@3.1.3"],
       "env": {
         "DATAFORSEO_USERNAME": "${DATAFORSEO_LOGIN}",
         "DATAFORSEO_PASSWORD": "${DATAFORSEO_PASSWORD}",

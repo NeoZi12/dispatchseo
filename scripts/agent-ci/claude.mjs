@@ -107,7 +107,7 @@ function invokeStep({ name, guardIf, prompt, maxTurns, showFullOutput, mcpConfig
     lines.push(`        # account), which it can only do if it is reachable.`);
     lines.push(`        continue-on-error: true`);
   }
-  lines.push(`        uses: anthropics/claude-code-action@v1`);
+  lines.push(`        uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1`);
   lines.push(`        with:`);
   if (allowedBotsCommentLines) {
     for (const l of allowedBotsCommentLines) lines.push(`          # ${l}`);
@@ -228,7 +228,7 @@ function livenessStep() {
       - name: Claude token liveness
         id: liveness
         if: steps.agent.outputs.agent == 'claude'
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1
         with:
           # Cloud fires this as the DispatchSEO GitHub App (a Bot actor), and the App also authored the workflow commits, so scheduled runs are bot-actored too. Every trigger here needs repo write access, so allowing bots is safe; without this claude-code-action aborts with "non-human actor".
           allowed_bots: "*"
