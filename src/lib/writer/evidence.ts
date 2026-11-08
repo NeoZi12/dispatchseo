@@ -753,29 +753,103 @@ export function sanitizeWriterMarkdown(markdown: string): string {
  * (submit_article), which lands in the customer's .mdx file with the full
  * MDX feature set. Unlike sanitizeWriterMarkdown it keeps what those
  * articles legitimately use - relative own-site links, the site's MDX
- * components (<Callout>, tables as components) - and removes only what can
- * run or break a build (security audit 2026-11-08):
- *   - tags with an on* handler, or a javascript:/data:/vbscript: URL in any
- *     attribute, and script/iframe/style/object/embed/form/meta/link/base
- *     tags, are dropped whole (their text, when any, stays);
- *   - a brace in PROSE (outside tags and code) becomes an entity, so "{expr}"
- *     is text, never an evaluated expression; braces inside a tag stay, so
- *     a component's props keep working;
+ * components with STRING props (<Callout type="warn">) - and removes only
+ * what can run or break a build (security audit 2026-11-08, both rounds):
+ *   - a tag is dropped whole (its text stays, its closing tag goes with it)
+ *     when it is script/iframe/style/object/embed/form/meta/link/base/svg/
+ *     math/template/noscript, carries an on* handler, carries a
+ *     javascript:/vbscript:/data:/livescript: scheme anywhere, or holds a
+ *     brace - an expression attribute (bar={process.env.X}) runs at the
+ *     customer's build; checks run on the ENTITY-DECODED, whitespace-
+ *     stripped tag, so java&#115;cript: and java&colon; and <scr&#105;pt>
+ *     are seen for what they are;
+ *   - the whole pass repeats until nothing changes, so a split tag
+ *     (<scr<script>ipt>) does not survive one pass;
+ *   - a brace in PROSE (outside tags and code) becomes an entity, so
+ *     "{expr}" is text, never an evaluated expression; a stray "<" that is
+ *     not a kept tag becomes &lt; (MDX refuses "<5%" as it is);
+ *   - a markdown link or image keeps its destination only when it is
+ *     http(s), mailto, or relative (no scheme), decoded and with no
+ *     backslash - the writer sanitizer's rule, widened for relative paths;
+ *     anything else collapses to its label; a reference definition with a
+ *     bad destination is dropped;
  *   - a line starting with import/export outside code is neutralised the way
  *     the writer's sanitizer does.
  */
-const AGENT_DROP_TAG_RE = /<\/?\s*(script|iframe|style|object|embed|form|meta|link|base)\b[^<>]*>/gi;
-const AGENT_HANDLER_RE = /\son[a-z]+\s*=/i;
-const AGENT_BAD_URL_RE = /=\s*["']?\s*(javascript|data|vbscript)\s*:/i;
+const MD_LINK_RE =
+  /!?\[([^\]\n]*)\]\(\s*(?:<([^>\n]*)>|([^()\s]*(?:\([^()\s]*\)[^()\s]*)*))(?:\s+(?:"[^"\n]*"|'[^'\n]*'))?\s*\)/g;
+const AGENT_DROP_NAMES = /^<\/?\s*(script|iframe|style|object|embed|form|meta|link|base|svg|math|template|noscript)\b/i;
+const AGENT_BAD_SCHEME_RE = /(javascript|vbscript|data|livescript|mocha):/;
+const AGENT_HANDLER_RE = /[\s"'/]on[a-z]+\s*=/i;
+const NAMED_ENTITIES: Record<string, string> = { lt: "<", gt: ">", quot: '"', apos: "'", amp: "&", colon: ":", tab: "\t", newline: "\n", sol: "/", nbsp: " " };
+
+/** Entities decoded (numeric, hex and the handful used in scheme tricks),
+ *  repeated so &amp;#106; comes out too; an invalid code point is dropped. */
+function decodeEntitiesLoose(s: string): string {
+  let prev: string;
+  let n = 0;
+  do {
+    prev = s;
+    s = s
+      .replace(/&#x([0-9a-f]+);?/gi, (_, h: string) => codePoint(parseInt(h, 16)))
+      .replace(/&#(\d+);?/g, (_, d: string) => codePoint(parseInt(d, 10)))
+      .replace(/&([a-z]+);/gi, (m, name: string) => NAMED_ENTITIES[name.toLowerCase()] ?? m);
+  } while (s !== prev && ++n < 4);
+  return s;
+}
+function codePoint(cp: number): string {
+  try {
+    return cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : "";
+  } catch {
+    return "";
+  }
+}
+
+/** A tag that can run something, judged on its decoded, flattened form. */
+function dangerousAgentTag(tag: string): boolean {
+  const decoded = decodeEntitiesLoose(tag);
+  const flat = decoded.replace(/[\s\u0000-\u001f\u007f]+/g, "").toLowerCase();
+  return AGENT_DROP_NAMES.test(decoded) || AGENT_BAD_SCHEME_RE.test(flat) || AGENT_HANDLER_RE.test(decoded) || /[{}]/.test(decoded);
+}
+
+/** A link destination an agent article may keep: http(s), mailto, or
+ *  relative (no scheme at all), judged decoded and flattened; never a
+ *  backslash. */
+function safeAgentDest(raw: string): boolean {
+  const dest = decodeEntitiesLoose(raw).replace(/[\s\u0000-\u001f\u007f]+/g, "");
+  if (!dest || /[\\]/.test(dest)) return false;
+  if (/^(https?:\/\/|mailto:)/i.test(dest)) return true;
+  return !/^[a-z][a-z0-9+.-]*:/i.test(dest);
+}
+
 export function hardenAgentMdx(markdown: string): string {
   return withProseOnly(markdown, (prose) => {
-    const parts = prose.replace(/<!--[\s\S]*?-->/g, "").replace(AGENT_DROP_TAG_RE, "").split(/(<\/?[A-Za-z][^<>]*>)/g);
-    // A dropped opening tag takes its closing tag with it: MDX refuses an
-    // unmatched </a> outright, which would fail the customer's build.
-    const pendingClose = new Map<string, number>();
-    const out = parts.map((part, i) => {
+    let text = prose;
+    let prev: string;
+    let rounds = 0;
+    do {
+      prev = text;
+      text = hardenAgentMdxOnce(text);
+    } while (text !== prev && ++rounds < 6);
+    return text;
+  });
+}
+
+function hardenAgentMdxOnce(prose: string): string {
+  const linksJudged = prose
+    .replace(/<!--[\s\S]*?-->/g, "")
+    // Reference definitions: kept only with a safe destination.
+    .replace(/^(\s*\[[^\]\n]+\]:\s*)(\S+)(.*)$/gm, (m, _head: string, dest: string) => (safeAgentDest(dest) ? m : ""))
+    // Links and images: a bad destination collapses to the label.
+    .replace(MD_LINK_RE, (m, label: string, angled: string | undefined, bare: string | undefined) => (safeAgentDest(angled ?? bare ?? "") ? m : label));
+  const parts = linksJudged.split(/(<\/?[A-Za-z][^<>]*>)/g);
+  // A dropped opening tag takes its closing tag with it: MDX refuses an
+  // unmatched </a> outright, which would fail the customer's build.
+  const pendingClose = new Map<string, number>();
+  return parts
+    .map((part, i) => {
       if (i % 2 === 1) {
-        const m = /^<(\/?)([A-Za-z][\w.-]*)/.exec(part);
+        const m = /^<(\/?)\s*([A-Za-z][\w.:-]*)/.exec(part);
         const name = (m?.[2] ?? "").toLowerCase();
         if (m?.[1] === "/") {
           const n = pendingClose.get(name) ?? 0;
@@ -785,8 +859,7 @@ export function hardenAgentMdx(markdown: string): string {
           }
           return part;
         }
-        // A tag: dropped when it can run something; otherwise kept as is.
-        if (AGENT_HANDLER_RE.test(part) || AGENT_BAD_URL_RE.test(part)) {
+        if (dangerousAgentTag(part)) {
           if (!/\/\s*>$/.test(part)) pendingClose.set(name, (pendingClose.get(name) ?? 0) + 1);
           return "";
         }
@@ -794,10 +867,11 @@ export function hardenAgentMdx(markdown: string): string {
       }
       return part
         .replace(/[{}]/g, (ch) => (ch === "{" ? "&#123;" : "&#125;"))
+        // Not part of a kept tag, so text - and text MDX would choke on.
+        .replace(/</g, "&lt;")
         .replace(/^(\s*)(import|export)(?=\s)/gm, (m, ws: string, kw: string) => `${ws}&#${kw.charCodeAt(0)};${kw.slice(1)}`);
-    });
-    return out.join("");
-  });
+    })
+    .join("");
 }
 
 /** The comparable form of a site URL: host without www, path without a

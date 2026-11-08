@@ -31,8 +31,12 @@ const LIVE_STATUSES = ["accepted", "finished", "published", "blocked_setup"];
 type Row = { title: string; slug: string | null; project_id: string; cover_svg?: string | null };
 
 export async function GET(_req: Request, { params }: { params: Promise<{ draftId: string }> }): Promise<Response> {
-  const { draftId } = await params;
-  if (!/^[0-9a-f-]{36}$/i.test(draftId)) return new Response("No such article", { status: 404 });
+  const { draftId: rawId } = await params;
+  if (!/^[0-9a-f-]{36}$/i.test(rawId)) return new Response("No such article", { status: 404 });
+  // One spelling of the id for the row lookup AND the storage path: Postgres
+  // reads DRAFTID and draftid as the same uuid, and each spelling must not
+  // get its own cached object (security audit 2026-11-08).
+  const draftId = rawId.toLowerCase();
 
   const read = (cols: string) => db().from("article_drafts").select(cols).eq("id", draftId).in("status", LIVE_STATUSES).maybeSingle();
   let res = await read("title, slug, project_id, cover_svg");
