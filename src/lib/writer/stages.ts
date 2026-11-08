@@ -60,7 +60,8 @@ import { advanceRun, failRun, getWriterRun, recordDraft, saveScratch, suggestion
 import { matchesBlockedTopic } from "@/lib/autopilot/math";
 import { isHubPage } from "./research";
 import { blockedTopicsOf } from "@/lib/autopilot/prefs";
-import { coverPrompt, dryCoverSvg, hueOf, pickHue, sanitizeCoverSvg, type Hue } from "@/lib/cover-art";
+import { copyPictureCover, coverPrompt, coverScenePrompt, draftPicturePath, dryCoverSvg, hueOf, ledgerPicture, paintCover, pickHue, pictureCoverPrompt, pictureCoversEnabled, runPicturePath, sanitizeCoverSvg, storePictureCover, type CoverTheme, type Hue } from "@/lib/cover-art";
+import { normalizeTheme } from "@/lib/hosted-theme";
 
 // The stages of one article. Five persisted stages, each one job in the
 // queue; job-handlers/write.ts chains them inside one handler while the
@@ -942,6 +943,9 @@ async function write(c: Ctx): Promise<void> {
   // failed, so a retry of this stage never pays for the drawing twice.
   const waits: string[] = [];
   if (drew.status === "fulfilled" && drew.value) {
+    // The picture's path first: a cover_svg saved without it would read as
+    // "drawn, with no picture" on a resumed stage.
+    if (drew.value.picture) await saveScratch(run, "cover_picture", drew.value.picture);
     await saveScratch(run, "cover_svg", drew.value.svg);
     if (drew.value.costUsd > 0) {
       await db().from("writer_runs").update({ cost_usd: Number((Number(run.cost_usd) + drew.value.costUsd).toFixed(4)) }).eq("id", run.id);
@@ -991,8 +995,17 @@ async function coverHue(c: Ctx, seed: string): Promise<Hue> {
  *  route draws the title card instead. null = an earlier attempt of this
  *  stage already drew it. Only AwaitingAgent escapes, so the subscription
  *  provider parks the run until the drawing is answered. */
-async function drawCover(c: Ctx, keyword: string, siteName: string, p: Plan, hue: Hue): Promise<{ svg: string; costUsd: number } | null> {
+async function drawCover(c: Ctx, keyword: string, siteName: string, p: Plan, hue: Hue): Promise<{ svg: string; costUsd: number; picture?: string } | null> {
   if (typeof c.run.stage_outputs.cover_svg === "string") return null;
+  // A picture when this deploy can paint one (cover-art.ts, "picture
+  // covers"); the drawing below is the fallback, and the scene call's cost
+  // is carried into it when the picture fails.
+  let spent = 0;
+  if (pictureCoversEnabled() && !isDryRun()) {
+    const pic = await paintPictureCover(c, keyword, siteName, p, hue);
+    if (pic?.path) return { svg: "", costUsd: pic.costUsd, picture: pic.path };
+    spent = pic?.costUsd ?? 0;
+  }
   const { system, user } = coverPrompt({
     lang: c.project.language_code ?? "en",
     hue,
@@ -1006,12 +1019,40 @@ async function drawCover(c: Ctx, keyword: string, siteName: string, p: Plan, hue
     const r = await generate({ slot: "illustrator", ...ctxOf(c), temperature: 0.7, system, user, dry: dryCoverSvg });
     const svg = sanitizeCoverSvg(r.text, hue);
     if (!svg) console.warn(`[writer] run ${c.run.id}: the illustrator returned no usable SVG; the cover falls back to the title card`);
-    return { svg: svg ?? "", costUsd: r.costUsd };
+    return { svg: svg ?? "", costUsd: spent + r.costUsd };
   } catch (err) {
     if (isAwaitingAgent(err)) throw err;
     console.warn(`[writer] run ${c.run.id}: cover not drawn (${err instanceof Error ? err.message : String(err)}); the title card stands in`);
-    return { svg: "", costUsd: 0 };
+    return { svg: "", costUsd: spent };
   }
+}
+
+/** The picture cover: the illustrator writes the scene, FLUX paints it in
+ *  the site's colours, the PNG is stored under the run until the draft
+ *  exists (finish copies it across). path null = no picture this time,
+ *  with whatever was spent getting there. Only AwaitingAgent escapes. */
+async function paintPictureCover(c: Ctx, keyword: string, siteName: string, p: Plan, hue: Hue): Promise<{ path: string | null; costUsd: number } | null> {
+  const { system, user } = coverScenePrompt({ title: p.title, keyword, angle: p.angle, sections: p.sections.map((x) => x.heading), siteName });
+  let scene = "";
+  let costUsd = 0;
+  try {
+    const r = await generate({ slot: "illustrator", ...ctxOf(c), temperature: 0.7, system, user, dry: () => "a kettle on a stove" });
+    scene = r.text.trim();
+    costUsd = r.costUsd;
+  } catch (err) {
+    if (isAwaitingAgent(err)) throw err;
+    console.warn(`[writer] run ${c.run.id}: no cover scene (${err instanceof Error ? err.message : String(err)}); drawing instead`);
+    return null;
+  }
+  if (scene.length < 15) return { path: null, costUsd };
+  const raw = c.project.hosted_theme ? normalizeTheme(c.project.hosted_theme) : null;
+  const theme: CoverTheme | null = raw && raw.source !== "default" ? { accent: raw.accent, mode: raw.mode } : null;
+  const painted = await paintCover(pictureCoverPrompt(scene, theme, hue));
+  if (!painted) return { path: null, costUsd };
+  await ledgerPicture(c.project.id, c.run.id, painted.model, painted.costUsd, painted.ms);
+  costUsd += painted.costUsd;
+  const path = runPicturePath(c.run.id);
+  return (await storePictureCover(path, painted.png)) ? { path, costUsd } : { path: null, costUsd };
 }
 
 function archetypeContract(archetype: string): string {
@@ -2147,6 +2188,10 @@ async function handoff(c: Ctx, draft: Draft, p: Plan, report: ValidationReport, 
     const { error: coverErr } = await db().from("article_drafts").update({ cover_svg: coverSvg }).eq("id", draftId);
     if (coverErr) console.warn(`[writer] draft ${draftId}: cover drawing not saved (${coverErr.message}) - is migration 0072 applied?`);
   }
+  // A picture cover moves from the run's slot to the draft's, where
+  // /api/cover looks for it. A failed copy leaves the drawn fallback.
+  const coverPicture = run.stage_outputs.cover_picture;
+  if (typeof coverPicture === "string" && coverPicture) await copyPictureCover(coverPicture, draftPicturePath(draftId));
   if (run.suggestion_id) {
     await db().from("suggestions").update({ status: "in_progress", started_at: new Date().toISOString() }).eq("id", run.suggestion_id);
   }

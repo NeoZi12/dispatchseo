@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { renderCoverPng } from "@/lib/cover-art";
+import { draftPicturePath, loadPictureCover, renderCoverPng } from "@/lib/cover-art";
 import { normalizeTheme } from "@/lib/hosted-theme";
 
 // The cover image for a writer article, drawn on demand (src/lib/cover-art.ts).
@@ -44,6 +44,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ draftId
   // handler treats any non-image response as "no cover" and ships the
   // article without one, which is the right outcome, and a 404 says why.
   if (!draft) return new Response("No such article", { status: 404 });
+
+  // A painted picture, when the writer made one (cover-art.ts, "picture
+  // covers"), is the cover; the drawing below is for everything else.
+  const picture = await loadPictureCover(draftPicturePath(draftId)).catch(() => null);
+  if (picture) {
+    return new Response(new Uint8Array(picture), { headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=3600" } });
+  }
 
   // The site's colours, when we have read them (lib/hosted-theme.ts): the
   // cover is drawn in them. No theme read (or a DB without the column) = the
