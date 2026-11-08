@@ -185,6 +185,13 @@ The rest of this page describes the **self-hosted** wizard, which has a
 few more steps because your own install does the work the platform does
 on the hosted version.
 
+Before the wizard, `/setup` asks you to choose the dashboard password, and
+the first visitor to that page claims the instance. So the claim needs your
+`SETUP_TOKEN`, which `start.sh` generates and prints when the stack boots;
+only a visitor on the same machine can claim without it. A bare
+`pnpm start` on a server you reach over the network must set `SETUP_TOKEN`
+before first boot.
+
 ## Step 1 - Add your site
 
 Name and domain of **your website** - the site you want Google traffic

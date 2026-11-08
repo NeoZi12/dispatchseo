@@ -59,6 +59,12 @@ between the internet and everything DispatchSEO knows - keywords,
 rankings, Search Console data, and every token described below. Make it
 long and random, and treat it like an admin password to a real system,
 because that's exactly what it is.
+
+The first visitor to `/setup` chooses that password and claims the
+instance, so the claim needs `SETUP_TOKEN`, which `start.sh` generates and
+prints when the stack boots. Without it, only a visitor on the same machine
+can claim; any other install you reach over the network must set it before
+first boot.
 </Callout>
 
 ## Database access

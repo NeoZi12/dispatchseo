@@ -116,6 +116,19 @@ the internet and your data.
 
 </Field>
 
+<Field name="SETUP_TOKEN" type="string" tag="Self-host only">
+
+The first visitor to `/setup` claims the instance and chooses its password.
+With this set, the claim form asks for the token and refuses without it.
+Left unset, `/setup` only accepts a claim from the same machine (a loopback
+address) and tells anyone else to set this and reload. `start.sh` generates
+one into `.env` and prints it when the stack boots, so a docker install has
+nothing to do. A bare `pnpm start` on a VPS, or any other host you reach
+over the network, must set it before first boot. It is not needed once the
+instance is claimed.
+
+</Field>
+
 </Fields>
 
 ## Google Search Console
@@ -299,6 +312,16 @@ Leave empty to send from Resend's shared test sender. Once you verify your
 own domain in Resend, set this to something like
 `DispatchSEO <alerts@your-domain.com>` to send from it, and to any address
 rather than only your own.
+
+</Field>
+
+<Field name="CUSTOMER_EMAIL_FROM" type="string" tag="Cloud only">
+
+The verified sender for emails that go to customers rather than to you,
+such as the free plan's inactivity warning - for example
+`DispatchSEO <hello@your-domain.com>`, on a domain you verified in Resend.
+Uses `RESEND_API_KEY`. Without it those emails are not sent, and because a
+free site only pauses after its warning went out, nothing pauses either.
 
 </Field>
 
@@ -606,17 +629,27 @@ The matching secret for `GITHUB_APP_CLIENT_ID` above.
 
 </Field>
 
-<Field name="GITHUB_APP_REQUIRE_INSTALL_PROOF" type="1" tag="Cloud only">
+<Field name="GITHUB_APP_REQUIRE_INSTALL_PROOF" type="0" tag="Cloud only">
 
-Set to `1` **only** after you've watched a real install verify
-successfully. A callback that carries a `?code` and fails verification is
-always refused regardless of this flag - it only controls the ambiguous
-case of a callback arriving with no code at all, which usually means the
-App isn't actually configured for user authorization. Left unset, that case
-falls back to the freshness/suspension gate instead of a hard refusal,
-which still closes every orphan-installation class; turning this on before
-confirming the App is configured correctly risks blocking honest
-customers.
+Proof is **required by default** whenever `GITHUB_APP_CLIENT_ID` and
+`GITHUB_APP_CLIENT_SECRET` are set: an install callback must carry a `?code`
+that verifies, or the claim is refused. A `?code` that fails verification is
+always refused, whatever this says. Set it to `0` to fall back to the
+freshness/suspension gate when a callback arrives with no code at all. For
+the default to work, the App must have "Request user authorization (OAuth)
+during installation" enabled - without it GitHub sends no code and every
+install is refused.
+
+</Field>
+
+<Field name="FREE_GATE_SALT" type="string" tag="Cloud only">
+
+Required for the free plan. The free plan's abuse ledger stores keyed
+hashes of each free site's domain, email, GitHub login, network address and
+device cookie, never the values themselves, and this is the key. Use a long
+random string (`openssl rand -hex 32`). Set it once and never change it:
+every hash in the ledger depends on it, so a new value forgets every free
+claim. Without it the free plan refuses every launch and every free article.
 
 </Field>
 
@@ -641,6 +674,13 @@ described above.
 ## Analytics
 
 <Fields>
+
+<Field name="VISITOR_SALT" type="string" tag="Optional">
+
+Salts the daily visitor hash in the first-party visit log. Falls back to
+`CRON_SECRET`. If neither is set, visits are not recorded at all.
+
+</Field>
 
 <Field name="NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN" type="string" tag="">
 
