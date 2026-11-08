@@ -163,6 +163,30 @@ export async function claimFreeLaunch(input: FreeLaunchInput): Promise<FreeLaunc
 
 // ---- the engine's questions -------------------------------------------------
 
+/** Did this project pass the launch gate - is its domain's free claim this
+ *  owner's? writerGate asks it before granting any free work, so a free site
+ *  that reached the engine by ANY path (an older setup, a backfilled launch,
+ *  a site switched to hosted later) gets nothing until it has a claim.
+ *  Fails closed. */
+export async function hasFreeDomainClaim(ownerId: string, projectId: string): Promise<boolean> {
+  try {
+    const { data: p, error: pErr } = await db().from("projects").select("domain").eq("id", projectId).maybeSingle();
+    if (pErr || !p) return false;
+    const domain = registrableDomain((p as { domain: string }).domain);
+    if (!domain) return false;
+    const { data, error } = await db()
+      .from("free_claims")
+      .select("owner_user_id")
+      .eq("kind", "domain")
+      .eq("key", keyOf("domain", domain))
+      .maybeSingle();
+    if (error || !data) return false;
+    return (data as { owner_user_id: string }).owner_user_id === ownerId;
+  } catch {
+    return false;
+  }
+}
+
 /** May this free owner start a free article right now? Not when paused for
  *  inactivity, not before the spacing since their last free start, and not
  *  past the month's allowance - all counted per OWNER, across every site

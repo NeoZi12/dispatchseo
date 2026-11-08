@@ -141,7 +141,7 @@ type OnboardingParams = {
 
 const NOTICES: Record<string, string> = {
   checkout: "The checkout didn't finish. Want to try again?",
-  taken: "That site is already set up on another account. Try a different one?",
+  taken: "That site is already set up on another account. If it's yours, ask on Discord and we'll release it.",
   duplicate: "You already had a plan, so this payment wasn't added to it. We've been alerted and will refund it.",
 };
 

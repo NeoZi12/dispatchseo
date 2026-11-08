@@ -807,6 +807,10 @@ export async function writerGate(projectId: string): Promise<{ allowed: true; fr
   if (!ownerId) return gate;
   const [first] = await ownedProjectsOldestFirst(ownerId);
   if (first !== projectId) return { allowed: false, reason: "the free plan covers one site" };
+  // Only a site that passed the free plan's launch gate (lib/free-gate.ts),
+  // whatever path brought it here.
+  const { hasFreeDomainClaim } = await import("./free-gate");
+  if (!(await hasFreeDomainClaim(ownerId, projectId))) return { allowed: false, reason: "the free plan's checks haven't passed for this site" };
   return { allowed: true, free: true };
 }
 

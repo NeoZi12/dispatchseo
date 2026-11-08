@@ -258,7 +258,8 @@ export function SetupClient(props: {
               This site already has a DispatchSEO account.{" "}
               <a href="/login" className="font-medium underline underline-offset-4">
                 Sign in to continue.
-              </a>
+              </a>{" "}
+              Not yours, but it&apos;s your site? Ask on Discord and we&apos;ll release it.
             </p>
           ) : null}
           {error ? <p className="mt-4 rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-[14px] text-ink">{error}</p> : null}

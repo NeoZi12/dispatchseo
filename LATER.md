@@ -231,3 +231,5 @@ running without any of them.)*
     deliberate, owner-chosen reversal of the 2026-10-24 "no hold" rule, scoped to
     an opt-in.
   Each one needs its MCP tool alongside the dashboard control (parity rule).
+
+- **Domain ownership proof for setup holders (security review 2026-11-08).** Today an unpaid site with no connected repo gives way to the next claimant, but one with a connected repo holds its domain even if its owner never proves the site is theirs (anyone can connect their own repo). Real fix: a holder keeps the domain only once Google confirms the Search Console property (gsc_site_url) or a live rewrite is verified; an unverified connected holder older than ~7 days is released (needs a safe project teardown - pages/keywords/suggestions/gsc_stats/rank_checks reference projects without ON DELETE CASCADE) and its free_claims domain row deleted. Until then, release by hand when an owner asks on Discord. Must land before FREE_SIGNUPS_OPEN=1.

@@ -23,7 +23,10 @@ import { emailLinkMatches } from "@/lib/email-link-nonce";
 // redirects while still allowing /reset-password, /dashboard, etc.
 function safeNext(raw: string | null): string {
   if (raw && raw.startsWith("/") && !raw.startsWith("//") && !raw.startsWith("/\\")) {
-    return raw;
+    // Resolved, so "/reset-password/../x" is judged as the "/x" it really
+    // is; the origin is a placeholder and never leaves this function.
+    const u = new URL(raw, "http://callback.invalid");
+    if (u.origin === "http://callback.invalid") return u.pathname + u.search;
   }
   return "/dashboard";
 }
@@ -33,10 +36,16 @@ export async function GET(req: NextRequest) {
   const code = params.get("code");
   const tokenHash = params.get("token_hash");
   const type = params.get("type");
-  const next = safeNext(params.get("next"));
-  // A recovery flow should recover from a dead link by asking for another,
-  // not by dropping the user on a generic sign-in error they can't act on.
-  const isRecovery = type === "recovery" || next.startsWith("/reset-password");
+  // Whether THIS credential is a password recovery. An emailed token_hash
+  // link is one only when its own type says so - `next` is chosen by
+  // whoever asked for the link, so it must never exempt a link from the
+  // same-browser check below, nor earn the reset cookie (security review,
+  // 2026-11-08). A code-grant (PKCE) link is already bound to this browser
+  // by its verifier, so its `next` can be trusted for that.
+  const rawNext = safeNext(params.get("next"));
+  const isRecovery = tokenHash ? type === "recovery" : rawNext.startsWith("/reset-password");
+  // A non-recovery sign-in never lands on the set-a-password form.
+  const next = !isRecovery && rawNext.startsWith("/reset-password") ? "/dashboard" : rawNext;
 
   const url = req.nextUrl.clone();
   url.search = "";
