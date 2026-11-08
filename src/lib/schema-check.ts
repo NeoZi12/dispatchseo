@@ -170,6 +170,9 @@ const PROBES: Probe[] = [
   { migration: "0075_batch_lane", table: "writer_tasks", column: "batch_id" },
   // 0077: the per-day network id the owner page uses to hide the operator.
   { migration: "0077_web_visits_net", table: "web_visits", column: "net" },
+  // 0078: the free plan's memory (lib/free-gate.ts). Four tables; the claims
+  // table is the one setup reads before every free launch.
+  { migration: "0078_free_plan_gate", table: "free_claims", column: "key" },
 ];
 
 // Migrations that genuinely CANNOT be probed through this mechanism, with the

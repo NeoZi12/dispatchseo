@@ -25,6 +25,7 @@ import {
 } from "@/lib/github-cost-gate";
 import { dispatchToolBuild, mergePr } from "@/lib/github";
 import { getActiveProject, PROJECT_COOKIE } from "@/lib/active-project";
+import { freeProjectSlug, isProjectDomain, normalizeProjectDomain } from "@/lib/setup-flow";
 import {
   AUTO_PRESET,
   SEMI_PRESET,
@@ -1316,14 +1317,10 @@ async function createProjectCore(
   // a GitHub project to the code that keys on github_repo.
   if (String(formData.get("publish_target") ?? "") === "wordpress") repo = "";
 
-  const domain = rawDomain
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/^www\./, "")
-    .replace(/\/.*$/, "");
+  const domain = normalizeProjectDomain(rawDomain);
 
   if (!name) return { error: "Give the project a name." };
-  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain)) {
+  if (!isProjectDomain(domain)) {
     return { error: "That domain does not look right - use something like example.com." };
   }
   // Cloud connects the repo via the GitHub App AFTER creation (wizard c1), so
@@ -1362,9 +1359,7 @@ async function createProjectCore(
 
   // Slug: the first domain label, falling back to the full dashed domain if
   // another project already claimed it (sub.example.com vs example.com).
-  const firstLabel = domain.split(".")[0];
-  const taken = await getProjectBySlug(firstLabel);
-  const slug = taken ? domain.replace(/\./g, "-") : firstLabel;
+  const slug = await freeProjectSlug(domain);
 
   // Seed the site's age from the domain's public registration date (RDAP) -
   // a signup's domain almost never went live the day it joined DispatchSEO,
@@ -2080,7 +2075,11 @@ export async function chooseGithubRepo(
   if (!repos.some((r) => r.full_name === repo)) {
     return { error: "That repository is not part of your DispatchSEO installation." };
   }
-  const { error } = await db().from("projects").update({ github_repo: repo }).eq("id", project.id);
+  // A new repo invalidates the blog-switch PR pointer (its number means nothing in the new repo).
+  const { error } = await db()
+    .from("projects")
+    .update(repo !== project.github_repo ? { github_repo: repo, hosted_rewrite_pr_url: null, hosted_rewrite_live_at: null } : { github_repo: repo })
+    .eq("id", project.id);
   if (error) return { error: error.message };
   await captureServer((await currentUser())?.id ?? project.id, "github_connected", { repo });
   revalidatePath("/onboarding");

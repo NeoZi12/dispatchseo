@@ -305,9 +305,9 @@ export function AgentLandingPage({ agentId }: { agentId: AgentPageId }) {
         <svg className="doodle doodle-f2" viewBox="0 0 64 64" aria-hidden="true"><path d="M8 52 L24 38 L34 46 L56 20 M56 20 L45 22 M56 20 L55 32" /></svg>
         <div className="wrap">
           <h2>Give {c.name} the keys.<br className="br-desk" /> Keep the lock.<span className="caret" /></h2>
-          <p>Starter starts with a 7-day free trial. Setup takes about ten minutes.</p>
+          <p>Start on the free plan. Setup takes about ten minutes.</p>
           <div className="cta-row">
-            <a className="btn btn-solid" href="/signup">Start your free trial</a>
+            <a className="btn btn-solid" href="/signup">Start for free</a>
           </div>
         </div>
       </section>

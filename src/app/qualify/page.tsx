@@ -20,6 +20,8 @@ export const dynamic = "force-dynamic";
 // capture when the answer is no. Two questions, one honest answer.
 
 export default async function QualifyPage() {
+  // The setup flow's address step asks this now (2026-11-06).
+  if (isCloudMode() && process.env.SETUP_PATH_LEGACY !== "1") redirect("/onboarding");
   const auth = await requireDashboard();
   // Self-host has no checkout to gate, so this page is cloud-only.
   if (!isCloudMode() || !auth.user) redirect("/dashboard");

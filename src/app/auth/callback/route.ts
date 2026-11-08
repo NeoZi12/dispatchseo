@@ -3,10 +3,11 @@ import { type EmailOtpType } from "@supabase/supabase-js";
 import { supabaseAuth } from "@/lib/cloud-auth";
 import { captureServer } from "@/lib/posthog-server";
 import { RECOVERY_COOKIE } from "@/lib/recovery-gate";
+import { emailLinkMatches } from "@/lib/email-link-nonce";
 
 // Email-link + OAuth landing for CLOUD_MODE (Supabase Auth). Two credential
 // shapes arrive here, both of which establish the session cookies:
-//   - `code`               - PKCE code from Google sign-in and, with the
+//   - `code`               - PKCE code from GitHub/Google sign-in and, with the
 //                            default email template, from the password
 //                            recovery link (exchangeCodeForSession). Needs the
 //                            PKCE verifier cookie, so it's same-browser only.
@@ -75,6 +76,24 @@ export async function GET(req: NextRequest) {
         })
       : await supabase.auth.exchangeCodeForSession(code as string);
     if (error) return fail();
+    // An emailed sign-in link opened in a browser that didn't ask for it:
+    // signed straight back out, so a link forwarded by someone else can't put
+    // this browser into THEIR account (lib/email-link-nonce.ts). Recovery
+    // links are exempt.
+    if (tokenHash && !isRecovery && !(await emailLinkMatches(params.get("sn")))) {
+      await supabase.auth.signOut().catch(() => {});
+      url.pathname = "/login";
+      url.search = "?error=device";
+      return NextResponse.redirect(url);
+    }
+    // The setup flow's sign-in (owner, 2026-11-08): the address this browser
+    // checked becomes the new account's site, so /onboarding opens on the
+    // next step instead of asking for it again. Best effort - the address
+    // step can still do it by hand.
+    if (!isRecovery && data.user && next.startsWith("/onboarding")) {
+      const { createSiteAfterSignIn } = await import("@/lib/setup-flow");
+      await createSiteAfterSignIn(data.user.id);
+    }
     // Password recovery lands here too (both credential shapes), but signing
     // back in to set a new password isn't a login/signup event.
     if (!isRecovery && data.user) {
@@ -83,10 +102,12 @@ export async function GET(req: NextRequest) {
         // account row was created, this just closes the loop.
         await captureServer(data.user.id, "user_confirmed_email");
       } else {
-        // The only other code-grant flow reaching here is Google OAuth.
+        // The code-grant flows reaching here: GitHub and Google OAuth, and a
+        // PKCE email link.
         const justCreated = Date.now() - new Date(data.user.created_at).getTime() < 15_000;
+        const provider = typeof data.user.app_metadata?.provider === "string" ? data.user.app_metadata.provider : "oauth";
         await captureServer(data.user.id, justCreated ? "user_signed_up" : "user_logged_in", {
-          method: "google",
+          method: provider,
         });
       }
     }

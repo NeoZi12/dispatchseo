@@ -478,6 +478,45 @@ export async function applySubscriptionState(state: {
   await captureServer(state.userId, event, { tier: state.tier ?? undefined, status: state.status });
 }
 
+/** Writes the plan row unless the account already has a DIFFERENT live
+ *  subscription - one plan is never silently replaced by another. An
+ *  incoming event that is itself live in that case is a second paid plan on
+ *  one account: reported for a person (refund one). Used by the webhook and
+ *  the setup flow's return trip. */
+export async function applyUnlessSecondPlan(
+  userId: string,
+  state: Omit<Parameters<typeof applySubscriptionState>[0], "userId">,
+  event: string,
+): Promise<"applied" | "skipped"> {
+  const current = await getSubscription(userId);
+  const other = current?.provider_subscription_id;
+  if (isActive(current) && other && state.providerSubscriptionId && other !== state.providerSubscriptionId) {
+    if (["active", "trialing"].includes(state.status)) {
+      const { reportCronRun } = await import("./cron-alerts");
+      await reportCronRun(
+        "polar-webhook",
+        {
+          error: `${event}: subscription ${state.providerSubscriptionId} is a second live plan for user ${userId}, who already has ${other}. NOT applied - cancel one of them in Polar.`,
+          event,
+        },
+        true,
+      );
+    }
+    return "skipped";
+  }
+  await applySubscriptionState({ userId, ...state });
+  return "applied";
+}
+
+/** May a new site start on the FREE plan? The launch switch for the free
+ *  tier (owner, 2026-11-08): off until the abuse gate exists, so a
+ *  production deploy can carry the free code without giving anything away.
+ *  Off = every new setup goes through checkout first. FREE_SIGNUPS_OPEN=1
+ *  turns it on. */
+export function freeSignupsOpen(): boolean {
+  return process.env.FREE_SIGNUPS_OPEN === "1";
+}
+
 export type CancelOutcome =
   | { ok: true; endsAt: string | null }
   | { ok: false; error: string; portal?: boolean };
@@ -761,7 +800,7 @@ export async function ownerUserIdForProject(projectId: string): Promise<string |
  */
 export async function writerGate(projectId: string): Promise<{ allowed: true; free?: true } | { allowed: false; reason: string }> {
   const gate = await planGate(projectId);
-  if (gate.allowed || FREE_ARTICLES_PER_MONTH <= 0) return gate;
+  if (gate.allowed || FREE_ARTICLES_PER_MONTH <= 0 || !freeSignupsOpen()) return gate;
   const plan = await projectPlan(projectId).catch(() => null);
   if (!isFreePlan(plan)) return gate;
   const ownerId = await ownerUserIdForProject(projectId);

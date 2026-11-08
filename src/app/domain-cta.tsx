@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { cleanDomain, isValidDomain } from "@/lib/domain";
+import { checkSite } from "@/app/onboarding/setup-actions";
 
 // The hero's single CTA: type your domain, watch your own favicon appear,
-// land on /signup already personalized to your site. One decision for the
+// land on /onboarding already personalized to your site. One decision for the
 // visitor instead of a start-vs-pricing fork.
 
 function GlobeIcon() {
@@ -33,10 +34,25 @@ export function DomainCta() {
   const domain = useMemo(() => cleanDomain(value), [value]);
   const showFavicon = iconOk && isValidDomain(domain);
 
+  // Check the site while it is being typed, so the setup's first step opens
+  // with the answer already on it: checkSite leaves the verdict in this
+  // browser's signed cookie, which /onboarding reads on render. Nothing is
+  // shown here - the hero stays one field and one button. If the visitor is
+  // faster than the probe, /onboarding checks again on arrival.
+  const prechecked = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isValidDomain(domain) || prechecked.current === domain) return;
+    const t = setTimeout(() => {
+      prechecked.current = domain;
+      void checkSite(domain).catch(() => {});
+    }, 450);
+    return () => clearTimeout(t);
+  }, [domain]);
+
   function submit(e: React.FormEvent) {
     e.preventDefault();
     router.push(
-      isValidDomain(domain) ? `/signup?domain=${encodeURIComponent(domain)}` : "/signup",
+      isValidDomain(domain) ? `/onboarding?domain=${encodeURIComponent(domain)}` : "/onboarding",
     );
   }
 

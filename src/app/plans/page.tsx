@@ -34,18 +34,18 @@ const TIER_COPY: Record<
   starter: {
     name: "Starter",
     tagline: "One article a week, one site",
-    cta: "Start free trial",
+    cta: "Choose Starter",
     recommended: false,
   },
   growth: {
     name: "Growth",
-    tagline: "Up to three a week, one site",
+    tagline: "Three articles a week, one site",
     cta: "Choose Growth",
     recommended: true,
   },
   scale: {
     name: "Scale",
-    tagline: "Up to five a week, one site",
+    tagline: "Five articles a week, one site",
     cta: "Choose Scale",
     recommended: false,
   },
@@ -79,6 +79,14 @@ export default async function PlansPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  // No plan yet: the setup flow is the one way in now (2026-11-08: a free
+  // plan, and a paid pick goes to checkout inside setup), signed in or not.
+  // A subscriber keeps the old behaviour.
+  if (isCloudMode() && process.env.SETUP_PATH_LEGACY !== "1") {
+    const { currentUser } = await import("@/lib/cloud-auth");
+    const user = await currentUser();
+    if (!user || !isActive(await getSubscription(user.id))) redirect("/onboarding");
+  }
   const auth = await requireDashboard();
   if (!isCloudMode() || !auth.user) redirect("/dashboard");
   const sub = await getSubscription(auth.user.id);
@@ -141,8 +149,7 @@ export default async function PlansPage({
             Choose your plan
           </h1>
           <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-neutral-400">
-            Pick a plan to put your site&apos;s SEO on autopilot. Starter includes a 7-day free
-            trial &mdash; cancel anytime.
+            Pick a plan to put your site&apos;s SEO on autopilot. Cancel anytime.
           </p>
 
           {/* Monthly / yearly. Two links, not a client toggle: the page is a
@@ -231,11 +238,7 @@ export default async function PlansPage({
                       ? `or ${priceLabel(TIER_LIMITS[tier].annual)}/mo billed yearly`
                       : "billed monthly"}
                 </p>
-                {tier === "starter" ? (
-                  <p className="mt-1.5 text-xs font-medium text-emerald-300">7-day free trial</p>
-                ) : (
-                  <p className="mt-1.5 text-xs font-medium text-neutral-500">Billed today</p>
-                )}
+                <p className="mt-1.5 text-xs font-medium text-neutral-500">Billed today</p>
 
                 {/* ABOVE the button, deliberately. This is a pass-through cost
                     the buyer pays to someone else, so it has to be read before
@@ -307,7 +310,7 @@ export default async function PlansPage({
 
         {/* Reassurance + the legal line, quiet at the base of the page. */}
         <div className="mt-10 space-y-1 text-center">
-          <p className="text-sm text-neutral-500">Cancel anytime &middot; 7-day free trial on Starter</p>
+          <p className="text-sm text-neutral-500">Cancel anytime</p>
           {/* The express-consent line required to validly waive the EU/UK
               14-day withdrawal right on a service that starts immediately.
               Without an affirmative request to begin performance AND an

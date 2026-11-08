@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { cookies, headers } from "next/headers";
+import { after } from "next/server";
+import { touchOwnerActivity } from "@/lib/free-gate";
 import { MobileNav, PageTitle, Sidebar } from "@/components/nav";
 import { DispatchMark } from "@/components/logo";
 import { ProjectSwitcher } from "@/components/project-switcher";
@@ -21,8 +23,10 @@ import { getSubscription, planBadge, planNotice, sitesRemaining } from "@/lib/bi
 import { githubCostGate } from "@/lib/github-cost-gate";
 import { REPO_NOTICE_COOKIE, decodeRepoNotice } from "@/lib/repo-notice";
 import { PostHogIdentify } from "@/components/posthog-identify";
+import { firstArticleProgress } from "@/lib/first-article-progress";
 import { getSetupSummary, loadReport, setupGaps, writerMode } from "./mode";
 import { HostedSetupBar } from "./setup-bar";
+import { FirstArticleCard } from "./first-article-card";
 
 // Shared shell for every dashboard screen. Auth is checked per page (the
 // requireDashboard gate in auth-gate.ts) - this layout is presentation only. force-dynamic
@@ -57,6 +61,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // account's data stopped moving, and it has to be on every screen, not just
   // the one the owner happens to open.
   const sub = billing && user ? await getSubscription(user.id) : null;
+  // A signed-in visit is what keeps a free site's articles coming (60-day
+  // pause, lib/free-gate.ts). After the response, at most one write a day.
+  if (billing && user) after(() => touchOwnerActivity(user.id));
   const notice = planNotice(sub);
   // Which plan this account is on, shown on the Billing row of the sidebar (and
   // the mobile drawer) so the tier is legible from every screen instead of only
@@ -134,6 +141,17 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // one-line "finish setup" bar driven by the autopilot report instead of the
   // agent setup path (whose steps don't apply to them).
   const hosted = active != null && writerMode(active) === "hosted";
+  // A new cloud hosted site, setup done, first article not live yet: every
+  // page shows the same first-article card instead of its content (setup
+  // asked for everything once; this shows the rest happening). Cloud only -
+  // self-host keeps its own wizard and Home - and only for a site the new
+  // setup launched (a launch job exists). A failed read shows the normal
+  // dashboard, never a card that can't say anything true.
+  const firstArticle =
+    billing && hosted && active.setup_connected_at
+      ? await firstArticleProgress(active, { loadReport }).catch(() => null)
+      : null;
+  const showFirstArticle = firstArticle != null && firstArticle.launched && !firstArticle.live;
   // Free tier (billing.ts isFreePlan, carried on the report): the sidebar
   // marks the screens that come with a plan, and the Billing row says Free.
   // Same cached report the hosted pages read; a failed read is not free.
@@ -227,7 +245,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
         ) : repoNotice ? (
           <RepoCleanupBanner repo={repoNotice.repo} warnings={repoNotice.warnings} />
         ) : hosted ? (
-          hostedGap.length ? (
+          // The card replaces the bar while it shows: it already says what
+          // is left, step by step.
+          hostedGap.length && !showFirstArticle ? (
             <HostedSetupBar title={hostedGap[0].title} href={hostedGap[0].href} remaining={hostedGap.length} />
           ) : null
         ) : billing ? (
@@ -251,7 +271,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
             cloud={billing}
           />
         ) : null}
-        <main className="min-w-0 flex-1 px-4 py-8 sm:px-6 lg:px-8">{children}</main>
+        <main className="min-w-0 flex-1 px-4 py-8 sm:px-6 lg:px-8">
+          {showFirstArticle && active ? (
+            <FirstArticleCard siteName={active.name} progress={firstArticle.progress} estimate={firstArticle.estimate}>
+              {children}
+            </FirstArticleCard>
+          ) : (
+            children
+          )}
+        </main>
       </div>
     </div>
   );

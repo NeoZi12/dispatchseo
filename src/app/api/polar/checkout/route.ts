@@ -11,18 +11,28 @@ import {
   type Tier,
 } from "@/lib/billing";
 import { captureServer } from "@/lib/posthog-server";
+import { pendingSetupProject, readSetupSite } from "@/lib/setup-flow";
 
 // GET /api/polar/checkout?tier=starter|growth|scale[&interval=month|year] -
 // sends the signed-in user to a Polar checkout for that tier. The interval
 // picks the monthly or the yearly Polar product (default monthly, so every
 // older link keeps working). externalCustomerId ties the Polar customer to the
 // Supabase user id, which is what the webhook maps back on.
+//
+// &flow=setup is the cloud setup's checkout step (a paid plan picked on the
+// pricing page). The account always exists first (owner, 2026-11-08: no
+// trial, a free plan), so every checkout carries externalCustomerId and the
+// return route (/api/polar/return) only has to check it is the same user.
 export async function GET(req: NextRequest) {
   if (!isCloudMode() || !polarConfigured()) {
     return NextResponse.json({ error: "billing not enabled" }, { status: 404 });
   }
+  const setupFlow = req.nextUrl.searchParams.get("flow") === "setup";
   const user = await currentUser();
-  if (!user) redirect("/login");
+  // Setup's sign-in step comes first, so a signed-out setup visitor is back
+  // at the start; anyone else signs in.
+  if (!user) redirect(setupFlow ? "/onboarding" : "/login");
+  const site = setupFlow ? await readSetupSite() : null;
 
   const tier = (req.nextUrl.searchParams.get("tier") ?? "") as Tier;
   const rawInterval = req.nextUrl.searchParams.get("interval") ?? "month";
@@ -53,15 +63,24 @@ export async function GET(req: NextRequest) {
   }
 
   const origin = req.nextUrl.origin;
+  // Polar fills {CHECKOUT_ID} in; the return route reads the checkout back
+  // and writes the plan row before the webhook lands.
+  const returnUrl = `${origin}/api/polar/return?checkout_id={CHECKOUT_ID}`;
+  // A site already in setup is the one this plan is for, whatever address
+  // the cookie holds (the return route reuses that project, too).
+  const pending = setupFlow ? await pendingSetupProject() : null;
+  const setupDomain = pending?.domain ?? (site?.ok ? site.domain : null);
   const checkout = await polar().checkouts.create({
     products: [productId],
     externalCustomerId: user.id,
     customerEmail: user.email ?? undefined,
-    // Straight into the wizard - the onboarding gate absorbs the webhook
-    // race (checkout=success renders a confirming poll, never a bounce
-    // back to /billing after the user just paid).
-    successUrl: `${origin}/onboarding?new=1&checkout=success`,
+    ...(setupFlow && setupDomain ? { metadata: { domain: setupDomain } } : {}),
+    // The setup flow comes back through the return route, which writes the
+    // plan row itself instead of waiting on the webhook. Every other caller
+    // is an upgrade from inside the dashboard (a free site, or a lapsed
+    // plan), so it lands back on Billing, which says the payment went through.
+    successUrl: setupFlow ? returnUrl : `${origin}/billing?success=1`,
   });
-  await captureServer(user.id, "checkout_started", { tier, interval });
+  await captureServer(user.id, "checkout_started", { tier, interval, ...(setupFlow ? { flow: "setup" } : {}) });
   redirect(checkout.url);
 }

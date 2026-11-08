@@ -1,0 +1,235 @@
+/* The setup stage's own motion. Scoped here (not globals.css) so the stage
+   can ship, change and be reviewed on its own; the vocabulary matches the
+   site's arrive-* and dispatch-* families (ease-out-expo, short, once).
+   Everything respects prefers-reduced-motion at the bottom. */
+
+.sceneIn {
+  animation: sceneIn 0.55s var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
+}
+@keyframes sceneIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.riseIn {
+  animation: riseIn 0.5s var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
+  animation-delay: var(--d, 0ms);
+}
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.pop {
+  animation: pop 0.45s var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
+  animation-delay: var(--d, 0ms);
+}
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  60% {
+    transform: scale(1.06);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* The rail's line fills from node to node as steps complete. */
+.railFill {
+  transition: width 0.7s var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+/* The current node breathes: a soft ring that grows and fades. */
+.pulseRing::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 9999px;
+  border: 2px solid var(--color-accent, #a78bfa);
+  animation: pulseRing 1.8s ease-out infinite;
+}
+@keyframes pulseRing {
+  0% {
+    opacity: 0.8;
+    transform: scale(0.7);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
+
+/* A check mark draws itself. */
+.drawCheck {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: drawCheck 0.4s ease-out forwards;
+  animation-delay: var(--d, 0ms);
+}
+@keyframes drawCheck {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* The mascot's idle bob, and a quick happy hop on a win. */
+.bob {
+  animation: bob 3.2s ease-in-out infinite;
+  transform-origin: 50% 100%;
+}
+@keyframes bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+.hop {
+  animation: hop 0.6s var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1)) 1;
+  transform-origin: 50% 100%;
+}
+@keyframes hop {
+  0% {
+    transform: translateY(0) scaleY(1);
+  }
+  30% {
+    transform: translateY(-14px) scaleY(1.06);
+  }
+  60% {
+    transform: translateY(0) scaleY(0.94);
+  }
+  100% {
+    transform: translateY(0) scaleY(1);
+  }
+}
+
+/* The speech bubble: pops in, tail at the bottom-left. */
+.bubble {
+  animation: pop 0.4s var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
+  transform-origin: 10% 0%;
+}
+
+/* Typing cursor in the address field and the mini browser. */
+.caret {
+  animation: caret 1s steps(2, start) infinite;
+}
+@keyframes caret {
+  to {
+    visibility: hidden;
+  }
+}
+
+/* A progress bar that travels while we work. */
+.shimmer {
+  background: linear-gradient(90deg, transparent 0%, var(--color-accent, #a78bfa) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* The lit control in an illustration frame glows gently. */
+.litFrame {
+  animation: litFrame 2.2s ease-in-out infinite;
+}
+@keyframes litFrame {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 0 rgba(167, 139, 250, 0));
+  }
+  50% {
+    filter: drop-shadow(0 0 10px rgba(167, 139, 250, 0.35));
+  }
+}
+
+/* Sparkles on a completed step: four dots fly out and fade. */
+.spark {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  background: var(--color-accent, #a78bfa);
+  animation: spark 0.7s ease-out forwards;
+  animation-delay: var(--d, 0ms);
+  opacity: 0;
+}
+@keyframes spark {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--x, 0), var(--y, -16px)) scale(0.4);
+  }
+}
+
+/* The mini browser's page "loading" then "live". */
+.pageSkeleton > span {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--color-surface-3, #262626);
+  animation: skel 1.2s ease-in-out infinite;
+}
+@keyframes skel {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sceneIn,
+  .riseIn,
+  .pop,
+  .bubble,
+  .bob,
+  .hop,
+  .caret,
+  .shimmer,
+  .litFrame,
+  .spark,
+  .pageSkeleton > span,
+  .drawCheck {
+    animation: none;
+    opacity: 1;
+    stroke-dashoffset: 0;
+    transform: none;
+  }
+  .pulseRing::after {
+    animation: none;
+    opacity: 0.6;
+    transform: none;
+  }
+  .railFill {
+    transition: none;
+  }
+}

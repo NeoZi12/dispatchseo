@@ -5,6 +5,7 @@ import { writerMode } from "../mode";
 import { isCloudMode } from "@/lib/cloud";
 import {
   annualBillingAvailable,
+  annualCharge,
   articlesPerWeekFor,
   getSubscription,
   isActive,
@@ -104,8 +105,8 @@ export default async function BillingPage({
           role="status"
           title="Payment received. Your plan is active."
           action={
-            <a href="/onboarding?new=1" className={buttonClass("primary", "sm")}>
-              Set up your site
+            <a href="/dashboard" className={buttonClass("primary", "sm")}>
+              Back to your site
             </a>
           }
         />
@@ -168,7 +169,7 @@ export default async function BillingPage({
             {/* No live plan = the free tier (billing.ts isFreePlan), which is
                 what the sidebar's Free pill says too. */}
             <p className="text-[1.25rem] font-semibold tracking-tight text-ink">You&apos;re on the free plan</p>
-            <p className="mt-2 text-[15px] text-ink-muted">Pick one below. Starter comes with a 7-day free trial; Growth and Scale start today.</p>
+            <p className="mt-2 text-[15px] text-ink-muted">Pick a plan below for weekly articles, keyword research, rankings and advanced analytics.</p>
           </>
         )}
         </div>
@@ -220,11 +221,7 @@ export default async function BillingPage({
                 <p className="mt-1 text-[13px] text-ink-muted">
                   {hostedMode ? `${TIER_COPY[tier].sub}, up to ${limits.sites} ${limits.sites === 1 ? "site" : "sites"}` : TIER_COPY[tier].sub}
                 </p>
-                {!hasUpstreamSub ? (
-                  <p className={cx("mt-1 text-[12.5px] font-medium", tier === "starter" ? "text-ok" : "text-ink-faint")}>
-                    {tier === "starter" ? "7-day free trial" : "Billed today"}
-                  </p>
-                ) : null}
+                {!hasUpstreamSub ? <p className="mt-1 text-[12.5px] font-medium text-ink-faint">Billed today</p> : null}
                 {/* Multi-site tiers on an agent site only: after two sites
                     GitHub Actions bills the owner, and an upgrade is exactly
                     when that becomes possible - so it sits above the button. */}
@@ -249,14 +246,32 @@ export default async function BillingPage({
                       href={hasUpstreamSub ? "/api/polar/portal" : `/api/polar/checkout?tier=${tier}`}
                       className={buttonClass(hasUpstreamSub ? "secondary" : "primary", "md", "w-full")}
                     >
-                      {hasUpstreamSub ? `Switch to ${TIER_COPY[tier].name}` : tier === "starter" ? "Start free trial" : `Choose ${TIER_COPY[tier].name}`}
+                      {hasUpstreamSub ? `Switch to ${TIER_COPY[tier].name}` : `Choose ${TIER_COPY[tier].name}`}
                     </a>
                   )}
+                  {!isCurrent && !hasUpstreamSub && annualBillingAvailable() ? (
+                    <a href={`/api/polar/checkout?tier=${tier}&interval=year`} className="mt-2 block text-center text-[12.5px] text-ink-faint underline decoration-line underline-offset-4 hover:text-ink">
+                      Or pay yearly: {priceLabel(annualCharge(tier))} a year
+                    </a>
+                  ) : null}
                 </div>
               </div>
             );
           })}
         </div>
+        {/* The point of purchase for an upgrade, so the same express-consent
+            line /plans and setup's checkout step carry (EU/UK 14-day
+            withdrawal waiver - see app/plans/page.tsx). */}
+        {!hasUpstreamSub ? (
+          <p className="text-[12.5px] leading-relaxed text-ink-faint">
+            Your subscription renews automatically until you cancel. By subscribing you agree to the{" "}
+            <a className="underline underline-offset-2 hover:text-ink-muted" href="/terms">
+              terms of service
+            </a>
+            , and you ask us to start the service straight away - which means that once it has been fully performed you lose the 14-day right of
+            withdrawal you would otherwise have as a consumer. Cancel any time from this page.
+          </p>
+        ) : null}
       </section>
 
       {usage ? (

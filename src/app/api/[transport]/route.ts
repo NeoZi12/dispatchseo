@@ -2978,7 +2978,11 @@ const mcpHandler = createMcpHandler(
             `"${repo}" is not part of this project's App installation. In scope: ${repos.map((r) => r.full_name).join(", ") || "none"}.`,
           );
         }
-        const { error } = await db().from("projects").update({ github_repo: repo }).eq("id", p.id);
+        // A new repo invalidates the blog-switch PR pointer (its number means nothing in the new repo).
+        const { error } = await db()
+          .from("projects")
+          .update(repo !== p.github_repo ? { github_repo: repo, hosted_rewrite_pr_url: null, hosted_rewrite_live_at: null } : { github_repo: repo })
+          .eq("id", p.id);
         if (error) return fail(error.message);
         return ok({ project: p.slug, github_repo: repo });
       },

@@ -1,5 +1,5 @@
 import { validateEvent, WebhookVerificationError } from "@polar-sh/sdk/webhooks";
-import { applySubscriptionState, findUserIdForSubscription, tierForProductId } from "@/lib/billing";
+import { applyUnlessSecondPlan, findUserIdForSubscription, tierForProductId } from "@/lib/billing";
 import { reportCronRun } from "@/lib/cron-alerts";
 
 // Polar webhook. Two event families, because neither alone is sufficient:
@@ -91,22 +91,23 @@ export async function POST(req: Request): Promise<Response> {
   if (SUBSCRIPTION_EVENTS.has(event.type)) {
     const sub = event.data as unknown as PolarSubscription;
     const userId = sub.customer?.externalId;
+    // Store the subscription's real status - isActive() treats "active" and
+    // "trialing" as access-granting, everything else (past_due, canceled,
+    // revoked, incomplete) as gated.
+    const state = {
+      status: sub.status,
+      tier: tierForProductId(sub.productId),
+      providerCustomerId: sub.customerId ?? null,
+      providerSubscriptionId: sub.id,
+      currentPeriodEnd: sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toISOString() : null,
+      cancelAtPeriodEnd: Boolean(sub.cancelAtPeriodEnd),
+    };
     if (userId) {
-      // Store the subscription's real status - isActive() treats "active" and
-      // "trialing" as access-granting, everything else (past_due, canceled,
-      // revoked, incomplete) as gated.
+      // Never over a DIFFERENT live plan on the same account (see
+      // applyUnlessSecondPlan) - an event for an old subscription must not
+      // replace the one the account runs on.
       try {
-        await applySubscriptionState({
-          userId,
-          status: sub.status,
-          tier: tierForProductId(sub.productId),
-          providerCustomerId: sub.customerId ?? null,
-          providerSubscriptionId: sub.id,
-          currentPeriodEnd: sub.currentPeriodEnd
-            ? new Date(sub.currentPeriodEnd).toISOString()
-            : null,
-          cancelAtPeriodEnd: Boolean(sub.cancelAtPeriodEnd),
-        });
+        await applyUnlessSecondPlan(userId, state, event.type);
       } catch (e) {
         return await webhookWriteFailed(e, event.type, userId, sub.status);
       }
@@ -118,17 +119,7 @@ export async function POST(req: Request): Promise<Response> {
       const known = await findUserIdForSubscription(sub.id, sub.customerId);
       if (known) {
         try {
-          await applySubscriptionState({
-            userId: known,
-            status: sub.status,
-            tier: tierForProductId(sub.productId),
-            providerCustomerId: sub.customerId ?? null,
-            providerSubscriptionId: sub.id,
-            currentPeriodEnd: sub.currentPeriodEnd
-              ? new Date(sub.currentPeriodEnd).toISOString()
-              : null,
-            cancelAtPeriodEnd: Boolean(sub.cancelAtPeriodEnd),
-          });
+          await applyUnlessSecondPlan(known, state, event.type);
         } catch (e) {
           return await webhookWriteFailed(e, event.type, known, sub.status);
         }
@@ -161,8 +152,7 @@ export async function POST(req: Request): Promise<Response> {
     // Upgrade-only: never downgrade on an empty list (see header comment).
     if (userId && active) {
       try {
-        await applySubscriptionState({
-          userId,
+        await applyUnlessSecondPlan(userId, {
           // NEVER invent a status. This branch hardcoded "active", and since it
           // fires ~2 seconds after subscription.created it silently overwrote
           // the "trialing" that event had just written correctly - so every
@@ -177,7 +167,7 @@ export async function POST(req: Request): Promise<Response> {
           currentPeriodEnd: active.currentPeriodEnd
             ? new Date(active.currentPeriodEnd).toISOString()
             : null,
-        });
+        }, event.type);
       } catch (e) {
         return await webhookWriteFailed(e, event.type, userId, "active");
       }

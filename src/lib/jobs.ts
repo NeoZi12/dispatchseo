@@ -25,8 +25,9 @@ import { db } from "./db";
 // mean becomes the place every feature reaches into, and then nothing can be
 // changed without changing it.
 
+// "launch" = a new hosted site's first minutes after setup (job-handlers/launch.ts).
 // "batch-poll" = a batch-lane writer run waiting on Anthropic's Message Batches API (job-handlers/batch-poll.ts).
-export type JobKind = "autopilot" | "batch-poll" | "crawl" | "finish" | "publish" | "verify" | "write";
+export type JobKind = "autopilot" | "batch-poll" | "crawl" | "finish" | "launch" | "publish" | "verify" | "write";
 
 export type Job = {
   id: string;

@@ -83,6 +83,12 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "improved",
     text:
+      "Type your domain on the home page and the first setup step opens with the answer already there. " +
+      "If we guess wrong about your site, one click says your code is on GitHub and you carry on.",
+  },
+  {
+    kind: "improved",
+    text:
       "Your blog and its cover pictures now wear your site's own colours. DispatchSEO reads your " +
       "brand colour and whether your site is light or dark when it first looks at it, and every " +
       "article's cover is drawn to match - a black-and-white site gets black-and-white covers.",
@@ -480,6 +486,14 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
       "An article whose site build fails is now rebuilt automatically, up to twice, so a passing network " +
       "hiccup on your host no longer leaves it waiting unmerged. If the build keeps failing, the pull request " +
       "gets a short note naming the check that failed.",
+  },
+  {
+    kind: "new",
+    text:
+      "Getting started is one short flow: type your website, sign in with GitHub, Google or an emailed link, " +
+      "connect GitHub and Google, and your first article is on its way - free, no card needed. Picked a paid " +
+      "plan on the pricing page? You pay right after signing in. Until your first article is live, every " +
+      "dashboard page shows its progress.",
   },
   {
     kind: "improved",

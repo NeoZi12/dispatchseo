@@ -115,6 +115,20 @@ function PlanPrice({ tier, annual }: { tier: Tier; annual: boolean }) {
   );
 }
 
+// A plan's "Choose" button: setup with the plan (and, when yearly exists,
+// the period the switch shows - both links render, the same CSS toggle as
+// the prices hides one). Setup sends a paid pick to checkout after sign-in.
+function PlanLink({ tier, annual, children }: { tier: Tier; annual: boolean; children: React.ReactNode }) {
+  const href = (interval: "month" | "year") => `/onboarding?plan=${tier}&interval=${interval}`;
+  if (!annual) return <a className="btn btn-solid" href={href("month")}>{children}</a>;
+  return (
+    <>
+      <a className="btn btn-solid pr-year" href={href("year")}>{children}</a>
+      <a className="btn btn-solid pr-month" href={href("month")}>{children}</a>
+    </>
+  );
+}
+
 // The same price, sized for a third of a phone screen.
 function PmPrice({ tier, annual }: { tier: Tier; annual: boolean }) {
   if (!annual) {
@@ -375,7 +389,7 @@ export default async function LandingPage({
                 <li>Advanced analytics</li>
                 <li>No DispatchSEO badge</li>
               </ul>
-              <a className="btn btn-solid" href="/signup">Choose Starter</a>
+              <PlanLink tier="starter" annual={annual}>Choose Starter</PlanLink>
             </div>
             <div className="plan hero-plan">
               <span className="p-badge">Most popular</span>
@@ -392,7 +406,7 @@ export default async function LandingPage({
                 <li>Advanced analytics</li>
                 <li>No DispatchSEO badge</li>
               </ul>
-              <a className="btn btn-solid" href="/signup">Choose Growth</a>
+              <PlanLink tier="growth" annual={annual}>Choose Growth</PlanLink>
             </div>
             <div className="plan">
               <h3>Scale</h3>
@@ -407,7 +421,7 @@ export default async function LandingPage({
                 <li>No DispatchSEO badge</li>
                 <li>Priority support</li>
               </ul>
-              <a className="btn btn-solid" href="/signup">Choose Scale</a>
+              <PlanLink tier="scale" annual={annual}>Choose Scale</PlanLink>
             </div>
           </div>
           {/* Mobile pricing (<=980px): the free plan as one strip, then the
@@ -456,9 +470,9 @@ export default async function LandingPage({
               </tbody>
               <tfoot>
                 <tr>
-                  <td><a className="btn btn-solid" href="/signup">Choose</a></td>
-                  <td className="pm-pick"><a className="btn btn-solid" href="/signup">Choose</a></td>
-                  <td><a className="btn btn-solid" href="/signup">Choose</a></td>
+                  <td><PlanLink tier="starter" annual={annual}>Choose</PlanLink></td>
+                  <td className="pm-pick"><PlanLink tier="growth" annual={annual}>Choose</PlanLink></td>
+                  <td><PlanLink tier="scale" annual={annual}>Choose</PlanLink></td>
                 </tr>
               </tfoot>
             </table>

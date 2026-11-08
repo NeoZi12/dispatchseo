@@ -125,10 +125,11 @@ export default function TermsPage() {
           There is no minimum term.
         </p>
         <p>
-          <Term>Free trial.</Term> Where a plan is offered with a free trial, the length of the
-          trial is shown at checkout, your payment method is collected then, and it is first
-          charged when the trial ends and the subscription begins. Cancel any time before the
-          trial ends, from the billing page in your dashboard, and you are charged nothing.
+          <Term>Free plan.</Term> The free plan needs no payment method. What it includes is shown
+          on the pricing page. It covers one site per person, and one free site per domain, ever.
+          A free site whose dashboard nobody opens for 60 days pauses new articles until you sign
+          in again; we email you first. We may change or end the free plan, and we may refuse or
+          close free accounts we believe were made to get around its limits.
         </p>
         <p>
           <Term>Cancelling.</Term> You can cancel at any time from the billing page in your

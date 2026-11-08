@@ -63,6 +63,10 @@ async function withDeadline(run: Promise<void>): Promise<void> {
 // nothing but publish jobs never loads the crawler (and a broken import in an
 // unused feature cannot take the whole route down).
 const HANDLERS: Record<string, () => Promise<Handler>> = {
+  // One hosted project's daily pass (research + scheduler), run NOW rather
+  // than at tomorrow's /api/cron/autopilot - queued by the first crawl so a
+  // new site's first article starts minutes after "You're connected".
+  autopilot: async () => (await import("@/lib/job-handlers/autopilot")).runAutopilotJob,
   // A batch-lane writer run waiting on Anthropic's Message Batches API (0075).
   "batch-poll": async () => (await import("@/lib/job-handlers/batch-poll")).runBatchPollJob,
   // One hosted project's daily pass (research + scheduler), run NOW rather
@@ -70,6 +74,10 @@ const HANDLERS: Record<string, () => Promise<Handler>> = {
   // new site's first article starts minutes after "You're connected".
   autopilot: async () => (await import("@/lib/job-handlers/autopilot")).runAutopilotJob,
   crawl: async () => (await import("@/lib/job-handlers/crawl")).runCrawlJob,
+  // A new hosted site right after setup: switch the blog on, confirm the
+  // site with Google, and queue the first crawl (which chains research and
+  // the first article).
+  launch: async () => (await import("@/lib/job-handlers/launch")).runLaunchJob,
   finish: async () => (await import("@/lib/job-handlers/finish")).runFinishJob,
   publish: async () => (await import("@/lib/job-handlers/publish")).runPublishJob,
   verify: async () => (await import("@/lib/job-handlers/verify")).runVerifyJob,
@@ -88,6 +96,26 @@ export async function GET(req: Request): Promise<Response> {
   // Small batch per tick on purpose. The cron runs often; a big batch just
   // means one slow job (a 150-page crawl) starves everything behind it and
   // risks the function's own time limit taking the whole batch down with it.
+  // A site the new setup finished whose launch was never queued gets it now
+  // (job-handlers/launch.ts). Best-effort: it must never fail the drain.
+  try {
+    const backfilled = await (await import("@/lib/job-handlers/launch")).backfillLaunches();
+    if (backfilled) result.launches_backfilled = backfilled;
+  } catch (e) {
+    console.warn("[jobs] launch backfill failed:", e instanceof Error ? e.message : e);
+  }
+  // Once a day (the 09:00 UTC hour; idempotent, so every tick in it is
+  // harmless): free owners 55 days unseen get the one "log in to keep your
+  // articles coming" email (lib/free-gate.ts). Best-effort.
+  if (new Date().getUTCHours() === 9) {
+    try {
+      const warned = await (await import("@/lib/free-gate")).sendInactivityWarnings();
+      if (warned) result.inactivity_warned = warned;
+    } catch (e) {
+      console.warn("[jobs] inactivity warnings failed:", e instanceof Error ? e.message : e);
+    }
+  }
+
   const jobs = await claimDue(5);
   result.claimed = jobs.length;
 

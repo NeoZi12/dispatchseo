@@ -12,6 +12,7 @@ import { SignupRequirements } from "@/components/signup-requirements";
 import { isCloudMode } from "@/lib/cloud";
 import { supabaseAuth } from "@/lib/cloud-auth";
 import { authCallbackUrl } from "@/lib/origin";
+import { mintEmailLinkNonce } from "@/lib/email-link-nonce";
 import { cleanDomain, isValidDomain } from "@/lib/domain";
 import { captureServer, identifyServer } from "@/lib/posthog-server";
 
@@ -72,7 +73,9 @@ async function signup(formData: FormData) {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { emailRedirectTo: await authCallbackUrl() },
+    // Same link shape as every other email sign-in: a query string the
+    // template appends to, bound to this browser (lib/email-link-nonce.ts).
+    options: { emailRedirectTo: `${await authCallbackUrl()}?next=/onboarding&sn=${await mintEmailLinkNonce()}` },
   });
   if (error) {
     redirect(
@@ -137,7 +140,9 @@ async function resendConfirmation(): Promise<ResendResult> {
   const { error } = await supabase.auth.resend({
     type: "signup",
     email,
-    options: { emailRedirectTo: await authCallbackUrl() },
+    // Same link shape as every other email sign-in: a query string the
+    // template appends to, bound to this browser (lib/email-link-nonce.ts).
+    options: { emailRedirectTo: `${await authCallbackUrl()}?next=/onboarding&sn=${await mintEmailLinkNonce()}` },
   });
   if (!error) return { ok: true, message: "Sent. Give it a minute, then check spam too." };
   const status = (error as { status?: number }).status;
@@ -160,6 +165,12 @@ export default async function SignupPage({
   const { error, sent, domain: rawDomain } = await searchParams;
   const cleaned = cleanDomain(rawDomain ?? "");
   const domain = isValidDomain(cleaned) ? cleaned : null;
+  // Signing up IS the setup flow's account step (2026-11-08), so this page
+  // only forwards. A "check your inbox" visit
+  // from an older signup still renders below.
+  if (!sent && process.env.SETUP_PATH_LEGACY !== "1") {
+    redirect(domain ? `/onboarding?domain=${encodeURIComponent(domain)}` : "/onboarding");
+  }
 
   if (sent) {
     const pendingEmail = (await cookies()).get(EMAIL_COOKIE)?.value ?? null;

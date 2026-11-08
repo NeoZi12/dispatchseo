@@ -48,3 +48,16 @@ export async function googleSignIn(formData: FormData) {
   if (error || !data?.url) redirect("/login?error=1");
   redirect(data.url);
 }
+
+// "Continue with GitHub" on /login - same shape as Google above. Most owners
+// signed up with GitHub (the setup's first button), so it's the first way
+// back in. Setup's own sign-in lives in app/onboarding/setup-actions.ts.
+export async function githubSignIn() {
+  const supabase = await supabaseAuth();
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "github",
+    options: { redirectTo: await authCallbackUrl() },
+  });
+  if (error || !data?.url) redirect("/login?error=1");
+  redirect(data.url);
+}

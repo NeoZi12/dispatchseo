@@ -24,7 +24,19 @@ import { getSetupStep } from "@/lib/setup-path";
 import { loadSetupCardProps, type SetupCardServerProps } from "@/lib/setup-card-props";
 import type { SetupStep } from "@/lib/setup-path-core";
 import { buildCloudResume } from "./legacy-resume";
-import { cleanFlagText, cleanGscFlag } from "@/lib/flag-text";
+import { cleanFlagText, cleanGscFlag, GENERIC_GITHUB_FLAG } from "@/lib/flag-text";
+import { cleanDomain } from "@/lib/domain";
+import { isCodeHost, parsePlanPick, readSentCookie, resolveSetupStage } from "@/lib/setup-flow";
+import { labelFor } from "@/lib/site-platform";
+import { enqueueLaunch } from "@/lib/job-handlers/launch";
+import { listInstallationRepos } from "@/lib/github-app";
+import { annualCharge, ARTICLES_PER_WEEK, FREE_ARTICLES_PER_MONTH, isActive, polarConfigured, priceLabel, productIdForTier, TIER_LIMITS, TIER_NAMES } from "@/lib/billing";
+import { claimFreeLaunch, type FreeLaunchResult } from "@/lib/free-gate";
+import { clientIp } from "@/lib/login-lockout";
+import { DEVICE_COOKIE } from "@/lib/setup-flow";
+import { SetupClient, type CheckoutPlan } from "./setup-client";
+import { PaymentConfirming } from "@/components/payment-confirming";
+import type { SiteVerdict } from "@/components/setup-stage/scenes";
 
 export const dynamic = "force-dynamic";
 // The c2 credential step live-verifies an OpenAI key against api.openai.com
@@ -113,6 +125,247 @@ async function buildResume(): Promise<WizardResume | null> {
   };
 }
 
+type OnboardingParams = {
+  new?: string;
+  gh?: string;
+  msg?: string;
+  installation_id?: string;
+  connected?: string;
+  error?: string;
+  domain?: string;
+  sent?: string;
+  checkout?: string;
+  plan?: string;
+  interval?: string;
+};
+
+const NOTICES: Record<string, string> = {
+  checkout: "The checkout didn't finish. Want to try again?",
+  taken: "That site is already set up on another account. Try a different one?",
+  duplicate: "You already had a plan, so this payment wasn't added to it. We've been alerted and will refund it.",
+};
+
+type FreeBlock = Exclude<Extract<FreeLaunchResult, { ok: false }>["reason"], never>;
+
+/** The free plan's gate for this launch, or null to go ahead. */
+async function freeLaunchBlocked(userId: string, email: string | null, project: { id: string; domain: string; github_repo: string | null }): Promise<FreeBlock | null> {
+  const [h, jar] = await Promise.all([headers(), cookies()]);
+  const logins: string[] = [];
+  const repoOwner = project.github_repo?.split("/")[0];
+  if (repoOwner) logins.push(repoOwner);
+  try {
+    const { data } = await db().auth.admin.getUserById(userId);
+    for (const id of data?.user?.identities ?? []) {
+      const name = (id.identity_data as { user_name?: string } | undefined)?.user_name;
+      if (id.provider === "github" && name) logins.push(name);
+    }
+  } catch {
+    // The repo owner still counts.
+  }
+  const result = await claimFreeLaunch({
+    ownerId: userId,
+    projectId: project.id,
+    domain: project.domain,
+    email,
+    githubLogins: logins,
+    ip: clientIp(h) || null,
+    device: jar.get(DEVICE_COOKIE)?.value ?? null,
+  });
+  return result.ok ? null : result.reason;
+}
+
+const FREE_BLOCK_LINE: Record<FreeBlock, string> = {
+  domain: "This site has already had the free plan.",
+  email: "This email has already been used for a free site.",
+  github: "This GitHub account has already been used for a free site.",
+  device: "This browser has already set up a free site.",
+  ip: "A free site was set up from this network recently.",
+  disposable: "The free plan needs a real email address, not a throwaway one.",
+  error: "We couldn't check the free plan just now. Reload in a minute, or pick a plan to start right away.",
+};
+
+/** The gate said no: one honest line, and the way forward is a paid plan. */
+function FreePlanUsed({ reason, domain }: { reason: FreeBlock; domain: string }) {
+  return (
+    <main className="min-h-screen bg-canvas text-ink">
+      <div className="mx-auto w-full max-w-lg px-4 py-16 sm:px-6">
+        <section className="rounded-3xl border border-line bg-surface p-6 sm:p-8">
+          <h1 className="text-[22px] font-semibold tracking-tight text-ink">{reason === "error" ? "One moment" : "The free plan is used up here"}</h1>
+          <p className="mt-2 text-[15px] leading-relaxed text-ink-muted">{FREE_BLOCK_LINE[reason]}</p>
+          <p className="mt-2 text-[15px] leading-relaxed text-ink-muted">
+            Starter publishes a new article on {domain} every week, with keyword research and rankings.
+          </p>
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            <a
+              href="/api/polar/checkout?tier=starter&flow=setup"
+              className="inline-flex items-center justify-center rounded-xl bg-accent px-6 py-3 text-[15px] font-semibold text-white hover:brightness-110"
+            >
+              Choose Starter · {priceLabel(TIER_LIMITS.starter.price)}/month
+            </a>
+            <a href={DISCORD_URL} target="_blank" rel="noopener noreferrer" className="text-[14px] text-ink-faint underline underline-offset-4 hover:text-ink">
+              Think this is wrong? Ask on Discord
+            </a>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+// The cloud setup (lib/setup-flow.ts). Which scene shows is derived from
+// evidence on every visit - session, project, plan pick, subscription, repo,
+// Google grant - so coming back from GitHub, Google, Polar or a sign-in link
+// always lands on the next unfinished step. ?plan=growth&interval=year is a
+// paid plan picked on the pricing page.
+async function cloudSetupFlow(params: OnboardingParams) {
+  if (process.env.SETUP_PATH_LEGACY === "1") return null;
+  if (params.gh === "pick_project" && params.installation_id) return null;
+  const s = await resolveSetupStage(parsePlanPick(params.plan, params.interval));
+  if (s.legacy) return null;
+  if (params.new === "1" && s.user && s.project?.setup_connected_at) redirect("/dashboard?add=1");
+  // A plan picked on the pricing page by someone whose setup is already done
+  // (a free site upgrading): straight to that checkout, or to Billing when a
+  // plan is already live. Never silently dropped on the dashboard.
+  const urlPick = parsePlanPick(params.plan, params.interval);
+  if (urlPick && s.user && s.stage === "done") {
+    redirect(isActive(s.sub) ? "/billing" : `/api/polar/checkout?tier=${urlPick.tier}&interval=${urlPick.interval}`);
+  }
+
+  if (s.stage === "done" && s.project) {
+    if (!s.project.setup_connected_at && !isActive(s.sub) && polarConfigured()) {
+      // A FREE site's launch is where our spending starts, so the free plan's
+      // abuse gate runs here, once, before the stamp (lib/free-gate.ts).
+      const blocked = await freeLaunchBlocked(s.user!.id, s.user!.email, s.project);
+      if (blocked) return <FreePlanUsed reason={blocked} domain={s.project.domain} />;
+    }
+    if (!s.project.setup_connected_at) {
+      // One conditional write claims the moment, the same way
+      // completeConnectPhase does: only the request that flipped the null
+      // queues the launch, so a double load can't queue two.
+      const { data: stamped } = await db()
+        .from("projects")
+        .update({ setup_connected_at: new Date().toISOString(), onboarding_screen: "c5" })
+        .eq("id", s.project.id)
+        .is("setup_connected_at", null)
+        .select("id");
+      if (stamped && stamped.length > 0) {
+        try {
+          await enqueueLaunch(s.project.id);
+        } catch (e) {
+          console.warn(`[onboarding] launch for ${s.project.slug} not queued: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+      redirect("/dashboard");
+    }
+    // Callback flags from a launch-phase install ride along to Home.
+    const forwarded = new URLSearchParams();
+    for (const k of ["gh", "msg", "connected", "error"] as const) {
+      const v = params[k];
+      if (v) forwarded.set(k, v);
+    }
+    const qs = forwarded.toString();
+    redirect(qs ? `/dashboard?${qs}` : "/dashboard");
+  }
+
+  const stage = s.stage === "done" ? "address" : s.stage;
+  const fromUrl = cleanDomain(params.domain ?? "");
+  const prefill = s.project?.domain ?? fromUrl ?? "";
+  // The cookie's answer is shown again only for the address it was for.
+  const initialVerdict: SiteVerdict =
+    s.site && s.site.domain === (prefill || s.site.domain)
+      ? s.site.taken
+        ? { kind: "refused", platform: "taken" }
+        : !s.site.ok
+        ? { kind: "refused", platform: labelFor(s.site.platform) }
+        : s.site.override
+          ? { kind: "ok", framework: null, host: s.site.host, hasBlog: s.site.hasBlog }
+          : (s.site.platform === "unknown" || s.site.platform === "unreachable") && !isCodeHost(s.site.host)
+            ? { kind: "unknown" }
+            : { kind: "ok", framework: s.site.framework, host: s.site.host, hasBlog: s.site.hasBlog }
+      : { kind: "idle" };
+
+  let repos: string[] | null = null;
+  if (stage === "github" && s.project?.github_installation_id) {
+    try {
+      repos = (await listInstallationRepos(s.project.github_installation_id)).map((r) => r.full_name);
+    } catch {
+      repos = null;
+    }
+  }
+  const gsc = cleanGscFlag(params.connected, params.error);
+  // Sent a sign-in link from the account step (this browser's cookie).
+  const sent = s.user ? null : await readSentCookie();
+  const notice = params.error && NOTICES[params.error] ? NOTICES[params.error] : null;
+  // Back from Polar before the plan row exists (no subscription id on the
+  // checkout yet): wait for it here.
+  const waitingForPlan = params.checkout === "success" && Boolean(s.user) && !isActive(s.sub) && (stage === "address" || stage === "checkout");
+
+  // The checkout step's plan, priced exactly as Polar will charge it. A
+  // yearly pick on a deployment without the yearly products is shown (and
+  // sold) monthly rather than advertising a price nobody can pay.
+  let checkoutPlan: CheckoutPlan | null = null;
+  if (s.checkoutPlan) {
+    const { tier } = s.checkoutPlan;
+    const interval = s.checkoutPlan.interval === "year" && productIdForTier(tier, "year") ? "year" : "month";
+    checkoutPlan = {
+      tier,
+      name: TIER_NAMES[tier],
+      interval,
+      price: interval === "year" ? annualCharge(tier) : TIER_LIMITS[tier].price,
+      articlesPerWeek: ARTICLES_PER_WEEK[tier],
+    };
+  }
+
+  return (
+    <main className="min-h-screen bg-canvas text-ink">
+      <header className="mx-auto flex w-full max-w-3xl items-center justify-between px-4 pt-5 sm:px-6">
+        <a href="/?home=1" className="flex items-center gap-2.5 text-[16px] font-semibold text-ink transition-opacity hover:opacity-80">
+          <DispatchMark className="h-6 w-auto" />
+          DispatchSEO
+        </a>
+        <nav className="flex items-center gap-4 text-[13.5px] text-ink-faint">
+          {s.user ? (
+            s.sub ? <a href="/billing" className="hover:text-ink">Manage billing</a> : null
+          ) : (
+            <a href="/login" className="hover:text-ink">Sign in</a>
+          )}
+          <a href={DISCORD_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 hover:text-ink">
+            <DiscordMark className="size-4 shrink-0" />
+            <span className="hidden sm:inline">Ask on Discord</span>
+            <span className="sr-only sm:hidden">Ask on Discord</span>
+          </a>
+        </nav>
+      </header>
+      {waitingForPlan ? (
+        <div className="mx-auto w-full max-w-md px-4 py-16">
+          <PaymentConfirming />
+        </div>
+      ) : (
+      <SetupClient
+        // Remount on every step change: the client holds the scene and busy
+        // flags, and a router.refresh() that moves to the next step must not
+        // keep the last step's state (review, 2026-11-08).
+        key={stage}
+        stage={stage}
+        slug={s.project?.slug ?? null}
+        domain={s.project?.domain ?? s.site?.domain ?? null}
+        prefill={prefill || s.site?.domain || ""}
+        initialVerdict={initialVerdict}
+        signedIn={Boolean(s.user)}
+        checkoutPlan={checkoutPlan}
+        freeOpen={s.freeOpen}
+        freePerMonth={FREE_ARTICLES_PER_MONTH}
+        sentTo={sent?.to ?? null}
+        repos={repos}
+        ghError={params.gh === "error" ? (cleanFlagText(params.msg) ?? GENERIC_GITHUB_FLAG) : null}
+        googleError={stage === "google" && !notice && gsc && gsc !== "connected" ? `Google didn't connect (${gsc}). Try again.` : null}
+        notice={notice}
+      />
+      )}
+    </main>
+  );
+}
+
 export default async function OnboardingPage({
   searchParams,
 }: {
@@ -124,10 +377,23 @@ export default async function OnboardingPage({
     installation_id?: string;
     connected?: string;
     error?: string;
+    domain?: string;
+    sent?: string;
+    plan?: string;
+    interval?: string;
   }>;
 }) {
-  const auth = await requireDashboard();
   const params = await searchParams;
+  // Cloud: the one setup flow (site -> account -> [checkout] -> GitHub ->
+  // Google), open to a
+  // visitor with no account yet. Null = this visitor belongs on the older
+  // path below (an agent-writer project mid-setup, SETUP_PATH_LEGACY, the
+  // github.com install chooser).
+  if (isCloudMode()) {
+    const page = await cloudSetupFlow(params);
+    if (page) return page;
+  }
+  const auth = await requireDashboard();
 
   // Cloud: plan before site. A fresh account with no subscription pays
   // first (/plans - a standalone pricing page, no dashboard chrome), then

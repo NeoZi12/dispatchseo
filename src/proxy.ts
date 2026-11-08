@@ -167,6 +167,16 @@ export async function proxy(req: NextRequest, event: NextFetchEvent) {
     // First-boot wizard: must be reachable before any password exists. Only
     // the exact path - claiming redirects into /onboarding, which is gated.
     pathname === "/setup" ||
+    // The cloud setup's front door: the address and the sign-in step come
+    // BEFORE there is an account, so it serves logged-out visitors and the
+    // page decides what each one sees. Exact path only. On
+    // self-host the page itself still sends a signed-out visitor to /login.
+    pathname === "/onboarding" ||
+    // The setup stage's screenshots of GitHub / Google screens (public/setup/
+    // *.webp): the setup starts before any login, and an image behind /login
+    // renders as its alt text. Only the image files - never a prefix, so a
+    // future route under /setup/ stays gated.
+    /^\/setup\/[a-z0-9-]+\.webp$/.test(pathname) ||
     pathname === "/blog" ||
     pathname.startsWith("/blog/") ||
     // The hosted blog: customers' sites forward their /blog here, so every
@@ -212,7 +222,7 @@ export async function proxy(req: NextRequest, event: NextFetchEvent) {
     // Dev-only setup-path design review (fixtures, no database). Never in a
     // production build: there it stays behind login AND the page 404s.
     (process.env.NODE_ENV !== "production" &&
-      (pathname === "/onboarding/preview" || pathname === "/qualify/preview")) ||
+      (pathname === "/onboarding/preview" || pathname === "/onboarding/stage-preview" || pathname === "/qualify/preview")) ||
     // The marketing landing page and its per-agent hub pages - cloud
     // deployment only. Self-hosted installs never set LANDING_ENABLED, so
     // theirs stay gated (the pages themselves also redirect to /dashboard as

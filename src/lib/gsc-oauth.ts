@@ -6,7 +6,8 @@ import { decryptSecret, encryptSecret } from "./crypto";
 import { isGscPropertyShape } from "./url-guard";
 
 // Google OAuth for Search Console - the "Connect Google Search Console"
-// button (launch plan step 3). Scope is read-only search data, nothing else.
+// button (launch plan step 3). Read-only search data, except the new setup's
+// Google step once GOOGLE_SETUP_SCOPES=1 (see setupScopesEnabled below).
 // This flow exists so (a) the Google verification demo video can show a real
 // consent screen -> data roundtrip, and (b) the future cloud onboarding can
 // grow out of it. The service-account path in gsc.ts stays the default for
@@ -14,6 +15,29 @@ import { isGscPropertyShape } from "./url-guard";
 // credential. Server-only: never import into client components.
 
 export const GSC_SCOPE = "https://www.googleapis.com/auth/webmasters.readonly";
+/** Read-write Search Console: the read-only scope cannot call sites.add. */
+export const GSC_WRITE_SCOPE = "https://www.googleapis.com/auth/webmasters";
+/** Google's Site Verification API: the token for the verification file and
+ *  the "verify now" call. */
+export const SITE_VERIFICATION_SCOPE = "https://www.googleapis.com/auth/siteverification";
+// What the new setup's consent asks for. A new customer usually has no
+// Search Console property at all, and walking them through creating and
+// verifying one was the step people left on; with these two the launch job
+// (job-handlers/launch.ts) drops Google's file into their repo, verifies it
+// and adds the property itself. Google verified this app for the read-only
+// scope only, so these stay behind a flag until it approves them; every
+// other consent asks for GSC_SCOPE exactly as before. Read-only grants are
+// the normal case: every helper below reads a missing scope as "not this
+// grant", never as a failure.
+export const SETUP_SCOPES = [GSC_WRITE_SCOPE, SITE_VERIFICATION_SCOPE];
+
+export function setupScopesEnabled(): boolean {
+  return process.env.GOOGLE_SETUP_SCOPES === "1";
+}
+
+function consentScopes(returnTo: OauthReturnTo): string[] {
+  return returnTo === "onboarding" && setupScopesEnabled() ? SETUP_SCOPES : [GSC_SCOPE];
+}
 
 export function oauthConfigured(): boolean {
   return Boolean(process.env.GOOGLE_OAUTH_CLIENT_ID && process.env.GOOGLE_OAUTH_CLIENT_SECRET);
@@ -94,7 +118,7 @@ export async function consentUrl(
   return client(redirectUri).generateAuthUrl({
     access_type: "offline", // refresh token, so the connection survives
     prompt: "consent", // force the consent screen even on re-connect (demo video needs it)
-    scope: [GSC_SCOPE],
+    scope: consentScopes(returnTo),
     state: await makeState(projectSlug, returnTo),
   });
 }
@@ -156,10 +180,75 @@ export async function setTrackedProperty(
   return error ? error.message : null;
 }
 
-export async function oauthSearchConsole(refreshTokenEncrypted: string) {
+async function refreshClient(refreshTokenEncrypted: string) {
   const auth = client("postmessage"); // redirect uri unused for refresh flows
   auth.setCredentials({ refresh_token: await decryptSecret(refreshTokenEncrypted) });
-  return google.searchconsole({ version: "v1", auth, timeout: 25000 });
+  return auth;
+}
+
+export async function oauthSearchConsole(refreshTokenEncrypted: string) {
+  return google.searchconsole({ version: "v1", auth: await refreshClient(refreshTokenEncrypted), timeout: 25000 });
+}
+
+/** Google refusing a call because the grant lacks its scope (an old,
+ *  read-only grant), as opposed to the call itself failing. */
+export function isScopeError(e: unknown): boolean {
+  const err = e as { status?: number; code?: number | string; message?: string; response?: { status?: number } } | null;
+  const status = Number(err?.response?.status ?? err?.status ?? err?.code);
+  return status === 403 && /insufficient.*scope|ACCESS_TOKEN_SCOPE_INSUFFICIENT/i.test(String(err?.message ?? ""));
+}
+
+/** Does this grant carry the setup's write scopes? Asked before any write
+ *  call, so a read-only grant (the normal case while GOOGLE_SETUP_SCOPES is
+ *  off) never even tries one. */
+export async function grantHasSetupScopes(refreshTokenEncrypted: string): Promise<boolean> {
+  const auth = await refreshClient(refreshTokenEncrypted);
+  const { token } = await auth.getAccessToken();
+  if (!token) return false;
+  const info = await auth.getTokenInfo(token);
+  return SETUP_SCOPES.every((s) => info.scopes.includes(s));
+}
+
+/** The verification file Google wants at `siteUrl` (a URL-prefix property,
+ *  "https://example.com/"): its name, which is also its content's token.
+ *  Null when this grant predates the verification scope. */
+export async function siteVerificationFileToken(refreshTokenEncrypted: string, siteUrl: string): Promise<string | null> {
+  const api = google.siteVerification({ version: "v1", auth: await refreshClient(refreshTokenEncrypted), timeout: 25000 });
+  try {
+    const res = await api.webResource.getToken({
+      requestBody: { verificationMethod: "FILE", site: { type: "SITE", identifier: siteUrl } },
+    });
+    return res.data.token ?? null;
+  } catch (e) {
+    if (isScopeError(e)) return null;
+    throw e;
+  }
+}
+
+/** The body Google expects in the verification file. */
+export function siteVerificationFileBody(token: string): string {
+  return `google-site-verification: ${token}`;
+}
+
+/** Ask Google to check the file now. Throws when it can't see it yet. */
+export async function confirmSiteVerification(refreshTokenEncrypted: string, siteUrl: string): Promise<void> {
+  const api = google.siteVerification({ version: "v1", auth: await refreshClient(refreshTokenEncrypted), timeout: 25000 });
+  await api.webResource.insert({
+    verificationMethod: "FILE",
+    requestBody: { site: { type: "SITE", identifier: siteUrl } },
+  });
+}
+
+/** Add a verified site to the account's Search Console. False when the
+ *  grant is read-only and cannot add properties. */
+export async function addSearchConsoleSite(refreshTokenEncrypted: string, siteUrl: string): Promise<boolean> {
+  try {
+    await (await oauthSearchConsole(refreshTokenEncrypted)).sites.add({ siteUrl });
+    return true;
+  } catch (e) {
+    if (isScopeError(e)) return false;
+    throw e;
+  }
 }
 
 // The connected Google account's Search Console properties.
