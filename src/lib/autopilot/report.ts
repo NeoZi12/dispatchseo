@@ -10,6 +10,7 @@ import { getProjectById, publishTarget, writerMode, type Project } from "@/lib/p
 import { deltaPct } from "./math";
 import { blockedTopicsOf } from "./prefs";
 import { weekUsage } from "./scheduler";
+import { staleSitemap } from "@/lib/gsc-sitemaps";
 
 // The autopilot report: the ONE data shape the hosted dashboard renders and
 // the get_autopilot MCP tool returns (the parity rule, satisfied by
@@ -108,6 +109,11 @@ export type AutopilotReport = {
      *  answers nothing to a server) and no profile exists: only the owner
      *  can describe the site now (Settings > Site). */
     siteUnreadable: boolean;
+    /** Google has not read the site's sitemap in 14+ days (or ever); we
+     *  resubmitted it. needsAccess: the resubmit was refused - the owner must
+     *  give the Search Console connection Full permission. null = fine or
+     *  unknown. */
+    sitemap: { lastReadAt: string | null; url: string; needsAccess: boolean } | null;
   };
   controls: {
     brand: { name: string; tagline: string; short: string; long: string; categories: string[] };
@@ -486,12 +492,13 @@ async function setupSummary(project: Project): Promise<Omit<AutopilotReport["set
         : target === "manual" && writerMode(project) === "hosted"
           ? "none"
           : target;
-  const [gscRows, creds, unreadable] = await Promise.all([
+  const [gscRows, creds, unreadable, sitemap] = await Promise.all([
     project.gsc_oauth_refresh_token
       ? Promise.resolve(1)
       : db().from("gsc_stats").select("id", { count: "exact", head: true }).eq("project_id", project.id).then((r) => r.count ?? 0),
     credsForProject(project, { skipBudgetGate: true }).catch(() => null),
     crawlGaveUp(project.id),
+    staleSitemap(project),
   ]);
   return {
     google: Boolean(project.gsc_site_url) && gscRows > 0,
@@ -500,6 +507,7 @@ async function setupSummary(project: Project): Promise<Omit<AutopilotReport["set
     keywordSource: creds != null,
     rewritePrUrl: target === "hosted" ? (project.hosted_rewrite_pr_url ?? null) : null,
     siteUnreadable: unreadable,
+    sitemap: sitemap ? { lastReadAt: sitemap.lastReadAt, url: sitemap.sitemap, needsAccess: sitemap.resubmit === "no-scope" } : null,
   };
 }
 

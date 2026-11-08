@@ -1805,7 +1805,10 @@ GitHub), Search Console traffic and top queries, the next queued ideas
 (with `lastResearchAt`), what setup is missing (including
 `setup.rewritePrUrl`, the forwarding pull request to merge for a hosted
 blog, and `setup.siteUnreadable`, when the site could not be read and the
-owner should describe it with `set_brand`), the owner's brand, tone,
+owner should describe it with `set_brand`, and `setup.sitemap`, when Google
+has not read the site's sitemap in 14+ days - it was resubmitted, and
+`needsAccess: true` means the Search Console connection needs Full permission
+first), the owner's brand, tone,
 blocked topics and byline, and this month's spend. Article `error`
 strings are the writer's raw text; the dashboard shows a plain-words
 version.

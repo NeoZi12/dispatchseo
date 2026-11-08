@@ -4,7 +4,7 @@ import { readCapped } from "@/lib/hosted-theme";
 import { serviceAccountWriteClient } from "@/lib/gsc";
 import { instanceTokenAllowedFor } from "@/lib/github";
 import { siteOrigin } from "@/lib/hosted-blog";
-import type { Project } from "@/lib/projects";
+import { publishTarget, type Project } from "@/lib/projects";
 
 // Telling Google where the hosted blog's sitemap is, so a site whose owner
 // never opens Search Console still gets every article discovered.
@@ -114,4 +114,57 @@ async function siteSitemapUrl(project: Project): Promise<string> {
     await res?.body?.cancel().catch(() => undefined);
   }
   return `${origin}/sitemap.xml`;
+}
+
+// --- is Google reading it? -------------------------------------------------------
+//
+// ClockedCode's sitemap sat unread from 2026-07-12 to 2026-11-08 and nobody
+// knew: Search Console shows "last read" only to someone who opens it. So the
+// report asks (sitemaps.list, at most twice a day per site) when Google last
+// downloaded the sitemap, resubmits it on the spot when that was 14+ days ago,
+// and raises a setup card (setup.sitemap) for the owner - a nudge, never an
+// alarm: the articles are live either way.
+
+export const SITEMAP_STALE_DAYS = 14;
+
+export type SitemapFreshness = {
+  /** Google's last download of the site's sitemap; null = never. */
+  lastReadAt: string | null;
+  /** The sitemap we checked. */
+  sitemap: string;
+  /** What the resubmit did; "no-scope" means the owner must grant Full access. */
+  resubmit: Awaited<ReturnType<typeof submitSiteSitemap>> | null;
+};
+
+/** Null when the sitemap is fresh, or when nobody may ask (no property, no
+ *  connection), or when Google could not be asked. Cached 12 hours. */
+export async function staleSitemap(project: Project): Promise<SitemapFreshness | null> {
+  if (!project.gsc_site_url) return null;
+  const { unstable_cache } = await import("next/cache");
+  return unstable_cache(() => checkSitemap(project), ["sitemap-freshness-v1", project.id, project.gsc_site_url], { revalidate: 12 * 3600 })().catch(() => null);
+}
+
+export async function checkSitemap(project: Project): Promise<SitemapFreshness | null> {
+  const sc = await sitemapClient(project).catch(() => null);
+  if (!sc || !project.gsc_site_url) return null;
+  const hosted = publishTarget(project) === "hosted";
+  const sitemap = hosted ? hostedSitemapUrl(project) : await siteSitemapUrl(project).catch(() => `https://${project.domain}/sitemap.xml`);
+  let listed: { path?: string | null; lastDownloaded?: string | null }[];
+  try {
+    const res = await sc.sitemaps.list({ siteUrl: project.gsc_site_url });
+    listed = (res.data.sitemap ?? []) as { path?: string | null; lastDownloaded?: string | null }[];
+  } catch (e) {
+    console.warn(`[gsc-sitemaps] sitemaps.list for ${project.slug} failed: ${e instanceof Error ? e.message : String(e)}`);
+    return null;
+  }
+  const norm = (u: string) => u.replace(/^https?:\/\/(www\.)?/, "").replace(/\/+$/, "").toLowerCase();
+  const ours = listed.find((s) => s.path && norm(s.path) === norm(sitemap));
+  // Ours when Search Console knows it; otherwise the freshest it knows (a
+  // site's sitemap index or a CMS's own), since any recent read means Google
+  // is crawling the site's map.
+  const reads = (ours ? [ours] : listed).map((s) => Date.parse(s.lastDownloaded ?? "")).filter(Number.isFinite);
+  const last = reads.length ? Math.max(...reads) : null;
+  if (last !== null && Date.now() - last < SITEMAP_STALE_DAYS * 86_400_000) return null;
+  const resubmit = hosted ? await submitHostedSitemap(project) : await submitSiteSitemap(project);
+  return { lastReadAt: last === null ? null : new Date(last).toISOString(), sitemap, resubmit };
 }

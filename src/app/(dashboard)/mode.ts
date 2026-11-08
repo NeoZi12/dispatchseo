@@ -49,7 +49,7 @@ export const loadReport = cache(async (projectId: string): Promise<AutopilotRepo
 });
 
 type SetupFacts = Pick<AutopilotReport["setup"], "google" | "publish" | "hostedLive"> &
-  Partial<Pick<AutopilotReport["setup"], "rewritePrUrl" | "siteUnreadable" | "keywordSource">> & { profile?: boolean };
+  Partial<Pick<AutopilotReport["setup"], "rewritePrUrl" | "siteUnreadable" | "keywordSource" | "sitemap">> & { profile?: boolean };
 
 export type SetupGap = { key: string; title: string; detail: string; href: string | null; done: boolean; blocksPublishing: boolean };
 
@@ -121,6 +121,24 @@ export function setupGaps(s: SetupFacts): SetupGap[] {
             blocksPublishing: false,
           },
     );
+  }
+  // Google stopped reading the sitemap (gsc-sitemaps.ts staleSitemap). We
+  // resubmit it at 14 days, so the card is for what that cannot fix: the
+  // resubmit was refused (permission), or a month on Google still has not
+  // read it. A brand-new sitemap Google has never read is just young.
+  const sitemapStuck = s.sitemap && (s.sitemap.needsAccess || (s.sitemap.lastReadAt && Date.now() - Date.parse(s.sitemap.lastReadAt) > 28 * 86_400_000));
+  if (s.sitemap && sitemapStuck) {
+    const when = s.sitemap.lastReadAt ? `since ${new Date(s.sitemap.lastReadAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : "yet";
+    items.push({
+      key: "sitemap",
+      title: `Google hasn't read your sitemap ${when}`,
+      detail: s.sitemap.needsAccess
+        ? "New articles are found slower without it. In Search Console > Settings > Users and permissions, give DispatchSEO's connection Full permission so we can resubmit it."
+        : "New articles are found slower without it. We just resubmitted it; if this stays for a week, open Search Console > Sitemaps and check it for errors.",
+      href: "https://search.google.com/search-console/sitemaps",
+      done: false,
+      blocksPublishing: false,
+    });
   }
   // No keyword data source: research cannot find a single topic. Only the
   // full report knows this (undefined = not known here, no row).
