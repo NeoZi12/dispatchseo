@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { enqueue } from "@/lib/jobs";
-import { planGate, projectPlan } from "@/lib/billing";
+import { projectPlan, writerGate } from "@/lib/billing";
 import { loadSiteProfile } from "@/lib/site-profile";
 import { publishRoute } from "@/lib/job-handlers/draft-status";
 import { isDryRun, missingCredentials } from "@/lib/writer/models";
@@ -123,7 +123,7 @@ export async function runScheduler(
   // real customer from the daily cron (the smoke test uses write_article).
   if (isDryRun()) return { skipped: "dry run" };
   if (project.writer_paused_at) return { skipped: `paused: ${project.writer_pause_reason ?? "by the owner"}`, next_article_at: null };
-  const gate = await planGate(project.id);
+  const gate = await writerGate(project.id);
   if (!gate.allowed) return { skipped: `plan inactive: ${gate.reason}` };
   // Setup first (CLAUDE.md: crons never run what setup hasn't finished). An
   // article with nowhere to go would only pile up as blocked_setup and eat
@@ -181,7 +181,7 @@ export async function runScheduler(
     return { skipped: `paused: ${ramp.reason}`, next_article_at: null };
   }
   const usage = await weekUsage(project.id, now);
-  const verdict = cadence({ now, quota: ramp.quota, countThisWeek: usage.count, lastStartedAt: usage.lastStartedAt });
+  const verdict = cadence({ now, quota: ramp.quota, spacingDays: plan.spacingDays, countThisWeek: usage.count, lastStartedAt: usage.lastStartedAt });
   if (!verdict.write) {
     await setNextArticleAt(project.id, verdict.nextAt);
     return { skipped: verdict.reason, next_article_at: verdict.nextAt?.toISOString() ?? null, profile: profileOutcome };
@@ -281,7 +281,7 @@ export async function startHostedRunClaimed(
   const plan = await projectPlan(project.id);
   const ramp = await rampFor(project.id, plan.articlesPerWeek, now);
   const usage = await weekUsage(project.id, now);
-  const verdict = cadence({ now, quota: ramp.quota, countThisWeek: usage.count, lastStartedAt: usage.lastStartedAt });
+  const verdict = cadence({ now, quota: ramp.quota, spacingDays: plan.spacingDays, countThisWeek: usage.count, lastStartedAt: usage.lastStartedAt });
   if (!verdict.write) return { refused: "This site's next article can't start yet (weekly quota or spacing between articles)." };
   const previous = project.next_article_at;
   let q = db().from("projects").update({ next_article_at: verdict.nextAfter.toISOString() }).eq("id", project.id);

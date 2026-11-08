@@ -16,7 +16,7 @@
 import { DEFAULT_PROJECT_ID } from "./projects";
 import { decryptSecret } from "./crypto";
 import { isCloudMode } from "./cloud";
-import { planGate } from "./billing";
+import { writerGate } from "./billing";
 import { platformBudgetGate, platformDataforseoEnv, recordDataforseoUsage } from "./dataforseo-usage";
 
 const BASE = "https://api.dataforseo.com/v3";
@@ -121,7 +121,7 @@ export async function credsForProject(
   if (
     isCloudMode() &&
     platform &&
-    (await planGate(project.id)).allowed &&
+    (await writerGate(project.id)).allowed &&
     (opts.skipBudgetGate || (await platformBudgetGate(project.id)).allowed)
   ) {
     return {

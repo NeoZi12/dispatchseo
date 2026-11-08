@@ -43,6 +43,9 @@ export type CadenceInput = {
   now: Date;
   /** Articles a week for this site's plan. 0 = the plan buys none. */
   quota: number;
+  /** Days between two starts when the plan sets its own (the free tier:
+   *  billing.ts freeSpacingDays); otherwise spacingDaysFor(quota). */
+  spacingDays?: number;
   /** Hosted articles started this ISO week that are live or on their way
    *  (anything not rejected/discarded, plus runs still writing). */
   countThisWeek: number;
@@ -64,7 +67,7 @@ export function cadence(input: CadenceInput): CadenceVerdict {
   const nextWeek = new Date(weekStartUtc(now).getTime() + 7 * DAY_MS);
   if (quota <= 0) return { write: false, reason: "no quota", nextAt: null };
   // The first UTC midnight at which the spacing rule allows a start.
-  const spacing = spacingDaysFor(quota);
+  const spacing = input.spacingDays ?? spacingDaysFor(quota);
   const spacedFrom = (iso: string | null) => (iso ? new Date(utcDay(new Date(iso)).getTime() + spacing * DAY_MS) : null);
   const earliest = spacedFrom(lastStartedAt);
   if (countThisWeek >= quota) {
@@ -92,7 +95,7 @@ export function cadence(input: CadenceInput): CadenceVerdict {
 export function upcomingStarts(input: CadenceInput & { n: number }): Date[] {
   const { quota, n } = input;
   if (quota <= 0 || n <= 0) return [];
-  const spacing = spacingDaysFor(quota);
+  const spacing = input.spacingDays ?? spacingDaysFor(quota);
   const out: Date[] = [];
   // The daily run is at 05:30 UTC: once it has passed, today is no longer a
   // candidate (nothing starts twice in a day).
@@ -692,8 +695,11 @@ export const BACKLOG_TARGET = 100;
 /** Research refills the backlog when it holds less than this many weeks of
  *  the plan's articles. */
 export const BACKLOG_REFILL_WEEKS = 4;
-export function backlogNeeded(liveIdeaCount: number): number {
-  return Math.max(0, BACKLOG_TARGET - liveIdeaCount);
+/** The free tier's backlog: two articles a month need a year of ideas, not
+ *  a hundred (the locked freemium number). */
+export const FREE_BACKLOG_TARGET = 24;
+export function backlogNeeded(liveIdeaCount: number, target = BACKLOG_TARGET): number {
+  return Math.max(0, target - liveIdeaCount);
 }
 export function backlogShort(liveIdeaCount: number, articlesPerWeek: number): boolean {
   return liveIdeaCount < Math.max(4, BACKLOG_REFILL_WEEKS * Math.max(0, Math.floor(articlesPerWeek)));

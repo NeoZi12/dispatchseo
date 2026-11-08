@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { isCloudMode } from "@/lib/cloud";
-import { planGate, polarConfigured, projectPlan } from "@/lib/billing";
+import { polarConfigured, projectPlan, writerGate } from "@/lib/billing";
 import { writerMode, type Project } from "@/lib/projects";
 import { missingCredentials } from "@/lib/writer/models";
 import { cadence, weekStartUtc, spacingDaysFor } from "./math";
@@ -170,7 +170,7 @@ export async function writerStartGate(project: Project, opts: { gated?: boolean 
   if (ceiling) return ceiling;
   if (isCloudMode()) {
     if (!polarConfigured()) return "plan inactive: billing is not configured on this deploy, so no article can be started.";
-    const gate = await planGate(project.id);
+    const gate = await writerGate(project.id);
     if (!gate.allowed) return `plan inactive: ${gate.reason}.`;
   }
   const plan = await projectPlan(project.id);
@@ -179,13 +179,14 @@ export async function writerStartGate(project: Project, opts: { gated?: boolean 
     const usage = await weekUsage(project.id, now);
     const ramp = await rampFor(project.id, plan.articlesPerWeek, now);
     if (ramp.stage === "pause") return `This site is held: ${ramp.reason}.`;
-    const verdict = cadence({ now, quota: ramp.quota, countThisWeek: usage.count, lastStartedAt: usage.lastStartedAt });
+    const verdict = cadence({ now, quota: ramp.quota, spacingDays: plan.spacingDays, countThisWeek: usage.count, lastStartedAt: usage.lastStartedAt });
+    const spacing = plan.spacingDays ?? spacingDaysFor(plan.articlesPerWeek);
     if (!verdict.write) {
       const when = verdict.nextAt ? ` The next one can start ${verdict.nextAt.toISOString().slice(0, 10)}.` : "";
       return verdict.reason === "quota met"
         ? `This site has used its ${ramp.quota} article${ramp.quota === 1 ? "" : "s"} for this week${ramp.reason ? ` (${ramp.reason})` : ""}.${when}`
         : verdict.reason === "spacing"
-          ? `Articles for one site start at least ${spacingDaysFor(plan.articlesPerWeek) === 1 ? "a day" : `${spacingDaysFor(plan.articlesPerWeek)} days`} apart.${when}`
+          ? `Articles for one site start at least ${spacing === 1 ? "a day" : `${spacing} days`} apart.${when}`
           : "This site's plan includes no articles right now.";
     }
   }

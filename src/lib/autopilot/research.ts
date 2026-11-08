@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { planGate, projectPlan } from "@/lib/billing";
+import { isFreePlan, projectPlan, writerGate } from "@/lib/billing";
 import { isCloudMode } from "@/lib/cloud";
 import { platformBudgetGate } from "@/lib/dataforseo-usage";
 import { publishRoute } from "@/lib/job-handlers/draft-status";
@@ -21,6 +21,7 @@ import { generate, judge, JUDGE_MAX_QUESTIONS_PER_CALL, choiceOf, isDryRun, miss
 import { writerMode, type Project } from "@/lib/projects";
 import {
   BACKLOG_TARGET,
+  FREE_BACKLOG_TARGET,
   LIST_WINDOW,
   PITCH_MAX,
   pageTypeOf,
@@ -389,7 +390,7 @@ export async function researchReadiness(project: Project): Promise<{ ready: true
   // reported once per cron run by the route, not here per project.
   if (publishRoute(project) === "blocked") return { ready: false, skipped: "setup incomplete: nowhere to publish yet" };
   if (missingCredentials().length) return { ready: false, skipped: "the writer has no model credentials on this deploy" };
-  const gate = await planGate(project.id);
+  const gate = await writerGate(project.id);
   if (!gate.allowed) return { ready: false, skipped: `plan inactive: ${gate.reason}` };
   return { ready: true };
 }
@@ -428,8 +429,12 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
     db().from("suggestions").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("type", "guide").in("status", ["approved", "pending"]),
   ]);
   const plan = await projectPlan(project.id);
+  // The free tier researches for a smaller backlog (FREE_BACKLOG_TARGET) and
+  // never buys the domain-strength lookup: a free site reads as DR 0, which
+  // is the strict KD zone a new small site belongs in anyway.
+  const free = isFreePlan(plan);
   const visibleNeeded = ideasNeeded(approvedCount ?? 0, plan.articlesPerWeek);
-  const needed = backlogNeeded(liveCount ?? 0);
+  const needed = backlogNeeded(liveCount ?? 0, free ? FREE_BACKLOG_TARGET : BACKLOG_TARGET);
   if (needed === 0) {
     await stamp();
     return { skipped: "the idea backlog is already full" };
@@ -491,7 +496,7 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
     return { bySeed, failures, rows: [...bySeed.values()].flat() };
   };
 
-  const dr = await getDomainRating(project.id, project.domain, creds).catch(() => null);
+  const dr = free ? null : await getDomainRating(project.id, project.domain, creds).catch(() => null);
   // The auto-approve ceiling, not the "propose and ask" one: nobody approves
   // anything on a hosted site, so only keywords research would have approved
   // on its own may land approved. Unknown DR reads as DR 0 (kd-zones does).
@@ -951,7 +956,7 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
     ...(oneHop ? { oneHop: true as const } : {}),
     ...(serpScored || serpError ? { serp: { scored: serpScored, usd: Math.round(serpUsd * 10_000) / 10_000, ...(serpError ? { error: serpError } : {}) } } : {}),
     ...(openPillar ? { cluster: openPillar } : {}),
-    backlog: { live: liveCount ?? 0, target: BACKLOG_TARGET, added: backlogged },
+    backlog: { live: liveCount ?? 0, target: free ? FREE_BACKLOG_TARGET : BACKLOG_TARGET, added: backlogged },
     ...(proposeError ? { proposeError } : {}),
     ...(judgeError ? { judgeError } : {}),
     ...(thin ? { note: thinNote(lang, rung, added.length, { topics: widerSearched, needed, soon }) } : {}),

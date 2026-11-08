@@ -127,6 +127,7 @@ export async function getHostedQueue(project: Pick<Project, "id" | "next_article
     starts = upcomingStarts({
       now: from,
       quota,
+      spacingDays: plan.spacingDays,
       countThisWeek: sameWeek ? usage.count : 0,
       lastStartedAt: usage.lastStartedAt,
       n: Math.max(queued.length, 1),

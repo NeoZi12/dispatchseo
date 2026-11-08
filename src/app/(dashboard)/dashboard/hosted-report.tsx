@@ -82,9 +82,6 @@ function messageOf(r: AutopilotReport, gaps: ReturnType<typeof setupGaps>): Mess
     };
   }
   if (r.plan.articlesPerWeek === 0) {
-    // Free tier (billing.ts isFreePlan): no new articles start today, which
-    // is what the engine does for it (articlesPerWeek 0) until the free
-    // tier opens there - then this line changes with the number it reads.
     if (r.plan.free) {
       return {
         title: "You're on the free plan.",
@@ -107,6 +104,15 @@ function messageOf(r: AutopilotReport, gaps: ReturnType<typeof setupGaps>): Mess
       title: `I'm paused, since ${shortDate(r.paused.at)}.`,
       sub: `${r.paused.reason} Nothing new starts until you resume; anything finished still publishes.`,
       resume: true,
+    };
+  }
+  // Last, so setup gaps and a pause speak first. Free tier (billing.ts isFreePlan): FREE_ARTICLES_PER_MONTH articles a
+  // month, the number the engine's free cadence reads.
+  if (r.plan.free && FREE_ARTICLES_PER_MONTH > 0) {
+    return {
+      title: `You're on the free plan: ${FREE_ARTICLES_PER_MONTH} articles a month.`,
+      sub: `Upgrade and ${STARTER_PER_WEEK === 1 ? "a new article goes" : `${STARTER_PER_WEEK} new articles go`} out every week, with the full queue and analytics.`,
+      link: { href: "/billing#plans", label: "See plans" },
     };
   }
   return null;

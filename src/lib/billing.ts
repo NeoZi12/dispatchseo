@@ -97,7 +97,14 @@ export const UNBILLED_ARTICLES_PER_WEEK = 2;
  *  and the scheduler must read THIS constant when it does, because the
  *  dashboard's upgrade panel compares Starter against it ("2x the free
  *  plan" appears only once this is above 0). */
-export const FREE_ARTICLES_PER_MONTH = 0;
+export const FREE_ARTICLES_PER_MONTH = 2;
+
+/** Days between two free-tier articles: the monthly number as the spacing
+ *  the scheduler already knows (one a week at most, this many days apart),
+ *  so 2 a month is one every 15 days - 24 a year, never a burst. */
+export function freeSpacingDays(): number {
+  return FREE_ARTICLES_PER_MONTH > 0 ? Math.floor(30 / FREE_ARTICLES_PER_MONTH) : 0;
+}
 
 const WEEKLY_ENV: Record<Tier, string> = {
   starter: "WRITER_WEEKLY_STARTER",
@@ -744,6 +751,26 @@ export async function ownerUserIdForProject(projectId: string): Promise<string |
 // Deterministic and stable, so a Scale->Starter downgrade doesn't delete
 // anything - the newest sites just fall outside coverage (crons skip them,
 // data stays, upgrading re-covers them instantly).
+/**
+ * May the hosted WRITER work on this site: start articles, research, and use
+ * the platform's DataForSEO account for it. planGate's answer, widened to the
+ * free tier: an owner with no live plan gets articles on ONE site, their
+ * oldest. Everything that is a paid perk (rank tracking in daily-ranks, the
+ * pipeline builders) keeps asking planGate itself, so opening the free tier
+ * here never opens those.
+ */
+export async function writerGate(projectId: string): Promise<{ allowed: true; free?: true } | { allowed: false; reason: string }> {
+  const gate = await planGate(projectId);
+  if (gate.allowed || FREE_ARTICLES_PER_MONTH <= 0) return gate;
+  const plan = await projectPlan(projectId).catch(() => null);
+  if (!isFreePlan(plan)) return gate;
+  const ownerId = await ownerUserIdForProject(projectId);
+  if (!ownerId) return gate;
+  const [first] = await ownedProjectsOldestFirst(ownerId);
+  if (first !== projectId) return { allowed: false, reason: "the free plan covers one site" };
+  return { allowed: true, free: true };
+}
+
 async function ownedProjectsOldestFirst(ownerId: string): Promise<string[]> {
   const { data } = await db()
     .from("projects")
@@ -845,7 +872,7 @@ export const planPausedProjectSlugs = cache(async (): Promise<Set<string>> => {
 // what the decision table prices.
 export async function projectPlan(
   projectId: string,
-): Promise<{ tier: Tier | null; status: string; articlesPerWeek: number }> {
+): Promise<{ tier: Tier | null; status: string; articlesPerWeek: number; spacingDays?: number }> {
   // The operator's per-site number applies wherever a plan's number would:
   // self-host, unbilled and ownerless rows too. Never where the answer is
   // 0 for want of a live subscription - an override does not buy articles.
@@ -855,9 +882,13 @@ export async function projectPlan(
   const ownerId = await ownerUserIdForProject(projectId);
   if (!ownerId) return { tier: null, status: "unbilled", articlesPerWeek: override ?? UNBILLED_ARTICLES_PER_WEEK };
   const sub = await getSubscription(ownerId);
-  if (!sub) return { tier: null, status: "none", articlesPerWeek: 0 };
+  // No live subscription = the free tier (isFreePlan): one article a week
+  // at most, freeSpacingDays() apart - FREE_ARTICLES_PER_MONTH a month. A
+  // lapsed payer lands here too and keeps writing at the free pace.
+  const free = FREE_ARTICLES_PER_MONTH > 0 ? { articlesPerWeek: 1, spacingDays: freeSpacingDays() } : { articlesPerWeek: 0 };
+  if (!sub) return { tier: null, status: "none", ...free };
   const tier: Tier = sub.status === "trialing" ? "starter" : sub.tier;
-  if (!isActive(sub)) return { tier, status: sub.status, articlesPerWeek: 0 };
+  if (!isActive(sub)) return { tier, status: sub.status, ...(isFreePlan({ status: sub.status }) ? free : { articlesPerWeek: 0 }) };
   return { tier, status: sub.status, articlesPerWeek: override ?? articlesPerWeekFor(tier) };
 }
 

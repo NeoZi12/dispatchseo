@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { planGate } from "@/lib/billing";
+import { writerGate } from "@/lib/billing";
 import { reportCronRun } from "@/lib/cron-alerts";
 import type { Project } from "@/lib/projects";
 import { consecutivePostPickFailures, FAILURE_STREAK_ALARM, noArticleAlarm } from "./math";
@@ -56,7 +56,7 @@ export const NEVER_LIVE_MARK = "not live after 48 hours";
 export async function siteHealthProblems(project: Project, skips: string[], now: Date): Promise<string[]> {
   const problems: string[] = [];
   if (project.writer_paused_at) return problems; // a pause has its own banner
-  const gate = await planGate(project.id);
+  const gate = await writerGate(project.id);
   if (!gate.allowed) return problems; // a lapsed plan is not the pipeline's fault
 
   const [{ data: runs }, { data: stuck }] = await Promise.all([

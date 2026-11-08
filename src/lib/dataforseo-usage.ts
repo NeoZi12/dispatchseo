@@ -5,8 +5,8 @@ import {
   getSubscription,
   isActive,
   ownerUserIdForProject,
-  planGate,
   polarConfigured,
+  writerGate,
   type Tier,
 } from "./billing";
 
@@ -335,7 +335,7 @@ async function resolveBilledTo(project: Project): Promise<"own" | "platform" | n
   ) {
     return "own";
   }
-  if (isCloudMode() && platformDataforseoEnv() && (await planGate(project.id)).allowed) {
+  if (isCloudMode() && platformDataforseoEnv() && (await writerGate(project.id)).allowed) {
     return "platform";
   }
   return null;
