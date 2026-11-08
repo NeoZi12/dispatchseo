@@ -74,4 +74,9 @@ export const GONE_POSTS: ReadonlySet<string> = new Set([
   "ai-powered-seo-tools-compared",
   "programmatic-seo-tools",
   "best-keyword-clustering-tool",
+  // 2026-11-08 (later the same day): the last "best X tools" listicle, and the
+  // two duplicates that had been folded into it. Every "best X" page is out.
+  "best-seo-tools-for-beginners",
+  "best-free-seo-tools",
+  "seo-tools-for-small-business",
 ]);

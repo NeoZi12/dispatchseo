@@ -56,8 +56,6 @@ const nextConfig: NextConfig = {
       // back. Posts with no replacement are 410s (src/lib/pruned-posts.ts) -
       // and a config redirect runs BEFORE src/proxy.ts, so never point one of
       // these at a slug in GONE_POSTS.
-      { source: "/blog/best-free-seo-tools", destination: "/blog/best-seo-tools-for-beginners", permanent: true },
-      { source: "/blog/seo-tools-for-small-business", destination: "/blog/best-seo-tools-for-beginners", permanent: true },
       { source: "/blog/diy-seo-for-small-business", destination: "/blog/can-you-do-seo-on-your-own", permanent: true },
       { source: "/blog/ai-visibility-tracking-tool", destination: "/blog/generative-engine-optimization-tools", permanent: true },
     ];
