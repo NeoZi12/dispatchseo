@@ -748,6 +748,58 @@ export function sanitizeWriterMarkdown(markdown: string): string {
   );
 }
 
+/**
+ * The MDX-safety pass for an article the OWNER'S OWN AGENT hands in
+ * (submit_article), which lands in the customer's .mdx file with the full
+ * MDX feature set. Unlike sanitizeWriterMarkdown it keeps what those
+ * articles legitimately use - relative own-site links, the site's MDX
+ * components (<Callout>, tables as components) - and removes only what can
+ * run or break a build (security audit 2026-11-08):
+ *   - tags with an on* handler, or a javascript:/data:/vbscript: URL in any
+ *     attribute, and script/iframe/style/object/embed/form/meta/link/base
+ *     tags, are dropped whole (their text, when any, stays);
+ *   - a brace in PROSE (outside tags and code) becomes an entity, so "{expr}"
+ *     is text, never an evaluated expression; braces inside a tag stay, so
+ *     a component's props keep working;
+ *   - a line starting with import/export outside code is neutralised the way
+ *     the writer's sanitizer does.
+ */
+const AGENT_DROP_TAG_RE = /<\/?\s*(script|iframe|style|object|embed|form|meta|link|base)\b[^<>]*>/gi;
+const AGENT_HANDLER_RE = /\son[a-z]+\s*=/i;
+const AGENT_BAD_URL_RE = /=\s*["']?\s*(javascript|data|vbscript)\s*:/i;
+export function hardenAgentMdx(markdown: string): string {
+  return withProseOnly(markdown, (prose) => {
+    const parts = prose.replace(/<!--[\s\S]*?-->/g, "").replace(AGENT_DROP_TAG_RE, "").split(/(<\/?[A-Za-z][^<>]*>)/g);
+    // A dropped opening tag takes its closing tag with it: MDX refuses an
+    // unmatched </a> outright, which would fail the customer's build.
+    const pendingClose = new Map<string, number>();
+    const out = parts.map((part, i) => {
+      if (i % 2 === 1) {
+        const m = /^<(\/?)([A-Za-z][\w.-]*)/.exec(part);
+        const name = (m?.[2] ?? "").toLowerCase();
+        if (m?.[1] === "/") {
+          const n = pendingClose.get(name) ?? 0;
+          if (n > 0) {
+            pendingClose.set(name, n - 1);
+            return "";
+          }
+          return part;
+        }
+        // A tag: dropped when it can run something; otherwise kept as is.
+        if (AGENT_HANDLER_RE.test(part) || AGENT_BAD_URL_RE.test(part)) {
+          if (!/\/\s*>$/.test(part)) pendingClose.set(name, (pendingClose.get(name) ?? 0) + 1);
+          return "";
+        }
+        return part;
+      }
+      return part
+        .replace(/[{}]/g, (ch) => (ch === "{" ? "&#123;" : "&#125;"))
+        .replace(/^(\s*)(import|export)(?=\s)/gm, (m, ws: string, kw: string) => `${ws}&#${kw.charCodeAt(0)};${kw.slice(1)}`);
+    });
+    return out.join("");
+  });
+}
+
 /** The comparable form of a site URL: host without www, path without a
  *  trailing slash, no query or fragment. */
 export function pageKey(url: string): string | null {

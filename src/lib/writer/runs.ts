@@ -112,6 +112,14 @@ export async function startWriterRun(input: {
     throw new Error(`could not start the writer: ${error.message}`);
   }
   const run = data as WriterRun;
+  // startCaps counted BEFORE the insert; N starts racing all passed it. Count
+  // again now that this row exists: over the cap, this run ends here (fail
+  // closed - a legitimate single start is never over it).
+  const over = await overCapsAfterInsert(input.projectId, run).catch(() => "could not confirm this site's start caps");
+  if (over) {
+    await failRun(run, over).catch(() => {});
+    return { refused: over };
+  }
   // A free article is entered in the owner's ledger the moment it starts
   // (free-gate.ts). No record, no run: an uncounted free start is exactly
   // the hole the ledger closes.
@@ -157,6 +165,23 @@ async function recordIfFree(project: { id: string; domain: string | null }, run:
   const starts = ((data ?? []) as { started_at: string }[]).map((r) => r.started_at);
   const recent = starts.filter((s) => now - Date.parse(s) < freeSpacingDays() * 86_400_000).length;
   if (starts.filter((s) => s >= monthStart).length > FREE_ARTICLES_PER_MONTH || recent > 1) return "another free article started at the same moment";
+  return null;
+}
+
+async function overCapsAfterInsert(projectId: string, run: WriterRun): Promise<string | null> {
+  const startOfDay = `${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`;
+  const [{ count: running, error: e1 }, { count: today, error: e2 }, { data: row }] = await Promise.all([
+    db().from("writer_runs").select("id", { count: "exact", head: true }).eq("project_id", projectId).eq("status", "running"),
+    db().from("writer_runs").select("id", { count: "exact", head: true }).eq("project_id", projectId).gte("created_at", startOfDay),
+    db().from("projects").select("writer_weekly_quota").eq("id", projectId).maybeSingle(),
+  ]);
+  if (e1 || e2) return "could not confirm this site's start caps";
+  const quota = Number((row as { writer_weekly_quota?: number | null } | null)?.writer_weekly_quota);
+  const dailyCap = Number.isFinite(quota) && quota > 0 ? Math.max(MAX_STARTS_PER_DAY, Math.ceil(quota / 7) * 2) : MAX_STARTS_PER_DAY;
+  // This run is one of the counted rows, so "over" means strictly more than the cap.
+  if ((running ?? 0) > MAX_RUNNING_PER_PROJECT) return `This site already has ${MAX_RUNNING_PER_PROJECT} articles being written; this start was refused.`;
+  if ((today ?? 0) > dailyCap) return `This site reached its ${dailyCap} starts for today; this start was refused.`;
+  void run;
   return null;
 }
 

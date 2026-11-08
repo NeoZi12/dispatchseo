@@ -45,6 +45,7 @@ import {
   OWNER_FACTS_MAX,
 } from "@/lib/content-prefs";
 import { mergeContentPrefs, saveContentPrefs } from "@/lib/content-prefs-store";
+import { hardenAgentMdx } from "@/lib/writer/evidence";
 import { renderInstructions, WORKFLOWS } from "@/lib/instructions";
 import { backendBaseUrl, getPipelinePack, hasDataforseo } from "@/lib/pipeline-pack";
 import { deferStep, DEFERRABLE_IDS, getSetupStep, undeferStep } from "@/lib/setup-path";
@@ -1013,6 +1014,11 @@ const mcpHandler = createMcpHandler(
     // rejection is not a dead end: every failed check carries a `fix` written
     // TO the submitting model, so the normal path is submit -> read the fixes
     // -> resubmit, without a human in the loop.
+    // Intake bounds for submit_article (security audit 2026-11-08): a body
+    // longer than this is not an article, and a site gets this many stored
+    // rejections a day before further rejected submissions stop being kept.
+    const SUBMIT_MARKDOWN_MAX_CHARS = 200_000;
+    const SUBMIT_REJECTED_PER_DAY = 30;
     server.registerTool(
       "submit_article",
       {
@@ -1037,30 +1043,35 @@ const mcpHandler = createMcpHandler(
               "The queued idea this article fulfils (from get_suggestions / get_build_brief). " +
                 "Omit only for an article the owner asked for that was never in the queue.",
             ),
-          title: z.string().min(1).describe("The article title as it should appear on the page."),
+          title: z.string().min(1).max(300).describe("The article title as it should appear on the page."),
           slug: z
             .string()
             .min(1)
+            .max(200)
             .describe("URL slug, lowercase and hyphenated, no leading or trailing slash - e.g. 'how-to-price-a-service'."),
           meta_description: z
             .string()
+            .max(600)
             .optional()
             .describe("Meta description, roughly 120-160 characters. Omitted means we build one from the opening."),
           primary_keyword: z
             .string()
             .min(1)
+            .max(200)
             .describe("The single search term this article targets, exactly as someone would type it."),
           markdown: z
             .string()
             .min(1)
+            .max(SUBMIT_MARKDOWN_MAX_CHARS)
             .describe("The full article in markdown. No frontmatter, no raw HTML, no code fences wrapping the whole thing."),
           faq: z
             .array(
               z.object({
-                question: z.string().describe("The question, phrased as a real question ending in '?'."),
-                answer: z.string().describe("The answer in a couple of full sentences - at least 8 words, never a stub."),
+                question: z.string().max(500).describe("The question, phrased as a real question ending in '?'."),
+                answer: z.string().max(4000).describe("The answer in a couple of full sentences - at least 8 words, never a stub."),
               }),
             )
+            .max(40)
             .optional()
             .describe(
               "Real Q&A pairs for the FAQ block and its schema. Each question ends in '?' and each answer is a couple of sentences, not a stub.",
@@ -1068,16 +1079,18 @@ const mcpHandler = createMcpHandler(
           sources: z
             .array(
               z.object({
-                url: z.string().describe("The source's full URL, including https://."),
-                title: z.string().optional().describe("The source page or publication's title."),
+                url: z.string().max(2048).describe("The source's full URL, including https://."),
+                title: z.string().max(300).optional().describe("The source page or publication's title."),
               }),
             )
+            .max(60)
             .optional()
             .describe(
               "External sources you actually used, as full URLs. Placeholder or example.com URLs fail the gate.",
             ),
           cover_brief: z
             .string()
+            .max(500)
             .optional()
             .describe("Optional one-line description of the cover image's subject. Never published as text."),
         },
@@ -1193,6 +1206,27 @@ const mcpHandler = createMcpHandler(
           siteName: p.name,
         });
 
+        // A rejected submission is stored too (below), so an agent looping on
+        // a failing article - or anyone with a token - could fill the table
+        // with rejected rows. Past the day's allowance the verdict still comes
+        // back in full, but nothing is written (security audit 2026-11-08).
+        if (!report.ok && !existingId) {
+          const since = new Date(Date.now() - 24 * 3_600_000).toISOString();
+          const { count, error: countError } = await db()
+            .from("article_drafts")
+            .select("id", { count: "exact", head: true })
+            .eq("project_id", p.id)
+            .eq("status", "rejected")
+            .gte("created_at", since);
+          if (countError || (count ?? 0) >= SUBMIT_REJECTED_PER_DAY) {
+            const failed = report.blocking.filter((c) => !c.passed);
+            return failWith(
+              `Not published, and not stored: this site has had ${SUBMIT_REJECTED_PER_DAY} rejected submissions in 24 hours. Fix the checks below before submitting again.`,
+              { status: "rejected", score: report.score, blocking: failed.map((c) => ({ id: c.id, title: c.title, fix: c.fix })) },
+            );
+          }
+        }
+
         // Caps, checked only for a NEW accepted article.
         //
         // Deliberately not checked earlier: a rejected submission consumes
@@ -1213,8 +1247,13 @@ const mcpHandler = createMcpHandler(
           slug: submission.slug,
           meta_description: input.meta_description ?? null,
           primary_keyword: submission.primaryKeyword,
-          markdown: submission.markdown,
-          faq: submission.faq,
+          // Stored MDX-safe (writer/evidence.ts hardenAgentMdx): the gate
+          // above judged the agent's text as sent, so its fixes name what
+          // the agent wrote; what reaches the customer's .mdx can neither run
+          // nor break the build. Own-site relative links and the site's MDX
+          // components survive it.
+          markdown: hardenAgentMdx(submission.markdown),
+          faq: submission.faq.map((f) => ({ question: hardenAgentMdx(f.question), answer: hardenAgentMdx(f.answer) })),
           sources: submission.sources,
           cover_brief: input.cover_brief ?? null,
           validation: report,

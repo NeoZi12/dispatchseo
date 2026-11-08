@@ -272,12 +272,20 @@ export async function retryArticle(_prev: ActionState, fd: FormData): Promise<Ac
       .maybeSingle();
     unparked = Boolean(data);
   }
-  const started = await startWriterRun({
-    projectId: project.id,
+  // A hosted site's retry claims the same atomic slot as the scheduler and
+  // write_article (scheduler.ts startHostedRunClaimed): N parallel Retry
+  // posts used to pass the quota, the spacing and the spend ceilings
+  // together (security audit 2026-11-08, #3).
+  const input = {
     suggestionId: run.suggestion_id,
     keyword: run.suggestion_id ? null : run.keyword,
     titleHint: run.title_hint,
-  }).catch(() => ({ run: undefined, refused: "" }));
+  };
+  const { writerMode } = await import("@/lib/projects");
+  const started = await (writerMode(project) === "hosted"
+    ? import("@/lib/autopilot/scheduler").then((m) => m.startHostedRunClaimed(project, input))
+    : startWriterRun({ projectId: project.id, ...input })
+  ).catch(() => ({ run: undefined, refused: "" }));
   if (!started.run) {
     // Refused (quota, spacing, plan): put the idea back where it was, so the
     // scheduler does not pick up an idea the writer had set aside.

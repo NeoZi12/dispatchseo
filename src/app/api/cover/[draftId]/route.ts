@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { draftPicturePath, loadPictureCover, renderCoverPng } from "@/lib/cover-art";
+import { draftPicturePath, loadPictureCover, renderCoverPng, storePictureCover } from "@/lib/cover-art";
 import { normalizeTheme } from "@/lib/hosted-theme";
 
 // The cover image for a writer article, drawn on demand (src/lib/cover-art.ts).
@@ -68,11 +68,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ draftId
     seed: draft.slug || draftId,
     theme: theme && theme.source !== "default" ? { accent: theme.accent, mode: theme.mode } : null,
   });
+  // Kept in the covers bucket as drafts/<id>.png, where loadPictureCover above
+  // finds it next time: a render costs real CPU, and a request with a
+  // cache-busting query reached it every time (security audit 2026-11-08).
+  // A painted picture stored later under drafts/<id> still wins (it is tried
+  // first). Best-effort: a storage failure only means another render.
+  await storePictureCover(`${draftPicturePath(draftId)}.png`, Buffer.from(png), "image/png").catch(() => false);
   return new Response(new Uint8Array(png), {
     headers: {
       "Content-Type": "image/png",
-      // Not immutable: an operator can still attach a drawing to an older
-      // draft, and the dashboard should pick that up within the hour.
       "Cache-Control": "public, max-age=3600",
     },
   });
