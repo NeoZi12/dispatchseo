@@ -21,13 +21,17 @@ import { listProjects, writerMode } from "@/lib/projects";
 // here (the per-site half of the same data is get_cron_health and
 // get_autopilot).
 
-export function isOperator(userId: string | null | undefined): boolean {
-  if (!isCloudMode() || !userId) return false;
+/** The cloud operator's user ids. Empty on self-host and when unset. */
+export function operatorUserIds(): string[] {
+  if (!isCloudMode()) return [];
   return (process.env.OPERATOR_USER_IDS ?? "")
     .split(",")
     .map((s) => s.trim())
-    .filter(Boolean)
-    .includes(userId);
+    .filter(Boolean);
+}
+
+export function isOperator(userId: string | null | undefined): boolean {
+  return !!userId && operatorUserIds().includes(userId);
 }
 
 export type OperatorSite = {

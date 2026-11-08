@@ -168,6 +168,8 @@ const PROBES: Probe[] = [
   // functions; the column is the part a probe can see.
   { migration: "0076_owner_analytics_v3", table: "web_visits", column: "source_id" },
   { migration: "0075_batch_lane", table: "writer_tasks", column: "batch_id" },
+  // 0077: the per-day network id the owner page uses to hide the operator.
+  { migration: "0077_web_visits_net", table: "web_visits", column: "net" },
 ];
 
 // Migrations that genuinely CANNOT be probed through this mechanism, with the

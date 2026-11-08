@@ -168,6 +168,17 @@ function visitorHash(h: Headers, ua: string): string {
   return createHash("sha256").update(`${salt}|${day}|${clientIp(h)}|${ua}`).digest("hex").slice(0, 20);
 }
 
+// The same, without the user agent: one network on one day, every browser on
+// it (migration 0077). Only used to leave the operator's own visits out of
+// /owner - their test browser or phone on the same wifi.
+function netHash(h: Headers): string | null {
+  const ip = clientIp(h);
+  if (!ip) return null;
+  const salt = process.env.VISITOR_SALT ?? process.env.CRON_SECRET ?? process.env.DASHBOARD_PASSWORD ?? "dispatchseo";
+  const day = new Date().toISOString().slice(0, 10);
+  return createHash("sha256").update(`net|${salt}|${day}|${ip}`).digest("hex").slice(0, 20);
+}
+
 // The referring site, host only (a referrer's path can carry a search term
 // or a private URL). Our own host is navigation, not a referral.
 function referrerHost(raw: string | null | undefined, ownHost: string): string | null {
@@ -216,13 +227,19 @@ export async function recordVisit(input: VisitInput): Promise<void> {
       device: deviceOf(ua, bot),
       country: (h.get("x-vercel-ip-country") ?? h.get("cf-ipcountry") ?? null)?.toUpperCase().slice(0, 2) ?? null,
       visitor: visitorHash(h, ua),
+      net: netHash(h),
       user_id: input.userId ?? null,
       hosted_key: input.area === "hosted" ? hostedKey(input.url.pathname) : null,
       utm_source: p.get("utm_source")?.slice(0, 80) || null,
       utm_medium: p.get("utm_medium")?.slice(0, 80) || null,
       utm_campaign: p.get("utm_campaign")?.slice(0, 120) || null,
     };
-    await db().from("web_visits").insert(row);
+    const { error } = await db().from("web_visits").insert(row);
+    // Before 0077 is applied the column does not exist: keep the visit.
+    if (error && /\bnet\b/.test(error.message)) {
+      const { net: _net, ...rest } = row;
+      await db().from("web_visits").insert(rest);
+    }
   } catch {
     // Never. See the header comment.
   }

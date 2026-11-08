@@ -1,4 +1,6 @@
 import { db } from "./db";
+import { operatorUserIds } from "./autopilot/operator";
+import { isCloudMode } from "./cloud";
 import { AUTOMATED_BROWSER } from "./visits";
 import { aiReferrer } from "./owner-insights";
 import { windows, type Range } from "./owner-analytics";
@@ -122,6 +124,7 @@ type Row = {
   bot: boolean;
   ua: string | null;
   visitor: string | null;
+  net?: string | null;
   path: string;
   referrer: string | null;
   country: string | null;
@@ -134,14 +137,48 @@ type Row = {
 const CAP = 8000;
 const PAGE = 1000;
 
+/** Which visits are the operator's own.
+ *
+ *  The IP is never stored. `visitor` hashes IP + user agent + UTC day (one
+ *  browser), `net` hashes IP + day (one network, migration 0077). If any row
+ *  under either was signed in as the operator (the beacon and the dashboard
+ *  both carry the user id), every row under it is the operator: the
+ *  logged-out landing loads before they signed in, a second test browser, the
+ *  phone on the same wifi. Self-host has no user ids, but only its one owner
+ *  gets past the proxy into the dashboard ("app" rows). Misses a network the
+ *  operator never signed in from that day; hides anyone else who shared it. */
+async function operatorKeys(visitors: string[], nets: string[]): Promise<{ visitors: Set<string>; nets: Set<string> }> {
+  const ops = operatorUserIds();
+  const selfHost = !isCloudMode();
+  const mine = { visitors: new Set<string>(), nets: new Set<string>() };
+  if (!ops.length && !selfHost) return mine;
+  for (const [col, values] of [["visitor", visitors], ["net", nets]] as const) {
+    for (let i = 0; i < values.length; i += 150) {
+      const chunk = values.slice(i, i + 150);
+      for (let off = 0; off < CAP; off += PAGE) {
+        let q = db().from("web_visits").select(col).in(col, chunk);
+        q = selfHost ? q.eq("area", "app") : q.in("user_id", ops);
+        const { data, error } = await q.range(off, off + PAGE - 1);
+        if (error) throw new Error(error.message);
+        const got = (data ?? []) as Array<Record<string, string | null>>;
+        for (const r of got) if (r[col]) (col === "visitor" ? mine.visitors : mine.nets).add(r[col]!);
+        if (got.length < PAGE) break;
+      }
+    }
+  }
+  return mine;
+}
+
 export async function visitorsReport(range: Range, now = Date.now()): Promise<VisitorsReport> {
   const w = windows(range, now);
   // PostgREST hands back at most 1000 rows a request: page through, newest first.
   const rows: Row[] = [];
+  // `net` arrives with 0077; read without it until that is applied.
+  let cols = "at, kind, bot, ua, visitor, net, path, referrer, country, device, utm_source, utm_campaign, user_id";
   for (let off = 0; off < CAP; off += PAGE) {
     const { data, error } = await db()
       .from("web_visits")
-      .select("at, kind, bot, ua, visitor, path, referrer, country, device, utm_source, utm_campaign, user_id")
+      .select(cols)
       .in("kind", ["beacon", "import", "engaged"])
       // People, plus browsers that admitted to being automated (a declared
       // crawler rendering the page, Googlebot say, is in the bot numbers already).
@@ -151,15 +188,27 @@ export async function visitorsReport(range: Range, now = Date.now()): Promise<Vi
       .lt("at", new Date(w.to).toISOString())
       .order("at", { ascending: false })
       .range(off, off + PAGE - 1);
+    if (error && cols.includes(" net,") && /\bnet\b/.test(error.message)) {
+      cols = cols.replace(" net,", "");
+      off -= PAGE;
+      continue;
+    }
     if (error) throw new Error(error.message);
-    const got = (data ?? []) as Row[];
+    const got = (data ?? []) as unknown as Row[];
     rows.push(...got);
     if (got.length < PAGE) break;
   }
 
+  // The operator's own browsing is not a visitor.
+  const distinct = (k: "visitor" | "net") => [...new Set(rows.map((r) => r[k]).filter((v): v is string => !!v))];
+  const mine = await operatorKeys(distinct("visitor"), distinct("net"));
+  const isMine = (r: Row) => (!!r.visitor && mine.visitors.has(r.visitor)) || (!!r.net && mine.nets.has(r.net));
+
   // Oldest first, so the first row of a visit is where it started.
   const byVisit = new Map<string, Row[]>();
+  const hidden = new Set(rows.filter(isMine).map((r) => r.visitor).filter(Boolean));
   rows.forEach((r, i) => {
+    if (isMine(r) || (r.visitor && hidden.has(r.visitor))) return;
     const key = r.visitor ? `${r.visitor}:${r.at.slice(0, 10)}` : `row:${i}`;
     const list = byVisit.get(key);
     if (list) list.unshift(r);
