@@ -1,4 +1,5 @@
 import { oauthSearchConsole } from "@/lib/gsc-oauth";
+import { fetchProjectUrl } from "@/lib/url-guard";
 import { siteOrigin } from "@/lib/hosted-blog";
 import type { Project } from "@/lib/projects";
 
@@ -44,4 +45,55 @@ export async function submitHostedSitemap(project: Project): Promise<"submitted"
     console.warn(`[gsc-sitemaps] sitemap submit for ${project.slug} failed: ${err?.message ?? String(e)}`);
     return "failed";
   }
+}
+
+/**
+ * The same, for a site that publishes on its own (a repo or WordPress): its
+ * sitemap is wherever its robots.txt says (the first "Sitemap:" line on its
+ * own host), else /sitemap.xml. Called when an article is confirmed live, so
+ * Google re-reads the sitemap now rather than whenever it next decides to -
+ * ClockedCode's had not been read since July (2026-11-08) and 7 of its 8
+ * newest articles were "URL is unknown to Google". OAuth only: the shared
+ * service account stays read-only, so an operator site connected through it
+ * gets "no-connection" and needs the owner's Google connection to resubmit.
+ * Never the Indexing API - that is for job postings and livestreams only.
+ */
+export async function submitSiteSitemap(project: Project): Promise<"submitted" | "no-connection" | "no-property" | "no-scope" | "failed"> {
+  if (!project.gsc_oauth_refresh_token) return "no-connection";
+  if (!project.gsc_site_url) return "no-property";
+  const feedpath = await siteSitemapUrl(project).catch(() => null);
+  if (!feedpath) return "failed";
+  try {
+    const sc = await oauthSearchConsole(project.gsc_oauth_refresh_token);
+    await sc.sitemaps.submit({ siteUrl: project.gsc_site_url, feedpath });
+    return "submitted";
+  } catch (e) {
+    const err = e as { code?: number | string; message?: string };
+    if (Number(err?.code) === 403 || /insufficient.*scope|ACCESS_TOKEN_SCOPE_INSUFFICIENT|insufficientPermissions/i.test(String(err?.message ?? ""))) return "no-scope";
+    console.warn(`[gsc-sitemaps] sitemap submit for ${project.slug} failed: ${err?.message ?? String(e)}`);
+    return "failed";
+  }
+}
+
+async function siteSitemapUrl(project: Project): Promise<string> {
+  const origin = `https://${project.domain.replace(/^www\./, "")}`;
+  const res = await fetchProjectUrl(`${origin}/robots.txt`, project.domain, { timeoutMs: 5_000, userAgent: "DispatchSEO-Sitemap/1.0 (+https://dispatchseo.com)" });
+  if (res?.ok) {
+    const text = (await res.text()).slice(0, 50_000);
+    for (const m of text.matchAll(/^\s*sitemap:\s*(\S+)\s*$/gim)) {
+      try {
+        const u = new URL(m[1]);
+        const bare = project.domain.replace(/^www\./, "").toLowerCase();
+        const host = u.hostname.toLowerCase();
+        // Only a sitemap on the site's own host: Search Console refuses
+        // another host's anyway, and robots.txt is the site's to write.
+        if (u.protocol === "https:" && (host === bare || host.endsWith(`.${bare}`))) return u.toString();
+      } catch {
+        // not a URL
+      }
+    }
+  } else {
+    await res?.body?.cancel().catch(() => undefined);
+  }
+  return `${origin}/sitemap.xml`;
 }

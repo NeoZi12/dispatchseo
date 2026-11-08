@@ -16,6 +16,7 @@ import {
 import type { Project } from "@/lib/projects";
 import type { Job } from "@/lib/jobs";
 import { trackPublishedKeyword } from "@/lib/autopilot/tracking";
+import { submitSiteSitemap } from "@/lib/gsc-sitemaps";
 import { ideaDone } from "@/lib/writer/runs";
 import { warmScreenshotsLater } from "@/lib/page-screenshot";
 
@@ -146,6 +147,8 @@ export async function runVerifyJob(job: Job): Promise<void> {
   // Live: a hosted site's keyword starts being rank-tracked now, not when it
   // was queued (autopilot/tracking.ts).
   await trackPublishedKeyword(scopeProject, row);
+  // Google re-reads the site's sitemap now (gsc-sitemaps.ts); best-effort.
+  await submitSiteSitemap(scopeProject).catch(() => undefined);
 
   // The idea is finished. started_at is cleared for the same reason
   // update_suggestion clears it: it is a build clock, and a stale one feeds
@@ -328,6 +331,8 @@ async function verifyRepoArticle(job: Job, draftId: string): Promise<void> {
     }
 
     await trackPublishedKeyword(project, row);
+    // Google re-reads the site's sitemap now (gsc-sitemaps.ts); best-effort.
+    await submitSiteSitemap(project).catch(() => undefined);
 
     if (row.suggestion_id) {
       await db()
