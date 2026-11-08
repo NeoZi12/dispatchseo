@@ -36,3 +36,8 @@ overrides:
   # the tree is a thing every self-hoster's scanner will flag, and the fix is a
   # patch bump.
   '@hono/node-server': ">=2.0.5"
+  # mcp-handler@1.1.0 pins its @modelcontextprotocol/sdk peer to exactly
+  # 1.26.0; force the patched SDK we depend on directly so only one copy
+  # resolves. (pnpm 11 ignores the package.json "pnpm" field, so the
+  # override lives here with the others.)
+  '@modelcontextprotocol/sdk': "1.32.2"
