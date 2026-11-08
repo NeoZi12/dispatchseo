@@ -838,6 +838,10 @@ export async function ownerLookup(projectId: string): Promise<{ ownerId: string 
   const memo = projectOwnerMemo();
   const hit = memo.get(projectId);
   if (hit) return { ownerId: hit, error: null };
+  // The row's owner from the caller's copy when it has one (projectHint),
+  // like ownerUserIdForProject above.
+  const hinted = projectHint(projectId)?.owner_user_id;
+  if (hinted !== undefined) return { ownerId: hinted ?? null, error: null };
   const { data, error } = await db().from("projects").select("owner_user_id").eq("id", projectId).maybeSingle();
   if (error) return { ownerId: null, error: error.message };
   const ownerId = (data as { owner_user_id: string | null } | null)?.owner_user_id ?? null;
