@@ -153,6 +153,8 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "improved",
     text: "The Tools page now says plainly that interactive tools aren't available yet, instead of offering an upgrade for them.",
+  },
+  {
     kind: "new",
     text:
       "Your first article starts the moment you connect your site. Research and the first run begin within minutes of " +

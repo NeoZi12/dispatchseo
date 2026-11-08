@@ -69,10 +69,6 @@ const HANDLERS: Record<string, () => Promise<Handler>> = {
   autopilot: async () => (await import("@/lib/job-handlers/autopilot")).runAutopilotJob,
   // A batch-lane writer run waiting on Anthropic's Message Batches API (0075).
   "batch-poll": async () => (await import("@/lib/job-handlers/batch-poll")).runBatchPollJob,
-  // One hosted project's daily pass (research + scheduler), run NOW rather
-  // than at tomorrow's /api/cron/autopilot - queued by the first crawl so a
-  // new site's first article starts minutes after "You're connected".
-  autopilot: async () => (await import("@/lib/job-handlers/autopilot")).runAutopilotJob,
   crawl: async () => (await import("@/lib/job-handlers/crawl")).runCrawlJob,
   // A new hosted site right after setup: switch the blog on, confirm the
   // site with Google, and queue the first crawl (which chains research and
