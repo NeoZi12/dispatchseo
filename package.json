@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",
-    "@polar-sh/sdk": "^0.49.0",
+    "@polar-sh/sdk": "^1.0.2",
     "@resvg/resvg-js": "^2.6.2",
     "@sentry/nextjs": "^10.78.0",
     "@supabase/ssr": "^0.12.3",
