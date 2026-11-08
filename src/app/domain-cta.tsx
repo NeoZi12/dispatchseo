@@ -48,8 +48,10 @@ export function DomainCta() {
           a phone has no room beside the field (landing.css). */}
       <span className="cta-note" aria-hidden="true">Type your domain</span>
       <svg className="cta-note-arrow" viewBox="0 0 72 48" aria-hidden="true">
-        <path d="M5 25c9-7 21-9.5 32-7.5 8.5 1.6 15.5 5.2 22 10.6" />
-        <path d="M59.4 28.4c-3.8.4-7.8.1-11.2-1.2M59.4 28.4c-.2-3.6-1.2-7.2-3-10.2" />
+        {/* One lopsided cubic for the shaft; the head is a single pen stroke
+            (barb in, tip, barb out) aimed along the shaft's end tangent. */}
+        <path d="M4 27C18 14 42 12 62 25" />
+        <path d="M50.6 25.6C54.4 25.8 58.4 25.5 62 25C60.1 21.7 58.6 18.6 57.4 15" />
       </svg>
       <div className="domain-group">
         <span className="domain-ic">
