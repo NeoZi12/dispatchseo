@@ -17,6 +17,10 @@ import { rampFor } from "./ramp";
 const CLIENT_KIND = "dispatchseo-writer";
 
 export type WeekUsage = {
+  /** Set when the rows could not be read: every number below is a
+   *  placeholder, and a start gate must refuse rather than count it as
+   *  zero (security audit 2026-11-08). Display-only readers may ignore it. */
+  readError?: string;
   /** Articles counted against this ISO week's quota. */
   count: number;
   published: number;
@@ -84,7 +88,7 @@ export async function weekUsage(projectId: string, now: Date): Promise<WeekUsage
         .limit(1)
         .maybeSingle(),
     ]);
-    if (draftsRes.error || runsRes.error) return ZERO;
+    if (draftsRes.error || runsRes.error) return { ...ZERO, readError: (draftsRes.error ?? runsRes.error)!.message };
     const drafts = (draftsRes.data ?? []) as { status: string }[];
     const runs = (runsRes.data ?? []) as { status: string; stage: string; cost_usd: number | string | null; failure_kind: string | null; unreadable: string | null }[];
     const published = drafts.filter((d) => d.status === "published").length;
@@ -119,8 +123,8 @@ export async function weekUsage(projectId: string, now: Date): Promise<WeekUsage
       failed,
       lastStartedAt,
     };
-  } catch {
-    return ZERO;
+  } catch (e) {
+    return { ...ZERO, readError: e instanceof Error ? e.message : String(e) };
   }
 }
 
@@ -146,17 +150,20 @@ export async function weekUsage(projectId: string, now: Date): Promise<WeekUsage
 const PROJECT_DAILY_USD = Number(process.env.WRITER_PROJECT_DAILY_USD) || 2;
 const PLATFORM_DAILY_USD = Number(process.env.WRITER_PLATFORM_DAILY_USD) || 40;
 
-async function runSpendUsd(projectId: string | null, since: Date): Promise<number> {
+/** Null when the rows could not be read: the ceiling check refuses then,
+ *  because "0 spent" on a DB error is how a start slips past both caps. */
+async function runSpendUsd(projectId: string | null, since: Date): Promise<number | null> {
   let q = db().from("writer_runs").select("cost_usd").gte("created_at", since.toISOString());
   if (projectId) q = q.eq("project_id", projectId);
   const { data, error } = await q;
-  if (error) return 0;
+  if (error) return null;
   return ((data ?? []) as { cost_usd: number | string }[]).reduce((a, r) => a + Number(r.cost_usd ?? 0), 0);
 }
 
 export async function spendCeilingReason(projectId: string, now = new Date()): Promise<string | null> {
   const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const [site, platform] = await Promise.all([runSpendUsd(projectId, dayStart), runSpendUsd(null, dayStart)]);
+  if (site === null || platform === null) return "spend ceiling: today's spend could not be read, so no article starts until it can; try again in a minute.";
   if (site >= PROJECT_DAILY_USD) return `spend ceiling: this site's runs already cost $${site.toFixed(2)} today (ceiling $${PROJECT_DAILY_USD}); the next article starts tomorrow.`;
   if (platform >= PLATFORM_DAILY_USD) return `spend ceiling: today's runs on this deploy already cost $${platform.toFixed(2)} (ceiling $${PLATFORM_DAILY_USD}); articles resume tomorrow.`;
   return null;
@@ -185,6 +192,7 @@ export async function writerStartGate(project: Project, opts: { gated?: boolean 
   if (isCloudMode() && plan.articlesPerWeek === 0) return "plan inactive: this site's plan includes no articles right now.";
   if (writerMode(project) === "hosted" && !opts.gated) {
     const usage = await weekUsage(project.id, now);
+    if (usage.readError) return `This week's usage could not be read (${usage.readError}), so no article starts until it can; try again in a minute.`;
     const ramp = await rampFor(project.id, plan.articlesPerWeek, now);
     if (ramp.stage === "pause") return `This site is held: ${ramp.reason}.`;
     const verdict = cadence({ now, quota: ramp.quota, spacingDays: plan.spacingDays, countThisWeek: usage.count, lastStartedAt: usage.lastStartedAt });

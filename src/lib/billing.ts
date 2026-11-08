@@ -786,6 +786,21 @@ export async function ownerUserIdForProject(projectId: string): Promise<string |
   return ownerId;
 }
 
+/** ownerUserIdForProject with the read error kept apart from "no owner",
+ *  for gates that must refuse on the first and may allow on the second. */
+export async function ownerLookup(projectId: string): Promise<{ ownerId: string | null; error: string | null }> {
+  const memo = projectOwnerMemo();
+  const hit = memo.get(projectId);
+  if (hit) return { ownerId: hit, error: null };
+  const hinted = projectHint(projectId)?.owner_user_id;
+  if (hinted !== undefined) return { ownerId: hinted ?? null, error: null };
+  const { data, error } = await db().from("projects").select("owner_user_id").eq("id", projectId).maybeSingle();
+  if (error) return { ownerId: null, error: error.message };
+  const ownerId = (data as { owner_user_id: string | null } | null)?.owner_user_id ?? null;
+  if (ownerId) memo.set(projectId, ownerId);
+  return { ownerId, error: null };
+}
+
 // The projects an owner's plan actually covers: the OLDEST sites_limit ones.
 // Deterministic and stable, so a Scale->Starter downgrade doesn't delete
 // anything - the newest sites just fall outside coverage (crons skip them,
@@ -831,7 +846,11 @@ export async function planGate(
   projectId: string,
 ): Promise<{ allowed: true } | { allowed: false; reason: string }> {
   if (!isCloudMode() || !polarConfigured()) return { allowed: true };
-  const ownerId = await ownerUserIdForProject(projectId); // null = pre-0031 row or no owner
+  // A read error is not "no owner": an ownerless row is allowed (self-host,
+  // pre-0031), a row we could not read is refused (security audit 2026-11-08).
+  const owner = await ownerLookup(projectId);
+  if (owner.error) return { allowed: false, reason: `could not read the site's owner (${owner.error})` };
+  const ownerId = owner.ownerId;
   if (!ownerId) return { allowed: true };
   const sub = await getSubscription(ownerId);
   if (!isActive(sub)) return { allowed: false, reason: "subscription inactive" };
