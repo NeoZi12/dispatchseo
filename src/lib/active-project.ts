@@ -10,8 +10,19 @@ import {
 } from "./projects";
 import { isCloudMode } from "./cloud";
 import { currentUser } from "./cloud-auth";
+import { COOKIE_NAME, isValidCookie } from "./dashboard-auth";
 
 export const PROJECT_COOKIE = "dash_project";
+
+// Self-host: is this request signed in (a valid dash_auth cookie)? The
+// dashboard layout renders alongside the page, before the page's own
+// requireDashboard() redirect lands, so without this an anonymous visitor
+// was streamed the project list and the active project in the layout's
+// payload. Signed out sees no projects at all. cache(): checked once.
+const selfHostSignedIn = cache(async (): Promise<boolean> => {
+  const jar = await cookies();
+  return isValidCookie(jar.get(COOKIE_NAME)?.value);
+});
 
 // The projects this request is allowed to see: the signed-in user's own in
 // CLOUD_MODE (may genuinely be empty for a fresh account), everything on
@@ -40,6 +51,8 @@ export const scopedProjectsChecked = cache(
     }
     // Self-host keeps the tolerant path: listProjects always yields at least the
     // synthetic fallback, so it never reaches a redirect on emptiness anyway.
+    // Signed out gets nothing (the page redirects to /login on its own).
+    if (!(await selfHostSignedIn())) return { projects: [], degraded: null };
     return { projects: await listProjects(), degraded: null };
   },
 );
@@ -71,6 +84,7 @@ export const getActiveProjectOrNull = cache(async (): Promise<Project | null> =>
     }
     return mine[0];
   }
+  if (!(await selfHostSignedIn())) return null;
   if (slug) {
     const p = await getProjectBySlug(slug);
     if (p) return p;
@@ -85,6 +99,9 @@ export const getActiveProjectOrNull = cache(async (): Promise<Project | null> =>
 // wizard. Both destinations tolerate having no project.
 export async function getActiveProject(): Promise<Project> {
   const p = await getActiveProjectOrNull();
+  // Self-host only comes back null when signed out: that is a login, not a
+  // missing site (and /plans is a cloud page).
+  if (!p && !isCloudMode()) redirect("/login");
   if (!p) {
     // "We could not read your sites" must never be answered with "you have no
     // sites, here is our pricing". Throwing lands on the error boundary, whose
