@@ -90,11 +90,15 @@ function CloudLoginPage({
   reset,
   leftover,
   sent,
+  resume,
 }: {
   error?: string;
   reset?: string;
   leftover?: string;
   sent?: string;
+  /** Sent here from the setup page because the site is mid-setup on an
+   *  existing account: say so, and that signing in resumes it. */
+  resume?: boolean;
 }) {
   // Repos whose pipeline teardown didn't finish during account deletion. The
   // account is gone, so this screen is the last chance to tell them something
@@ -120,8 +124,12 @@ function CloudLoginPage({
         DispatchSEO
       </Link>
       <div className="space-y-1.5 pt-4">
-        <h1 className="text-2xl font-semibold tracking-tight text-white">Welcome back</h1>
-        <p className="text-sm text-neutral-400">Sign in to see how your site is doing on Google.</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-white">{resume ? "Pick up where you stopped" : "Welcome back"}</h1>
+        <p className="text-sm text-neutral-400">
+          {resume
+            ? "Your site is mid-setup. Sign in the same way you did before - GitHub, Google or an emailed link - and you'll land on the step you left."
+            : "Sign in to see how your site is doing on Google."}
+        </p>
       </div>
       {stranded.length > 0 ? (
         <div className="space-y-1.5 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-200/90">
@@ -208,10 +216,10 @@ function CloudLoginPage({
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; reset?: string; leftover?: string; sent?: string }>;
+  searchParams: Promise<{ error?: string; reset?: string; leftover?: string; sent?: string; resume?: string }>;
 }) {
-  const { error, reset, leftover, sent } = await searchParams;
-  if (isCloudMode()) return <CloudLoginPage error={error} reset={reset} leftover={leftover} sent={sent} />;
+  const { error, reset, leftover, sent, resume } = await searchParams;
+  if (isCloudMode()) return <CloudLoginPage error={error} reset={reset} leftover={leftover} sent={sent} resume={resume === "1"} />;
   // A fresh deploy has nothing to log into yet - hand off to the wizard.
   if ((await getSetupState()) !== "ready") redirect("/setup");
   return (

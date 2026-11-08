@@ -90,7 +90,11 @@ export async function GET(req: NextRequest) {
     // this browser into THEIR account (lib/email-link-nonce.ts). Recovery
     // links are exempt.
     if (tokenHash && !isRecovery && !(await emailLinkMatches(params.get("sn")))) {
-      await supabase.auth.signOut().catch(() => {});
+      // Only the session this link just made - never the account's other
+      // sessions. The default (global) scope signed the real owner out of
+      // every browser whenever a link was opened without its nonce: an old
+      // link after a newer one, or a mail scanner following it (2026-11-08).
+      await supabase.auth.signOut({ scope: "local" }).catch(() => {});
       url.pathname = "/login";
       url.search = "?error=device";
       return NextResponse.redirect(url);

@@ -33,7 +33,7 @@ const isTaken = (v: SiteVerdict) => v.kind === "refused" && v.platform === "take
 
 function lineFor(v: SiteVerdict, signedIn: boolean): string {
   if (v.kind === "checking") return "One second…";
-  if (isTaken(v)) return "This site already has a DispatchSEO account.";
+  if (isTaken(v)) return "You've started this one before. Sign in and we pick it up from there.";
   if (v.kind === "refused") return "Ah. This one I can't write for, sorry.";
   if (v.kind === "ok") return okLine(v);
   if (v.kind === "unknown") return "I couldn't tell what it's built on. If the code's on GitHub, we're good.";
@@ -268,11 +268,11 @@ export function SetupClient(props: {
           />
           {isTaken(verdict) ? (
             <p className="mt-4 rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-[14.5px] text-ink">
-              This site already has a DispatchSEO account.{" "}
-              <a href="/login" className="font-medium underline underline-offset-4">
-                Sign in to continue.
+              {domain} is already being set up on a DispatchSEO account.{" "}
+              <a href="/login?resume=1" className="font-medium underline underline-offset-4">
+                Sign in the same way you did before
               </a>{" "}
-              Not yours, but it&apos;s your site? Ask on Discord and we&apos;ll release it.
+              and you&apos;ll be back at the step you stopped on. Not your account, but your site? Ask on Discord and we&apos;ll release it.
             </p>
           ) : null}
           {error ? <p className="mt-4 rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-[14px] text-ink">{error}</p> : null}
