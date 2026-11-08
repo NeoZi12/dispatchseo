@@ -9,10 +9,14 @@ import type { Project } from "@/lib/projects";
 //   <meta name="color-scheme"> / theme-color  light or dark
 //   <link rel="icon"/"apple-touch-icon">      a logo-ish mark
 //   <meta property="og:image">                a wide brand image (fallback)
-// Everything else about a site's look lives in its CSS and is not worth
-// guessing at: an accent colour on a neutral page is what makes a blog read
-// as the site's own, and that is the one thing this extracts. The owner can
-// override every field on Settings.
+// Most sites set none of those (a Weebly vet clinic, a Wix studio), so the
+// site's own CSS is read too: inline <style> blocks and up to three of its
+// own stylesheets. The accent is the saturated colour the site leans on
+// hardest - weighted toward buttons, links, the header and any custom
+// property named primary/accent/brand - and the mode comes from the body's
+// background. An accent colour on a neutral page is what makes a blog (and
+// its covers, lib/cover-art.ts) read as the site's own; nothing more of the
+// look is guessed at. The owner can override every field on Settings.
 
 export type HostedTheme = {
   /** Brand colour used for links, the active ToC item and the CTA button. */
@@ -64,7 +68,153 @@ export function readableAccent(accent: string, mode: "light" | "dark"): string {
   return accent;
 }
 
-export function extractThemeFromHtml(html: string, pageUrl: string): HostedTheme {
+// --- reading colours out of CSS ------------------------------------------------
+
+/** A CSS colour value -> #rrggbb, or null (keywords other than white/black,
+ *  var(), oklch and anything translucent are skipped: none of them is a
+ *  brand colour we can use as-is). */
+export function cssColorToHex(raw: string): string | null {
+  const v = raw.trim().toLowerCase();
+  if (v === "white") return "#ffffff";
+  if (v === "black") return "#000000";
+  let m = v.match(/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/);
+  if (m) {
+    const h = m[1];
+    if (h.length === 8) return parseInt(h.slice(6), 16) / 255 < 0.5 ? null : "#" + h.slice(0, 6);
+    return expandHex("#" + h);
+  }
+  m = v.match(/^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:\s*[,/]\s*([\d.]+%?))?\s*\)$/);
+  if (m) {
+    if (m[4] !== undefined && (m[4].endsWith("%") ? parseFloat(m[4]) / 100 : parseFloat(m[4])) < 0.5) return null;
+    return toHex([+m[1], +m[2], +m[3]]);
+  }
+  m = v.match(/^hsla?\(\s*([\d.]+)(?:deg)?[\s,]+([\d.]+)%[\s,]+([\d.]+)%(?:\s*[,/]\s*([\d.]+%?))?\s*\)$/);
+  if (m) {
+    if (m[4] !== undefined && (m[4].endsWith("%") ? parseFloat(m[4]) / 100 : parseFloat(m[4])) < 0.5) return null;
+    return toHex(hslToRgb(+m[1], +m[2] / 100, +m[3] / 100));
+  }
+  return null;
+}
+
+function toHex(rgb: number[]): string | null {
+  if (rgb.some((c) => !Number.isFinite(c) || c < 0 || c > 255)) return null;
+  return "#" + rgb.map((c) => Math.round(c).toString(16).padStart(2, "0")).join("");
+}
+
+function hslToRgb(h: number, s: number, l: number): number[] {
+  const k = (n: number) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  return [f(0) * 255, f(8) * 255, f(4) * 255];
+}
+
+/** Saturation and lightness (0-1) of a #rrggbb colour. */
+export function satLight(hex: string): { s: number; l: number } {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  const s = max === min ? 0 : (max - min) / (1 - Math.abs(2 * l - 1));
+  return { s, l };
+}
+
+/** A colour that can carry a brand: clearly saturated, neither near-black
+ *  nor near-white. Greys, off-whites and text colours never qualify. */
+function isBrandish(hex: string): boolean {
+  const { s, l } = satLight(hex);
+  return s >= 0.3 && l >= 0.18 && l <= 0.82;
+}
+
+const COLOR_RE = /#[0-9a-f]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\)|\b(?:white|black)\b/gi;
+
+/**
+ * The site's accent and page mode, read from its CSS. Every declaration
+ * votes for the colours in it; where it sits decides how much the vote
+ * counts. Exported for the theme tests and the settings re-read.
+ */
+export function themeFromCss(css: string): { accent: string | null; dark: boolean | null; ink: string | null } {
+  const votes = new Map<string, number>();
+  const inks = new Map<string, number>();
+  const hits = new Map<string, number>();
+  let dark: boolean | null = null;
+  const text = css.replace(/\/\*[\s\S]*?\*\//g, "").slice(0, 1_500_000);
+  for (const rule of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selector = rule[1].trim().toLowerCase();
+    for (const decl of rule[2].split(";")) {
+      const i = decl.indexOf(":");
+      if (i < 0) continue;
+      const prop = decl.slice(0, i).trim().toLowerCase();
+      const value = decl.slice(i + 1);
+      if (!/color|background|border|fill|stroke|^--/.test(prop)) continue;
+      const colors = (value.match(COLOR_RE) ?? []).map(cssColorToHex).filter((c): c is string => !!c);
+      if (!colors.length) continue;
+      // The page background: the one place the mode is stated.
+      if (/(^|,)\s*(html|body|:root)\s*($|,)/.test(selector) && /^background(-color)?$/.test(prop)) dark = luminance(colors[0]) < 0.2;
+      let w = 1;
+      if (prop.startsWith("--")) w = /primary|accent|brand|main|theme/.test(prop) ? 6 : 0.5;
+      else if (/background/.test(prop) && /button|btn|cta|primary|nav|menu|header|banner|hero|badge/.test(selector)) w = 4;
+      else if (prop === "color" && /(^|[\s,>+~])a([\s:.,[]|$)|link|button|btn/.test(selector)) w = 3;
+      else if (/border/.test(prop)) w = 0.5;
+      for (const c of colors) {
+        if (isBrandish(c)) {
+          votes.set(c, (votes.get(c) ?? 0) + w);
+          hits.set(c, (hits.get(c) ?? 0) + 1);
+        }
+        else if (prop === "color" && satLight(c).l < 0.35) inks.set(c, (inks.get(c) ?? 0) + 1);
+      }
+    }
+  }
+  let accent: string | null = null;
+  let best = 0;
+  for (const [c, n] of votes) if (n > best && (hits.get(c) ?? 0) >= 2) [accent, best] = [c, n];
+  // A colour that turns up in one rule is a stray (a cart's remove button,
+  // an error message), not a brand: a black-and-white site must come out
+  // black and white, not wearing the red of its form-validation style.
+  if (best < 3) accent = null;
+  // The text colour such a site leans on, for a monochrome theme.
+  let ink: string | null = null;
+  let inkBest = 0;
+  for (const [c, n] of inks) if (n > inkBest) [ink, inkBest] = [c, n];
+  return { accent, dark, ink };
+}
+
+/** The CSS a page carries inline: <style> blocks and style="" attributes. */
+function inlineCss(html: string): string {
+  const blocks = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]);
+  const attrs = [...html.matchAll(/\sstyle=["']([^"']{3,400})["']/gi)].map((m) => `x{${m[1]}}`);
+  return blocks.join("\n") + "\n" + attrs.join("\n");
+}
+
+/** Up to three of the page's stylesheets on the site's own host - a
+ *  platform's shared CDN stylesheet (the builder's base CSS) says nothing
+ *  about this site's brand and is skipped. */
+export function ownStylesheets(html: string, pageUrl: string): string[] {
+  let host: string;
+  try {
+    host = new URL(pageUrl).hostname.replace(/^www\./, "");
+  } catch {
+    return [];
+  }
+  const out: string[] = [];
+  for (const m of html.matchAll(/<link\b[^>]*>/gi)) {
+    const tag = m[0];
+    if (!/rel=["'][^"']*stylesheet/i.test(tag)) continue;
+    const href = tag.match(/href=["']([^"']+)["']/i)?.[1];
+    if (!href) continue;
+    try {
+      const u = new URL(href, pageUrl);
+      if (u.hostname.replace(/^www\./, "") !== host) continue;
+      if (/font|icon|fancybox|social/i.test(u.pathname)) continue;
+      out.push(u.toString());
+    } catch {
+      // unreadable href
+    }
+    if (out.length >= 3) break;
+  }
+  return out;
+}
+
+export function extractThemeFromHtml(html: string, pageUrl: string, css = ""): HostedTheme {
   const head = html.slice(0, 120_000);
   const meta = (name: string, attr = "name") => {
     const m =
@@ -92,8 +242,15 @@ export function extractThemeFromHtml(html: string, pageUrl: string): HostedTheme
 
   const themeColor = meta("theme-color");
   const scheme = meta("color-scheme");
-  let accent = DEFAULT_THEME.accent;
-  let mode: "light" | "dark" = "light";
+  // The CSS reading comes first and the meta tags below override it: a
+  // theme-color the owner set on purpose outranks a vote count.
+  const fromCss = themeFromCss(inlineCss(html) + "\n" + css);
+  let mode: "light" | "dark" = fromCss.dark ? "dark" : "light";
+  // No brand colour at all (a black-and-white site): its own text colour is
+  // the accent, so the blog and its covers stay black and white too - a
+  // stock blue would be the one colour on the page the site never uses.
+  // Only when the site's CSS was actually read; nothing read = the default.
+  let accent = fromCss.accent ?? (fromCss.ink && mode === "light" ? fromCss.ink : DEFAULT_THEME.accent);
   if (themeColor && isHex(themeColor)) {
     const l = luminance(themeColor);
     // theme-color is the browser chrome colour: for most sites that IS the
@@ -105,7 +262,7 @@ export function extractThemeFromHtml(html: string, pageUrl: string): HostedTheme
   }
   if (scheme && /dark/.test(scheme) && !/light/.test(scheme)) mode = "dark";
   // A dark body background declared inline is the other common tell.
-  if (/<body[^>]*(?:class|style)=["'][^"']*(?:dark|bg-neutral-9|bg-black|bg-gray-9|bg-slate-9|background:\s*#0)/i.test(head)) mode = "dark";
+  if (/<(?:body|html)[^>]*(?:class|style)=["'][^"']*(?:\bdark\b|bg-neutral-9|bg-black|bg-gray-9|bg-slate-9|background:\s*#0)/i.test(head)) mode = "dark";
 
   const logo = abs(link(["apple-touch-icon", "icon", "shortcut icon"])) ?? abs(meta("og:image", "property"));
   return { accent: readableAccent(accent, mode), mode, logo, source: "site" };
@@ -131,5 +288,18 @@ export async function readSiteTheme(project: Pick<Project, "domain">): Promise<{
   } catch {
     origin = url.replace(/\/$/, "");
   }
-  return { theme: extractThemeFromHtml(html, res.url || url), origin };
+  // The site's own stylesheets, read in parallel and capped: the brand
+  // colour of most sites lives here, not in a meta tag.
+  const sheets = await Promise.all(
+    ownStylesheets(html, res.url || url).map(async (href) => {
+      const r = await fetchProjectUrl(href, project.domain, { timeoutMs: 5_000, userAgent: "DispatchSEO-Theme/1.0 (+https://dispatchseo.com)" });
+      if (!r || !r.ok) return "";
+      try {
+        return (await r.text()).slice(0, 500_000);
+      } catch {
+        return "";
+      }
+    }),
+  );
+  return { theme: extractThemeFromHtml(html, res.url || url, sheets.join("\n")), origin };
 }

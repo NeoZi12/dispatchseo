@@ -73,6 +73,13 @@ export type ChangelogEntry = {
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
+    kind: "improved",
+    text:
+      "Your blog and its cover pictures now wear your site's own colours. DispatchSEO reads your " +
+      "brand colour and whether your site is light or dark when it first looks at it, and every " +
+      "article's cover is drawn to match - a black-and-white site gets black-and-white covers.",
+  },
+  {
     kind: "fixed",
     text:
       "Sites whose Search Console was never fully connected no longer show a \"we lost access\" warning. If your " +

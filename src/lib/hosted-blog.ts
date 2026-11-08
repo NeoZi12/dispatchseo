@@ -4,6 +4,7 @@ import { loadSiteProfile } from "@/lib/site-profile";
 import { backendBaseUrl } from "@/lib/pipeline-pack";
 import { createHash } from "node:crypto";
 import { normalizeTheme, type HostedTheme } from "@/lib/hosted-theme";
+import { projectPlan } from "@/lib/billing";
 
 // The hosted blog: DispatchSEO serving a customer's /blog.
 //
@@ -12,8 +13,8 @@ import { normalizeTheme, type HostedTheme } from "@/lib/hosted-theme";
 // request - src/lib/hosted-rewrite.ts). Every page here is therefore seen at
 // the CUSTOMER'S address: canonical URLs, the sitemap, structured data and
 // every internal link name their domain, never ours. Our host appears in
-// exactly one place - the cover image, which is drawn by /api/cover and has
-// no customer-side equivalent.
+// two places only - the cover image, which is drawn by /api/cover and has no
+// customer-side equivalent, and the free tier's credit line (THE CREDIT).
 //
 // DESIGN: the same post layout as dispatchseo.com/blog, the one this team
 // already iterated on, re-expressed in plain HTML and CSS so nothing from the
@@ -38,6 +39,17 @@ import { normalizeTheme, type HostedTheme } from "@/lib/hosted-theme";
 //
 // COST: none per article. This is a template over stored HTML; no model is
 // involved in rendering, and the theme is read once per site.
+//
+// THE CREDIT. A site on the free tier carries "Made with DispatchSEO" under
+// the product card (the rail on wide screens, the card after the article
+// below that) - the same quiet line ClockedCode's own generated posts show.
+// It is the free tier's price and its marketing channel: free articles in
+// exchange for a credit on every page they publish. A paid plan (any live
+// subscription) shows nothing, and a self-host instance shows nothing - the
+// credit is the cloud's deal, not a condition of the licence. The link is
+// nofollow by decision (2026-11-06): the credit is for readers, never a
+// link scheme in Google's eyes, which would put the customer's site at
+// risk rather than ours.
 
 export const HOSTED_HEADER = "x-dispatchseo-hosted";
 
@@ -174,18 +186,18 @@ export function decorateBody(html: string, inShort = "In short"): string {
 // --- Rendering ---------------------------------------------------------------
 
 /** Page chrome in the article's own language; English for the rest. */
-type Strings = { onThisPage: string; allPosts: string; minRead: string; inShort: string; blog: string; none: string; visit: string };
+type Strings = { onThisPage: string; allPosts: string; minRead: string; inShort: string; blog: string; none: string; visit: string; madeWith: string };
 const STRINGS: Record<string, Strings> = {
-  en: { onThisPage: "On this page", allPosts: "All posts", minRead: "min read", inShort: "In short", blog: "Blog", none: "No articles yet.", visit: "Visit" },
-  he: { onThisPage: "בעמוד זה", allPosts: "כל המאמרים", minRead: "דקות קריאה", inShort: "בקצרה", blog: "בלוג", none: "אין מאמרים עדיין.", visit: "לאתר" },
-  ar: { onThisPage: "في هذه الصفحة", allPosts: "كل المقالات", minRead: "دقائق قراءة", inShort: "باختصار", blog: "المدونة", none: "لا توجد مقالات بعد.", visit: "زيارة" },
-  es: { onThisPage: "En esta página", allPosts: "Todos los artículos", minRead: "min de lectura", inShort: "En resumen", blog: "Blog", none: "Aún no hay artículos.", visit: "Visitar" },
-  de: { onThisPage: "Auf dieser Seite", allPosts: "Alle Beiträge", minRead: "Min. Lesezeit", inShort: "Kurz gesagt", blog: "Blog", none: "Noch keine Beiträge.", visit: "Zu" },
-  fr: { onThisPage: "Sur cette page", allPosts: "Tous les articles", minRead: "min de lecture", inShort: "En bref", blog: "Blog", none: "Pas encore d'articles.", visit: "Visiter" },
-  pt: { onThisPage: "Nesta página", allPosts: "Todos os artigos", minRead: "min de leitura", inShort: "Em resumo", blog: "Blog", none: "Ainda não há artigos.", visit: "Visitar" },
-  it: { onThisPage: "In questa pagina", allPosts: "Tutti gli articoli", minRead: "min di lettura", inShort: "In breve", blog: "Blog", none: "Ancora nessun articolo.", visit: "Vai a" },
-  nl: { onThisPage: "Op deze pagina", allPosts: "Alle artikelen", minRead: "min leestijd", inShort: "Kort gezegd", blog: "Blog", none: "Nog geen artikelen.", visit: "Naar" },
-  th: { onThisPage: "ในหน้านี้", allPosts: "บทความทั้งหมด", minRead: "นาทีในการอ่าน", inShort: "สรุปสั้นๆ", blog: "บล็อก", none: "ยังไม่มีบทความ", visit: "ไปที่" },
+  en: { onThisPage: "On this page", allPosts: "All posts", minRead: "min read", inShort: "In short", blog: "Blog", none: "No articles yet.", visit: "Visit", madeWith: "Made with" },
+  he: { onThisPage: "בעמוד זה", allPosts: "כל המאמרים", minRead: "דקות קריאה", inShort: "בקצרה", blog: "בלוג", none: "אין מאמרים עדיין.", visit: "לאתר", madeWith: "נכתב עם" },
+  ar: { onThisPage: "في هذه الصفحة", allPosts: "كل المقالات", minRead: "دقائق قراءة", inShort: "باختصار", blog: "المدونة", none: "لا توجد مقالات بعد.", visit: "زيارة", madeWith: "صُنع بواسطة" },
+  es: { onThisPage: "En esta página", allPosts: "Todos los artículos", minRead: "min de lectura", inShort: "En resumen", blog: "Blog", none: "Aún no hay artículos.", visit: "Visitar", madeWith: "Hecho con" },
+  de: { onThisPage: "Auf dieser Seite", allPosts: "Alle Beiträge", minRead: "Min. Lesezeit", inShort: "Kurz gesagt", blog: "Blog", none: "Noch keine Beiträge.", visit: "Zu", madeWith: "Erstellt mit" },
+  fr: { onThisPage: "Sur cette page", allPosts: "Tous les articles", minRead: "min de lecture", inShort: "En bref", blog: "Blog", none: "Pas encore d'articles.", visit: "Visiter", madeWith: "Créé avec" },
+  pt: { onThisPage: "Nesta página", allPosts: "Todos os artigos", minRead: "min de leitura", inShort: "Em resumo", blog: "Blog", none: "Ainda não há artigos.", visit: "Visitar", madeWith: "Feito com" },
+  it: { onThisPage: "In questa pagina", allPosts: "Tutti gli articoli", minRead: "min di lettura", inShort: "In breve", blog: "Blog", none: "Ancora nessun articolo.", visit: "Vai a", madeWith: "Creato con" },
+  nl: { onThisPage: "Op deze pagina", allPosts: "Alle artikelen", minRead: "min leestijd", inShort: "Kort gezegd", blog: "Blog", none: "Nog geen artikelen.", visit: "Naar", madeWith: "Gemaakt met" },
+  th: { onThisPage: "ในหน้านี้", allPosts: "บทความทั้งหมด", minRead: "นาทีในการอ่าน", inShort: "สรุปสั้นๆ", blog: "บล็อก", none: "ยังไม่มีบทความ", visit: "ไปที่", madeWith: "สร้างด้วย" },
 };
 const RTL = new Set(["he", "ar", "fa", "ur"]);
 function stringsFor(lang: string) {
@@ -236,7 +248,7 @@ h1{font-size:clamp(28px,4.2vw,36px);line-height:1.15;letter-spacing:-.02em;font-
 .toc ul{border-inline-start:1px solid var(--line)}
 .toc .k{font:500 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 12px}
 aside.rail{display:none}
-@media(min-width:1024px){main.rail .toc-inline{display:none}aside.rail{display:block}aside.rail>div{position:sticky;top:88px;display:flex;flex-direction:column;gap:32px;max-height:calc(100vh - 7rem)}.toc{min-height:0;overflow-y:auto}.promo.below{display:none}}
+@media(min-width:1024px){main.rail .toc-inline{display:none}aside.rail{display:block}aside.rail>div{position:sticky;top:88px;display:flex;flex-direction:column;gap:32px;max-height:calc(100vh - 7rem)}.toc{min-height:0;overflow-y:auto}.promo.below,.credit.below{display:none}}
 .promo{border-radius:14px;background:var(--card);padding:20px}
 .promo img{width:28px;height:28px;border-radius:7px;object-fit:cover;display:block}
 .promo .name{margin:12px 0 0;font-weight:600;font-size:15px;color:var(--ink)}
@@ -247,6 +259,10 @@ aside.rail{display:none}
 .promo .cta{display:block;margin-top:20px;background:var(--accent);color:var(--accent-ink);text-decoration:none;text-align:center;font-weight:600;font-size:13px;padding:9px 14px;border-radius:10px}
 .promo .cta:hover{filter:brightness(1.08)}
 .promo.below{margin-top:40px}
+.credit{margin:12px 0 0;font-size:12px;line-height:1.5;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:6px}
+.credit a{display:inline-flex;align-items:center;gap:5px;color:var(--ink2);font-weight:600;text-decoration:none}
+.credit a:hover{color:var(--ink)}
+.credit img{width:10px;height:16px;image-rendering:pixelated;display:block}
 .body{font-size:17px}
 .body>p:first-child{font-size:18px;color:var(--ink2)}
 .body h2{font-size:24px;line-height:1.25;letter-spacing:-.015em;font-weight:650;margin:44px 0 12px}
@@ -300,12 +316,17 @@ footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--ink)
  *  bottom the last one wins. No dependencies, degrades to plain anchors. */
 const PAGE_JS = `(function(){var c=document.querySelector("img.cover");if(c){c.addEventListener("error",function(){c.remove()})}var links=[].slice.call(document.querySelectorAll('.toc a[href^="#"]'));if(!links.length||!('IntersectionObserver' in window))return;var els=links.map(function(a){return document.getElementById(a.getAttribute('href').slice(1))}).filter(Boolean);function set(id){links.forEach(function(a){if(a.getAttribute('href')==='#'+id)a.setAttribute('aria-current','true');else a.removeAttribute('aria-current')})}var io=new IntersectionObserver(function(es){for(var i=0;i<es.length;i++){if(es[i].isIntersecting){set(es[i].target.id);break}}},{rootMargin:'-96px 0px -70% 0px',threshold:0});els.forEach(function(e){io.observe(e)});window.addEventListener('scroll',function(){if(window.innerHeight+window.scrollY>=document.documentElement.scrollHeight-4)set(els[els.length-1].id)},{passive:true});if(els[0])set(els[0].id)})();`;
 
-type Site = { name: string; tagline: string; short: string; categories: string[]; origin: string; theme: HostedTheme; ctaUrl: string; ctaLabel: string; lang: string };
+type Site = { name: string; tagline: string; short: string; categories: string[]; origin: string; theme: HostedTheme; ctaUrl: string; ctaLabel: string; lang: string; credit: boolean };
 
 async function siteOf(project: Project): Promise<Site> {
-  const { profile } = await loadSiteProfile(project);
+  const [{ profile }, plan] = await Promise.all([loadSiteProfile(project), projectPlan(project.id).catch(() => null)]);
   const origin = siteOrigin(project);
+  // The credit shows on the cloud's free tier only (see the header). A plan
+  // lookup that fails resolves to "no credit": a billing hiccup must never
+  // stamp a paying customer's page.
+  const credit = plan !== null && plan.status !== "self-host" && plan.tier === null;
   return {
+    credit,
     name: profile.name,
     tagline: profile.tagline,
     short: profile.short,
@@ -350,7 +371,15 @@ ${opts.body}
 function promo(site: Site, cls = ""): string {
   const ticks = promoTicks(site);
   const logo = site.theme.logo ? `<img src="${esc(site.theme.logo)}" alt="" width="28" height="28">` : "";
-  return `<aside class="promo ${cls}" aria-label="About ${esc(site.name)}">${logo}<p class="name">${esc(site.name)}</p><p class="line">${esc(site.tagline || site.short)}</p><ul>${ticks.map((t) => `<li><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10.5 8 14.5 16 5.5"/></svg><span>${esc(t)}</span></li>`).join("")}</ul><a class="cta" href="${esc(site.ctaUrl)}">${esc(site.ctaLabel)}</a></aside>`;
+  const card = `<aside class="promo ${cls}" aria-label="About ${esc(site.name)}">${logo}<p class="name">${esc(site.name)}</p><p class="line">${esc(site.tagline || site.short)}</p><ul>${ticks.map((t) => `<li><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10.5 8 14.5 16 5.5"/></svg><span>${esc(t)}</span></li>`).join("")}</ul><a class="cta" href="${esc(site.ctaUrl)}">${esc(site.ctaLabel)}</a></aside>`;
+  return site.credit ? card + credit(site, cls) : card;
+}
+
+/** The free tier's line under the card (header: THE CREDIT). The ref names
+ *  the site so the dashboard can tell which blogs send readers. */
+function credit(site: Site, cls = ""): string {
+  const href = `https://dispatchseo.com/?ref=${encodeURIComponent(site.origin.replace(/^https?:\/\//, ""))}`;
+  return `<p class="credit ${cls}">${esc(stringsFor(site.lang).madeWith)} <a href="${href}" rel="nofollow noopener"><img src="https://dispatchseo.com/dispatch-mark.png" alt="" width="10" height="16" loading="lazy">DispatchSEO</a></p>`;
 }
 
 /** Up to three short lines for the card: the site profile's categories

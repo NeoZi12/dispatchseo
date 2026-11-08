@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { renderCoverPng } from "@/lib/cover-art";
+import { normalizeTheme } from "@/lib/hosted-theme";
 
 // The cover image for a writer article, drawn on demand (src/lib/cover-art.ts).
 //
@@ -44,14 +45,21 @@ export async function GET(_req: Request, { params }: { params: Promise<{ draftId
   // article without one, which is the right outcome, and a 404 says why.
   if (!draft) return new Response("No such article", { status: 404 });
 
-  const { data: projectRow } = await db().from("projects").select("name").eq("id", draft.project_id).maybeSingle();
-  const siteName = (projectRow as { name: string } | null)?.name ?? "";
+  // The site's colours, when we have read them (lib/hosted-theme.ts): the
+  // cover is drawn in them. No theme read (or a DB without the column) = the
+  // house look.
+  let projectRes = await db().from("projects").select("name, hosted_theme").eq("id", draft.project_id).maybeSingle();
+  if (projectRes.error) projectRes = (await db().from("projects").select("name").eq("id", draft.project_id).maybeSingle()) as typeof projectRes;
+  const projectRow = projectRes.data as { name: string; hosted_theme?: unknown } | null;
+  const siteName = projectRow?.name ?? "";
+  const theme = projectRow?.hosted_theme ? normalizeTheme(projectRow.hosted_theme) : null;
 
   const png = await renderCoverPng({
     subjectSvg: draft.cover_svg ?? null,
     title: draft.title ?? "",
     siteName,
     seed: draft.slug || draftId,
+    theme: theme && theme.source !== "default" ? { accent: theme.accent, mode: theme.mode } : null,
   });
   return new Response(new Uint8Array(png), {
     headers: {

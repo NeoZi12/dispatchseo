@@ -13,6 +13,17 @@ import { join } from "node:path";
 //     vignette) and rasterizes the two together, so every cover is one family
 //     whoever drew the subject.
 //
+// IN THE SITE'S COLOURS. A site whose theme we have read (projects.hosted_
+// theme, lib/hosted-theme.ts: one accent, light or dark) gets its covers in
+// that theme - a light page with the site's own accent for a light site, the
+// dark base lit in its accent for a dark one - so the picture sits on the
+// blog like part of it rather than a dark poster from somewhere else (owner,
+// 2026-11-08). The model still draws in the house hue it was given; the
+// renderer recolours the layer at render time. That keeps the stored drawing
+// theme-free: an owner who changes their colours on Settings recolours every
+// cover at once, and older drawings follow the theme too. A site without a
+// read theme keeps the house look below.
+//
 // Why resvg and not next/og or sharp: satori (next/og) has no bidi, so a
 // Hebrew title came out letter-reversed on the Paperbot cover (2026-11-05);
 // sharp's librsvg takes fonts from the OS and a Vercel function has none, so
@@ -210,21 +221,88 @@ export function dryCoverSvg(): string {
 
 // --- our half: the base and the raster ---------------------------------------
 
-function baseLayer(hue: Hue, seed: string): string {
+/** The site's look, as far as a cover needs it (lib/hosted-theme.ts). */
+export type CoverTheme = { accent: string; mode: "light" | "dark" };
+
+type Palette = { bg: string; accent: string; bright: string; deep: string; ink: string; neutral: string; dots: string; dotOpacity: number; glowOpacity: number; vignette: boolean };
+
+function rgbOf(hex: string): number[] {
+  const h = hex.replace("#", "");
+  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  return [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
+}
+
+/** a weighted toward b by t (0 = a, 1 = b). */
+function mix(a: string, b: string, t: number): string {
+  const [x, y] = [rgbOf(a), rgbOf(b)];
+  return "#" + x.map((c, i) => Math.round(c + (y[i] - c) * t).toString(16).padStart(2, "0")).join("");
+}
+
+function lightness(hex: string): { s: number; l: number } {
+  const [r, g, b] = rgbOf(hex).map((c) => c / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  return { s: max === min ? 0 : (max - min) / (1 - Math.abs(2 * l - 1)), l };
+}
+
+/** The house look for a hue (no theme read), or the site's look. */
+function paletteFor(hue: Hue, theme: CoverTheme | null | undefined): Palette {
+  if (!theme) {
+    const p = HUES[hue];
+    return { bg: BG, accent: p.accent, bright: p.bright, deep: p.deep, ink: "#f5f3ec", neutral: "#9a9a9a", dots: "#ffffff", dotOpacity: 0.05, glowOpacity: 0.34, vignette: true };
+  }
+  const a = theme.accent;
+  if (theme.mode === "light") {
+    // A page a shade off white, tinted by the accent; the drawing in the
+    // site's accent and a dark ink. A black-and-white site's accent IS its
+    // ink, and the cover comes out black and white with it.
+    return { bg: mix(a, "#ffffff", 0.95), accent: a, bright: a, deep: mix(a, "#ffffff", 0.4), ink: "#27272a", neutral: "#8b8f97", dots: a, dotOpacity: 0.09, glowOpacity: lightness(a).s < 0.15 ? 0 : 0.12, vignette: false };
+  }
+  return { bg: BG, accent: a, bright: mix(a, "#ffffff", 0.3), deep: mix(a, "#000000", 0.35), ink: "#f5f3ec", neutral: "#9a9a9a", dots: "#ffffff", dotOpacity: 0.05, glowOpacity: 0.3, vignette: true };
+}
+
+/** Recolour a stored subject layer, drawn in a house hue, into the site's
+ *  palette. Exact house colours map one to one; anything else the model
+ *  improvised is placed by kind (a pale stroke would vanish on a light page,
+ *  so it becomes ink; a grey stays a grey; any other colour joins the
+ *  accent), which keeps a drawing legible on either base. */
+function recolorLayer(svg: string, hue: Hue, pal: Palette, light: boolean): string {
   const p = HUES[hue];
+  const exact = new Map<string, string>([
+    [p.accent, pal.accent],
+    [p.bright, pal.bright],
+    [p.deep, pal.deep],
+    ["#f5f3ec", pal.ink],
+    ["#9a9a9a", pal.neutral],
+  ]);
+  return svg.replace(/(fill|stroke|stop-color)="(#[0-9a-fA-F]{3,6}|white|black)"/g, (whole, attr: string, raw: string) => {
+    const v = raw.toLowerCase();
+    const hex = v === "white" ? "#ffffff" : v === "black" ? "#000000" : v.length === 4 ? "#" + v.slice(1).split("").map((c) => c + c).join("") : v;
+    const hit = exact.get(hex);
+    if (hit) return `${attr}="${hit}"`;
+    const { s, l } = lightness(hex);
+    if (light && l > 0.8) return `${attr}="${pal.ink}"`;
+    if (s < 0.15) return light && l < 0.2 ? `${attr}="${pal.ink}"` : whole;
+    return `${attr}="${pal.accent}"`;
+  });
+}
+
+function baseLayer(pal: Palette, seed: string): string {
+  const p = { accent: pal.accent, deep: pal.deep };
   // The glow moves per article so a shelf of covers does not share one light
   // source, but stays in the upper half where card crops keep it.
   const gx = 300 + (hash(seed) % 1000);
   const gy = 180 + (hash(`${seed}y`) % 300);
   return `<defs>
-<radialGradient id="dsc-glow" cx="0.5" cy="0.5" r="0.5"><stop offset="0%" stop-color="${p.accent}" stop-opacity="0.34"/><stop offset="45%" stop-color="${p.deep}" stop-opacity="0.14"/><stop offset="100%" stop-color="${p.deep}" stop-opacity="0"/></radialGradient>
+<radialGradient id="dsc-glow" cx="0.5" cy="0.5" r="0.5"><stop offset="0%" stop-color="${p.accent}" stop-opacity="${pal.glowOpacity}"/><stop offset="45%" stop-color="${p.deep}" stop-opacity="${(pal.glowOpacity * 0.4).toFixed(3)}"/><stop offset="100%" stop-color="${p.deep}" stop-opacity="0"/></radialGradient>
 <radialGradient id="dsc-vignette" cx="0.5" cy="0.5" r="0.72"><stop offset="60%" stop-color="#000" stop-opacity="0"/><stop offset="100%" stop-color="#000" stop-opacity="0.5"/></radialGradient>
-<pattern id="dsc-dots" width="36" height="36" patternUnits="userSpaceOnUse"><circle cx="1.5" cy="1.5" r="1.5" fill="#ffffff" fill-opacity="0.05"/></pattern>
+<pattern id="dsc-dots" width="36" height="36" patternUnits="userSpaceOnUse"><circle cx="1.5" cy="1.5" r="1.5" fill="${pal.dots}" fill-opacity="${pal.dotOpacity}"/></pattern>
 </defs>
-<rect width="${COVER_W}" height="${COVER_H}" fill="${BG}"/>
+<rect width="${COVER_W}" height="${COVER_H}" fill="${pal.bg}"/>
 <rect width="${COVER_W}" height="${COVER_H}" fill="url(#dsc-dots)"/>
 <ellipse cx="${gx}" cy="${gy}" rx="820" ry="560" fill="url(#dsc-glow)"/>
-<rect width="${COVER_W}" height="${COVER_H}" fill="url(#dsc-vignette)"/>`;
+${pal.vignette ? `<rect width="${COVER_W}" height="${COVER_H}" fill="url(#dsc-vignette)"/>` : ""}`;
 }
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -255,7 +333,7 @@ function wrap(text: string, maxChars: number, maxLines: number): string[] {
 /** The card for an article with no drawing (older drafts, a failed or
  *  refused illustration): the title on the house base, laid out in the
  *  title's own direction. */
-function titleLayer(title: string, siteName: string, hue: Hue): string {
+function titleLayer(title: string, siteName: string, pal: Palette): string {
   const rtl = isRtlText(title);
   const size = title.length > 60 ? 68 : 80;
   const lines = wrap(title, Math.floor(1300 / (size * 0.52)), 4);
@@ -272,13 +350,13 @@ function titleLayer(title: string, siteName: string, hue: Hue): string {
   // marks and moving it all tried, 2026-11-05). A display title loses
   // nothing by it; punctuation BETWEEN Hebrew words resolves correctly.
   const top = (COVER_H - lines.length * lineH) / 2 + size * 0.85;
-  const p = HUES[hue];
+  const p = { bright: pal.bright };
   const bar = rtl ? `<rect x="${COVER_W - 120 - 72}" y="120" width="72" height="7" rx="3.5" fill="${p.bright}"/>` : `<rect x="120" y="120" width="72" height="7" rx="3.5" fill="${p.bright}"/>`;
   const text = lines
-    .map((l, i) => `<text x="${x}" y="${(top + i * lineH).toFixed(0)}" font-family="${family}" font-weight="700" font-size="${size}" fill="#ffffff" text-anchor="${a}"${dir}>${esc(rtl ? l.replace(/\s*[:.,!?;\-–]+$/u, "") : l)}</text>`)
+    .map((l, i) => `<text x="${x}" y="${(top + i * lineH).toFixed(0)}" font-family="${family}" font-weight="700" font-size="${size}" fill="${pal.ink}" text-anchor="${a}"${dir}>${esc(rtl ? l.replace(/\s*[:.,!?;\-–]+$/u, "") : l)}</text>`)
     .join("\n");
   const site = siteName
-    ? `<text x="${x}" y="${COVER_H - 110}" font-family="sans-serif" font-weight="600" font-size="32" fill="#ffffff" fill-opacity="0.72" text-anchor="${a}"${isRtlText(siteName) ? ' direction="rtl"' : ""}>${esc(siteName)}</text>`
+    ? `<text x="${x}" y="${COVER_H - 110}" font-family="sans-serif" font-weight="600" font-size="32" fill="${pal.ink}" fill-opacity="0.72" text-anchor="${a}"${isRtlText(siteName) ? ' direction="rtl"' : ""}>${esc(siteName)}</text>`
     : "";
   return `${bar}\n${text}\n${site}`;
 }
@@ -304,9 +382,11 @@ function fonts(): string[] {
 
 /** The finished cover as a PNG: the stored subject layer on the house base,
  *  or the title card when there is no layer (or it will not render). */
-export async function renderCoverPng(input: { subjectSvg: string | null; title: string; siteName: string; seed: string }): Promise<Buffer> {
+export async function renderCoverPng(input: { subjectSvg: string | null; title: string; siteName: string; seed: string; theme?: CoverTheme | null }): Promise<Buffer> {
   const hue = hueOf(input.subjectSvg) ?? HUE_NAMES[hash(input.seed) % HUE_NAMES.length];
-  const base = baseLayer(hue, input.seed);
+  const pal = paletteFor(hue, input.theme);
+  const base = baseLayer(pal, input.seed);
+  const subject = input.subjectSvg && input.theme ? recolorLayer(input.subjectSvg, hue, pal, input.theme.mode === "light") : input.subjectSvg;
   const doc = (layer: string) =>
     `<svg xmlns="http://www.w3.org/2000/svg" width="${COVER_W}" height="${COVER_H}" viewBox="0 0 ${COVER_W} ${COVER_H}">${base}\n${layer}</svg>`;
   const { Resvg } = await import("@resvg/resvg-js");
@@ -323,14 +403,14 @@ export async function renderCoverPng(input: { subjectSvg: string | null; title: 
     })
       .render()
       .asPng();
-  if (input.subjectSvg) {
+  if (subject) {
     try {
-      return await compress(render(doc(input.subjectSvg)));
+      return await compress(render(doc(subject)));
     } catch (err) {
       console.warn(`[cover] subject layer did not render, using the title card: ${err instanceof Error ? err.message : err}`);
     }
   }
-  return compress(render(doc(titleLayer(input.title, input.siteName, hue))));
+  return compress(render(doc(titleLayer(input.title, input.siteName, pal))));
 }
 
 /** Max zlib effort on resvg's output: the PNG is committed into the

@@ -4,6 +4,7 @@ import { getProjectById, writerMode } from "@/lib/projects";
 import { loadSiteProfile } from "@/lib/site-profile";
 import { generateSiteProfile } from "@/lib/autopilot/profile";
 import type { Job } from "@/lib/jobs";
+import { readSiteTheme } from "@/lib/hosted-theme";
 
 // Reads a customer's site and stores what it learned.
 //
@@ -75,6 +76,17 @@ export async function runCrawlJob(job: Job): Promise<void> {
   // retry here would re-read 150 pages to repair a missing description. The
   // autopilot cron retries the profile itself on its next run.
   if (writerMode(project) === "hosted") {
+    // The site's colours, read on the first look and never over a theme the
+    // owner set or one already read (Settings re-reads on demand): the hosted
+    // blog and every cover are drawn in them (hosted-theme.ts, cover-art.ts).
+    if (!project.hosted_theme) {
+      try {
+        const read = await readSiteTheme(project);
+        if (read) await db().from("projects").update({ hosted_theme: read.theme, ...(project.hosted_origin ? {} : { hosted_origin: read.origin }) }).eq("id", project.id).is("hosted_theme", null);
+      } catch (e) {
+        console.warn(`[crawl] site colours for ${project.slug} not read: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
     try {
       const { fromDb, error } = await loadSiteProfile(project);
       if (!fromDb && !error) await generateSiteProfile(project);
