@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   description: "What data DispatchSEO collects, how it is used, and how to remove it.",
 };
 
-const EFFECTIVE = "August 2, 2026";
+const EFFECTIVE = "November 8, 2026";
 const CONTACT = "privacy@dispatchseo.com";
 
 // The controller's identity is mandatory under GDPR Art. 13(1)(a) and Israeli
@@ -292,8 +292,9 @@ export default function PrivacyPage() {
         <p>
           <Term>Our own visit count.</Term> Our servers keep a log of page requests: the path,
           the referring site, the browser&apos;s user-agent string, the country, and a visitor
-          number that is a hash of the network address and browser, salted so that it changes
-          every day and cannot be turned back into an address. The address itself is not
+          number that is a hash of the network address and browser. The hash is salted with a
+          secret held only on our server and rotated every UTC day, so it cannot be linked
+          from one day to the next or turned back into an address. The address itself is not
           stored. It sets no cookie and reads nothing from your device. <Term>Legal basis:</Term>{" "}
           our legitimate interest in knowing whether the site is reached, and by people or by
           crawlers. You can object to this at {CONTACT}.
@@ -349,16 +350,21 @@ export default function PrivacyPage() {
           <Term>When you delete your account:</Term> your projects and everything attached to
           them - keywords, rank history, search statistics, pages, suggestions, backlink
           prospects, site profile - are deleted immediately, and your login is deleted with
-          them.
+          them. So are the visit records, product-usage events and sign-in activity tied to
+          your account.
         </p>
         <p>
           <Term>What outlives that:</Term> billing and tax records, which Polar retains as
-          merchant of record for the period its own legal obligations require; feedback-board
-          posts, which stay on the board once the account that wrote them is gone, detached
-          from it; and backups, which roll off on their own cycle within 30 days. Failed-login
-          and waitlist rate-limit records hold an IP address until the counter next resets.
-          Analytics and error records age out on PostHog&apos;s and Sentry&apos;s retention
-          schedules, listed on the subprocessors page.
+          merchant of record for the period its own legal obligations require; and backups,
+          which roll off on their own cycle within 30 days. Feedback-board posts stay on the
+          board, detached from any account: the email and account id on them are removed. If
+          a site used the free plan, the free plan&apos;s abuse ledger keeps salted one-way
+          hashes of the site&apos;s domain, your email, your GitHub login, your network address
+          and your device cookie for as long as the free plan exists, so the same site cannot
+          claim it twice. Without our server&apos;s secret, those hashes cannot identify you to
+          anyone reading the database. Failed-login and waitlist rate-limit records hold an IP
+          address until the counter next resets. Analytics and error records held by PostHog
+          and Sentry age out on their retention schedules, listed on the subprocessors page.
         </p>
       </Section>
 
