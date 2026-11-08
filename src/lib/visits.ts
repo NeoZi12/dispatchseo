@@ -159,11 +159,19 @@ function clientIp(h: Headers): string {
   return h.get("x-real-ip") ?? "";
 }
 
+// The server secret every visit hash is salted with: VISITOR_SALT, else
+// CRON_SECRET. A blank VISITOR_SALT counts as unset (it falls through to
+// CRON_SECRET), never as an empty salt, and with neither set there is no
+// secret at all, so recordVisit records nothing rather than hash IPs with a
+// value anyone could guess.
+function visitSalt(): string | null {
+  return process.env.VISITOR_SALT || process.env.CRON_SECRET || null;
+}
+
 // A per-day visitor id: the same browser counts once a day, and yesterday's
 // id cannot be linked to today's. Salted with a server secret so the hash
 // is not a lookup table of IPs.
-function visitorHash(h: Headers, ua: string): string {
-  const salt = process.env.VISITOR_SALT ?? process.env.CRON_SECRET ?? process.env.DASHBOARD_PASSWORD ?? "dispatchseo";
+function visitorHash(h: Headers, ua: string, salt: string): string {
   const day = new Date().toISOString().slice(0, 10);
   return createHash("sha256").update(`${salt}|${day}|${clientIp(h)}|${ua}`).digest("hex").slice(0, 20);
 }
@@ -171,10 +179,9 @@ function visitorHash(h: Headers, ua: string): string {
 // The same, without the user agent: one network on one day, every browser on
 // it (migration 0077). Only used to leave the operator's own visits out of
 // /owner - their test browser or phone on the same wifi.
-function netHash(h: Headers): string | null {
+function netHash(h: Headers, salt: string): string | null {
   const ip = clientIp(h);
   if (!ip) return null;
-  const salt = process.env.VISITOR_SALT ?? process.env.CRON_SECRET ?? process.env.DASHBOARD_PASSWORD ?? "dispatchseo";
   const day = new Date().toISOString().slice(0, 10);
   return createHash("sha256").update(`net|${salt}|${day}|${ip}`).digest("hex").slice(0, 20);
 }
@@ -207,6 +214,8 @@ export function visitsEnabled(): boolean {
 
 export async function recordVisit(input: VisitInput): Promise<void> {
   if (!visitsEnabled()) return;
+  const salt = visitSalt();
+  if (!salt) return;
   try {
     const h = input.headers;
     const ua = (h.get("user-agent") ?? "").slice(0, 256);
@@ -226,8 +235,8 @@ export async function recordVisit(input: VisitInput): Promise<void> {
       bot_name: input.automated ? AUTOMATED_BROWSER : bot ? botName(ua) : null,
       device: deviceOf(ua, bot),
       country: (h.get("x-vercel-ip-country") ?? h.get("cf-ipcountry") ?? null)?.toUpperCase().slice(0, 2) ?? null,
-      visitor: visitorHash(h, ua),
-      net: netHash(h),
+      visitor: visitorHash(h, ua, salt),
+      net: netHash(h, salt),
       user_id: input.userId ?? null,
       hosted_key: input.area === "hosted" ? hostedKey(input.url.pathname) : null,
       utm_source: p.get("utm_source")?.slice(0, 80) || null,
