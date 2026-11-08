@@ -1230,6 +1230,7 @@ export async function deleteAccount(
     // Feedback stays on the board for others; only the author link and the
     // reply-to address go.
     ["feedback", () => db().from("feedback").update({ author_email: null, author_user_id: null }).eq("author_user_id", user.id)],
+    ["feedback_votes", () => db().from("feedback_votes").delete().eq("user_id", user.id)],
     ["web_visits", () => db().from("web_visits").delete().eq("user_id", user.id)],
     // distinct_id is the auth user id (captureServer is called with user.id).
     ["app_events", () => db().from("app_events").delete().eq("distinct_id", user.id)],

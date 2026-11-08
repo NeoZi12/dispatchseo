@@ -151,14 +151,6 @@ async function callsToday(projectId: string, endpoint: string): Promise<number> 
   return (data as { calls: number }).calls ?? 0;
 }
 
-function checkSerpCallsToday(projectId: string): Promise<number> {
-  return callsToday(projectId, CHECK_SERP_ENDPOINT);
-}
-
-export async function checkSerpDailyCapReached(projectId: string): Promise<boolean> {
-  return (await checkSerpCallsToday(projectId)) >= CHECK_SERP_DAILY_CAP;
-}
-
 /** Same fire-and-forget shape as recordCheckSerpCall: a rate-limit tick, not a
  *  spend, so a failure only under-counts and is never worth failing the call
  *  that was already made. */
@@ -173,10 +165,6 @@ export async function recordKeywordIdeasCall(projectId: string): Promise<void> {
   if (error) {
     console.error(`[dataforseo-usage] keyword_ideas record failed for ${projectId}: ${error.message}`);
   }
-}
-
-export async function keywordIdeasDailyCapReached(projectId: string): Promise<boolean> {
-  return (await callsToday(projectId, KEYWORD_IDEAS_ENDPOINT)) >= KEYWORD_IDEAS_DAILY_CAP;
 }
 
 async function ownedProjectIds(ownerId: string): Promise<string[]> {
@@ -398,7 +386,7 @@ export async function platformUsageStatus(projectId: string): Promise<PlatformUs
   const [project, ownerId, serpToday, ideasToday] = await Promise.all([
     getProjectById(projectId),
     ownerUserIdForProject(projectId),
-    checkSerpCallsToday(projectId),
+    callsToday(projectId, CHECK_SERP_ENDPOINT),
     callsToday(projectId, KEYWORD_IDEAS_ENDPOINT),
   ]);
   // Both need a result from above, but not from each other.

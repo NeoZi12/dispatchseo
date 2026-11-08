@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { requireDashboard } from "@/lib/auth-gate";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { requireOnboarded } from "@/lib/onboarding-gate";
 import { getActiveProject } from "@/lib/active-project";
 import { getProjectBySlug } from "@/lib/projects";
@@ -45,7 +46,8 @@ async function useProperty(formData: FormData) {
   const project = await getProjectBySlug(slug);
   if (!project) return;
   if (isCloudMode()) await assertProjectOwned(project.id);
-  await setTrackedProperty(project.id, siteUrl);
+  const err = await setTrackedProperty(project.id, siteUrl);
+  if (err) redirect(`/google?error=${encodeURIComponent(err)}`);
   revalidatePath("/google");
 }
 

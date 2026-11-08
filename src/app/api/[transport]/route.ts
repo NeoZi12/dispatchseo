@@ -5074,7 +5074,17 @@ const mcpHandler = createMcpHandler(
           return fail(`Research already ran at ${last}; it can run again two days after that.`);
         }
         const outcome = await runResearch(p);
-        return "skipped" in outcome ? fail(`Research did not run: ${outcome.skipped}.`) : ok(outcome);
+        if ("skipped" in outcome) {
+          // A run that bought nothing hands the two-day slot back - but only
+          // while the stamp is still ours, so a concurrent claim keeps its own.
+          await db()
+            .from("projects")
+            .update({ last_research_at: p.last_research_at ?? null })
+            .eq("id", p.id)
+            .eq("last_research_at", nowIso);
+          return fail(`Research did not run: ${outcome.skipped}.`);
+        }
+        return ok(outcome);
       },
     );
 

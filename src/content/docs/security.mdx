@@ -22,9 +22,10 @@ install. Everything below says which mode it applies to.
 **Dashboard, self-hosted.** One password gates every page -
 `DASHBOARD_PASSWORD` if you set it as an env var, or the password you
 chose in the setup wizard (stored as a scrypt hash, never in plain
-text). The session cookie (`dash_auth`) is an HMAC of a fixed message
-keyed by that password or hash, so changing the password invalidates
-every existing session immediately, with no sessions table to clean up.
+text). The session cookie (`dash_auth`) carries its issue time and an
+HMAC over it keyed by that password or hash: it expires 30 days after
+issue, and changing the password invalidates every existing session
+immediately, with no sessions table to clean up.
 There's no traditional `middleware.ts` doing the enforcement (Next 16
 renamed the file to `proxy.ts`, and DispatchSEO's version only checks
 whether the cookie is *present*, as a fast redirect to `/login`); the
