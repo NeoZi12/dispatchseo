@@ -18,7 +18,9 @@ import Link from "next/link";
 //   - Google API Services User Data Policy, incl. the verbatim Limited Use
 //     sentence Google's reviewers grep for.
 //
-// EVERY FACTUAL CLAIM HERE WAS VERIFIED AGAINST THE CODE on 2026-08-02. If you
+// EVERY FACTUAL CLAIM HERE WAS VERIFIED AGAINST THE CODE on 2026-08-02, and the
+// Google passages again on 2026-11-08 (the write and site-verification scopes,
+// the writer's use of Search Console queries, the AI provider, revocation). If you
 // change what the product collects, sends, or deletes, this page is part of
 // that change - an inaccurate privacy policy is worse than a thin one, because
 // it converts an engineering detail into a misrepresentation.
@@ -164,14 +166,21 @@ export default function PrivacyPage() {
         </p>
 
         <p>
-          <Term>Google Search Console data.</Term> If you connect Search Console, DispatchSEO
-          requests read-only access (the <code>webmasters.readonly</code> scope and nothing
-          else). It reads your properties list and search analytics: queries, clicks,
-          impressions, and average positions. It cannot modify anything in your Google account.
-          The OAuth refresh token is encrypted (AES-256-GCM) and deleted the moment you
-          disconnect. Statistics derived from this data are stored per site to power rank
-          tracking and reporting. <Term>Legal basis:</Term> your consent, given on Google&apos;s
-          consent screen, which you can withdraw at any time by disconnecting.
+          <Term>Google Search Console data.</Term> If you connect Google, DispatchSEO asks for
+          three permissions on Google&apos;s consent screen: read access to Search Console (the{" "}
+          <code>webmasters.readonly</code> scope), read and write access to Search Console (
+          <code>webmasters</code>), and Site Verification (<code>siteverification</code>). We
+          read your list of properties and, for the site you connect, the daily search totals
+          (clicks, impressions, click-through rate, average position), the top 20 queries and
+          top 20 pages for each day, the index status of the articles we published, and when
+          Google last read your sitemap. We write three things and nothing else: we add your
+          site as a Search Console property when it is missing, we place a verification token
+          for your domain and confirm it, and we submit your blog&apos;s sitemap address. We
+          never change other properties, never request indexing, and never read other Google
+          services. The OAuth refresh token is encrypted at rest (AES-256-GCM); when you
+          disconnect, we delete it and revoke it at Google. <Term>Legal basis:</Term> your
+          consent, given on Google&apos;s consent screen, which you can withdraw at any time by
+          disconnecting.
         </p>
 
         <p>
@@ -366,6 +375,11 @@ export default function PrivacyPage() {
           address until the counter next resets. Analytics and error records held by PostHog
           and Sentry age out on their retention schedules, listed on the subprocessors page.
         </p>
+        <p>
+          Search Console statistics stay for as long as the site is connected and go when you
+          delete the site or your account. Disconnecting Google deletes and revokes the token
+          at once; the statistics already collected stay with the site until it is deleted.
+        </p>
       </Section>
 
       <Section title="Security">
@@ -402,12 +416,46 @@ export default function PrivacyPage() {
           , including the Limited Use requirements.
         </p>
         <p>
-          Concretely: Google user data is used only to recommend keywords and measure how your
-          published content performs, both of which are features you see in the product. It is
-          never used for advertising, never sold or transferred to data brokers, and never used
-          to train generalised AI or machine-learning models. No human reads it except with
-          your permission, for security purposes, or where the law requires it. If we ever
-          change how we use it, we will ask for your consent again before the new use begins.
+          <Term>What we request.</Term> Three scopes, each on Google&apos;s consent screen:{" "}
+          <code>webmasters.readonly</code> to read Search Console, <code>webmasters</code> to
+          add your site as a property and submit your sitemap, and <code>siteverification</code>{" "}
+          to verify your domain during setup. The previous paragraph on Search Console data lists
+          exactly what we read and the three things we write.
+        </p>
+        <p>
+          <Term>What we use it for.</Term> Google user data powers four features you can see.
+          The clicks, impressions and queries appear on your dashboard and on each article&apos;s
+          page. Topic selection treats a query your site already appears for, without a page in
+          the top ten, as demand for an article. The writer&apos;s research includes up to 20 of
+          your own queries related to the keyword, so the article answers what people already
+          search for on your site. Publishing pace slows down, and pauses, when Google is not
+          indexing your articles. The write permissions exist so Google finds your new articles
+          without you opening Search Console: we submit the sitemap and verify the domain for
+          you.
+        </p>
+        <p>
+          <Term>Who else processes it.</Term> The query lists used in research travel inside
+          the article prompt to Anthropic, our AI model provider, together with the keyword and
+          the public pages read for the article. Anthropic processes these prompts under its
+          commercial terms, which exclude training on customer data and limit retention to 30
+          days. Everything else stays in our database at Supabase in the EU. No other vendor
+          receives Google user data. We never use it for advertising, never sell it or pass it
+          to data brokers, and never use it to train general-purpose AI models. No human at
+          DispatchSEO reads it except with your permission, for security purposes, or where the
+          law requires it.
+        </p>
+        <p>
+          <Term>How long we keep it, and how to stop.</Term> We keep a site&apos;s Search
+          Console statistics while the site is connected and delete them when you delete the
+          site or your account. The query lists used for an article stay with that
+          article&apos;s run record for the same period. You can withdraw access at any time:
+          disconnect Google on the dashboard&apos;s Google page, or remove DispatchSEO at{" "}
+          <a className="text-white underline" href="https://myaccount.google.com/permissions">
+            myaccount.google.com/permissions
+          </a>
+          . Either way we delete the refresh token and revoke it at Google; the articles already
+          on your site stay yours. If we ever change how we use Google user data, we will ask
+          for your consent again before the new use begins.
         </p>
       </Section>
 

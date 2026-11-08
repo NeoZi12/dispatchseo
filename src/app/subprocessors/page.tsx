@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   description: "The vendors that process data on behalf of DispatchSEO, what each receives, and where it runs.",
 };
 
-const EFFECTIVE = "August 2, 2026";
+const EFFECTIVE = "November 8, 2026";
 const CONTACT = "privacy@dispatchseo.com";
 
 // Confirmed against the Supabase dashboard on 2026-08-02 (Project Settings ->
@@ -86,6 +86,20 @@ const SUBPROCESSORS: Sub[] = [
     purpose: "Keyword, ranking and SERP data",
     data: "Your domain and the keywords being researched or tracked. No personal data about you.",
     location: "United States",
+    safeguard: "Standard Contractual Clauses",
+  },
+  {
+    name: "Anthropic",
+    purpose: "The AI model that researches and writes articles",
+    data: "Article prompts: the keyword, excerpts of the public pages read for it, your site's description and page titles, the facts you gave us, and up to 20 of your Search Console queries related to the keyword. No account, billing or login data. Anthropic's commercial terms exclude training on this data and limit retention to 30 days.",
+    location: "United States",
+    safeguard: "Standard Contractual Clauses",
+  },
+  {
+    name: "Cloudflare",
+    purpose: "Rendering and images",
+    data: "Fetches your public homepage and published pages to read your site's colours and logo and to take the previews shown on your dashboard; paints cover images from a one-line description written by our AI. No account or Search Console data.",
+    location: "Global network, EU and US",
     safeguard: "Standard Contractual Clauses",
   },
   {
