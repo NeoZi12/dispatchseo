@@ -24,7 +24,7 @@ That fourth card is this project's own number, not a projection - dispatchseo.co
 
 ## What building the tracker actually takes
 
-A single API call isn't [a rank tracker](/blog/ahrefs-alternative). Getting from "one response" to "a system I'd trust to run unattended every night" is the actual DIY project, and it looks like this:
+A single API call isn't a rank tracker. Getting from "one response" to "a system I'd trust to run unattended every night" is the actual DIY project, and it looks like this:
 
 <SelfHostPipelineFlow />
 
@@ -41,7 +41,7 @@ None of these steps are hard individually. Skipping any one of them is exactly h
 | Alerting | You decide what a "regression" is and wire the notification | Already wired, usually to a dashboard or an email digest |
 | Multi-project scoping | You add a `project_id` column and remember to filter by it everywhere | Already the unit the whole system is built around |
 
-The right column isn't a different feature set from the left - it's the left column, already built, plus the operational habit of actually looking at the data. That's the real thing being bought: not access to the API call, which is $0.002 either way, but the part of the system that turns a cron job into something a person trusts enough to stop checking manually - the same trade a [free-tool stack swapped for one login](/blog/semrush-alternative-free) makes for research instead of tracking.
+The right column isn't a different feature set from the left - it's the left column, already built, plus the operational habit of actually looking at the data. That's the real thing being bought: not access to the API call, which is $0.002 either way, but the part of the system that turns a cron job into something a person trusts enough to stop checking manually.
 
 ## When DIY still wins
 
@@ -56,7 +56,7 @@ If the only thing tracked is a handful of keywords checked by hand once a month,
 ## FAQ
 
 **Is a SERP tracking API the same thing as a rank tracker?**
-No. The API is one stateless call - a snapshot for one keyword at one moment. [A rank tracker](/blog/ahrefs-alternative) is that call wired into storage, a schedule, and history; nothing about the API itself remembers what it returned yesterday.
+No. The API is one stateless call - a snapshot for one keyword at one moment. A rank tracker is that call wired into storage, a schedule, and history; nothing about the API itself remembers what it returned yesterday.
 
 **What does DataForSEO's SERP API actually cost per check?**
 $0.0006/SERP on the standard queued tier (~5 min turnaround), $0.0012 on priority (~1 min), $0.002 on live mode (~6 sec) - current pricing, checked live for this guide. Adding a search operator like `site:` or `filetype:` to the query multiplies the cost by 5.

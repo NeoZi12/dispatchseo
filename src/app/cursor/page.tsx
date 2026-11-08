@@ -11,6 +11,10 @@ export const metadata: Metadata = {
   description:
     "Connect Cursor to DispatchSEO over MCP: keyword research, guide writing, and pull requests, running on the Cursor plan you already have.",
   alternates: { canonical: "/cursor" },
+  // Out of the index since 2026-11-08: one template repeated per agent, about
+  // the pre-hosted product, on a site Google's spam systems demoted. The page
+  // still serves for anyone linked here.
+  robots: { index: false, follow: true },
 };
 
 export default function CursorLandingPage() {

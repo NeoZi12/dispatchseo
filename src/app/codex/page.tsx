@@ -11,6 +11,10 @@ export const metadata: Metadata = {
   description:
     "Connect Codex to DispatchSEO over MCP: keyword research, guide writing, and pull requests on autopilot, running on your OpenAI account.",
   alternates: { canonical: "/codex" },
+  // Out of the index since 2026-11-08: one template repeated per agent, about
+  // the pre-hosted product, on a site Google's spam systems demoted. The page
+  // still serves for anyone linked here.
+  robots: { index: false, follow: true },
 };
 
 export default function CodexLandingPage() {

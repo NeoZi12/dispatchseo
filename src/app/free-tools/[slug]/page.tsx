@@ -24,6 +24,7 @@ export async function generateMetadata({
     title: `${tool.title} - DispatchSEO`,
     description: tool.metaDescription,
     alternates: { canonical: `/free-tools/${tool.slug}` },
+    ...(tool.noindex ? { robots: { index: false, follow: true } } : {}),
     openGraph: {
       title: tool.title,
       description: tool.metaDescription,
@@ -63,11 +64,11 @@ export default async function ToolDetail({ params }: { params: Promise<{ slug: s
       {/* CTA to the paid product. */}
       <div className="mt-10 rounded-xl border border-violet-500/20 bg-violet-500/[0.06] p-5 text-center sm:p-6">
         <p className="text-base font-medium text-neutral-100">
-          DispatchSEO does this automatically, for every page it builds
+          DispatchSEO does this automatically, for every article it writes
         </p>
         <p className="mx-auto mt-1.5 max-w-md text-sm text-neutral-400">
-          Your coding agent researches keywords, writes guides and tools like this one, and wires the
-          internal links between them - on a schedule, as pull requests you approve.
+          It picks keywords from real search data, writes articles for your site every week, and wires
+          the internal links between them.
         </p>
         <Link
           href="/signup"

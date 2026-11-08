@@ -32,6 +32,11 @@ export type ToolEntry = {
   description: string[];
   faq: ToolFaqItem[];
   Widget: ComponentType;
+  /** Kept usable but out of Google's index: a generic checker that a thousand
+   *  sites already offer reads as templated filler on a site Google's spam
+   *  systems demoted (2026-11-08). The page sends noindex and leaves the
+   *  sitemap; links to it still work. */
+  noindex?: true;
 };
 
 export const FREE_TOOLS: ToolEntry[] = [
@@ -48,7 +53,7 @@ export const FREE_TOOLS: ToolEntry[] = [
       "It weighs two-word phrases over single keywords (\"internal linking\" beats \"linking\" on its own) and gives extra weight to anything that also shows up in a page's title, since that's usually the strongest signal of what a page is actually about. Paste your homepage and a blog post that happens to reference the same feature, for example, and it will surface that exact sentence as the link opportunity rather than a generic \"these seem related\" guess.",
       "Nothing you paste is uploaded anywhere - the whole analysis runs in your browser tab. That also means it works on any site, in any CMS, not just ones a crawler can reach.",
       "This is the same kind of linking decision DispatchSEO's own pipeline makes automatically for every guide it publishes - see how that fits into a fully " +
-        "[automated SEO agent](/blog/ai-seo-agent) if you'd rather not paste pages in by hand every time your site grows.",
+        "[automated SEO pipeline](/) if you'd rather not paste pages in by hand every time your site grows.",
     ],
     faq: [
       {
@@ -86,6 +91,7 @@ export const FREE_TOOLS: ToolEntry[] = [
   },
   {
     slug: "faq-schema-generator",
+    noindex: true,
     title: "FAQ schema generator",
     h1: "FAQ schema generator",
     valueLine:
@@ -98,7 +104,7 @@ export const FREE_TOOLS: ToolEntry[] = [
       "Nothing you type is uploaded anywhere - the whole thing runs in your browser tab, the same as this site's " +
         "[internal linking tool](/free-tools/internal-linking-tool). Copy the finished script tag into your page's head and you're done.",
       "This is one small, hand-run piece of what a full " +
-        "[automated SEO agent](/blog/ai-seo-agent) does on a schedule - deciding what markup a page needs and shipping it as part of the build, not as a separate manual step.",
+        "[automated SEO pipeline](/) does on a schedule - deciding what markup a page needs and shipping it as part of the build, not as a separate manual step.",
     ],
     faq: [
       {
@@ -142,7 +148,7 @@ export const FREE_TOOLS: ToolEntry[] = [
       "When it finds a conflict, it also tells you which page to keep. That call comes from a real, computed signal - how much of each page's own target keyword already shows up in its own title - not a guess at which one ranks better, since this tool has no access to your rankings or Search Console data. The page whose title is more tightly written for its keyword gets recommended as canonical; the other gets a merge-or-redirect suggestion, with the exact overlapping terms shown so you can see why.",
       "That's a deliberate scope limit, not a missing feature: Sitechecker's version needs your Search Console connected, and the Rows and Ivanhoe templates need you to wire up your own spreadsheet first. This one works from the page facts you already have, which means it works before a page is even published - Search Console can't show a conflict for a URL that doesn't exist yet. Once you've cleared out the conflicts, [DispatchSEO's internal linking tool](/free-tools/internal-linking-tool) is the natural next step for wiring the pages that are left into each other properly.",
       "Nothing you paste is uploaded anywhere - the whole comparison runs in your browser tab. This is the same check DispatchSEO's own pipeline runs before it ever proposes a new page: the suggestion queue is checked against everything already published, so it can't queue two guides for the same keyword in the first place. See how that fits into a fully " +
-        "[automated SEO agent](/blog/ai-seo-agent) if you'd rather this run itself on a schedule instead of pasting pages in by hand.",
+        "[automated SEO pipeline](/) if you'd rather this run itself on a schedule instead of pasting pages in by hand.",
     ],
     faq: [
       {
@@ -189,7 +195,7 @@ export const FREE_TOOLS: ToolEntry[] = [
       "Paste in a list of keywords, one per line, and this tool groups the ones that share real overlap - not just a common word, but enough shared terms that they're probably fighting for the same search. \"Best running shoes for flat feet\" and \"top running shoes for flat feet\" cluster as a same-page match: strip the filler words and they reduce to the identical set of terms, so building two pages for them just splits your own ranking signal. Paste those two lines in and that's exactly the verdict you'll get.",
       "Some clusters are a softer call. \"Email deliverability tips\" and \"improve email deliverability rate\" share enough terms to belong on one page, but they're distinct enough to earn their own section rather than getting merged into one sentence - the tool labels that case \"one page, multiple sections\" instead of forcing it into the same bucket as a near-duplicate pair. A keyword with no real overlap to anything else you pasted comes back standalone: safe to build its own page.",
       "This is the same judgment call DispatchSEO's own research workflow makes before it ever queues a page suggestion - it won't propose two guides for keywords that should really be one. Once you've grouped your list, [the keyword cannibalization checker](/free-tools/keyword-cannibalization-checker) is the natural next step if you've already got titles drafted and want to confirm two pages that already exist aren't competing. See how both fit into a fully " +
-        "[automated SEO agent](/blog/ai-seo-agent) if you'd rather this run itself against your whole keyword list on a schedule.",
+        "[automated SEO pipeline](/) if you'd rather this run itself against your whole keyword list on a schedule.",
       "Nothing you paste is uploaded anywhere - the grouping runs entirely in your browser tab, so it works on any keyword list from any source, not just ones a connected tool can see.",
     ],
     faq: [
@@ -227,6 +233,7 @@ export const FREE_TOOLS: ToolEntry[] = [
   },
   {
     slug: "seo-title-length-checker",
+    noindex: true,
     title: "SEO title length checker",
     h1: "SEO title length checker",
     valueLine:
@@ -239,7 +246,7 @@ export const FREE_TOOLS: ToolEntry[] = [
       "Nothing you type is uploaded anywhere - the whole thing runs in your browser tab, the same as this site's " +
         "[FAQ schema generator](/free-tools/faq-schema-generator). Once your title and description both come back safe, [the keyword cannibalization checker](/free-tools/keyword-cannibalization-checker) is a good next stop if you're publishing more than one page around the same topic.",
       "This is the same check DispatchSEO's own pipeline runs on every title and description before it proposes a new page - a page that gets truncated in the search result is a page that loses clicks it already earned by ranking. See how that fits into a fully " +
-        "[automated SEO agent](/blog/ai-seo-agent) if you'd rather this run itself on every page your site publishes.",
+        "[automated SEO pipeline](/) if you'd rather this run itself on every page your site publishes.",
     ],
     faq: [
       {
@@ -271,6 +278,7 @@ export const FREE_TOOLS: ToolEntry[] = [
   },
   {
     slug: "url-slug-generator",
+    noindex: true,
     title: "URL slug generator",
     h1: "URL slug generator",
     valueLine:
@@ -283,7 +291,7 @@ export const FREE_TOOLS: ToolEntry[] = [
       "Nothing you type is uploaded anywhere - the whole transform runs in your browser tab, the same as this site's " +
         "[SEO title length checker](/free-tools/seo-title-length-checker). Once your slug and title both check out, that's the other half of what shows up in a search result for a new page.",
       "This is the exact naming decision DispatchSEO's own pipeline makes for every guide it publishes - the slug it picks becomes the file name and the URL in one step, without a human typing it by hand. See how that fits into a fully " +
-        "[automated SEO agent](/blog/ai-seo-agent) if you'd rather this run itself for every page your site ships.",
+        "[automated SEO pipeline](/) if you'd rather this run itself for every page your site ships.",
     ],
     faq: [
       {
@@ -315,6 +323,7 @@ export const FREE_TOOLS: ToolEntry[] = [
   },
   {
     slug: "h1-tag-checker",
+    noindex: true,
     title: "H1 tag checker",
     h1: "H1 tag checker",
     valueLine:
@@ -326,7 +335,7 @@ export const FREE_TOOLS: ToolEntry[] = [
       "That second case is where most H1 checkers get it wrong: they treat more than one H1 as an automatic error. Google's own SEO starter guide says the opposite - heading order and count don't affect ranking, and there's \"no magical, ideal amount of headings a given page should have.\" This tool still flags multiple H1s, because one clear heading is genuinely easier for a reader (or a screen reader) to follow, but it says so as a heads-up, not a fabricated penalty.",
       "Give it a target keyword and it also checks how well each H1 matches - not a simple exact-string test, but the same kind of stopword-filtered term-overlap scoring [the keyword cannibalization checker](/free-tools/keyword-cannibalization-checker) uses: it strips filler words from your keyword, then checks which of the remaining words actually show up in the H1. Target \"best running shoes for flat feet\" against an H1 of \"Our Running Shoe Guide\" and it'll tell you \"running\" matched but \"shoes,\" \"flat,\" and \"feet\" didn't - specific enough to act on, not just a pass or fail.",
       "Nothing you paste is uploaded anywhere - the whole thing runs in your browser tab, the same as this site's [SEO title length checker](/free-tools/seo-title-length-checker), the natural next stop for auditing the other half of what shows up in a search result. This is the same on-page check DispatchSEO's own pipeline runs before it ever proposes a new page - see how that fits into a fully " +
-        "[automated SEO agent](/blog/ai-seo-agent) if you'd rather this run itself on a schedule instead of pasting HTML in by hand.",
+        "[automated SEO pipeline](/) if you'd rather this run itself on a schedule instead of pasting HTML in by hand.",
     ],
     faq: [
       {
@@ -364,6 +373,7 @@ export const FREE_TOOLS: ToolEntry[] = [
   },
   {
     slug: "open-graph-tag-checker",
+    noindex: true,
     title: "Open Graph tag checker",
     h1: "Open Graph tag checker",
     valueLine:
@@ -375,7 +385,7 @@ export const FREE_TOOLS: ToolEntry[] = [
       "Then it goes a step further than reading the tag: it actually loads the image your og:image URL points to, right there in your browser, and reports the real dimensions it gets back - not just what an og:image:width tag claims. That's how it catches a URL that 404s, or a file that technically loads but comes in at 300x200 when Facebook's own guidelines call for 1200x630 at a 1.91:1 ratio to avoid getting cropped in Feed.",
       "The preview below is built from that same resolved data, and it's not one static mockup - toggle between a Facebook/Slack-style large-image card and an X summary card, since twitter:title, twitter:description, and twitter:image all quietly fall back to your og: tags when they're missing, but twitter:card itself doesn't have an Open Graph equivalent - leave it out and X may skip the rich card entirely even though every og: tag is perfect. If anything required is missing, a \"Copy missing tags as HTML\" button hands you a ready-to-paste block instead of just a list of complaints.",
       "Nothing you paste is uploaded anywhere - the HTML parsing and tag audit run entirely in your browser tab, the same as [the H1 tag checker](/free-tools/h1-tag-checker). This is the same pre-publish check DispatchSEO's own pipeline runs on every guide and tool before it opens the PR - see how that fits into a fully " +
-        "[automated SEO agent](/blog/ai-seo-agent) if you'd rather this run itself on every page your site ships.",
+        "[automated SEO pipeline](/) if you'd rather this run itself on every page your site ships.",
     ],
     faq: [
       {

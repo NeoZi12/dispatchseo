@@ -45,4 +45,33 @@ export const GONE_POSTS: ReadonlySet<string> = new Set([
   "mcp-server-examples",
   "how-to-build-an-mcp-server",
   "self-hosted-ai",
+  // 2026-11-08 second prune (still demoted after the Sept-Oct spam update):
+  // the last commodity "<competitor> alternative" / vendor-listicle pages and
+  // the off-remit agent/MCP posts. The 16 slugs that 301'd into the removed
+  // alternative/automation pages go too - a 301 into a 410 is a soft 404.
+  "ahrefs-alternative",
+  "surfer-seo-alternative",
+  "semrush-alternative-free",
+  "best-seo-automation-tools",
+  "se-ranking-alternative",
+  "wincher-alternative",
+  "ubersuggest-alternative",
+  "long-tail-pro-alternative",
+  "accuranker-alternative",
+  "serpstat-alternative",
+  "answerthepublic-alternative",
+  "majestic-alternative",
+  "mangools-alternative",
+  "moz-alternative",
+  "marketmuse-alternative",
+  "frase-alternative",
+  "outrank-alternative",
+  "clearscope-alternative",
+  "seo-automation-software-free",
+  "best-seo-automation-software",
+  "google-search-console-mcp",
+  "ai-seo-agent",
+  "ai-powered-seo-tools-compared",
+  "programmatic-seo-tools",
+  "best-keyword-clustering-tool",
 ]);

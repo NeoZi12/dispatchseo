@@ -56,6 +56,24 @@ export default async function BlogPost({ params }: { params: Promise<{ slug: str
   const headings = getPostHeadings(slug);
   const showRail = headings.length >= 3;
 
+  // Article structured data: who published this and when, stated once in the
+  // shape Google reads. Organization, not Person, until the site has a real
+  // named author with a page of their own - an invented byline is worse than
+  // none. URLs are absolute on dispatchseo.com, same as metadataBase.
+  const origin = "https://dispatchseo.com";
+  const articleLd = {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    headline: post.meta.title,
+    description: post.meta.description,
+    datePublished: post.meta.date,
+    dateModified: post.meta.date,
+    mainEntityOfPage: `${origin}/blog/${slug}`,
+    ...(post.meta.cover ? { image: `${origin}${post.meta.cover}` } : {}),
+    author: { "@type": "Organization", name: "DispatchSEO", url: origin },
+    publisher: { "@type": "Organization", name: "DispatchSEO", url: origin },
+  };
+
   return (
     // Below lg this is the same centered column as before; from lg up, with
     // a rail to show, the container widens into a two-column grid. The
@@ -71,6 +89,12 @@ export default async function BlogPost({ params }: { params: Promise<{ slug: str
       }
     >
       <article className="max-w-3xl">
+        <script
+          type="application/ld+json"
+          // JSON.stringify of our own frontmatter; "<" escaped so a title can
+          // never close the script tag.
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(articleLd).replace(/</g, "\\u003c") }}
+        />
         {/* One clear back affordance, not a breadcrumb - the old
             "DispatchSEO / Blog" crumb read as two static labels, not
             something to click. This is a real link to the index, styled in

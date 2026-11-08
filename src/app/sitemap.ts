@@ -1,5 +1,4 @@
 import type { MetadataRoute } from "next";
-import { availableAgents } from "@/lib/agents";
 import { getAllPosts } from "@/lib/blog";
 import { getDocSlugs } from "@/lib/docs";
 import { getAllTools } from "@/lib/free-tools";
@@ -46,15 +45,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // sitemap that omits it looks broken for. Bare origin, no trailing slash,
     // to match byte-for-byte what page.tsx emits as its canonical.
     { url: base, changeFrequency: "weekly", priority: 1 },
-    // The agent-specific hubs - same commercial intent as the flagship page,
-    // just keyword-first ("dispatchseo claude code", "dispatchseo codex").
-    // Derived from the registry so a new agent's hub page is crawlable the
-    // day its landingPath exists.
-    ...availableAgents().map((a) => ({
-      url: `${base}${a.landingPath}`,
-      changeFrequency: "weekly" as const,
-      priority: 0.9,
-    })),
+    // The agent hubs (/claude-code, /codex, /cursor) are noindex since
+    // 2026-11-08 and stay out of here; so do the free tools marked noindex.
     { url: `${base}/blog`, changeFrequency: "daily" },
     ...getAllPosts().map((post) => ({
       url: `${base}/blog/${post.slug}`,
@@ -63,7 +55,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${base}/docs` },
     ...getDocSlugs().map((slug) => ({ url: `${base}/docs/${slug}` })),
     { url: `${base}/free-tools`, changeFrequency: "weekly" },
-    ...getAllTools().map((tool) => ({ url: `${base}/free-tools/${tool.slug}` })),
+    ...getAllTools()
+      .filter((tool) => !tool.noindex)
+      .map((tool) => ({ url: `${base}/free-tools/${tool.slug}` })),
     // Public release notes - linkable, and worth crawling as proof the
     // product is alive. lastModified is the newest release's own date.
     { url: `${base}/changelog`, lastModified: LATEST ? new Date(LATEST.date) : undefined },

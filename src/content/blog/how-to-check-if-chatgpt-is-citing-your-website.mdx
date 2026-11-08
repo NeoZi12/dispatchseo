@@ -58,7 +58,7 @@ Repeat monthly. A citation rate from one check is a snapshot; it only becomes a 
 
 ## Automating the check instead of doing it by hand every month
 
-DispatchSEO's `get_ai_visibility` and `record_ai_citations` MCP tools do exactly the log above, on a schedule, without a spreadsheet that stops getting updated after month two. `record_ai_citations` writes one row per engine/query/date: whether an answer ran, whether it cited this site, and every source it cited instead. `get_ai_visibility` reads that back. Here's what it actually returned, called live while writing this guide - the real shape, not a description of it:
+DispatchSEO keeps exactly the log above on a schedule, so it doesn't stop getting updated after month two. It writes one row per engine/query/date: whether an answer ran, whether it cited this site, and every source it cited instead. Here's what that log actually returned while writing this guide - the real shape, not a description of it:
 
 ```json
 {
@@ -79,7 +79,7 @@ DispatchSEO's `get_ai_visibility` and `record_ai_citations` MCP tools do exactly
 
 `cited_pct` at zero across the board isn't a broken pipeline - `ai_answers` confirms the engines are answering fine on almost every check, this domain just hasn't accumulated the backlinks and age that make a model reach for it as a source yet. The `gap_domains` list is the useful part regardless of your own number: it's exactly who's getting cited instead on these queries, which is a targeting list, not a scoreboard.
 
-**When this isn't worth automating yet.** A one-off check before a launch, or a site with two target queries total, gets nothing from wiring up a second tool - do it by hand once and move on. The automation pays off once you're repeating the same 8-10 queries monthly and the spreadsheet is the thing that's actually at risk of lapsing, [same as it does for AI-visibility tracking generally](/blog/ai-visibility-tracking-tool).
+**When this isn't worth automating yet.** A one-off check before a launch, or a site with two target queries total, gets nothing from wiring up a second tool - do it by hand once and move on. The automation pays off once you're repeating the same 8-10 queries monthly and the spreadsheet is the thing that's actually at risk of lapsing, [same as it does for AI-visibility tracking generally](/blog/ai-brand-visibility).
 
 ## FAQ
 

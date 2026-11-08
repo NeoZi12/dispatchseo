@@ -50,27 +50,16 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       { source: "/discord", destination: "https://discord.gg/D7Eq3hKtKs", permanent: false },
-      // 2026-10-21 blog prune: near-duplicate posts folded into the one page per
-      // intent that survives (14 "<tool> alternative" pages into the two kept,
-      // two automation listicles into one). permanent: true is right here -
-      // the replacement is the page we want ranked, and the old URL must never
-      // come back. Posts with no replacement are 410s in src/proxy.ts.
-      { source: "/blog/se-ranking-alternative", destination: "/blog/ahrefs-alternative", permanent: true },
-      { source: "/blog/wincher-alternative", destination: "/blog/ahrefs-alternative", permanent: true },
-      { source: "/blog/ubersuggest-alternative", destination: "/blog/ahrefs-alternative", permanent: true },
-      { source: "/blog/long-tail-pro-alternative", destination: "/blog/ahrefs-alternative", permanent: true },
-      { source: "/blog/accuranker-alternative", destination: "/blog/ahrefs-alternative", permanent: true },
-      { source: "/blog/serpstat-alternative", destination: "/blog/ahrefs-alternative", permanent: true },
-      { source: "/blog/answerthepublic-alternative", destination: "/blog/ahrefs-alternative", permanent: true },
-      { source: "/blog/majestic-alternative", destination: "/blog/ahrefs-alternative", permanent: true },
-      { source: "/blog/mangools-alternative", destination: "/blog/ahrefs-alternative", permanent: true },
-      { source: "/blog/moz-alternative", destination: "/blog/ahrefs-alternative", permanent: true },
-      { source: "/blog/marketmuse-alternative", destination: "/blog/surfer-seo-alternative", permanent: true },
-      { source: "/blog/frase-alternative", destination: "/blog/surfer-seo-alternative", permanent: true },
-      { source: "/blog/outrank-alternative", destination: "/blog/surfer-seo-alternative", permanent: true },
-      { source: "/blog/clearscope-alternative", destination: "/blog/surfer-seo-alternative", permanent: true },
-      { source: "/blog/seo-automation-software-free", destination: "/blog/best-seo-automation-tools", permanent: true },
-      { source: "/blog/best-seo-automation-software", destination: "/blog/best-seo-automation-tools", permanent: true },
+      // Blog prunes (2026-10-21, 2026-11-08): a duplicate folded into the one
+      // page per intent that survives. permanent: true is right here - the
+      // replacement is the page we want ranked, and the old URL must never come
+      // back. Posts with no replacement are 410s (src/lib/pruned-posts.ts) -
+      // and a config redirect runs BEFORE src/proxy.ts, so never point one of
+      // these at a slug in GONE_POSTS.
+      { source: "/blog/best-free-seo-tools", destination: "/blog/best-seo-tools-for-beginners", permanent: true },
+      { source: "/blog/seo-tools-for-small-business", destination: "/blog/best-seo-tools-for-beginners", permanent: true },
+      { source: "/blog/diy-seo-for-small-business", destination: "/blog/can-you-do-seo-on-your-own", permanent: true },
+      { source: "/blog/ai-visibility-tracking-tool", destination: "/blog/generative-engine-optimization-tools", permanent: true },
     ];
   },
   async headers() {
