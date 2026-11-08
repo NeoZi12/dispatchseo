@@ -131,6 +131,19 @@ export function SetupClient(props: {
     cheer("Fair enough - GitHub will tell us for sure.");
   }
 
+  // GitHub opens in its own tab so the guide stays here to look back at.
+  // Every time the person returns to this tab, ask the server which step
+  // we are on - once the install finished, that is the Google step.
+  const [githubTabOpen, setGithubTabOpen] = useState(false);
+  useEffect(() => {
+    if (!githubTabOpen) return;
+    const back = () => {
+      if (document.visibilityState === "visible") router.refresh();
+    };
+    document.addEventListener("visibilitychange", back);
+    return () => document.removeEventListener("visibilitychange", back);
+  }, [githubTabOpen, router]);
+
   // Back from Polar/GitHub/Google with the browser's back button: the page
   // comes out of the bfcache with its buttons still "busy".
   useEffect(() => {
@@ -315,8 +328,19 @@ export function SetupClient(props: {
           error={props.ghError ?? error}
           onContinue={() => {
             if (!props.slug) return;
+            // GitHub opens in a new tab so the guide stays in this one to
+            // look back at (owner, 2026-11-08). When the person comes back
+            // here, the page re-asks the server which step it is on; GitHub's
+            // own tab lands on the next step too.
+            const url = `/api/github/install/start?slug=${encodeURIComponent(props.slug)}`;
+            const tab = window.open(url, "_blank", "noopener");
+            if (tab) {
+              setGithubTabOpen(true);
+              return;
+            }
+            // A popup blocker ate it: go there in this tab instead.
             setBusy(true);
-            window.location.href = `/api/github/install/start?slug=${encodeURIComponent(props.slug)}`;
+            window.location.href = url;
           }}
         />
       ) : null}

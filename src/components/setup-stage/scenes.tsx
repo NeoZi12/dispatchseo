@@ -163,7 +163,7 @@ export function GithubScene({ onContinue, handoffHref, busy, error }: { onContin
       id="github"
       actionFirst
       title="Connect GitHub"
-      lead="Three clicks on GitHub, then you’re back here."
+      lead="GitHub opens in a new tab. Three clicks there, then come back to this one."
       action={
         <>
           <button type="button" className={BTN_PRIMARY} onClick={onContinue} disabled={busy}>
