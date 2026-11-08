@@ -1,12 +1,12 @@
 import { validateEvent, WebhookVerificationError } from "@polar-sh/sdk/webhooks";
-import { applyUnlessSecondPlan, findUserIdForSubscription, tierForProductId } from "@/lib/billing";
+import { applyUnlessSecondPlan, findUserIdForSubscription, polar, tierForProductId } from "@/lib/billing";
 import { reportCronRun } from "@/lib/cron-alerts";
 
 // Polar webhook. Two event families, because neither alone is sufficient:
 //
-//   subscription.* - the SOURCE OF TRUTH. The event carries the subscription
-//     with its own `status` field, so a TRIAL (status "trialing") activates
-//     correctly. customer.state_changed can't do this: its active_subscriptions
+//   subscription.* - the SOURCE OF TRUTH. The event names the subscription and
+//     the live object fetched from Polar carries its own `status` field, so a
+//     TRIAL (status "trialing") activates correctly. customer.state_changed can't do this: its active_subscriptions
 //     list comes back EMPTY for a trialing sub (verified live 2026-07-23), so
 //     relying on it alone left every trial signup stuck on "confirming payment".
 //
@@ -91,16 +91,29 @@ export async function POST(req: Request): Promise<Response> {
   if (SUBSCRIPTION_EVENTS.has(event.type)) {
     const sub = event.data as unknown as PolarSubscription;
     const userId = sub.customer?.externalId;
+    // Retries can arrive out of order (a delayed subscription.active landing
+    // after subscription.revoked), so the event body is only a pointer: the
+    // live subscription fetched from Polar is the only authoritative state.
+    // A failed fetch answers 500 so Polar retries the delivery.
+    let live;
+    try {
+      live = await polar().subscriptions.get({ id: sub.id });
+    } catch (e) {
+      console.error(
+        `[polar-webhook] ${event.type}: could not fetch subscription ${sub.id}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return Response.json({ error: "subscription fetch failed" }, { status: 500 });
+    }
     // Store the subscription's real status - isActive() treats "active" and
     // "trialing" as access-granting, everything else (past_due, canceled,
     // revoked, incomplete) as gated.
     const state = {
-      status: sub.status,
-      tier: tierForProductId(sub.productId),
-      providerCustomerId: sub.customerId ?? null,
-      providerSubscriptionId: sub.id,
-      currentPeriodEnd: sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toISOString() : null,
-      cancelAtPeriodEnd: Boolean(sub.cancelAtPeriodEnd),
+      status: live.status as string,
+      tier: tierForProductId(live.productId),
+      providerCustomerId: live.customerId ?? null,
+      providerSubscriptionId: live.id,
+      currentPeriodEnd: live.currentPeriodEnd ? new Date(live.currentPeriodEnd).toISOString() : null,
+      cancelAtPeriodEnd: Boolean(live.cancelAtPeriodEnd),
     };
     if (userId) {
       // Never over a DIFFERENT live plan on the same account (see
@@ -109,7 +122,7 @@ export async function POST(req: Request): Promise<Response> {
       try {
         await applyUnlessSecondPlan(userId, state, event.type);
       } catch (e) {
-        return await webhookWriteFailed(e, event.type, userId, sub.status);
+        return await webhookWriteFailed(e, event.type, userId, state.status);
       }
     } else {
       // No externalId. Polar leaves it empty on every cancellation we have seen,
@@ -121,7 +134,7 @@ export async function POST(req: Request): Promise<Response> {
         try {
           await applyUnlessSecondPlan(known, state, event.type);
         } catch (e) {
-          return await webhookWriteFailed(e, event.type, known, sub.status);
+          return await webhookWriteFailed(e, event.type, known, state.status);
         }
         return Response.json({ ok: true });
       }
@@ -135,7 +148,7 @@ export async function POST(req: Request): Promise<Response> {
           error:
             `${event.type} for Polar subscription ${sub.id} (customer ${sub.customerId ?? "unknown"}) ` +
             `carried no customer.external_id and matches no stored subscription - ` +
-            `status "${sub.status}" was NOT applied. Look the subscription up in Polar and ` +
+            `status "${state.status}" was NOT applied. Look the subscription up in Polar and ` +
             `reconcile the account by hand.`,
           event: event.type,
         },
