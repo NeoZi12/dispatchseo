@@ -4,12 +4,24 @@ import { db } from "./db";
 // Single-user password gate. The password lives either in DASHBOARD_PASSWORD
 // env (classic installs - env always wins) or, since the first-boot setup
 // wizard, as a scrypt hash in instance_settings (claimed installs). The auth
-// cookie is an HMAC of a fixed message keyed by the env password or by the
-// stored hash string, so changing the password either way invalidates every
-// existing session. No sessions table, no user model - one human.
+// cookie is `<issuedAtSeconds>.<hex HMAC of "seo-dashboard-v1:<issuedAt>">`,
+// keyed by the env password or by the stored hash string, so changing the
+// password either way invalidates every existing session, and a cookie
+// lifted from a browser stops working 30 days after it was issued rather
+// than living forever. No sessions table, no user model - one human.
+// Pre-issued-at cookies (a bare HMAC) simply fail validation; the owner
+// signs in once more.
 
 const COOKIE_NAME = "dash_auth";
 const MESSAGE = "seo-dashboard-v1";
+// Matches the cookie's 30-day maxAge, so the browser and the server agree on
+// when a session ends.
+const MAX_AGE_S = 60 * 60 * 24 * 30;
+const CLOCK_SKEW_S = 5 * 60;
+
+function sign(secret: string, issuedAt: number): string {
+  return createHmac("sha256", secret).update(`${MESSAGE}:${issuedAt}`).digest("hex");
+}
 
 export { COOKIE_NAME };
 
@@ -94,16 +106,23 @@ export async function authSecret(): Promise<string | null> {
 export async function cookieValue(): Promise<string> {
   const secret = await authSecret();
   if (!secret) throw new Error("No dashboard password: instance unclaimed and DASHBOARD_PASSWORD unset");
-  return createHmac("sha256", secret).update(MESSAGE).digest("hex");
+  const issuedAt = Math.floor(Date.now() / 1000);
+  return `${issuedAt}.${sign(secret, issuedAt)}`;
 }
 
 export async function isValidCookie(value: string | undefined): Promise<boolean> {
   if (!value) return false;
+  const dot = value.indexOf(".");
+  if (dot <= 0) return false;
+  const issuedRaw = value.slice(0, dot);
+  if (!/^\d{1,12}$/.test(issuedRaw)) return false;
+  const issuedAt = Number(issuedRaw);
+  const now = Math.floor(Date.now() / 1000);
+  if (issuedAt > now + CLOCK_SKEW_S || now - issuedAt > MAX_AGE_S) return false;
   const secret = await authSecret();
   if (!secret) return false;
-  const expected = createHmac("sha256", secret).update(MESSAGE).digest("hex");
-  const a = Buffer.from(value);
-  const b = Buffer.from(expected);
+  const a = Buffer.from(value.slice(dot + 1));
+  const b = Buffer.from(sign(secret, issuedAt));
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
