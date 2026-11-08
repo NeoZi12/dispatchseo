@@ -261,7 +261,7 @@ aside.rail{display:none}
 .promo.below{margin-top:40px}
 .credit{margin:12px 0 0;font-size:12px;line-height:1.5;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:6px}
 .credit a{display:inline-flex;align-items:center;gap:5px;color:var(--ink2);font-weight:600;text-decoration:none}
-.credit a:hover{color:var(--ink)}
+.credit a:hover{color:var(--ink)}.credit a:hover span{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}.credit a:hover img{transform:translateY(-1px)}.credit img{transition:transform .15s ease}
 .credit img{width:10px;height:16px;image-rendering:pixelated;display:block}
 .body{font-size:17px}
 .body>p:first-child{font-size:18px;color:var(--ink2)}
@@ -380,7 +380,7 @@ function promo(site: Site, cls = ""): string {
  *  the site so the dashboard can tell which blogs send readers. */
 function credit(site: Site, cls = ""): string {
   const href = `https://dispatchseo.com/?ref=${encodeURIComponent(site.origin.replace(/^https?:\/\//, ""))}`;
-  return `<p class="credit ${cls}">${esc(stringsFor(site.lang).madeWith)} <a href="${href}" rel="nofollow noopener"><img src="https://dispatchseo.com/dispatch-mark.png" alt="" width="10" height="16" loading="lazy">DispatchSEO</a></p>`;
+  return `<p class="credit ${cls}">${esc(stringsFor(site.lang).madeWith)} <a href="${href}" rel="nofollow noopener"><img src="https://dispatchseo.com/dispatch-mark.png" alt="" width="10" height="16" loading="lazy"><span>DispatchSEO</span></a></p>`;
 }
 
 /** Up to three short lines for the card: the site profile's categories
