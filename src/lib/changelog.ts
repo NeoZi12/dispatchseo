@@ -164,10 +164,9 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "new",
     text:
-      "Plans are now per site and priced by how much we write: Starter is $15 a month for one article a week, " +
-      "Growth $29 for up to three a week, Scale $59 for up to five. \"Up to\", because we only write about keywords " +
-      "with measured searches and difficulty, so a very small niche can fill fewer slots. Existing plans keep their " +
-      "price and their site allowance.",
+      "Plans are now per site and priced by how much we write: Starter is $19 a month for one article a week, " +
+      "Growth $39 for three a week and Scale $69 for five, or from $13 a month paid yearly. There's also a free " +
+      "plan with 2 articles a month on one site. Existing plans keep their price and their site allowance.",
   },
   {
     kind: "fixed",
