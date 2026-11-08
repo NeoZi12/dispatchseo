@@ -62,6 +62,7 @@ import { isHubPage } from "./research";
 import { blockedTopicsOf } from "@/lib/autopilot/prefs";
 import { copyPictureCover, coverPrompt, coverScenePrompt, draftPicturePath, dryCoverSvg, hueOf, ledgerPicture, paintCover, pickHue, pictureCoverPrompt, pictureCoversEnabled, runPicturePath, sanitizeCoverSvg, storePictureCover, type CoverTheme, type Hue } from "@/lib/cover-art";
 import { normalizeTheme } from "@/lib/hosted-theme";
+import { distinctiveWords, sameSubtopic, SUBTOPIC_SPACING_DAYS } from "@/lib/autopilot/math";
 
 // The stages of one article. Five persisted stages, each one job in the
 // queue; job-handlers/write.ts chains them inside one handler while the
@@ -195,6 +196,29 @@ const fallbackAfter = (c: Ctx) => new Date(c.deadline + 60_000);
 
 // --- pick ----------------------------------------------------------------------
 
+/**
+ * The queue's next idea, skipping one that would repeat a sub-topic the site
+ * started an article on in the last SUBTOPIC_SPACING_DAYS (math.ts
+ * sameSubtopic): five CLAUDE.md articles in a row got one indexed. The
+ * queue order still decides among the rest, and when every queued idea
+ * shares a sub-topic with a recent article the first one goes anyway - the
+ * rule spaces a site's articles, it never stalls the queue.
+ */
+async function spacedPick<T extends { title: string; primary_keyword: string | null }>(projectId: string, queue: T[]): Promise<T | null> {
+  if (queue.length <= 1) return queue[0] ?? null;
+  const since = new Date(Date.now() - SUBTOPIC_SPACING_DAYS * 86_400_000).toISOString();
+  const [recentRes, corpusRes] = await Promise.all([
+    db().from("writer_runs").select("keyword").eq("project_id", projectId).gte("created_at", since).not("keyword", "is", null).limit(50),
+    db().from("suggestions").select("primary_keyword, title").eq("project_id", projectId).eq("type", "guide").neq("status", "rejected").order("created_at", { ascending: false }).limit(80),
+  ]);
+  if (recentRes.error || corpusRes.error) return queue[0];
+  const recent = ((recentRes.data ?? []) as { keyword: string }[]).map((r) => r.keyword);
+  if (!recent.length) return queue[0];
+  const corpus = ((corpusRes.data ?? []) as { primary_keyword: string | null; title: string }[]).map((r) => r.primary_keyword ?? r.title);
+  const distinctive = distinctiveWords(corpus);
+  return queue.find((s) => !recent.some((r) => sameSubtopic(s.primary_keyword ?? s.title, r, distinctive))) ?? queue[0];
+}
+
 async function pick(c: Ctx, exclude: string[] = [], spent = 0): Promise<void> {
   const { project, run } = c;
   let keyword = run.keyword;
@@ -231,10 +255,10 @@ async function pick(c: Ctx, exclude: string[] = [], spent = 0): Promise<void> {
       // writer does not keep.
       .order("queue_position", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: true })
-      .limit(1);
+      .limit(20);
     if (busy.length) q = q.not("id", "in", `(${busy.join(",")})`);
-    const { data } = await q.maybeSingle();
-    const s = data as { id: string; title: string; primary_keyword: string | null; rationale: string | null } | null;
+    const { data } = await q;
+    const s = await spacedPick(project.id, (data ?? []) as { id: string; title: string; primary_keyword: string | null; rationale: string | null }[]);
     if (!s) return failRun(run, "nothing approved to write: the ideas queue has no approved guide without a run already on it");
     suggestionId = s.id;
     keyword = s.primary_keyword ?? s.title;
@@ -2241,7 +2265,9 @@ async function existingTitles(projectId: string): Promise<{ titles: string[]; sl
   return { titles, slugs };
 }
 
-/** The site's last 8 accepted articles as sameness features. */
+/** The site's last 20 accepted articles as sameness features (8 until
+ *  2026-11-08: five same-intent CLAUDE.md articles fit inside a window of 8
+ *  without ever meeting the one they echoed). */
 async function corpusEntries(projectId: string): Promise<CorpusEntry[]> {
   const { data } = await db()
     .from("article_drafts")
@@ -2249,7 +2275,7 @@ async function corpusEntries(projectId: string): Promise<CorpusEntry[]> {
     .eq("project_id", projectId)
     .in("status", ["submitted", "accepted", "blocked_setup", "finished", "published"])
     .order("created_at", { ascending: false })
-    .limit(8);
+    .limit(20);
   return ((data ?? []) as { title: string; primary_keyword: string | null; markdown: string }[]).map((r) => ({
     ...extractFromMarkdown(r.markdown, new Set(tokenize(r.primary_keyword ?? ""))),
     label: r.title,

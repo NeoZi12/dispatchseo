@@ -765,3 +765,39 @@ export function noArticleAlarm(input: { connectedAt: string | null; lastArticleA
   if (!lastArticleAt) return true;
   return now.getTime() - Date.parse(lastArticleAt) >= NO_ARTICLE_ALARM_DAYS * DAY_MS;
 }
+
+// --- Sub-topic spacing -----------------------------------------------------------
+//
+// At most one article per narrow sub-topic every SUBTOPIC_SPACING_DAYS: five of
+// ClockedCode's seven newest engine articles were CLAUDE.md pieces, and Google
+// indexed one (2026-11-08 URL Inspection) - near-duplicate intent read as scaled
+// sameness. Two keywords share a sub-topic when they share a DISTINCTIVE word
+// (one that few of the site's ideas use, so "claude" on a Claude Code site never
+// counts but "md" does) or overlap heavily overall.
+
+export const SUBTOPIC_SPACING_DAYS = 21;
+const SUBTOPIC_STOP = new Set(["the", "a", "an", "and", "or", "for", "to", "of", "in", "on", "with", "how", "what", "why", "when", "is", "are", "do", "does", "can", "your", "you", "my", "vs", "guide", "best", "explained", "tips", "use", "uses", "using"]);
+
+function subtopicTokens(keyword: string): string[] {
+  return [...new Set(normalizeKeyword(keyword).split(" ").filter((w) => w.length >= 2 && !SUBTOPIC_STOP.has(w)))];
+}
+
+/** The words of a site's corpus that are distinctive (used by at most 20% of
+ *  it); null when the corpus is too small to tell. */
+export function distinctiveWords(corpus: string[]): Set<string> | null {
+  if (corpus.length < 5) return null;
+  const df = new Map<string, number>();
+  for (const k of corpus) for (const w of subtopicTokens(k)) df.set(w, (df.get(w) ?? 0) + 1);
+  return new Set([...df].filter(([, n]) => n / corpus.length <= 0.2).map(([w]) => w));
+}
+
+export function sameSubtopic(a: string, b: string, distinctive: Set<string> | null): boolean {
+  const x = subtopicTokens(a);
+  const y = new Set(subtopicTokens(b));
+  const shared = x.filter((w) => y.has(w));
+  // With a corpus to tell what is distinctive, only distinctive words count:
+  // "claude code X" and "claude code Y" share nothing on a Claude Code site.
+  if (distinctive) return shared.some((w) => distinctive.has(w));
+  const union = new Set([...x, ...y]).size;
+  return union > 0 && shared.length / union >= 0.5;
+}
