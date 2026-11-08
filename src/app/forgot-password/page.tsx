@@ -28,12 +28,14 @@ async function sendReset(formData: FormData) {
   "use server";
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   if (!isValidEmail(email)) redirect("/forgot-password?error=invalid");
-  // Each request sends an email: capped per network and per address before
+  // Each request sends an email: capped per network and per address+network before
   // Supabase is asked (fails closed; the message never says which cap).
   const ip = clientIp(await headers());
   const allowed =
     (await rateLimitHit(rateLimitKey("auth-reset-ip", ip), 5, 3600)) &&
-    (await rateLimitHit(rateLimitKey("auth-reset-email", email), 3, 3600));
+    // Per (email, IP), not per email: a per-address cap would let a stranger
+    // spend a victim's quota and lock them out; Supabase throttles the address.
+    (await rateLimitHit(rateLimitKey("auth-reset-email", email, ip), 5, 3600));
   if (!allowed) redirect("/forgot-password?error=rate");
 
   // The reset link must point at OUR origin, never one derived from request

@@ -108,11 +108,13 @@ export async function startEmailSignIn(rawEmail: string, input: SignInInput): Pr
   const blocked = await beforeSignIn(input);
   if (blocked) return blocked;
   // Every call sends an email on our domain, so it is capped per network and
-  // per address before Supabase is asked (fails closed; never says which cap).
+  // per address+network before Supabase is asked (fails closed; never says which cap).
   const ip = clientIp(await headers());
   const allowed =
     (await rateLimitHit(rateLimitKey("auth-email-ip", ip), 10, 3600)) &&
-    (await rateLimitHit(rateLimitKey("auth-email", email.trim().toLowerCase()), 3, 3600));
+    // Per (email, IP), not per email: a per-address cap would let a stranger
+    // spend a victim's quota and lock them out; Supabase throttles the address.
+    (await rateLimitHit(rateLimitKey("auth-email", email, ip), 5, 3600));
   if (!allowed) return { error: "Too many attempts from this network. Try again in an hour." };
   // The link only works in this browser (lib/email-link-nonce.ts).
   const nonce = await mintEmailLinkNonce();

@@ -71,12 +71,14 @@ async function emailLink(formData: FormData) {
   "use server";
   const email = String(formData.get("email") ?? "").trim();
   if (!email) redirect("/login?error=link");
-  // Each call sends an email: capped per network and per address before
+  // Each call sends an email: capped per network and per address+network before
   // Supabase is asked (fails closed; the message never says which cap).
   const ip = clientIp(await headers());
   const allowed =
     (await rateLimitHit(rateLimitKey("auth-email-ip", ip), 10, 3600)) &&
-    (await rateLimitHit(rateLimitKey("auth-email", email.trim().toLowerCase()), 3, 3600));
+    // Per (email, IP), not per email: a per-address cap would let a stranger
+    // spend a victim's quota and lock them out; Supabase throttles the address.
+    (await rateLimitHit(rateLimitKey("auth-email", email, ip), 5, 3600));
   if (!allowed) redirect("/login?error=rate");
   try {
     const supabase = await supabaseAuth();
