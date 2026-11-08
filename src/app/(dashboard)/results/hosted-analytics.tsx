@@ -21,6 +21,7 @@ import { OverviewChart } from "@/components/ui/overview-chart";
 import { StatGrid } from "@/components/ui/stat-grid";
 import { loadReport } from "../mode";
 import { articleHref } from "../article-status";
+import { UpgradePanel, fmtCount } from "@/components/upgrade-panel";
 
 // Hosted-mode Analytics (the agent dashboard's /analytics route renders this
 // for a hosted project; /results redirects here): is the writing working? Google's numbers for the
@@ -92,6 +93,10 @@ export async function HostedAnalytics() {
         >
           How many people Google sends you, what they searched for and where you rank. Read-only, from Google Search Console.
         </EmptyState>
+      ) : report?.plan.free ? (
+        // Free tier: the big chart already lives on Overview; the breakdown
+        // below it is what a plan adds. Said with the site's own numbers.
+        <FreeAnalytics clicks={o.totals.clicks} impressions={o.totals.impressions} />
       ) : (
         <>
           {gscNote ? <Callout tone="warn" title={gscNote} role="status" /> : null}
@@ -154,5 +159,17 @@ export async function HostedAnalytics() {
         </>
       )}
     </div>
+  );
+}
+
+/** The locked Analytics screen for a free-tier site (see UpgradePanel). */
+function FreeAnalytics({ clicks, impressions }: { clicks: number; impressions: number }) {
+  return (
+    <UpgradePanel
+      art="chart"
+      stat={impressions > 0 ? fmtCount(impressions) : undefined}
+      title={impressions > 0 ? "impressions on Google in the last 28 days" : "See who Google sends you"}
+      note={clicks > 0 ? `${fmtCount(clicks)} ${clicks === 1 ? "person" : "people"} clicked through.` : undefined}
+    />
   );
 }

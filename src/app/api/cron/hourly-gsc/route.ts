@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { planGate } from "@/lib/billing";
+import { isFreeProject, planGate } from "@/lib/billing";
 import { getFreshSnapshots, inspectIndexStatus, gscClientForProject, type GscClient } from "@/lib/gsc";
 import { applyDetectedLaunch, launchDateLooksDefaulted } from "@/lib/site-launch";
 import { gscCronReadiness } from "@/lib/gsc-readiness";
@@ -129,8 +129,10 @@ async function runProject(project: Project): Promise<Record<string, unknown>> {
   // service account, so without access it could only burn quota on failures.
   // Plan gate (cloud only): downgraded-past or lapsed accounts pause instead
   // of consuming service. Informational skip, same as the setup gate.
+  // A free-tier site is the exception: Search Console costs nothing, and its
+  // numbers are what the free dashboard (and every upgrade line on it) shows.
   const gate = await planGate(project.id);
-  if (!gate.allowed) return { skipped: `plan: ${gate.reason}` };
+  if (!gate.allowed && !(await isFreeProject(project.id))) return { skipped: `plan: ${gate.reason}` };
   const readiness = await gscCronReadiness(project);
   if (!readiness.ready) return { skipped: readiness.skipped };
   // Resolve the client once: OAuth for a connected cloud project, service

@@ -28,6 +28,7 @@ import { setupGaps } from "../mode";
 import { TOPIC_LIMITS } from "@/lib/autopilot/controls";
 import type { CronHealth } from "@/lib/cron-alerts";
 import { siteIssueLine } from "@/lib/autopilot/friendly";
+import { articlesPerWeekFor } from "@/lib/billing";
 import type { OperatorSite } from "@/lib/autopilot/operator";
 import { OperatorIssue } from "./operator-issue";
 
@@ -54,6 +55,9 @@ import { OperatorIssue } from "./operator-issue";
 
 const LINK = "font-medium text-accent underline decoration-accent/40 underline-offset-[3px] hover:decoration-accent";
 const DAY = 86_400_000;
+// Starter's cadence, read from the engine's own table (billing.ts), for the
+// free tier's upgrade line.
+const STARTER_PER_WEEK = articlesPerWeekFor("starter");
 const at = (ms: number, i = 0, step?: number) =>
   ({ "--at": `${ms}ms`, "--i": i, ...(step ? { "--step": `${step}ms` } : {}) }) as React.CSSProperties;
 
@@ -78,6 +82,16 @@ function messageOf(r: AutopilotReport, gaps: ReturnType<typeof setupGaps>): Mess
     };
   }
   if (r.plan.articlesPerWeek === 0) {
+    // Free tier (billing.ts isFreePlan): no new articles start today, which
+    // is what the engine does for it (articlesPerWeek 0) until the free
+    // tier opens there - then this line changes with the number it reads.
+    if (r.plan.free) {
+      return {
+        title: "You're on the free plan.",
+        sub: `Upgrade and ${STARTER_PER_WEEK === 1 ? "a new article goes" : `${STARTER_PER_WEEK} new articles go`} out every week, with the full queue and analytics.`,
+        link: { href: "/billing#plans", label: "See plans" },
+      };
+    }
     return { title: "Your plan isn't active, so no new articles start.", sub: null, link: { href: "/billing", label: "Open billing" } };
   }
   const blocking = gaps.find((g) => !g.done && g.blocksPublishing);

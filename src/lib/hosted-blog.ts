@@ -4,7 +4,7 @@ import { loadSiteProfile } from "@/lib/site-profile";
 import { backendBaseUrl } from "@/lib/pipeline-pack";
 import { createHash } from "node:crypto";
 import { normalizeTheme, type HostedTheme } from "@/lib/hosted-theme";
-import { projectPlan } from "@/lib/billing";
+import { isFreePlan, projectPlan } from "@/lib/billing";
 
 // The hosted blog: DispatchSEO serving a customer's /blog.
 //
@@ -324,7 +324,8 @@ async function siteOf(project: Project): Promise<Site> {
   // The credit shows on the cloud's free tier only (see the header). A plan
   // lookup that fails resolves to "no credit": a billing hiccup must never
   // stamp a paying customer's page.
-  const credit = plan !== null && plan.status !== "self-host" && plan.tier === null;
+  // isFreePlan is the same rule the dashboard locks by, so the two agree.
+  const credit = isFreePlan(plan);
   return {
     credit,
     name: profile.name,

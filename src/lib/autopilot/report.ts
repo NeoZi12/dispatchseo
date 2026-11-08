@@ -1,7 +1,7 @@
 import { unstable_cache } from "next/cache";
 import { thinNote, WIDER_SEARCH_TAG } from "./research";
 import { db } from "@/lib/db";
-import { projectPlan } from "@/lib/billing";
+import { isFreePlan, projectPlan } from "@/lib/billing";
 import { credsForProject } from "@/lib/dataforseo";
 import { loadSiteProfile } from "@/lib/site-profile";
 import { normalizeContentPrefs } from "@/lib/content-prefs";
@@ -66,7 +66,9 @@ export type AutopilotArticle = {
 export type AutopilotReport = {
   mode: "hosted" | "agent";
   paused: { at: string; reason: string } | null;
-  plan: { tier: string; articlesPerWeek: number; status: string };
+  /** free: the site is on the free tier (billing.ts isFreePlan) - the one
+   *  rule the dashboard locks by and the blog credit shows by. */
+  plan: { tier: string; articlesPerWeek: number; status: string; free: boolean };
   nextArticleAt: string | null;
   thisWeek: { published: number; inFlight: number; quota: number };
   articles: AutopilotArticle[];
@@ -356,7 +358,7 @@ export async function getAutopilotReport(projectId: string): Promise<AutopilotRe
   return {
     mode: writerMode(project),
     paused: project.writer_paused_at ? { at: project.writer_paused_at, reason: project.writer_pause_reason ?? "Paused." } : null,
-    plan: { tier: plan.tier ?? "none", articlesPerWeek: plan.articlesPerWeek, status: plan.status },
+    plan: { tier: plan.tier ?? "none", articlesPerWeek: plan.articlesPerWeek, status: plan.status, free: isFreePlan(plan) },
     nextArticleAt: project.writer_paused_at ? null : project.next_article_at,
     thisWeek: { published: usage.published, inFlight: usage.inFlight, quota: plan.articlesPerWeek },
     articles: articles.slice(0, ARTICLE_LIMIT),

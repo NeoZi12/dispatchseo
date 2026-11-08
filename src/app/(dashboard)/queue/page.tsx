@@ -9,6 +9,7 @@ import { Callout } from "@/components/ui/callout";
 import { PageHeading } from "@/components/ui/page-heading";
 import { loadReport, redirectIfAgent } from "../mode";
 import { QueueBoard } from "./queue-board";
+import { UpgradePanel, fmtCount } from "@/components/upgrade-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,10 @@ export const dynamic = "force-dynamic";
 //
 // Not behind requireOnboarded, same as Articles: the queue fills during
 // setup, and an owner mid-setup should be able to see it.
+//
+// Free tier (billing.ts isFreePlan, on the report): the screen is locked -
+// Overview shows the next three topics; the whole list and its dates come
+// with a plan.
 
 const DAY = 86_400_000;
 const LINK = "text-sm font-medium text-accent underline decoration-accent/40 underline-offset-[3px] hover:decoration-accent";
@@ -58,6 +63,15 @@ export default async function QueuePage() {
       }
     />
   );
+
+  if (report?.plan.free) {
+    return (
+      <div className="mx-auto max-w-4xl space-y-8">
+        {heading}
+        <FreeQueue waiting={queue?.upcoming.length ?? 0} />
+      </div>
+    );
+  }
 
   if (!queue) {
     return (
@@ -96,5 +110,16 @@ export default async function QueuePage() {
         startedDays={started}
       />
     </div>
+  );
+}
+
+/** The locked Queue screen for a free-tier site (see UpgradePanel). */
+function FreeQueue({ waiting }: { waiting: number }) {
+  return (
+    <UpgradePanel
+      art="queue"
+      stat={waiting > 0 ? fmtCount(waiting) : undefined}
+      title={waiting > 0 ? `${waiting === 1 ? "topic" : "topics"} researched and waiting` : "See what gets written next"}
+    />
   );
 }

@@ -841,6 +841,28 @@ export async function projectPlan(
   return { tier, status: sub.status, articlesPerWeek: override ?? articlesPerWeekFor(tier) };
 }
 
+/** The one answer to "is this site on the free tier", for every surface that
+ *  differs by it: the hosted blog's "Made with DispatchSEO" credit, the
+ *  dashboard's locked pages, the hourly Search Console snapshot. Free = cloud
+ *  billing is on, the site has an owner, and that owner has no live plan
+ *  (none yet, or one that ended). Never free: self-host, unbilled operator
+ *  rows (no owner), a live or trialing plan, and past_due - a paying
+ *  customer whose card is being retried keeps everything while it is.
+ *  A failed plan read (null) is never free either: a billing hiccup must not
+ *  lock a paying customer's dashboard or stamp their blog.
+ *
+ *  Articles are NOT decided here. Until the free tier opens in the engine, a
+ *  free site gets projectPlan's articlesPerWeek 0, and every surface reads
+ *  that number rather than promising one. */
+export function isFreePlan(plan: { status: string } | null | undefined): boolean {
+  if (!plan) return false;
+  return !["self-host", "unbilled", "active", "trialing", "past_due"].includes(plan.status);
+}
+
+export async function isFreeProject(projectId: string): Promise<boolean> {
+  return isFreePlan(await projectPlan(projectId).catch(() => null));
+}
+
 /** projects.writer_weekly_quota (0070): an operator-only, per-site number of
  *  articles a week that replaces the plan's (the owner's own Paperbot takes 3
  *  on a 5-a-week plan). Null, a DB that has not run 0070, or a read error

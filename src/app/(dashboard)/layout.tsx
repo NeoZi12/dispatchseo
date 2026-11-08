@@ -21,7 +21,7 @@ import { getSubscription, planBadge, planNotice, sitesRemaining } from "@/lib/bi
 import { githubCostGate } from "@/lib/github-cost-gate";
 import { REPO_NOTICE_COOKIE, decodeRepoNotice } from "@/lib/repo-notice";
 import { PostHogIdentify } from "@/components/posthog-identify";
-import { getSetupSummary, setupGaps, writerMode } from "./mode";
+import { getSetupSummary, loadReport, setupGaps, writerMode } from "./mode";
 import { HostedSetupBar } from "./setup-bar";
 
 // Shared shell for every dashboard screen. Auth is checked per page (the
@@ -134,6 +134,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // one-line "finish setup" bar driven by the autopilot report instead of the
   // agent setup path (whose steps don't apply to them).
   const hosted = active != null && writerMode(active) === "hosted";
+  // Free tier (billing.ts isFreePlan, carried on the report): the sidebar
+  // marks the screens that come with a plan, and the Billing row says Free.
+  // Same cached report the hosted pages read; a failed read is not free.
+  const free = billing && hosted ? ((await loadReport(active.id))?.plan.free ?? false) : false;
+  const navPlan = free ? { label: "Free", tone: "plan" as const } : badge;
   const hostedGap = hosted
     ? await getSetupSummary(active)
         .then((s) => setupGaps(s).filter((g) => !g.done && g.href))
@@ -166,7 +171,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       {/* Arrival pace: full on first load, quick on in-app navigation. */}
       <ArrivalMode />
       {user && <PostHogIdentify userId={user.id} email={user.email} />}
-      <Sidebar billing={billing} hasProject={active != null} plan={badge} mode={hosted ? "hosted" : "agent"} owner={owner} />
+      <Sidebar billing={billing} hasProject={active != null} plan={navPlan} free={free} mode={hosted ? "hosted" : "agent"} owner={owner} />
       <div className="flex min-w-0 flex-1 flex-col">
         {/* One row on every size. Desktop keeps the three-up grid (switcher /
             centered title / mode). Mobile can't: at 390px the centered title
@@ -177,7 +182,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <header className="sticky top-0 z-20 border-b border-line-soft bg-canvas/90 backdrop-blur">
           <div className="flex h-14 items-center gap-2 px-4 sm:px-6 md:grid md:grid-cols-[1fr_auto_1fr]">
             <div className="flex min-w-0 flex-1 items-center gap-1.5 md:flex-none md:gap-2">
-              <MobileNav billing={billing} hasProject={active != null} plan={badge} mode={hosted ? "hosted" : "agent"} owner={owner} />
+              <MobileNav billing={billing} hasProject={active != null} plan={navPlan} free={free} mode={hosted ? "hosted" : "agent"} owner={owner} />
               <Link href="/dashboard" className="shrink-0 md:hidden" aria-label="DispatchSEO home">
                 <DispatchMark className="h-7 w-auto" />
               </Link>

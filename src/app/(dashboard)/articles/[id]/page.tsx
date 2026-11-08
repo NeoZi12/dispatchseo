@@ -25,6 +25,7 @@ import { getProjectBySlug, type Project } from "@/lib/projects";
 import { previewSrc, storedShotAt, warmScreenshots } from "@/lib/page-screenshot";
 import { isOperator } from "@/lib/autopilot/operator";
 import { friendlyError } from "@/lib/autopilot/friendly";
+import { UpgradePanel, fmtCount } from "@/components/upgrade-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -241,7 +242,13 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
 
       {/* ---- how it does on Google: streamed, so a slow Search Console
           read never holds up the rest of the page ---- */}
-      {live ? (
+      {live && report.plan.free && !asOperator ? (
+        // Free tier: this article's Google breakdown comes with a plan; the
+        // panel says how it is doing in one number (see UpgradePanel).
+        <Suspense fallback={null}>
+          <FreeArticleAnalytics projectId={project.id} url={a.url} />
+        </Suspense>
+      ) : live ? (
         <section aria-labelledby="article-analytics" className="space-y-5">
           <div className="arrive-up" style={at(240)}>
             <h2 id="article-analytics" className="text-2xl font-semibold tracking-tight text-ink sm:text-[1.75rem]">
@@ -298,6 +305,23 @@ async function AnalyticsSection({ project, url, keyword, publishedAt }: { projec
         <ArticleDetails series={series} publishedAt={publishedAt} keyword={keyword} keywordStats={keywordStats} searches={searches} url={url} wide />
       )}
     </>
+  );
+}
+
+/** A free-tier site's stand-in for the section above: the article's own
+ *  totals from the same per-page history, and what a plan adds. */
+async function FreeArticleAnalytics({ projectId, url }: { projectId: string; url: string | null }) {
+  const days = url ? await loadPageDays(projectId, url).catch(() => [] as PageDay[]) : [];
+  const impressions = days.reduce((sum, d) => sum + d.impressions, 0);
+  const clicks = days.reduce((sum, d) => sum + d.clicks, 0);
+  return (
+    <UpgradePanel
+      variant="section"
+      delay={240}
+      stat={impressions > 0 ? fmtCount(impressions) : undefined}
+      title={impressions > 0 ? "impressions on Google since it went live" : "Not on Google yet"}
+      note={impressions > 0 ? (clicks > 0 ? `${fmtCount(clicks)} ${clicks === 1 ? "person" : "people"} clicked through.` : undefined) : "New pages usually show up within one to three weeks."}
+    />
   );
 }
 

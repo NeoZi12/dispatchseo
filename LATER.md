@@ -216,3 +216,18 @@ running without any of them.)*
   - **Delete the legacy cloud wizard** once the `SETUP_PATH_LEGACY` flag is retired, on
     Neo's say-so: `cloud-onboarding-wizard.tsx`, `chat-next-steps.tsx`,
     `first-run-status.tsx`'s cloud use, and the `setWizardScreen` action.
+
+- **Owner control over articles (queued 2026-11-08, after the freemium launch).**
+  v1 ships pure autopilot on purpose: an article that passes the gate publishes,
+  and the owner's only levers are pause, brand, tone, blocked topics and suggested
+  topics. Post-launch, in this order:
+  - **Take down a live article.** No dashboard or MCP path removes a published
+    hosted article today (repo sites can revert the PR on GitHub). Smallest of the
+    three and the one a bad article needs most.
+  - **Edit an article** - fix wording, delete a section - then republish it.
+  - **Review-before-publish mode** - an opt-in toggle; articles wait as drafts for
+    approve/edit/discard. Default stays auto-publish. `approve_draft` and
+    `discard_draft` already exist as MCP tools and are the natural base. This is a
+    deliberate, owner-chosen reversal of the 2026-10-24 "no hold" rule, scoped to
+    an opt-in.
+  Each one needs its MCP tool alongside the dashboard control (parity rule).

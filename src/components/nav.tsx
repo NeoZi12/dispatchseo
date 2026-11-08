@@ -304,8 +304,7 @@ const HOSTED_GROUPS: NavGroup[] = [
       { href: "/articles", label: "Articles", Icon: PagesIcon },
       { href: "/queue", label: "Queue", Icon: QueueIcon },
       { href: "/analytics", label: "Analytics", Icon: AnalyticsIcon },
-      // Interactive tool pages; on Starter this is the page that says
-      // they come with Growth and Scale.
+      // Interactive tool pages - shown to the operator only (NavGroups).
       { href: "/tools", label: "Tools", Icon: ToolsIcon },
     ],
   },
@@ -514,18 +513,45 @@ function NoSiteNote() {
   );
 }
 
+// The hosted screens a free-tier site sees locked: the page still opens and
+// says what it holds and how to get it (billing.ts isFreePlan decides who is
+// free). Overview and Articles stay open - they are the proof it works.
+const LOCKED_ON_FREE = new Set(["/queue", "/analytics"]);
+
+function LockMark() {
+  return (
+    <span className="ml-auto flex items-center text-ink-faint" title="Comes with Starter">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5" aria-hidden="true">
+        <rect x="5" y="11" width="14" height="9" rx="2" />
+        <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+      </svg>
+      <span className="sr-only">, comes with Starter</span>
+    </span>
+  );
+}
+
 // The grouped links for the active project's mode. Sentence-case group
 // names in a quiet tone: they orient, they don't shout.
-function NavGroups({ mode, pathname }: { mode: NavMode; pathname: string }) {
+// Hosted Tools is the operator's alone (owner, 2026-11-08): no plan has
+// tools, so a customer's sidebar doesn't offer a screen that only says "not
+// available". Self-host keeps it - there the one user is the operator.
+function NavGroups({ mode, pathname, free = false, tools = true }: { mode: NavMode; pathname: string; free?: boolean; tools?: boolean }) {
+  const groups = groupsFor(mode).map((g) => (mode === "hosted" && !tools ? { ...g, links: g.links.filter((l) => l.href !== "/tools") } : g));
   return (
     <>
-      {groupsFor(mode).map((group, i) => (
+      {groups.map((group, i) => (
         <div key={group.label ?? "top"} className={`flex flex-col ${mode === "hosted" ? "gap-1" : "gap-0.5"}`}>
           {group.label ? (
             <p className={`px-3 pb-1.5 text-[12px] font-medium text-ink-faint ${i > 0 ? "pt-6" : ""}`}>{group.label}</p>
           ) : null}
           {group.links.map((l) => (
-            <SidebarLink key={l.href} link={l} pathname={pathname} big={mode === "hosted"} />
+            <SidebarLink
+              key={l.href}
+              link={l}
+              pathname={pathname}
+              big={mode === "hosted"}
+              trailing={free && mode === "hosted" && LOCKED_ON_FREE.has(l.href) ? <LockMark /> : undefined}
+            />
           ))}
         </div>
       ))}
@@ -568,7 +594,10 @@ export function Sidebar({
   plan = null,
   mode = "agent",
   owner = false,
+  free = false,
 }: {
+  /** The active site is on the free tier: its locked screens carry a lock. */
+  free?: boolean;
   /** Show the Owner row (cloud operators only; see OWNER). */
   owner?: boolean;
   billing?: boolean;
@@ -596,7 +625,7 @@ export function Sidebar({
           shrink this); Settings lives OUTSIDE the scroll area so it can
           never be clipped off the bottom of the screen. */}
       <nav className={`min-h-0 flex-1 overflow-y-auto px-3 pb-3 ${mode === "hosted" ? "pt-5" : "pt-3"}`}>
-        {hasProject ? <NavGroups mode={mode} pathname={pathname} /> : <NoSiteNote />}
+        {hasProject ? <NavGroups mode={mode} pathname={pathname} free={free} tools={owner || !billing} /> : <NoSiteNote />}
       </nav>
       <PinnedLinks mode={mode} pathname={pathname} billing={billing} plan={plan} owner={owner} />
     </aside>
@@ -615,7 +644,9 @@ export function MobileNav({
   plan = null,
   mode = "agent",
   owner = false,
+  free = false,
 }: {
+  free?: boolean;
   /** Show the Owner row (cloud operators only; see OWNER). */
   owner?: boolean;
   billing?: boolean;
@@ -698,7 +729,7 @@ export function MobileNav({
             {/* Same groups as the desktop sidebar, and Settings likewise pinned
                 outside the scroll area so it can't be clipped off the bottom. */}
             <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 pt-1">
-              {hasProject ? <NavGroups mode={mode} pathname={pathname} /> : <NoSiteNote />}
+              {hasProject ? <NavGroups mode={mode} pathname={pathname} free={free} tools={owner || !billing} /> : <NoSiteNote />}
             </nav>
             <PinnedLinks mode={mode} pathname={pathname} billing={billing} plan={plan} owner={owner} />
           </div>
