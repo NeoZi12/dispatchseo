@@ -73,6 +73,27 @@ export type ChangelogEntry = {
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
+    kind: "new",
+    text:
+      "Settings > Writing has a new box: facts only you know. Your prices, your years in business, how " +
+      "you work - one per line. Every article works one of them in, which is what separates your " +
+      "articles from everyone else's on the same question.",
+  },
+  {
+    kind: "improved",
+    text:
+      "Articles no longer share one shape. Some open with a short summary, some answer the question " +
+      "in the first paragraph, only comparisons open with a table, and about half end with questions. " +
+      "When a new article goes live, one or two of your older related articles now link to it, and an " +
+      "article Google still hasn't picked up after two weeks gets more links from the ones it has.",
+  },
+  {
+    kind: "improved",
+    text:
+      "If Google stops reading your sitemap, we resubmit it for you after two weeks, and a setup card " +
+      "tells you when there is something only you can fix.",
+  },
+  {
     kind: "improved",
     text:
       "Setup now recognises far more kinds of site. Astro, Nuxt, SvelteKit, Hugo, Jekyll, Eleventy, " +

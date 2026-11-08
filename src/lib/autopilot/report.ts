@@ -11,6 +11,7 @@ import { deltaPct } from "./math";
 import { blockedTopicsOf } from "./prefs";
 import { weekUsage } from "./scheduler";
 import { staleSitemap } from "@/lib/gsc-sitemaps";
+import { ownerFactsOf } from "@/lib/content-prefs";
 
 // The autopilot report: the ONE data shape the hosted dashboard renders and
 // the get_autopilot MCP tool returns (the parity rule, satisfied by
@@ -120,6 +121,8 @@ export type AutopilotReport = {
     tone: string;
     blockedTopics: string[];
     author: { name: string | null; bio: string | null; url: string | null };
+    /** The owner's own facts (content_prefs.owner_facts). */
+    ownerFacts: string[];
   };
   spend: { monthUsd: number };
 };
@@ -382,6 +385,7 @@ export async function getAutopilotReport(projectId: string): Promise<AutopilotRe
       },
       tone: prefs.house_rules,
       blockedTopics: blockedTopicsOf(project),
+      ownerFacts: ownerFactsOf(project.content_prefs),
       author: { name: project.author_name, bio: project.author_bio, url: project.author_url },
     },
     spend: { monthUsd: spend },

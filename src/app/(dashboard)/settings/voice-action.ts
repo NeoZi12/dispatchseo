@@ -1,6 +1,6 @@
 "use server";
 
-import { saveBlockedTopics, saveTone } from "@/app/autopilot-actions";
+import { saveBlockedTopics, saveOwnerFacts, saveTone } from "@/app/autopilot-actions";
 import type { ActionState } from "@/components/ui/action-state";
 
 // "How articles sound" is one card with one Save: the house rules and the
@@ -12,5 +12,7 @@ export async function saveVoice(prev: ActionState, fd: FormData): Promise<Action
   if (!tone?.ok) return tone;
   const topics = await saveBlockedTopics(prev, fd);
   if (!topics?.ok) return topics;
+  const facts = await saveOwnerFacts(prev, fd);
+  if (!facts?.ok) return facts;
   return { ok: true, message: "Saved. New articles follow it from the next one.", at: Date.now() };
 }

@@ -16,7 +16,7 @@ import { DeleteAccountForm } from "@/components/delete-account";
 import { DEFAULT_PROJECT_ID } from "@/lib/projects";
 import type { AutopilotReport } from "@/lib/autopilot/report";
 import { BRAND_LIMITS } from "@/lib/autopilot/controls";
-import { HOUSE_RULES_MAX } from "@/lib/content-prefs";
+import { HOUSE_RULES_MAX, ownerFactsOf, OWNER_FACT_CHARS, OWNER_FACTS_MAX } from "@/lib/content-prefs";
 import { ActionForm } from "@/components/ui/action-form";
 import { buttonClass } from "@/components/ui/button";
 import { ChipsInput } from "@/components/ui/chips-input";
@@ -74,6 +74,7 @@ async function controlsFor(project: Project): Promise<{ c: Controls; plan: Autop
       tone: typeof prefs.house_rules === "string" ? prefs.house_rules : "",
       blockedTopics: Array.isArray(prefs.blocked_topics) ? prefs.blocked_topics.map(String) : [],
       author: authorOf(project),
+      ownerFacts: ownerFactsOf(project.content_prefs),
     },
     plan: null,
   };
@@ -221,6 +222,21 @@ async function WritingSection({ project }: { project: Project }) {
           </Row>
           <Row title="Topics to never write about" description="Research skips these and the writer refuses them." full>
             <ChipsInput id="topics-avoid" name="topics" defaultValue={c.blockedTopics} max={50} maxLength={80} placeholder="e.g. competitor names" />
+          </Row>
+          <Row
+            title="Facts only you know"
+            description={`Prices, years, numbers, how you work - one per line, up to ${OWNER_FACTS_MAX}. Every article works one in; it's what sets your articles apart from everyone else's.`}
+            full
+          >
+            <Textarea
+              id="owner-facts"
+              name="facts"
+              aria-label="Facts only you know"
+              defaultValue={c.ownerFacts.join("\n")}
+              maxLength={OWNER_FACTS_MAX * (OWNER_FACT_CHARS + 1)}
+              rows={4}
+              placeholder={"Flat $95 call-out fee anywhere in the city.\nFamily-run since 1998, three licensed plumbers.\nMost disposal jams are fixed in under 30 minutes."}
+            />
           </Row>
         </div>
       </ActionForm>

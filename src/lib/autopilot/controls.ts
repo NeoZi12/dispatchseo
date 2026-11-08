@@ -3,7 +3,7 @@ import { credsForProject, keywordOverview } from "@/lib/dataforseo";
 import { cachedBulkKeywordDifficulty } from "@/lib/keyword-research-cache";
 import { getProjectById, type Project } from "@/lib/projects";
 import { loadSiteProfile } from "@/lib/site-profile";
-import { HOUSE_RULES_MAX } from "@/lib/content-prefs";
+import { HOUSE_RULES_MAX, normalizeOwnerFacts, OWNER_FACT_CHARS, OWNER_FACTS_MAX } from "@/lib/content-prefs";
 import { mergeContentPrefs } from "@/lib/content-prefs-store";
 import { findDuplicateSuggestion, isDuplicateKeyError } from "@/lib/suggestion-dedupe";
 import { isProjectUrl } from "@/lib/url-guard";
@@ -107,6 +107,24 @@ export async function setTone(projectId: string, houseRules: string): Promise<Co
   const text = houseRules.trim();
   if (text.length > HOUSE_RULES_MAX) return fail(`That's ${text.length} characters; the limit is ${HOUSE_RULES_MAX}.`);
   const error = await mergePrefs(projectId, { house_rules: text });
+  return error ? fail(`Couldn't save that: ${error}`) : { ok: true };
+}
+
+/**
+ * The owner's own facts (content_prefs.owner_facts): first-hand details the
+ * writer works into every article - prices, years, numbers, how the business
+ * works. Replaces the whole list; its own key, so a template save never
+ * touches it (content-prefs.ts ownerFactsOf).
+ */
+export async function setOwnerFacts(projectId: string, facts: string[]): Promise<ControlResult> {
+  if (!Array.isArray(facts)) return fail("Send the facts as a list.");
+  const given = facts.map((f) => String(f ?? "").replace(/\s+/g, " ").trim()).filter(Boolean);
+  if (given.length > OWNER_FACTS_MAX) return fail(`That's ${given.length} facts; keep the ${OWNER_FACTS_MAX} that matter most.`);
+  const long = given.find((f) => f.length > OWNER_FACT_CHARS);
+  if (long) return fail(`One fact is ${long.length} characters; the limit is ${OWNER_FACT_CHARS}. Split it in two.`);
+  const short = given.find((f) => f.length < 8);
+  if (short) return fail(`"${short}" is too short to be a fact the writer can use.`);
+  const error = await mergePrefs(projectId, { owner_facts: normalizeOwnerFacts(given) });
   return error ? fail(`Couldn't save that: ${error}`) : { ok: true };
 }
 

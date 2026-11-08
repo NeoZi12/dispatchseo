@@ -10,6 +10,7 @@ import {
   resumeWriter,
   setAuthor,
   setBlockedTopics,
+  setOwnerFacts,
   setBrand,
   setTone,
   suggestTopic,
@@ -128,6 +129,15 @@ export async function saveBlockedTopics(_prev: ActionState, fd: FormData): Promi
   const r = await setBlockedTopics(o.project.id, list(fd, "topics"));
   if (r.ok) refresh();
   return fromControl(r, "Saved. We won't write about these.");
+}
+
+export async function saveOwnerFacts(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  const o = await ownedProject(fd);
+  if ("refused" in o) return o.refused;
+  // One fact per line in the textarea.
+  const r = await setOwnerFacts(o.project.id, text(fd, "facts").split(/\r?\n/));
+  if (r.ok) refresh();
+  return fromControl(r, "Saved. Every new article works one of these in.");
 }
 
 export async function saveAuthor(_prev: ActionState, fd: FormData): Promise<ActionState> {
