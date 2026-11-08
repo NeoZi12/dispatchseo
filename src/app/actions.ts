@@ -1221,6 +1221,29 @@ export async function deleteAccount(
     };
   }
 
+  // The personal data the privacy page promises to remove, outside the
+  // project rows. Best effort, each on its own: a failure is logged and
+  // never stops the deletion, because billing and the sites are already gone.
+  // Runs before captureServer below, so the one account_deleted event (an
+  // id with no login behind it) is what remains in app_events.
+  const scrub: Array<[string, () => PromiseLike<{ error: { message: string } | null }>]> = [
+    // Feedback stays on the board for others; only the author link and the
+    // reply-to address go.
+    ["feedback", () => db().from("feedback").update({ author_email: null, author_user_id: null }).eq("author_user_id", user.id)],
+    ["web_visits", () => db().from("web_visits").delete().eq("user_id", user.id)],
+    // distinct_id is the auth user id (captureServer is called with user.id).
+    ["app_events", () => db().from("app_events").delete().eq("distinct_id", user.id)],
+    ["owner_activity", () => db().from("owner_activity").delete().eq("owner_user_id", user.id)],
+  ];
+  for (const [table, run] of scrub) {
+    try {
+      const { error } = await run();
+      if (error) console.error(`[delete-account] ${table} scrub failed for ${user.id}: ${error.message}`);
+    } catch (e) {
+      console.error(`[delete-account] ${table} scrub threw for ${user.id}:`, e instanceof Error ? e.message : e);
+    }
+  }
+
   const { error: userError } = await db().auth.admin.deleteUser(user.id);
   if (userError) {
     return {
