@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { isCloudMode } from "./cloud";
-import { getSubscription, isActive, polarConfigured } from "./billing";
+import { getSubscription, isActive, polarConfigured, type Subscription } from "./billing";
 import { listInstallationRepos } from "./github-app";
 
 // The third-site GitHub Actions cost gate.
@@ -50,10 +50,13 @@ export type AckReason = "billing" | "public_repos";
 export async function githubCostGate(
   userId: string,
   ownedCount: number,
+  // The subscription when the caller already read it (the layout does, for
+  // the plan banner), so this costs no query of its own.
+  known?: Subscription | null,
 ): Promise<GithubCostGate> {
   if (!isCloudMode() || !polarConfigured()) return { required: false };
   if (ownedCount < FREE_SITES) return { required: false };
-  const sub = await getSubscription(userId);
+  const sub = known !== undefined ? known : await getSubscription(userId);
   if (!isActive(sub)) return { required: false };
   // Column ABSENT (0048 not applied) is not the same as column null. Migrations
   // here are applied by hand, so a deploy can land first - and gating on a

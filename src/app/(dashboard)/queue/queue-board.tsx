@@ -1,5 +1,3 @@
-"use client";
-
 // The Queue screen's board: this week's slots and the ideas waiting to
 // fill them, in the order they'll be written, each with the day it's
 // expected to start. Read-only on purpose (owner, 2026-11-05: owners see

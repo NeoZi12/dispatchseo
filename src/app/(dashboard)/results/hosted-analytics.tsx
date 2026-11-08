@@ -34,10 +34,13 @@ const at = (ms: number, i = 0, step?: number) =>
   ({ "--at": `${ms}ms`, "--i": i, ...(step ? { "--step": `${step}ms` } : {}) }) as React.CSSProperties;
 
 /** What this screen shows from the Analytics loader, and only that, cached
- *  10 minutes per project (tag gsc:<id>). The loader's raw 28 days of
- *  per-page JSON (~450 KB) stays out of the cache; the folded tables, the
- *  rankings and the light daily series go in. Neither the live 24h numbers
- *  nor the domain rating are fetched - this screen shows neither. */
+ *  an hour per project (tag gsc:<id>; the hourly Search Console sync
+ *  invalidates the tag the moment it writes, so the hour is a backstop,
+ *  not the freshness). The loader's raw 28 days of per-page JSON
+ *  (~450 KB), the full daily history and up to 20k rank checks stay out of
+ *  the cache; the folded tables, the rankings and the light daily series
+ *  go in. Neither the live 24h numbers nor the domain rating are fetched -
+ *  this screen shows neither. */
 function analyticsData(project: Project) {
   return unstable_cache(
     async () => {
@@ -54,7 +57,7 @@ function analyticsData(project: Project) {
       };
     },
     ["hosted-analytics", project.id],
-    { revalidate: 600, tags: [gscTag(project.id)] },
+    { revalidate: 3600, tags: [gscTag(project.id)] },
   )();
 }
 

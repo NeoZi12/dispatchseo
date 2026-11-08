@@ -25,14 +25,11 @@ export const keyOf = (a: Pick<AutopilotArticle, "draftId" | "runId" | "createdAt
 
 export type Source = { url: string; host: string; title: string | null };
 
-/** What the list's expand panel shows for one article. */
+/** What the list shows about an article beyond the report's own row: only
+ *  whether the page is known not to load any more (isKnownGone). The
+ *  position and sources it once carried moved to the article's page, and
+ *  the list stopped reading them - so they are no longer computed or sent. */
 export type ArticleGlance = {
-  /** Position on the newest day Google listed the page. */
-  now: number | null;
-  /** Best daily position ever seen, and the day. */
-  best: { position: number; date: string } | null;
-  sources: Source[];
-  /** The page is known not to load any more (isKnownGone). */
   gone: boolean;
 };
 
@@ -137,64 +134,16 @@ async function loadGoneUrlsRaw(projectId: string): Promise<Set<string>> {
   );
 }
 
-type UrlSummary = Record<string, { now: number | null; best: { position: number; date: string } | null }>;
-
-/** Each URL's position on the newest day Google listed it, and its best
- *  day, for every page in the history. */
-function urlSummaries(projectId: string): Promise<UrlSummary> {
-  return unstable_cache(
-    async () => {
-      const out: UrlSummary = {};
-      for (const day of await pageHistory(projectId)) {
-        const seen = new Set<string>();
-        for (const p of day.pages) {
-          const key = normalizePageUrl(p.page);
-          if (seen.has(key)) continue;
-          seen.add(key);
-          const d = dayFor(day.pages, key);
-          if (!d || d.position == null) continue;
-          const u = (out[key] ??= { now: null, best: null });
-          if (u.now == null) u.now = d.position; // history is newest first
-          if (!u.best || d.position < u.best.position) u.best = { position: d.position, date: day.date };
-        }
-      }
-      return out;
-    },
-    ["article-url-summaries", projectId],
-    { revalidate: 600, tags: [gscTag(projectId)] },
-  )();
-}
-
 function goneUrlsCached(projectId: string): Promise<string[]> {
   return unstable_cache(async () => [...(await loadGoneUrlsRaw(projectId))], ["gone-urls", projectId], { revalidate: 600, tags: [gscTag(projectId)] })();
 }
 
-/** Only the sources column - the validation JSON beside it is the heavy part
- *  and the list never shows it. */
-async function sourceRows(projectId: string, draftIds: string[]) {
-  // "page:<id>" rows (articles from before autopilot) have no draft.
-  draftIds = draftIds.filter((id) => !id.startsWith("page:"));
-  if (!draftIds.length) return [];
-  const { data } = await db().from("article_drafts").select("id, sources").eq("project_id", projectId).in("id", draftIds);
-  return (data ?? []) as Array<{ id: string; sources: unknown }>;
-}
-
-/** The list's glance facts for every article on screen. */
-export async function loadGlances(projectId: string, articles: AutopilotArticle[]): Promise<Record<ArticleKey, ArticleGlance>> {
-  const live = articles.filter((a) => a.url);
-  const [summary, rows, gone] = await Promise.all([
-    live.length ? urlSummaries(projectId).catch(() => ({}) as UrlSummary) : Promise.resolve({} as UrlSummary),
-    sourceRows(projectId, articles.map((a) => a.draftId).filter(Boolean)),
-    live.length ? loadGoneUrls(projectId) : Promise.resolve(new Set<string>()),
-  ]);
-  const sources = new Map(rows.map((r) => [r.id, sourcesOf(r.sources)]));
+/** The list's glance facts for every article on screen: one cached read
+ *  (the project's dead pages), nothing per article. */
+export async function loadGlances(projectId: string, articles: Pick<AutopilotArticle, "draftId" | "runId" | "createdAt" | "url">[]): Promise<Record<ArticleKey, ArticleGlance>> {
+  const gone = articles.some((a) => a.url) ? await loadGoneUrls(projectId) : new Set<string>();
   const out: Record<ArticleKey, ArticleGlance> = {};
-  for (const a of articles) {
-    const u = a.url ? summary[normalizePageUrl(a.url)] : undefined;
-    const now = u?.now ?? null;
-    const best = u?.best ?? null;
-    out[keyOf(a)] = { now, best, sources: sources.get(a.draftId) ?? [], gone: a.url ? gone.has(normalizePageUrl(a.url)) : false };
-  }
+  for (const a of articles) out[keyOf(a)] = { gone: a.url ? gone.has(normalizePageUrl(a.url)) : false };
   return out;
 }
 

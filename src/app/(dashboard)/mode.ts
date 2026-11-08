@@ -41,7 +41,10 @@ export async function redirectIfAgent(to: string): Promise<void> {
  *  built - a failed read hides a surface, it never takes a page down. */
 export const loadReport = cache(async (projectId: string): Promise<AutopilotReport | null> => {
   try {
-    return await getAutopilotReport(projectId);
+    // The active project is already in hand (cached per request), so the
+    // report skips its own read of the row.
+    const active = await getActiveProjectOrNull();
+    return await getAutopilotReport(projectId, { project: active?.id === projectId ? active : null });
   } catch (e) {
     console.error("[dashboard] autopilot report failed", e);
     return null;

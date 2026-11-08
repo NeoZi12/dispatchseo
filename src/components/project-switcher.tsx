@@ -4,7 +4,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { switchProject } from "@/app/actions";
-import { AddSiteDialog, useAddSiteParam } from "@/components/add-site-dialog";
+import dynamic from "next/dynamic";
+import { useAddSiteParam } from "@/components/add-site-param";
+
+// The add-site dialog (the whole wizard form) downloads when it first
+// opens, not with every page: the switcher is on every dashboard screen and
+// the dialog opens on a few of them a month. Client-only, as a portal is.
+const AddSiteDialog = dynamic(() => import("@/components/add-site-dialog").then((m) => m.AddSiteDialog), { ssr: false });
 
 // Vercel-style project picker in the header: the current project's domain with
 // a chevron, a dropdown listing every project, and Add project at the bottom.
@@ -77,6 +83,9 @@ export function ProjectSwitcher({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
+  // Mounted from the first open on (and its chunk downloaded then), kept
+  // mounted after so an accidental close keeps what was typed.
+  const [addMounted, setAddMounted] = useState(false);
   const [pending, start] = useTransition();
   const ref = useRef<HTMLDivElement>(null);
 
@@ -85,6 +94,7 @@ export function ProjectSwitcher({
   // without a navigation, which was the whole problem with the old /new link.
   const openAdd = useCallback(() => {
     setOpen(false);
+    setAddMounted(true);
     setAdding(true);
   }, []);
   useAddSiteParam(openAdd);
@@ -253,14 +263,18 @@ export function ProjectSwitcher({
         </div>
       ) : null}
       </div>
-      <AddSiteDialog
-        open={adding}
-        onClose={() => setAdding(false)}
-        cloud={cloud}
-        existingSiteCount={projects.length}
-        planFull={planFull}
-        githubCostRequired={githubCostRequired}
-      />
+      {/* Not mounted until the first open, so its chunk is fetched the first
+          time it is needed; after that it stays, closed or open. */}
+      {addMounted ? (
+        <AddSiteDialog
+          open={adding}
+          onClose={() => setAdding(false)}
+          cloud={cloud}
+          existingSiteCount={projects.length}
+          planFull={planFull}
+          githubCostRequired={githubCostRequired}
+        />
+      ) : null}
 
     </>
   );

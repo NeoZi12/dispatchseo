@@ -4,8 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import posthog from "posthog-js";
-import { posthogReady } from "@/lib/posthog-client";
+import { posthogReset } from "@/lib/posthog-client";
 import { DispatchMark } from "@/components/logo";
 import { FOCUS_RING } from "@/components/ui/styles";
 
@@ -484,7 +483,7 @@ function LogoutLink({ big = false }: { big?: boolean }) {
       onClick={() => {
         // No-op when analytics was declined - posthog-js is never initialised
         // in that case, and reset() on it throws, which would break logout.
-        if (posthogReady()) posthog.reset();
+        posthogReset();
       }}
       className={`flex items-center rounded-lg ${ROW[big ? "big" : "normal"]} text-ink-muted transition-colors hover:bg-surface hover:text-ink ${FOCUS_RING}`}
     >

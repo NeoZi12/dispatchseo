@@ -18,7 +18,7 @@ import {
 } from "@/app/(dashboard)/article-status";
 import type { ArticleGlance } from "@/app/(dashboard)/articles/article-data";
 import { StatusPill } from "./status-pill";
-import { ClickIcon, SearchIcon } from "./overview-chart";
+import { ClickIcon, SearchIcon } from "./icons";
 import { cx, FOCUS_RING } from "./styles";
 
 // The article list, one component for Home (the latest few) and the
@@ -28,6 +28,17 @@ import { cx, FOCUS_RING } from "./styles";
 // whatever action applies).
 
 const GRID = "sm:grid-cols-[10rem_minmax(0,1fr)_5rem_5.5rem_1rem]";
+
+/** The fields a row renders. The server hands the list these and not the
+ *  whole report row (its error text, cost, position, URL, gain), which
+ *  for 300 articles was most of the page's payload. */
+export type ArticleRow = Pick<AutopilotArticle, "draftId" | "runId" | "title" | "keyword" | "status" | "stage" | "createdAt" | "publishedAt" | "clicks28d" | "prUrl" | "prMerged">;
+export const ARTICLE_ROW_FIELDS = ["draftId", "runId", "title", "keyword", "status", "stage", "createdAt", "publishedAt", "clicks28d", "prUrl", "prMerged"] as const satisfies readonly (keyof ArticleRow)[];
+export function toArticleRow(a: AutopilotArticle): ArticleRow {
+  const row = {} as Record<string, unknown>;
+  for (const k of ARTICLE_ROW_FIELDS) row[k] = a[k];
+  return row as ArticleRow;
+}
 const css = (v: Record<string, string | number>) => v as React.CSSProperties;
 
 
@@ -84,7 +95,7 @@ export function ArticleList({
   at = 0,
   pageSize,
 }: {
-  articles: AutopilotArticle[];
+  articles: ArticleRow[];
   glances: Record<string, ArticleGlance>;
   /** Kept for callers; the row's actions live on the article's page now. */
   slug?: string;
@@ -130,7 +141,7 @@ export function ArticleList({
   );
 }
 
-function Row({ a, glance }: { a: AutopilotArticle; glance: ArticleGlance | undefined }) {
+function Row({ a, glance }: { a: ArticleRow; glance: ArticleGlance | undefined }) {
   const s = ARTICLE_STATUS[a.status];
   const live = a.status === "published";
   // The whole row opens the article's own page: preview, numbers, the

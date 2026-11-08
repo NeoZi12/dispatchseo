@@ -32,6 +32,7 @@ import { getActivityReport, type ActivityLine } from "@/lib/activity";
 import {
   getCronHealth,
   criticalCronIssues,
+  hostedSiteIssues,
   isManualReviewNotice,
   looksLikeQuotaFailure,
 } from "@/lib/cron-alerts";
@@ -349,21 +350,19 @@ export default async function Home({
     const [report, overview, siteHealth, operatorSites, queue] = await Promise.all([
       loadReport(project.id),
       loadOverviewData(project).catch(() => null),
-      // Only the autopilot's own job families. A site switched from agent
-      // mode keeps its old seo-daily--<slug> etc. rows, which go "stale" the
-      // day the workflows stop - a permanent false alarm about a pipeline
-      // this site no longer runs.
-      getCronHealth(project.slug)
-        .then((h) => criticalCronIssues(h).filter((x) => /^(autopilot|autopilot-pause|articles)--/.test(x.job)))
-        .catch(() => []),
+      // Only the autopilot's own job families, in one small read. A site
+      // switched from agent mode keeps its old seo-daily--<slug> etc. rows,
+      // which go "stale" the day the workflows stop - a permanent false
+      // alarm about a pipeline this site no longer runs.
+      hostedSiteIssues(project).catch(() => []),
       operator ? operatorOverview().catch(() => null) : Promise.resolve(null),
       // The Queue page's own list and dates (lib/autopilot/queue.ts), so
       // Home's calendar and "Up next" never disagree with /queue.
-      getHostedQueue(project).catch(() => null),
+      getHostedQueue(project, undefined, { parked: false }).catch(() => null),
     ]);
     // Live articles without a stored preview get one after this response,
     // a few per visit (page-screenshot.ts), so the article page shows it at once.
-    if (report) warmScreenshotsLater(project.id, report.articles.filter((a) => a.status === "published" && a.url).map((a) => a.url!), 4);
+    if (report) warmScreenshotsLater(project.id, report.articles.filter((a) => a.status === "published" && a.url).map((a) => a.url!), 4, { onView: true });
     return (
       <HostedReport
         project={project}

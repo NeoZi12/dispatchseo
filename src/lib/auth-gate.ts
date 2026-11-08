@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { COOKIE_NAME, isValidCookie } from "./dashboard-auth";
 import { isCloudMode } from "./cloud";
-import { currentUser, type CloudUser } from "./cloud-auth";
+import { currentUser, currentUserStrict, type CloudUser } from "./cloud-auth";
 
 // The one dashboard auth gate. Every protected page/action/API route calls
 // one of these instead of hand-rolling the cookie check, so the cloud/self-
@@ -29,6 +29,17 @@ export async function dashboardAuth(): Promise<DashboardAuth | null> {
   const jar = await cookies();
   const ok = await isValidCookie(jar.get(COOKIE_NAME)?.value);
   return ok ? { user: null } : null;
+}
+
+// dashboardAuth, but the cloud session is confirmed by the Auth server on
+// this call (cloud-auth.ts currentUserStrict): for the actions where a
+// session revoked an hour ago must not still work - deleting the account.
+export async function dashboardAuthStrict(): Promise<DashboardAuth | null> {
+  if (isCloudMode()) {
+    const user = await currentUserStrict();
+    return user ? { user } : null;
+  }
+  return dashboardAuth();
 }
 
 // Cheap, UNVERIFIED "might this visitor be signed in?" hint. Public pages use

@@ -3,6 +3,7 @@ import { isCloudMode, isLocalBackendUrl } from "./cloud";
 import { listProjects, effectiveAutomations } from "./projects";
 import { projectAgent } from "./agents";
 import { planPausedProjectSlugs } from "./billing";
+import type { Project } from "./projects";
 
 // Cron failure alerts (LATER.md gap A4). Every cron route calls
 // reportCronRun() with its result JSON right before responding; this module
@@ -934,7 +935,44 @@ export async function getCronHealth(projectSlug?: string): Promise<CronHealth[]>
     const c = (proj as { created_at?: string } | null)?.created_at;
     if (c) projectSince = new Date(c).getTime();
   }
-  const latest = new Map<string, (typeof data)[number]>();
+  return withPipelineAlerts(deriveHealth(data as RunRow[], projectSlug, projectSince, paused), projectSlug, paused);
+}
+
+/** One cron_runs row as the two readers above and below see it. */
+type RunRow = { job: string; ok: boolean | null; errors: string[] | null; created_at: string; claimed_only: boolean | null };
+
+/** The hosted writer's own three job families for one site - what the
+ *  hosted Home shows - read in one small, indexed query instead of the
+ *  shared 3000-row window every tenant writes into (which Home read, and
+ *  then threw all but three job names of away). Same derivation as
+ *  getCronHealth (deriveHealth), so a row reads the same on both screens;
+ *  skips the pipeline heartbeat, idle-builder and GitHub quota passes,
+ *  none of which can produce an autopilot job. A lapsed plan has no health
+ *  here either, through the same fail-OPEN read getCronHealth uses: a billing
+ *  hiccup must never hide a paying site's alerts. A failed read is no
+ *  alerts, not a crash. */
+export async function hostedSiteIssues(project: Pick<Project, "id" | "slug" | "created_at">): Promise<CronHealth[]> {
+  if ((await planPausedProjectSlugs()).has(project.slug)) return [];
+  const jobs = [...AUTOPILOT_JOBS].map((j) => `${j}--${project.slug}`);
+  const { data, error } = await db()
+    .from("cron_runs")
+    .select("job, ok, errors, created_at, claimed_only")
+    .in("job", jobs)
+    .order("created_at", { ascending: false })
+    // Three daily jobs, a month of rows each: enough for the last two real
+    // outcomes and the oldest claim the clock below can need.
+    .limit(90);
+  if (error || !data) return [];
+  const since = project.created_at ? new Date(project.created_at).getTime() : 0;
+  return criticalCronIssues(deriveHealth(data as RunRow[], project.slug, since, new Set()));
+}
+
+/** The health rows behind a window of cron_runs (newest first): the latest
+ *  row per job, read against the last REAL outcome and the persistence of
+ *  its failures. Pure: every rule about claims, staleness and repeats lives
+ *  here once. */
+function deriveHealth(data: RunRow[], projectSlug: string | undefined, projectSince: number, paused: Set<string>): CronHealth[] {
+  const latest = new Map<string, RunRow>();
   // The staleness clock's anchors, per job. A claimed/deferred row means
   // "handed out (or ran and produced nothing), not finished" - so when the
   // LATEST row is one of those, staleness must run from the last REAL outcome
@@ -1091,6 +1129,12 @@ export async function getCronHealth(projectSlug?: string): Promise<CronHealth[]>
         })(),
       };
     });
+  return health;
+}
+
+/** getCronHealth's second half: the heartbeat, idle-builder and GitHub
+ *  quota passes over the derived rows. */
+async function withPipelineAlerts(health: CronHealth[], projectSlug: string | undefined, paused: Set<string>): Promise<CronHealth[]> {
   // Independent of each other - both only read the reported-job set - so they
   // run together. Serially they put two per-project sweeps in front of Home.
   const reported = new Set(health.map((h) => h.job));

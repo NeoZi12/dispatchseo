@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect } from "react";
-import posthog from "posthog-js";
 
 import { CONSENT_EVENT } from "@/lib/analytics-consent";
-import { posthogReady, startPostHog } from "@/lib/posthog-client";
+import { posthogIdentify } from "@/lib/posthog-client";
 
 // Mounted once in the dashboard shell for signed-in CLOUD_MODE users. Links
 // whatever anonymous distinct id this browser already has (landing page
@@ -17,11 +16,9 @@ import { posthogReady, startPostHog } from "@/lib/posthog-client";
 // the identity links without waiting for a navigation.
 export function PostHogIdentify({ userId, email }: { userId: string; email: string | null }) {
   useEffect(() => {
-    const link = () => {
-      startPostHog();
-      if (!posthogReady()) return;
-      posthog.identify(userId, email ? { email } : undefined);
-    };
+    // posthogIdentify loads and starts the client first when consent
+    // allows, and does nothing at all when it doesn't.
+    const link = () => posthogIdentify(userId, email ? { email } : undefined);
     link();
     window.addEventListener(CONSENT_EVENT, link);
     return () => window.removeEventListener(CONSENT_EVENT, link);

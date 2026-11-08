@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { NextResponse, type NextRequest } from "next/server";
 import { ResourceNotFound } from "@polar-sh/sdk/models/errors/resourcenotfound.js";
-import { currentUser } from "@/lib/cloud-auth";
+import { currentUserStrict } from "@/lib/cloud-auth";
 import { isCloudMode } from "@/lib/cloud";
 import { polar, polarConfigured } from "@/lib/billing";
 import { captureServer, captureServerException } from "@/lib/posthog-server";
@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   if (!isCloudMode() || !polarConfigured()) {
     return NextResponse.json({ error: "billing not enabled" }, { status: 404 });
   }
-  const user = await currentUser();
+  const user = await currentUserStrict();
   if (!user) redirect("/login");
   let url: string;
   try {

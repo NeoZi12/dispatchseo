@@ -1,4 +1,6 @@
+import { revalidateTag } from "next/cache";
 import { db } from "@/lib/db";
+import { gscTag } from "@/lib/autopilot/report";
 import { planGate } from "@/lib/billing";
 import { credsForProject, takeDecryptFailure } from "@/lib/dataforseo";
 import { queueDailyRankTasks } from "@/lib/dataforseo-tasks";
@@ -395,7 +397,20 @@ export async function GET(req: Request): Promise<Response> {
   if (denied) return denied;
 
   const { projects, degraded } = await listProjectsChecked();
-  const runs = await Promise.allSettled(projects.map((p) => runProject(p)));
+  // A finished project changed its Google and rank rows: every folded view
+  // of them (tag gsc:<id>, see hourly-gsc) is stale now, not in an hour.
+  const runs = await Promise.allSettled(
+    projects.map((p) =>
+      runProject(p).then((r) => {
+        try {
+          revalidateTag(gscTag(p.id), "max");
+        } catch {
+          /* no cache handler (self-host without one): the clock applies */
+        }
+        return r;
+      }),
+    ),
+  );
 
   const result: Record<string, unknown> = {};
   let hadError = false;

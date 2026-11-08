@@ -14,9 +14,8 @@ import {
   TIER_LIMITS,
   type Tier,
 } from "@/lib/billing";
-import { getActiveProjectOrNull } from "@/lib/active-project";
+import { getActiveProjectOrNull, scopedProjects } from "@/lib/active-project";
 import { platformUsageStatus } from "@/lib/dataforseo-usage";
-import { db } from "@/lib/db";
 import { CancelPlanButton, KeepPlanButton } from "@/components/cancel-plan";
 import { buttonClass } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
@@ -51,8 +50,9 @@ export default async function BillingPage({
   const { success, error } = await searchParams;
   // Which product the plan cards describe: a hosted site is sold articles a
   // week; an agent site runs on GitHub Actions, whose cost note applies.
-  const hostedMode = writerMode(await getActiveProjectOrNull()) === "hosted";
-  const sub = await getSubscription(auth.user.id);
+  // The project and the subscription are independent reads: together.
+  const [activeOrNull, sub, owned] = await Promise.all([getActiveProjectOrNull(), getSubscription(auth.user.id), scopedProjects()]);
+  const hostedMode = writerMode(activeOrNull) === "hosted";
   const active = isActive(sub);
   // A subscription Polar still holds, whatever its payment state. `active`
   // (active|trialing) decides what we UNLOCK; this decides where a plan button
@@ -63,18 +63,13 @@ export default async function BillingPage({
   const hasUpstreamSub = Boolean(sub && ["active", "trialing", "past_due"].includes(sub.status));
   // The usage meter only means something for an agent site on the platform
   // DataForSEO budget; a hosted site's research is ours to pay for.
-  const activeProject = active && polarConfigured() && !hostedMode ? await getActiveProjectOrNull() : null;
+  const activeProject = active && polarConfigured() && !hostedMode ? activeOrNull : null;
   const usage = activeProject ? await platformUsageStatus(activeProject.id) : null;
   // Only for the sentence the cancel dialog writes ("new articles stop on
-  // your 3 sites"). A failed count reads as one site.
-  const siteCount = hasUpstreamSub
-    ? ((
-        await db()
-          .from("projects")
-          .select("id", { count: "exact", head: true })
-          .eq("owner_user_id", auth.user.id)
-      ).count ?? 1)
-    : 0;
+  // your 3 sites"). The owner's own list, already read for the layout's
+  // switcher (scopedProjects is cached per request); a failed read is
+  // empty there, which reads as one site here.
+  const siteCount = hasUpstreamSub ? Math.max(owned.length, 1) : 0;
   const periodEnd = sub?.current_period_end ? new Date(sub.current_period_end) : null;
   const periodEndLabel =
     periodEnd && !Number.isNaN(periodEnd.getTime())

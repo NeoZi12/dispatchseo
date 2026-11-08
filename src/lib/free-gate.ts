@@ -168,11 +168,16 @@ export async function claimFreeLaunch(input: FreeLaunchInput): Promise<FreeLaunc
  *  that reached the engine by ANY path (an older setup, a backfilled launch,
  *  a site switched to hosted later) gets nothing until it has a claim.
  *  Fails closed. */
-export async function hasFreeDomainClaim(ownerId: string, projectId: string): Promise<boolean> {
+export async function hasFreeDomainClaim(ownerId: string, projectId: string, domainHint?: string | null): Promise<boolean> {
   try {
-    const { data: p, error: pErr } = await db().from("projects").select("domain").eq("id", projectId).maybeSingle();
-    if (pErr || !p) return false;
-    const domain = registrableDomain((p as { domain: string }).domain);
+    // The caller usually holds the row already (billing.ts projectHint).
+    let raw = domainHint ?? null;
+    if (!raw) {
+      const { data: p, error: pErr } = await db().from("projects").select("domain").eq("id", projectId).maybeSingle();
+      if (pErr || !p) return false;
+      raw = (p as { domain: string }).domain;
+    }
+    const domain = registrableDomain(raw);
     if (!domain) return false;
     const { data, error } = await db()
       .from("free_claims")

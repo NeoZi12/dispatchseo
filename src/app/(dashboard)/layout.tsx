@@ -5,16 +5,13 @@ import { touchOwnerActivity } from "@/lib/free-gate";
 import { MobileNav, PageTitle, Sidebar } from "@/components/nav";
 import { DispatchMark } from "@/components/logo";
 import { ProjectSwitcher } from "@/components/project-switcher";
-import { ModeSwitch } from "@/components/mode-switch";
-import { AgentHeaderSwitch } from "@/components/agent-header-switch";
+import { AgentHeaderSwitch, ModeSwitch, SetupPageBar, SetupProgressBanner } from "@/components/agent-chrome";
 import { ArrivalMode } from "@/components/ui/arrival-mode";
 import { DEFAULT_AGENT, projectAgent } from "@/lib/agents";
 import { getActiveProjectOrNull, scopedProjects } from "@/lib/active-project";
 import { isCloudMode } from "@/lib/cloud";
 import { currentUser } from "@/lib/cloud-auth";
 import { isOperator } from "@/lib/autopilot/operator";
-import { SetupProgressBanner } from "@/components/setup-progress-banner";
-import { SetupPageBar } from "@/components/setup-path/page-bar";
 import { getSetupStepCached } from "@/lib/setup-path";
 import { requestOrigin } from "@/lib/request-origin";
 import { RepoCleanupBanner } from "@/components/repo-cleanup-banner";
@@ -23,7 +20,7 @@ import { getSubscription, planBadge, planNotice, sitesRemaining } from "@/lib/bi
 import { githubCostGate } from "@/lib/github-cost-gate";
 import { REPO_NOTICE_COOKIE, decodeRepoNotice } from "@/lib/repo-notice";
 import { PostHogIdentify } from "@/components/posthog-identify";
-import { firstArticleProgress } from "@/lib/first-article-progress";
+import { firstArticleKey, firstArticleProgress } from "@/lib/first-article-progress";
 import { getSetupSummary, loadReport, setupGaps, writerMode } from "./mode";
 import { HostedSetupBar } from "./setup-bar";
 import { FirstArticleCard } from "./first-article-card";
@@ -34,6 +31,7 @@ import { FirstArticleCard } from "./first-article-card";
 // per-request, and it keeps `next build` from prerendering pages that read
 // the DB (CI's build-verify runs with no env at all).
 export const dynamic = "force-dynamic";
+
 // Vercel-style chrome: a full-height icon sidebar owns the left edge (brand
 // at the top),
 // and the topbar (project switcher / centered page title) only spans the
@@ -55,12 +53,49 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const billing = isCloudMode();
   // The Owner row in the nav: cross-tenant analytics, operators only.
   const owner = isOperator(user?.id);
-  // One indexed single-row read, cloud only, and it can't join the Promise.all
-  // above because it needs the user id that call resolves. Worth the round trip:
-  // this is the only thing on the dashboard that can explain why a paused
-  // account's data stopped moving, and it has to be on every screen, not just
-  // the one the owner happens to open.
-  const sub = billing && user ? await getSubscription(user.id) : null;
+  // Hosted writer projects get the short nav, no agent/mode switches, and a
+  // one-line "finish setup" bar driven by the autopilot report instead of the
+  // agent setup path (whose steps don't apply to them).
+  const hosted = active != null && writerMode(active) === "hosted";
+  // Everything here needs only `user` and `active`, so it goes out in ONE
+  // round trip. These were six awaits in a row (subscription, cost gate,
+  // first-article card, report, setup summary, setup step), each waiting on
+  // the one before it, on every dashboard page.
+  const [sub, firstArticle, report, hostedGap, setupStep] = await Promise.all([
+    // One indexed single-row read, cloud only. Worth it: this is the only
+    // thing on the dashboard that can explain why a paused account's data
+    // stopped moving, and it has to be on every screen, not just the one the
+    // owner happens to open.
+    billing && user ? getSubscription(user.id) : Promise.resolve(null),
+    // A new cloud hosted site, setup done, first article not live yet: every
+    // page shows the same first-article card instead of its content (setup
+    // asked for everything once; this shows the rest happening). Cloud only -
+    // self-host keeps its own wizard and Home - and only for a site the new
+    // setup launched (a launch job exists). A failed read shows the normal
+    // dashboard, never a card that can't say anything true.
+    billing && hosted && active.setup_connected_at ? firstArticleProgress(active, { loadReport }).catch(() => null) : Promise.resolve(null),
+    // Free tier (billing.ts isFreePlan, carried on the report): the sidebar
+    // marks the screens that come with a plan, and the Billing row says Free.
+    // Same cached report the hosted pages read; a failed read is not free.
+    billing && hosted ? loadReport(active.id) : Promise.resolve(null),
+    // The hosted "finish setup" bar's gaps: project columns plus at most one
+    // head count (getSetupSummary).
+    hosted
+      ? getSetupSummary(active)
+          .then((s) => setupGaps(s).filter((g) => !g.done && g.href))
+          .catch(() => [] as ReturnType<typeof setupGaps>)
+      : Promise.resolve([] as ReturnType<typeof setupGaps>),
+    // Cloud: the setup path's one-line "Your next step" bar. The same cached
+    // read Home's hero makes (getSetupStepCached is keyed on two strings so the
+    // two calls dedupe within the request [R19]); cheap pass only - no GitHub or
+    // Google call on a page render [R14]. Self-host never computes a step. A
+    // failed read hides the bar; it must never take every page down.
+    billing && active && !hosted
+      ? headers()
+          .then((h) => getSetupStepCached(active.slug, requestOrigin(h)))
+          .catch(() => null)
+      : Promise.resolve(null),
+  ]);
   // A signed-in visit is what keeps a free site's articles coming (60-day
   // pause, lib/free-gate.ts). After the response, at most one write a day.
   if (billing && user) after(() => touchOwnerActivity(user.id));
@@ -76,13 +111,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // "Upgrade to add more sites" state costs no extra query. Same arithmetic the
   // creation gate uses (see sitesRemaining), so the two can't drift apart.
   const sitesLeft = billing && user ? sitesRemaining(sub, projects.length) : null;
-  // Third-site GitHub Actions cost step. Cheap by construction: the
-  // subscription is already memoized from the planNotice read above and the
-  // project count is in hand, so this adds no query. The expensive half -
-  // proving the owner's repos are public - runs only when someone actually
-  // picks that answer, inside the server action, never on a dashboard render.
+  // Third-site GitHub Actions cost step. Cheap by construction: it is handed
+  // the subscription read above and the project count is in hand, so this
+  // adds no query. The expensive half - proving the owner's repos are public
+  // - runs only when someone actually picks that answer, inside the server
+  // action, never on a dashboard render.
   const githubCost =
-    billing && user ? await githubCostGate(user.id, projects.length) : { required: false as const };
+    billing && user ? await githubCostGate(user.id, projects.length, sub) : { required: false as const };
   // Cloud unlocks the dashboard when the wizard reaches its finale
   // (onboarding-gate keys on the c5 stamp), so the owner can explore while
   // the background setup run personalizes their site. Show a top banner in
@@ -133,40 +168,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // Outranks both banners below: it's the only one reporting something the
   // owner may still need to go switch off.
   const repoNotice = decodeRepoNotice(jar.get(REPO_NOTICE_COOKIE)?.value);
-  // Cloud: the setup path's one-line "Your next step" bar. The same cached
-  // read Home's hero makes (getSetupStepCached is keyed on two strings so the
-  // two calls dedupe within the request [R19]); cheap pass only - no GitHub or
-  // Google call on a page render [R14]. Self-host never computes a step.
-  // Hosted writer projects get the short nav, no agent/mode switches, and a
-  // one-line "finish setup" bar driven by the autopilot report instead of the
-  // agent setup path (whose steps don't apply to them).
-  const hosted = active != null && writerMode(active) === "hosted";
-  // A new cloud hosted site, setup done, first article not live yet: every
-  // page shows the same first-article card instead of its content (setup
-  // asked for everything once; this shows the rest happening). Cloud only -
-  // self-host keeps its own wizard and Home - and only for a site the new
-  // setup launched (a launch job exists). A failed read shows the normal
-  // dashboard, never a card that can't say anything true.
-  const firstArticle =
-    billing && hosted && active.setup_connected_at
-      ? await firstArticleProgress(active, { loadReport }).catch(() => null)
-      : null;
   const showFirstArticle = firstArticle != null && firstArticle.launched && !firstArticle.live;
-  // Free tier (billing.ts isFreePlan, carried on the report): the sidebar
-  // marks the screens that come with a plan, and the Billing row says Free.
-  // Same cached report the hosted pages read; a failed read is not free.
-  const free = billing && hosted ? ((await loadReport(active.id))?.plan.free ?? false) : false;
+  const free = report?.plan.free ?? false;
   const navPlan = free ? { label: "Free", tone: "plan" as const } : badge;
-  const hostedGap = hosted
-    ? await getSetupSummary(active)
-        .then((s) => setupGaps(s).filter((g) => !g.done && g.href))
-        .catch(() => [])
-    : [];
-  const setupStep =
-    billing && active && !hosted
-      ? // A failed read hides the bar; it must never take every page down.
-        await getSetupStepCached(active.slug, requestOrigin(await headers())).catch(() => null)
-      : null;
   // The pixel dispatcher's dress follows the active project's agent: clay
   // (its default) stays untinted, every other agent resolves from its
   // registry entry. Two CSS variables on the shell, doing different jobs:
@@ -273,7 +277,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         ) : null}
         <main className="min-w-0 flex-1 px-4 py-8 sm:px-6 lg:px-8">
           {showFirstArticle && active ? (
-            <FirstArticleCard siteName={active.name} progress={firstArticle.progress} estimate={firstArticle.estimate}>
+            <FirstArticleCard siteName={active.name} progress={firstArticle.progress} estimate={firstArticle.estimate} stateKey={firstArticleKey(firstArticle)}>
               {children}
             </FirstArticleCard>
           ) : (

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { requireDashboard } from "@/lib/auth-gate";
 import { revalidatePath } from "next/cache";
 import { requireOnboarded } from "@/lib/onboarding-gate";
@@ -8,10 +9,10 @@ import { assertProjectOwned } from "@/lib/tenant-guard";
 import {
   disconnectProject,
   oauthConfigured,
-  oauthListSites,
-  oauthSampleQuery,
+  oauthSitesAndSample,
   setTrackedProperty,
 } from "@/lib/gsc-oauth";
+import type { Project } from "@/lib/projects";
 import { PageHeader, SectionTitle } from "@/components/ui";
 
 // "Connect Google Search Console" (launch plan step 3). One page, three
@@ -57,23 +58,6 @@ export default async function GooglePage({
   const { error, connected } = await searchParams;
   const project = await getActiveProject();
   const token = project.gsc_oauth_refresh_token;
-
-  let sites: Array<{ siteUrl: string; permissionLevel: string }> = [];
-  let sample: Awaited<ReturnType<typeof oauthSampleQuery>> | null = null;
-  let sampleSite: string | null = null;
-  let readError: string | null = null;
-  if (token) {
-    try {
-      sites = await oauthListSites(token);
-      sampleSite =
-        sites.find((s) => s.siteUrl === project.gsc_site_url)?.siteUrl ??
-        sites[0]?.siteUrl ??
-        null;
-      if (sampleSite) sample = await oauthSampleQuery(token, sampleSite);
-    } catch (e) {
-      readError = e instanceof Error ? e.message : String(e);
-    }
-  }
 
   return (
     <div className="space-y-8">
@@ -138,85 +122,109 @@ export default async function GooglePage({
             </form>
           </div>
 
-          {readError ? (
-            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-              Connected, but reading failed: {readError}
-            </div>
-          ) : (
-            <>
-              <div className="space-y-2">
-                <SectionTitle sub="Properties this Google account can read. DispatchSEO tracks the one marked below - if it guessed wrong at onboarding, switch it here.">
-                  Your properties
-                </SectionTitle>
-                <ul className="space-y-1.5 text-sm text-neutral-300">
-                  {sites.map((s) => (
-                    // Property URLs are unbounded and the row has three more
-                    // fixed-width siblings - min-w-0 + break-all so a long
-                    // one wraps in place instead of blowing out the row.
-                    <li
-                      key={s.siteUrl}
-                      className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs"
-                    >
-                      <span className="min-w-0 break-all">{s.siteUrl}</span>{" "}
-                      <span className="shrink-0 text-neutral-500">({s.permissionLevel})</span>
-                      {s.siteUrl === project.gsc_site_url ? (
-                        <span className="shrink-0 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[11px] font-sans text-emerald-300">
-                          tracked
-                        </span>
-                      ) : (
-                        <form action={useProperty} className="shrink-0">
-                          <input type="hidden" name="siteUrl" value={s.siteUrl} />
-                          <input type="hidden" name="slug" value={project.slug} />
-                          <button className="rounded border border-neutral-700 px-2 py-1 text-xs font-sans text-neutral-300 hover:border-neutral-500 sm:px-1.5 sm:py-0.5 sm:text-[11px]">
-                            use this property
-                          </button>
-                        </form>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {sample && sampleSite ? (
-                <div className="space-y-3">
-                  <SectionTitle sub={`Last 28 days for ${sampleSite}`}>
-                    Live data check
-                  </SectionTitle>
-                  <p className="text-sm text-neutral-300">
-                    {sample.totals.clicks.toLocaleString()} clicks ·{" "}
-                    {sample.totals.impressions.toLocaleString()} impressions
-                  </p>
-                  {/* Query text is unbounded (a real search phrase) - a
-                      horizontal scroll fallback so a long one can't force
-                      the page wider on a 390px screen. */}
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                      <thead className="text-xs text-neutral-500">
-                        <tr>
-                          <th className="py-1 pr-4 font-normal">Query</th>
-                          <th className="py-1 pr-4 font-normal">Clicks</th>
-                          <th className="py-1 pr-4 font-normal">Impressions</th>
-                          <th className="py-1 font-normal">Position</th>
-                        </tr>
-                      </thead>
-                      <tbody className="text-neutral-300">
-                        {sample.topQueries.map((q) => (
-                          <tr key={q.query} className="border-t border-neutral-800/60">
-                            <td className="py-1.5 pr-4">{q.query}</td>
-                            <td className="py-1.5 pr-4">{q.clicks}</td>
-                            <td className="py-1.5 pr-4">{q.impressions}</td>
-                            <td className="py-1.5">{q.position}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ) : null}
-            </>
-          )}
+          {/* Google's two reads stream in behind the connected line; the
+              page itself never waits on them. */}
+          <Suspense fallback={<p className="text-sm text-neutral-500">Reading your Search Console properties…</p>}>
+            <ConnectedProperties project={project} token={token} />
+          </Suspense>
         </>
       )}
     </div>
+  );
+}
+
+/** The properties and the live 28-day sample: one client, the two Google
+ *  calls together (oauthSitesAndSample). Its own component so Home-style
+ *  streaming applies - the connected line above renders at once. */
+async function ConnectedProperties({ project, token }: { project: Project; token: string }) {
+  let sites: Array<{ siteUrl: string; permissionLevel: string }> = [];
+  let sample: Awaited<ReturnType<typeof oauthSitesAndSample>>["sample"] = null;
+  let sampleSite: string | null = null;
+  let readError: string | null = null;
+  try {
+    ({ sites, sample, sampleSite } = await oauthSitesAndSample(token, project.gsc_site_url));
+  } catch (e) {
+    readError = e instanceof Error ? e.message : String(e);
+  }
+  return (
+    <>
+      {readError ? (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          Connected, but reading failed: {readError}
+        </div>
+      ) : (
+        <>
+          <div className="space-y-2">
+            <SectionTitle sub="Properties this Google account can read. DispatchSEO tracks the one marked below - if it guessed wrong at onboarding, switch it here.">
+              Your properties
+            </SectionTitle>
+            <ul className="space-y-1.5 text-sm text-neutral-300">
+              {sites.map((s) => (
+                // Property URLs are unbounded and the row has three more
+                // fixed-width siblings - min-w-0 + break-all so a long
+                // one wraps in place instead of blowing out the row.
+                <li
+                  key={s.siteUrl}
+                  className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs"
+                >
+                  <span className="min-w-0 break-all">{s.siteUrl}</span>{" "}
+                  <span className="shrink-0 text-neutral-500">({s.permissionLevel})</span>
+                  {s.siteUrl === project.gsc_site_url ? (
+                    <span className="shrink-0 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[11px] font-sans text-emerald-300">
+                      tracked
+                    </span>
+                  ) : (
+                    <form action={useProperty} className="shrink-0">
+                      <input type="hidden" name="siteUrl" value={s.siteUrl} />
+                      <input type="hidden" name="slug" value={project.slug} />
+                      <button className="rounded border border-neutral-700 px-2 py-1 text-xs font-sans text-neutral-300 hover:border-neutral-500 sm:px-1.5 sm:py-0.5 sm:text-[11px]">
+                        use this property
+                      </button>
+                    </form>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {sample && sampleSite ? (
+            <div className="space-y-3">
+              <SectionTitle sub={`Last 28 days for ${sampleSite}`}>
+                Live data check
+              </SectionTitle>
+              <p className="text-sm text-neutral-300">
+                {sample.totals.clicks.toLocaleString()} clicks ·{" "}
+                {sample.totals.impressions.toLocaleString()} impressions
+              </p>
+              {/* Query text is unbounded (a real search phrase) - a
+                  horizontal scroll fallback so a long one can't force
+                  the page wider on a 390px screen. */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="text-xs text-neutral-500">
+                    <tr>
+                      <th className="py-1 pr-4 font-normal">Query</th>
+                      <th className="py-1 pr-4 font-normal">Clicks</th>
+                      <th className="py-1 pr-4 font-normal">Impressions</th>
+                      <th className="py-1 font-normal">Position</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-neutral-300">
+                    {sample.topQueries.map((q) => (
+                      <tr key={q.query} className="border-t border-neutral-800/60">
+                        <td className="py-1.5 pr-4">{q.query}</td>
+                        <td className="py-1.5 pr-4">{q.clicks}</td>
+                        <td className="py-1.5 pr-4">{q.impressions}</td>
+                        <td className="py-1.5">{q.position}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+        </>
+      )}
+    </>
   );
 }

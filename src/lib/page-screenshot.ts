@@ -232,8 +232,22 @@ export async function warmScreenshots(projectId: string, urls: string[], limit =
 /** warmScreenshots after the response is sent (or, outside a request -
  *  a script - right away without waiting). For publish handlers and pages:
  *  never throws, never delays the caller. */
-export function warmScreenshotsLater(projectId: string, urls: string[], limit = 4): void {
+// Home and Articles call this on every view (onView). Once an instance has
+// warmed a project from a view it waits this long before looking again: the
+// stored-shot read and the provider calls behind it are the same work each
+// time. Publish-time callers (the publish and verify job handlers) never
+// throttle: a just-published article's first screenshot must not be skipped
+// because someone opened Home a minute earlier.
+const WARM_EVERY_MS = 10 * 60_000;
+const warmedAt = new Map<string, number>();
+
+export function warmScreenshotsLater(projectId: string, urls: string[], limit = 4, opts: { onView?: boolean } = {}): void {
   if (!urls.length) return;
+  if (opts.onView) {
+    const last = warmedAt.get(projectId);
+    if (last && Date.now() - last < WARM_EVERY_MS) return;
+    warmedAt.set(projectId, Date.now());
+  }
   try {
     after(() => warmScreenshots(projectId, urls, limit));
   } catch {

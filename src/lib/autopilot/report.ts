@@ -1,7 +1,7 @@
 import { unstable_cache } from "next/cache";
 import { thinNote, WIDER_SEARCH_TAG } from "./research";
 import { db } from "@/lib/db";
-import { isFreePlan, projectPlan } from "@/lib/billing";
+import { isFreePlan, primeProjectHint, projectPlan } from "@/lib/billing";
 import { credsForProject } from "@/lib/dataforseo";
 import { loadSiteProfile } from "@/lib/site-profile";
 import { normalizeContentPrefs } from "@/lib/content-prefs";
@@ -214,9 +214,14 @@ function monthStartIso(now: Date): string {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
 }
 
-export async function getAutopilotReport(projectId: string): Promise<AutopilotReport> {
-  const project = await getProjectById(projectId);
+export async function getAutopilotReport(projectId: string, opts: { project?: Project | null } = {}): Promise<AutopilotReport> {
+  // The dashboard already holds the active project's row; re-reading it
+  // here put one round trip in front of everything below on every page.
+  const project = opts.project && opts.project.id === projectId ? opts.project : await getProjectById(projectId);
   if (!project) throw new Error("no such project");
+  // The plan and usage reads below take the row's facts from here instead
+  // of re-reading them one column at a time (billing.ts projectHint).
+  primeProjectHint(project);
   const now = new Date();
 
   const [plan, usage, runsRes, draftsRes, gscLightRes, gsc28, ideas, profile, setup, spend, earlier] = await Promise.all([

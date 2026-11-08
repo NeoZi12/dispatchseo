@@ -326,9 +326,25 @@ export async function reprobeRewriteWeekly(project: Project, now = new Date()): 
 }
 
 /** Settings reads the stamp and only re-probes when it is missing or old,
- *  so a page render never waits on a slow customer site every time. */
+ *  so a page render never waits on a slow customer site every time. A
+ *  probe that found nothing AND was slow (a site that hangs, times out at
+ *  5 s, or answers nothing) is remembered for a minute on this instance:
+ *  the owner still setting forwarding up is exactly the one reloading
+ *  Settings, and each reload was a fresh 5-second wait before the page
+ *  could render. A fast "no" is not remembered - it is cheap, and the owner
+ *  who just fixed the rule sees it on their very next reload. */
+const MISS_TTL_MS = 60_000;
+const SLOW_MS = 1_500;
+const slowMiss = new Map<string, number>();
+
 export async function rewriteLiveCached(project: Project, maxAgeMs = 60 * 60_000): Promise<boolean> {
   const at = project.hosted_rewrite_live_at ? Date.parse(project.hosted_rewrite_live_at) : 0;
   if (at && Date.now() - at < maxAgeMs) return true;
-  return checkRewriteLive(project);
+  const missed = slowMiss.get(project.id);
+  if (missed && Date.now() - missed < MISS_TTL_MS) return false;
+  const started = Date.now();
+  const live = await checkRewriteLive(project);
+  if (live) slowMiss.delete(project.id);
+  else if (Date.now() - started > SLOW_MS) slowMiss.set(project.id, started);
+  return live;
 }

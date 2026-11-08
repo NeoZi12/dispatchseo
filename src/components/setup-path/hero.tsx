@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { SetupStep } from "@/lib/setup-path-core";
 import type { WordPressStatus } from "@/components/wordpress-connect";
-import { SetupStepCard } from "./step-card";
+import { SetupStepCard } from "./lazy-card";
 
 // <SetupHero>: the setup path on Home. The ONE next action for the launch and
 // first-article phases, rendered above the dispatcher's briefing until the

@@ -37,6 +37,18 @@ function stateOf(j: JobRow | undefined): JobState {
 
 const ALL_DONE: FirstArticleProgress = { blog: "done", google: null, reading: "done", topics: "done", writing: "done", publishing: "done" };
 
+/** Sites this instance has already seen with a live first article. Live is
+ *  a one-way door, so once seen, the five reads that prove it again on
+ *  every page are skipped on this instance; a fresh instance checks once
+ *  and gets the same answer those reads gave. */
+const seenLive = new Set<string>();
+
+/** One string per distinct answer: what the first-article card compares
+ *  between polls (api/first-article/status) to know when to re-render. */
+export function firstArticleKey(p: { live: boolean; launched: boolean; progress: FirstArticleProgress; estimate?: string }): string {
+  return JSON.stringify([p.live, p.launched, p.progress, p.estimate ?? null]);
+}
+
 export async function firstArticleProgress(
   project: Project,
   // The dashboard passes its per-request memoized loader ((dashboard)/mode.ts
@@ -44,6 +56,7 @@ export async function firstArticleProgress(
   // and only for a site that isn't live yet.
   opts: { loadReport?: (projectId: string) => Promise<AutopilotReport | null> } = {},
 ): Promise<{ live: boolean; launched: boolean; progress: FirstArticleProgress; estimate?: string }> {
+  if (seenLive.has(project.id)) return { live: true, launched: true, progress: ALL_DONE };
   // The cheap answers first, all in one round trip: every established site
   // stops here without building the report on every page render.
   const latestJob = (kind: JobKind) =>
@@ -75,6 +88,7 @@ export async function firstArticleProgress(
   }
   const first = (drafts.data ?? [])[0] as { published_url: string } | undefined;
   if (first || (guides.count ?? 0) > 0) {
+    seenLive.add(project.id);
     return { live: true, launched: true, progress: { ...ALL_DONE, liveUrl: first?.published_url ?? null } };
   }
   // No launch job = a site set up before the new setup (or one whose launch
@@ -85,7 +99,10 @@ export async function firstArticleProgress(
   const report = await (opts.loadReport ?? getAutopilotReport)(project.id).catch(() => null);
   if (!report) return { live: true, launched: true, progress: ALL_DONE };
   const published = report.articles.find((a) => a.status === "published" && a.url);
-  if (published) return { live: true, launched: true, progress: { ...ALL_DONE, liveUrl: published.url } };
+  if (published) {
+    seenLive.add(project.id);
+    return { live: true, launched: true, progress: { ...ALL_DONE, liveUrl: published.url } };
+  }
 
   const latest = new Map<JobKind, JobRow>();
   for (const r of [launchRes, crawlRes, autopilotRes]) if (r.data) latest.set((r.data as JobRow).kind, r.data as JobRow);

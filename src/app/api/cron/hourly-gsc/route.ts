@@ -1,4 +1,6 @@
+import { revalidateTag } from "next/cache";
 import { db } from "@/lib/db";
+import { gscTag } from "@/lib/autopilot/report";
 import { isFreeProject, planGate } from "@/lib/billing";
 import { getFreshSnapshots, inspectIndexStatus, gscClientForProject, type GscClient } from "@/lib/gsc";
 import { applyDetectedLaunch, launchDateLooksDefaulted } from "@/lib/site-launch";
@@ -183,6 +185,17 @@ async function runProject(project: Project): Promise<Record<string, unknown>> {
       { onConflict: "project_id,date" },
     );
   if (upsertError) throw new Error(`gsc_stats upsert: ${upsertError.message}`);
+  // Google's numbers for this site just changed: every folded view of them
+  // (the report's 28 days, the overview, the Analytics tables, the article
+  // series - all tagged gsc:<id>) is stale now, not in ten minutes. This is
+  // what lets those caches run an hour instead of expiring on a clock
+  // between syncs. Best-effort: a failed invalidation only means the old
+  // clock applies.
+  try {
+    revalidateTag(gscTag(project.id), "max");
+  } catch {
+    /* self-host without a cache handler, or no request scope */
+  }
   const indexing = await verifyIndexing(project, sc);
   return { upserted: snaps.map((s) => s.date), indexing };
 }

@@ -64,7 +64,16 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
     }
   }
   if (!asOperator) await redirectIfAgent("/drafts");
-  const report = await loadReport(project.id);
+  // The ledger and the dead-page list need only the route's id and the
+  // project, so they start beside the report instead of after it: one
+  // round trip off every article page. The route id is the draft id for
+  // every article that has a draft (keyOf prefers it), so this read is the
+  // right one; a run id finds no draft, which is the same null it had.
+  const [report, ledgerByRoute, goneUrls] = await Promise.all([
+    loadReport(project.id),
+    loadLedger(project.id, id).catch(() => null),
+    loadGoneUrls(project.id),
+  ]);
   // Scoped to the active project by construction: the report only holds its
   // articles, so another site's id is simply not found.
   const a = report?.articles.find((x) => x.draftId === id || x.runId === id);
@@ -76,9 +85,9 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
   const live = a.status === "published";
   // Only database reads hold the page: the Search Console numbers stream in
   // below (AnalyticsSection), and the preview is a stored picture.
-  const [ledger, goneUrls, shotAt] = await Promise.all([
-    hasDraft ? loadLedger(project.id, a.draftId) : Promise.resolve(null),
-    a.url ? loadGoneUrls(project.id) : Promise.resolve(new Set<string>()),
+  const [ledger, shotAt] = await Promise.all([
+    // An old link by run id whose run has a draft now: read that draft's.
+    hasDraft ? (a.draftId === id ? Promise.resolve(ledgerByRoute) : loadLedger(project.id, a.draftId)) : Promise.resolve(null),
     live && a.url ? storedShotAt(project.id, a.url).catch(() => undefined) : Promise.resolve(undefined),
   ]);
   // Known not to load any more: say so, and don't send anyone to it.

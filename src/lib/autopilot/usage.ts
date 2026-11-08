@@ -1,6 +1,7 @@
+import { cache } from "react";
 import { db } from "@/lib/db";
 import { isCloudMode } from "@/lib/cloud";
-import { ownerUserIdForProject, polarConfigured, projectPlan, writerGate } from "@/lib/billing";
+import { ownerUserIdForProject, polarConfigured, projectHint, projectPlan, writerGate } from "@/lib/billing";
 import { writerMode, type Project } from "@/lib/projects";
 import { missingCredentials } from "@/lib/writer/models";
 import { cadence, weekStartUtc, spacingDaysFor } from "./math";
@@ -44,8 +45,16 @@ const ZERO: WeekUsage = { count: 0, published: 0, inFlight: 0, failed: 0, lastSt
  */
 async function quotaBucket(projectId: string): Promise<string[]> {
   if (!isCloudMode()) return [projectId];
-  const { data: p } = await db().from("projects").select("owner_user_id, domain").eq("id", projectId).maybeSingle();
-  const row = p as { owner_user_id: string | null; domain: string | null } | null;
+  // The row's owner and domain from the caller's copy when it has one
+  // (billing.ts projectHint), else the one-row read.
+  const hint = projectHint(projectId);
+  let row: { owner_user_id: string | null; domain: string | null } | null;
+  if (hint && hint.owner_user_id !== undefined && hint.domain !== undefined) {
+    row = { owner_user_id: hint.owner_user_id ?? null, domain: hint.domain ?? null };
+  } else {
+    const { data: p } = await db().from("projects").select("owner_user_id, domain").eq("id", projectId).maybeSingle();
+    row = p as { owner_user_id: string | null; domain: string | null } | null;
+  }
   if (!row?.owner_user_id || !row.domain) return [projectId];
   const { data } = await db().from("projects").select("id").eq("owner_user_id", row.owner_user_id).eq("domain", row.domain);
   const ids = ((data ?? []) as { id: string }[]).map((r) => r.id);
@@ -55,10 +64,17 @@ async function quotaBucket(projectId: string): Promise<string[]> {
 /** Articles counted against this ISO week, and when the last one started.
  *  A read error answers zeros rather than throwing: the dashboard report
  *  renders from this and must not fail on a blip. */
-export async function weekUsage(projectId: string, now: Date): Promise<WeekUsage> {
+export function weekUsage(projectId: string, now: Date): Promise<WeekUsage> {
+  return weekUsageSince(projectId, weekStartUtc(now).toISOString());
+}
+
+// Once per request per (project, week): the report and the queue both ask,
+// in the same instant, on every hosted page - and each caller's `now` is its
+// own Date, so the memo is keyed on the week it resolves to. No request
+// scope (the scheduler) means no memo, as before.
+const weekUsageSince = cache(async (projectId: string, since: string): Promise<WeekUsage> => {
   try {
     const ids = await quotaBucket(projectId);
-    const since = weekStartUtc(now).toISOString();
     const [draftsRes, runsRes, lastRunsRes, lastDraftRes] = await Promise.all([
       db()
         .from("article_drafts")
@@ -126,7 +142,7 @@ export async function weekUsage(projectId: string, now: Date): Promise<WeekUsage
   } catch (e) {
     return { ...ZERO, readError: e instanceof Error ? e.message : String(e) };
   }
-}
+});
 
 /**
  * May a writer run start for this project now? null = yes; otherwise the

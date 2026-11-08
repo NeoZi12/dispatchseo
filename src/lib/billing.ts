@@ -235,23 +235,32 @@ export type Subscription = {
 //     of denials for that owner.
 // A found subscription can't change mid-request (only the webhook writes one,
 // in its own request), so caching that direction is free.
-const subscriptionMemo = cache(() => new Map<string, Subscription>());
+//
+// The memo holds the READ (its promise), not only its result: the layout,
+// the report and the queue all ask for the same owner's subscription in the
+// same instant, and a result-only memo let every one of them miss and pay
+// its own round trip. A read that settles null drops out of the memo, so
+// the positive-only rule above still holds for whoever asks next.
+const subscriptionMemo = cache(() => new Map<string, Promise<Subscription | null>>());
 
 export async function getSubscription(userId: string): Promise<Subscription | null> {
   const memo = subscriptionMemo();
   const hit = memo.get(userId);
   if (hit) return hit;
-  const { data, error } = await db()
-    .from("subscriptions")
-    .select("*")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) return null;
-  // Normalize BEFORE memoizing, so the cached object is the same shape every
-  // reader gets on a miss.
-  const sub = normalize(data);
-  if (sub) memo.set(userId, sub);
-  return sub;
+  const read = (async (): Promise<Subscription | null> => {
+    const { data, error } = await db()
+      .from("subscriptions")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+    // Normalize BEFORE memoizing, so the cached object is the same shape every
+    // reader gets on a miss.
+    const sub = error ? null : normalize(data);
+    if (!sub) memo.delete(userId);
+    return sub;
+  })();
+  memo.set(userId, read);
+  return read;
 }
 
 // `select("*")` against a database that hasn't run 0047 yet simply omits the
@@ -767,6 +776,38 @@ export async function remainingSites(userId: string): Promise<number | null> {
 // while a found owner is immutable for the life of the request.
 const projectOwnerMemo = cache(() => new Map<string, string>());
 
+// The project-row facts the gates below need, handed in by whoever already
+// holds the full row in this request (the dashboard's active project, the
+// report, the queue). Before this, projectPlan, planGate and the week's
+// usage re-read owner_user_id, writer_weekly_quota and domain from
+// `projects` one column at a time - up to ten single-row reads of the same
+// row per hosted page. A field left undefined (an older column set) is
+// simply not known, and that gate reads it the old way. Per request, like
+// the memos above; with no request scope (crons) priming is a no-op.
+export type ProjectHint = {
+  id: string;
+  owner_user_id?: string | null;
+  writer_weekly_quota?: number | null;
+  domain?: string | null;
+  created_at?: string | null;
+};
+const projectHintMemo = cache(() => new Map<string, ProjectHint>());
+
+export function primeProjectHint(p: ProjectHint): void {
+  const memo = projectHintMemo();
+  const next: ProjectHint = { ...(memo.get(p.id) ?? { id: p.id }) };
+  // Merge: a slim caller must never erase what a fuller one already knew.
+  if (p.owner_user_id !== undefined) next.owner_user_id = p.owner_user_id;
+  if (p.writer_weekly_quota !== undefined) next.writer_weekly_quota = p.writer_weekly_quota;
+  if (p.domain !== undefined) next.domain = p.domain;
+  if (p.created_at !== undefined) next.created_at = p.created_at;
+  memo.set(p.id, next);
+}
+
+export function projectHint(projectId: string): ProjectHint | null {
+  return projectHintMemo().get(projectId) ?? null;
+}
+
 // The owner lookup planGate and platformBudgetGate (see
 // dataforseo-usage.ts) all need: which user owns this project, or null for
 // self-host/pre-0031 rows. Collapses any lookup error the same way every
@@ -775,6 +816,11 @@ export async function ownerUserIdForProject(projectId: string): Promise<string |
   const memo = projectOwnerMemo();
   const hit = memo.get(projectId);
   if (hit) return hit;
+  const hinted = projectHint(projectId)?.owner_user_id;
+  if (hinted !== undefined) {
+    if (hinted) memo.set(projectId, hinted);
+    return hinted;
+  }
   const { data, error } = await db()
     .from("projects")
     .select("owner_user_id")
@@ -823,17 +869,31 @@ export async function writerGate(projectId: string): Promise<{ allowed: true; fr
   // Only a site that passed the free plan's launch gate (lib/free-gate.ts),
   // whatever path brought it here.
   const { hasFreeDomainClaim } = await import("./free-gate");
-  if (!(await hasFreeDomainClaim(ownerId, projectId))) return { allowed: false, reason: "the free plan's checks haven't passed for this site" };
+  if (!(await hasFreeDomainClaim(ownerId, projectId, projectHint(projectId)?.domain))) return { allowed: false, reason: "the free plan's checks haven't passed for this site" };
   return { allowed: true, free: true };
 }
 
+// Per-request memo of the read, positive results only (same contract as
+// getSubscription): planGate and writerGate both ask, for the same owner,
+// in the same request.
+const ownedProjectsMemo = cache(() => new Map<string, Promise<string[]>>());
+
 async function ownedProjectsOldestFirst(ownerId: string): Promise<string[]> {
-  const { data } = await db()
-    .from("projects")
-    .select("id")
-    .eq("owner_user_id", ownerId)
-    .order("created_at", { ascending: true });
-  return ((data ?? []) as Array<{ id: string }>).map((r) => r.id);
+  const memo = ownedProjectsMemo();
+  const hit = memo.get(ownerId);
+  if (hit) return hit;
+  const read = (async (): Promise<string[]> => {
+    const { data, error } = await db()
+      .from("projects")
+      .select("id")
+      .eq("owner_user_id", ownerId)
+      .order("created_at", { ascending: true });
+    const ids = ((data ?? []) as Array<{ id: string }>).map((r) => r.id);
+    if (error || !ids.length) memo.delete(ownerId);
+    return ids;
+  })();
+  memo.set(ownerId, read);
+  return read;
 }
 
 // Is this project covered by its owner's current plan? Crons call this per
@@ -850,9 +910,11 @@ export async function planGate(
   if (owner.error) return { allowed: false, reason: `could not read the site's owner (${owner.error})` };
   const ownerId = owner.ownerId;
   if (!ownerId) return { allowed: true };
-  const sub = await getSubscription(ownerId);
+  // Independent reads, so they go together: one round trip instead of two
+  // on the path every hosted page's report walks.
+  const [sub, owned] = await Promise.all([getSubscription(ownerId), ownedProjectsOldestFirst(ownerId)]);
   if (!isActive(sub)) return { allowed: false, reason: "subscription inactive" };
-  const covered = (await ownedProjectsOldestFirst(ownerId)).slice(0, sub!.sites_limit);
+  const covered = owned.slice(0, sub!.sites_limit);
   if (!covered.includes(projectId)) {
     return { allowed: false, reason: `beyond the plan's ${sub!.sites_limit}-site limit` };
   }
@@ -930,16 +992,21 @@ export const planPausedProjectSlugs = cache(async (): Promise<Set<string>> => {
 // says which: "self-host" | "unbilled" | "none" | the Polar status. A trial
 // reads as Starter whatever product it was started on, because the trial is
 // what the decision table prices.
-export async function projectPlan(
+//
+// cache(): once per request however many ask - the report, the queue and
+// the hosted pages all do, in the same instant, on every hosted page.
+// Outside a request (crons) React calls through each time, as before.
+export const projectPlan = cache(async (
   projectId: string,
-): Promise<{ tier: Tier | null; status: string; articlesPerWeek: number; spacingDays?: number }> {
+): Promise<{ tier: Tier | null; status: string; articlesPerWeek: number; spacingDays?: number }> => {
   // The operator's per-site number applies wherever a plan's number would:
   // self-host, unbilled and ownerless rows too. Never where the answer is
   // 0 for want of a live subscription - an override does not buy articles.
-  const override = await weeklyQuotaOverride(projectId);
+  // Two independent single-row facts, read together.
+  const billed = isCloudMode() && polarConfigured();
+  const [override, ownerId] = await Promise.all([weeklyQuotaOverride(projectId), billed ? ownerUserIdForProject(projectId) : Promise.resolve(null)]);
   if (!isCloudMode()) return { tier: null, status: "self-host", articlesPerWeek: override ?? UNBILLED_ARTICLES_PER_WEEK };
   if (!polarConfigured()) return { tier: null, status: "unbilled", articlesPerWeek: override ?? UNBILLED_ARTICLES_PER_WEEK };
-  const ownerId = await ownerUserIdForProject(projectId);
   if (!ownerId) return { tier: null, status: "unbilled", articlesPerWeek: override ?? UNBILLED_ARTICLES_PER_WEEK };
   const sub = await getSubscription(ownerId);
   // No live subscription = the free tier (isFreePlan): one article a week
@@ -950,7 +1017,7 @@ export async function projectPlan(
   const tier: Tier = sub.status === "trialing" ? "starter" : sub.tier;
   if (!isActive(sub)) return { tier, status: sub.status, ...(isFreePlan({ status: sub.status }) ? free : { articlesPerWeek: 0 }) };
   return { tier, status: sub.status, articlesPerWeek: override ?? articlesPerWeekFor(tier) };
-}
+});
 
 /** The one answer to "is this site on the free tier", for every surface that
  *  differs by it: the hosted blog's "Made with DispatchSEO" credit, the
@@ -979,8 +1046,13 @@ export async function isFreeProject(projectId: string): Promise<boolean> {
  *  on a 5-a-week plan). Null, a DB that has not run 0070, or a read error
  *  all mean "the plan's number". Never surfaced in the UI or a tier. */
 async function weeklyQuotaOverride(projectId: string): Promise<number | null> {
+  const hinted = projectHint(projectId)?.writer_weekly_quota;
+  if (hinted !== undefined) return quotaOf(hinted);
   const { data, error } = await db().from("projects").select("writer_weekly_quota").eq("id", projectId).maybeSingle();
   if (error || !data) return null;
-  const n = (data as { writer_weekly_quota: number | null }).writer_weekly_quota;
+  return quotaOf((data as { writer_weekly_quota: number | null }).writer_weekly_quota);
+}
+
+function quotaOf(n: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
 }

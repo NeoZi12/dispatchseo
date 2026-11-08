@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { NextResponse, type NextRequest } from "next/server";
-import { currentUser } from "@/lib/cloud-auth";
+import { currentUserStrict } from "@/lib/cloud-auth";
 import { isCloudMode } from "@/lib/cloud";
 import {
   getSubscription,
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "billing not enabled" }, { status: 404 });
   }
   const setupFlow = req.nextUrl.searchParams.get("flow") === "setup";
-  const user = await currentUser();
+  const user = await currentUserStrict();
   // Setup's sign-in step comes first, so a signed-out setup visitor is back
   // at the start; anyone else signs in.
   if (!user) redirect(setupFlow ? "/onboarding" : "/login");

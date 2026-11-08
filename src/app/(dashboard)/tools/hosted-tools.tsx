@@ -25,17 +25,20 @@ const at = (ms: number, i = 0) => ({ "--at": `${ms}ms`, "--i": i }) as React.CSS
 
 type ToolRow = { id: string; url: string; title: string | null; primary_keyword: string | null; published_at: string | null; created_at: string; live_at?: string | null; live_checked_at?: string | null };
 
+type ToolData = Awaited<ReturnType<typeof toolData>>;
+
 export async function HostedTools() {
   const project = await getActiveProject();
-  // A failed read shows the list's own error path, not "not available".
-  const has = await toolData(project.id)
-    .then((d) => d.length > 0)
-    .catch(() => true);
+  // One read, handed down: the list used to ask the cache a second time
+  // for the same rows. A failed read shows the list's own error path, not
+  // "not available".
+  const data = await toolData(project.id).catch(() => null);
+  const has = data === null || data.length > 0;
 
   return (
     <div className="mx-auto max-w-5xl space-y-10">
       <PageHeading className="arrive-up" title="Tools" description="Small free tools on your site, each built for one thing people search for." />
-      {has ? <ToolList projectId={project.id} /> : <NotYet />}
+      {has ? <ToolList projectId={project.id} data={data} /> : <NotYet />}
     </div>
   );
 }
@@ -48,7 +51,7 @@ function toolData(projectId: string) {
   return unstable_cache(
     async () => {
       const [pagesRes, gscRes] = await Promise.all([
-        db().from("pages").select("*").eq("project_id", projectId).eq("type", "tool").order("created_at", { ascending: false }),
+        db().from("pages").select("id, url, title, primary_keyword, published_at, created_at, live_at, live_checked_at").eq("project_id", projectId).eq("type", "tool").order("created_at", { ascending: false }),
         db().from("gsc_stats").select("date, top_pages").eq("project_id", projectId).order("date", { ascending: false }).limit(28),
       ]);
       if (pagesRes.error) throw new Error(`could not read tools: ${pagesRes.error.message}`);
@@ -69,8 +72,9 @@ function toolData(projectId: string) {
   )();
 }
 
-async function ToolList({ projectId }: { projectId: string }) {
-  const data = await toolData(projectId);
+async function ToolList({ projectId, data: given }: { projectId: string; data: ToolData | null }) {
+  // null = the first read failed; this one throws to the page's error path.
+  const data = given ?? (await toolData(projectId));
   const tools = data.map((d) => d.tool);
 
   if (!tools.length) {

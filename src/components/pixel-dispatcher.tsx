@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { DEFAULT_AGENT, agentById, isSupportedAgent } from "@/lib/agents";
+import { DEFAULT_AGENT, mascotFor } from "@/lib/agents/mascot";
 
 // Pixel-art hero scene: the agent (a clay-colored blob, our nod to Claude
 // Code's mascot) walks in from the left, hops onto the chair at the dispatch
@@ -65,12 +65,64 @@ const CLAY: Record<string, string> = {
 // byte-identical to before variants existed.
 function paletteFor(canvas: HTMLCanvasElement, variant: MascotVariant): Record<string, string> {
   let id: string = variant;
-  if (id === "clay" || !isSupportedAgent(id)) {
+  if (id === "clay" || !mascotFor(id)) {
     id = getComputedStyle(canvas).getPropertyValue("--dispatcher-agent").trim();
   }
-  if (!isSupportedAgent(id) || id === DEFAULT_AGENT) return CLAY;
-  const m = agentById(id).mascot;
+  const m = id === DEFAULT_AGENT ? null : mascotFor(id);
+  if (!m) return CLAY;
   return { ...CLAY, c: m.body, C: m.shade };
+}
+
+/** paletteFor, once per PALETTE_EVERY frames instead of every frame: the
+ *  default variant reads a CSS variable through getComputedStyle, a style
+ *  recalc the browser was paying eight times a second per mascot. Two
+ *  seconds is still fast enough for a live agent switch to retint. */
+const PALETTE_EVERY = 16;
+function paletteReader(canvas: HTMLCanvasElement, variant: MascotVariant): () => Record<string, string> {
+  let palette = paletteFor(canvas, variant);
+  let n = 0;
+  return () => {
+    if (++n % PALETTE_EVERY === 0) palette = paletteFor(canvas, variant);
+    return palette;
+  };
+}
+
+/** The animation clock: `tick` every TICK_MS while the tab is visible and
+ *  the canvas is on screen. A hidden tab or a mascot scrolled out of view
+ *  stops the clock instead of drawing frames nobody sees; it resumes where
+ *  it left off. Returns the teardown. */
+function startTicker(canvas: HTMLCanvasElement, tick: () => void): () => void {
+  let id: number | null = null;
+  let visible = document.visibilityState === "visible";
+  let onScreen = true;
+  const sync = () => {
+    const run = visible && onScreen;
+    if (run && id == null) id = window.setInterval(tick, TICK_MS);
+    if (!run && id != null) {
+      clearInterval(id);
+      id = null;
+    }
+  };
+  const onVisibility = () => {
+    visible = document.visibilityState === "visible";
+    sync();
+  };
+  document.addEventListener("visibilitychange", onVisibility);
+  const io =
+    typeof IntersectionObserver !== "undefined"
+      ? new IntersectionObserver((entries) => {
+          // The newest entry is the current state (a batch can hold several).
+          onScreen = entries[entries.length - 1].isIntersecting;
+          sync();
+        })
+      : null;
+  io?.observe(canvas);
+  sync();
+  return () => {
+    document.removeEventListener("visibilitychange", onVisibility);
+    io?.disconnect();
+    if (id != null) clearInterval(id);
+  };
 }
 
 // 12 x 11 character grids ('.' = transparent)
@@ -396,6 +448,7 @@ export function PixelDesk({
     const ctx = canvas?.getContext("2d");
     if (!ctx || !canvas) return;
 
+    const palette = paletteReader(canvas, variant);
     const paint = (t: number) => {
       // Shift the scene's coordinate space so the crop lands on the canvas.
       ctx.setTransform(1, 0, 0, 1, -DESK_X, -DESK_Y);
@@ -403,7 +456,7 @@ export function PixelDesk({
       // the whole canvas once translated - clear the real canvas here or the
       // right edge keeps the previous frame.
       ctx.clearRect(DESK_X, DESK_Y, DESK_W, DESK_H);
-      drawScene(ctx, t, paletteFor(canvas, variant));
+      drawScene(ctx, t, palette());
     };
 
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -415,11 +468,10 @@ export function PixelDesk({
     // load is charming exactly zero of those times.
     let t = DROP_END;
     paint(t);
-    const id = setInterval(() => {
+    return startTicker(canvas, () => {
       t += 1;
       paint(t);
-    }, TICK_MS);
-    return () => clearInterval(id);
+    });
   }, [variant]);
 
   return (
@@ -452,19 +504,19 @@ export function PixelDispatcher({
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
-    if (!ctx) return;
+    if (!ctx || !canvas) return;
     // Reduced motion: paint the settled scene once, no ticking.
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      drawScene(ctx, DROP_END + 36, paletteFor(canvas!, variant));
+      drawScene(ctx, DROP_END + 36, paletteFor(canvas, variant));
       return;
     }
+    const palette = paletteReader(canvas, variant);
     let t = working ? DROP_END : 0;
-    drawScene(ctx, t, paletteFor(canvas!, variant));
-    const id = setInterval(() => {
+    drawScene(ctx, t, palette());
+    return startTicker(canvas, () => {
       t += 1;
-      drawScene(ctx, t, paletteFor(canvas!, variant));
-    }, TICK_MS);
-    return () => clearInterval(id);
+      drawScene(ctx, t, palette());
+    });
   }, [working, variant]);
 
   return (
@@ -543,10 +595,11 @@ export function PixelReporter({
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!ctx || !canvas) return;
+    const palette = paletteReader(canvas, variant);
     const paint = (t: number) => {
       ctx.setTransform(1, 0, 0, 1, -REPORT_X, -REPORT_Y);
       ctx.clearRect(REPORT_X, REPORT_Y, REPORT_W, REPORT_H);
-      drawScene(ctx, t, paletteFor(canvas, variant), { mood, steam, flag, look: t < lookUntil.current });
+      drawScene(ctx, t, palette(), { mood, steam, flag, look: t < lookUntil.current });
     };
 
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -574,12 +627,12 @@ export function PixelReporter({
     tick.current = walk && tick.current === DROP_END ? WALK_ENTER : Math.max(tick.current, DROP_END);
     paint(tick.current);
     repaint.current = () => paint(tick.current);
-    const id = setInterval(() => {
+    const stop = startTicker(canvas, () => {
       tick.current += 1;
       paint(tick.current);
-    }, TICK_MS);
+    });
     return () => {
-      clearInterval(id);
+      stop();
       repaint.current = null;
     };
   }, [mood, steam, flag, variant]);

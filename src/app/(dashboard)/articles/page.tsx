@@ -5,7 +5,7 @@ import { getActiveProject } from "@/lib/active-project";
 import type { AutopilotArticle, AutopilotArticleStatus } from "@/lib/autopilot/report";
 import { ArticleRowsSkeleton } from "@/components/ui/skeleton";
 import { PixelDesk } from "@/components/pixel-dispatcher";
-import { ArticleList, SortChips } from "@/components/ui/article-list";
+import { ArticleList, SortChips, toArticleRow } from "@/components/ui/article-list";
 import { Callout } from "@/components/ui/callout";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeading } from "@/components/ui/page-heading";
@@ -46,7 +46,7 @@ export default async function ArticlesPage({ searchParams }: { searchParams: Pro
   const report = await loadReport(project.id);
   // Any live article without a stored preview gets one after this response,
   // a few per visit, so opening it later never waits on a browser.
-  if (report) warmScreenshotsLater(project.id, report.articles.filter((a) => a.status === "published" && a.url).map((a) => a.url!), 4);
+  if (report) warmScreenshotsLater(project.id, report.articles.filter((a) => a.status === "published" && a.url).map((a) => a.url!), 4, { onView: true });
   const { status, sort: sortParam } = await searchParams;
   const filter = FILTERS.find((f) => f.key === status) ?? FILTERS[0];
   const sort = parseSort(sortParam);
@@ -115,5 +115,6 @@ export default async function ArticlesPage({ searchParams }: { searchParams: Pro
 
 async function Rows({ projectId, articles, slug, paused }: { projectId: string; articles: AutopilotArticle[]; slug: string; paused: boolean }) {
   const glances = await loadGlances(projectId, articles);
-  return <ArticleList articles={articles} glances={glances} slug={slug} paused={paused} at={0} pageSize={30} />;
+  // Only the fields a row renders cross to the client (toArticleRow).
+  return <ArticleList articles={articles.map(toArticleRow)} glances={glances} slug={slug} paused={paused} at={0} pageSize={30} />;
 }

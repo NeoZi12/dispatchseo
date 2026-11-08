@@ -6,7 +6,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { bustInstanceCache } from "@/lib/dashboard-auth";
-import { dashboardAuth } from "@/lib/auth-gate";
+import { dashboardAuth, dashboardAuthStrict } from "@/lib/auth-gate";
 import { isCloudMode } from "@/lib/cloud";
 import { currentUser } from "@/lib/cloud-auth";
 import { captureServer } from "@/lib/posthog-server";
@@ -1103,7 +1103,7 @@ export async function deleteAccount(
   formData: FormData,
 ): Promise<DeleteAccountState> {
   if (!isCloudMode()) return { error: "Accounts only exist on the hosted version." };
-  const auth = await dashboardAuth();
+  const auth = await dashboardAuthStrict(); // confirmed by the Auth server: a copied, since-revoked session must not delete an account
   const user = auth?.user;
   if (!user) return { error: "Not signed in." };
 

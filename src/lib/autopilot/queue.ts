@@ -1,11 +1,11 @@
 import { db } from "@/lib/db";
-import { projectPlan } from "@/lib/billing";
+import { primeProjectHint, projectPlan, type ProjectHint } from "@/lib/billing";
 import { writeQueueOrder } from "@/lib/queue";
 import { suggestionIdsInFlight } from "@/lib/writer/runs";
 import type { Project } from "@/lib/projects";
 import { upcomingStarts, weekStartUtc } from "./math";
 import { weekUsage } from "./usage";
-import { rampFor } from "./ramp";
+import { rampInputs, rampSinceDay, rampVerdict } from "./ramp";
 
 // The hosted writer's queue, as the owner sees it on /queue and the agent
 // reads it in get_autopilot (`upcoming`, `parked`): every idea the scheduler
@@ -85,9 +85,18 @@ export function stripParkReasons(rationale: string | null | undefined): string |
   return r.trim() || null;
 }
 
-export async function getHostedQueue(project: Pick<Project, "id" | "next_article_at" | "writer_paused_at">, now = new Date()): Promise<HostedQueue> {
+export async function getHostedQueue(
+  project: Pick<Project, "id" | "next_article_at" | "writer_paused_at"> & Partial<Omit<ProjectHint, "id">>,
+  now = new Date(),
+  // Home draws its calendar and "Up next" from this and never shows the
+  // parked list, so it skips that read.
+  opts: { parked?: boolean } = {},
+): Promise<HostedQueue> {
+  // Whatever of the row the caller holds spares the plan and usage reads
+  // below their own single-row lookups (billing.ts projectHint).
+  primeProjectHint(project);
   const cols = "id, title, primary_keyword, keyword_volume, keyword_difficulty";
-  const [approvedRes, parkedRes, busy, plan, usage] = await Promise.all([
+  const [approvedRes, parkedRes, busy, plan, usage, ramp] = await Promise.all([
     db()
       .from("suggestions")
       .select(cols)
@@ -97,17 +106,22 @@ export async function getHostedQueue(project: Pick<Project, "id" | "next_article
       .order("queue_position", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: true })
       .limit(QUEUE_LIMIT),
-    db()
-      .from("suggestions")
-      .select(`${cols}, rationale`)
-      .eq("project_id", project.id)
-      .eq("type", "guide")
-      .eq("status", "parked")
-      .order("created_at", { ascending: false })
-      .limit(PARKED_LIMIT),
+    opts.parked === false
+      ? Promise.resolve({ data: [] as Row[], error: null })
+      : db()
+          .from("suggestions")
+          .select(`${cols}, rationale`)
+          .eq("project_id", project.id)
+          .eq("type", "guide")
+          .eq("status", "parked")
+          .order("created_at", { ascending: false })
+          .limit(PARKED_LIMIT),
     suggestionIdsInFlight(project.id),
     projectPlan(project.id),
     weekUsage(project.id, now),
+    // The ramp's reads need no plan, only its verdict does: started here,
+    // beside the plan read, instead of after it.
+    rampInputs(project.id, rampSinceDay(now)),
   ]);
   if (approvedRes.error) throw new Error(`could not read the queue: ${approvedRes.error.message}`);
 
@@ -116,7 +130,7 @@ export async function getHostedQueue(project: Pick<Project, "id" | "next_article
 
   const paused = Boolean(project.writer_paused_at);
   // The projection uses the same ceiling the scheduler will (ramp.ts).
-  const quota = (await rampFor(project.id, plan.articlesPerWeek, now)).quota;
+  const quota = rampVerdict(ramp, plan.articlesPerWeek, now).quota;
   let starts: Date[] = [];
   if (!paused && quota > 0) {
     const floor = project.next_article_at ? new Date(project.next_article_at) : null;

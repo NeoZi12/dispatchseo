@@ -39,12 +39,12 @@ import {
   setupCommand,
   setupCommandPS,
 } from "@/lib/mcp-connect";
+import { DEFAULT_AGENT, MASCOTS, type AgentId } from "./mascot";
 
-export type AgentId = "claude" | "codex" | "cursor";
-
-// The default for every project that has never chosen. Also what a row reads as
-// on a database that hasn't run migration 0044 yet - see projectAgent().
-export const DEFAULT_AGENT: AgentId = "claude";
+// The ids, the default and the mascot colours live in ./mascot (the pixel
+// dispatcher imports only that); re-exported so every other caller keeps
+// its import from here.
+export { DEFAULT_AGENT, type AgentId };
 
 export type AgentDefinition = {
   id: AgentId;
@@ -179,8 +179,7 @@ const claude: AgentDefinition = {
   installDocsPath: "/docs/install-claude-code",
   installUrl: "https://claude.com/claude-code",
   landingPath: "/claude-code",
-  // Clay - the site's default body, our nod to Claude Code's rust.
-  mascot: { body: "#d97757", shade: "#b0563a" },
+  mascot: MASCOTS.claude,
   capabilities: {
     mcp: true,
     headlessBuilder: true,
@@ -234,9 +233,7 @@ const codex: AgentDefinition = {
   installDocsPath: "/docs/install-codex",
   installUrl: "https://developers.openai.com/codex/cli",
   landingPath: "/codex",
-  // OpenAI's near-white, with a mid-grey shade so legs/outline still read
-  // against the near-black scene.
-  mascot: { body: "#f4f4f5", shade: "#8f8f99" },
+  mascot: MASCOTS.codex,
   capabilities: {
     mcp: true,
     // True since 2026-07-30. Every seo-* workflow template now carries both
@@ -322,7 +319,7 @@ const cursor: AgentDefinition = {
   // all-black, black trousers, outlines, left/right and top/bottom splits -
   // each looked worse at 12px than it sounded; the cube's b&w just doesn't
   // survive a near-black scene at sprite scale.
-  mascot: { body: "#c4b5fd", shade: "#8f76e0" },
+  mascot: MASCOTS.cursor,
   capabilities: {
     mcp: true,
     headlessBuilder: true,

@@ -73,6 +73,10 @@ export type ChangelogEntry = {
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
+    kind: "improved",
+    text: "Every dashboard page opens faster. The same facts were being read several times per page, one after another; they are now read once, together, and the pages download less code.",
+  },
+  {
     kind: "new",
     text:
       "Settings > Writing has a new box: facts only you know. Your prices, your years in business, how " +

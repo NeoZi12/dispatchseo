@@ -262,19 +262,48 @@ export async function oauthListSites(
   }));
 }
 
-// A 28-day search-analytics sample from one property - what the connect page
-// renders to prove the roundtrip works (and what the demo video shows).
-export async function oauthSampleQuery(
-  refreshTokenEncrypted: string,
-  siteUrl: string,
-): Promise<{
+export type OauthSample = {
   totals: { clicks: number; impressions: number };
   topQueries: Array<{ query: string; clicks: number; impressions: number; position: number }>;
-}> {
+};
+
+/** What the Google page shows for a connected account, with ONE client
+ *  (one token refresh) and the two Google calls side by side whenever the
+ *  tracked property is known. The page used to make four calls in a row:
+ *  refresh, sites.list, refresh again, the sample query. */
+export async function oauthSitesAndSample(
+  refreshTokenEncrypted: string,
+  preferredSiteUrl: string | null,
+): Promise<{ sites: Array<{ siteUrl: string; permissionLevel: string }>; sample: OauthSample | null; sampleSite: string | null }> {
+  const sc = await oauthSearchConsole(refreshTokenEncrypted);
+  const listing = sc.sites.list().then((res) =>
+    (res.data.siteEntry ?? []).map((s) => ({ siteUrl: s.siteUrl ?? "", permissionLevel: s.permissionLevel ?? "" })),
+  );
+  if (preferredSiteUrl) {
+    // Sample the tracked property while the list loads; a sample that
+    // fails (the property vanished from the account) falls back to the
+    // first listed one, as before.
+    const [sites, sample] = await Promise.all([listing, sampleWith(sc, preferredSiteUrl).catch(() => null)]);
+    const site = sites.find((s) => s.siteUrl === preferredSiteUrl)?.siteUrl ?? sites[0]?.siteUrl ?? null;
+    if (site === preferredSiteUrl && sample) return { sites, sample, sampleSite: site };
+    return { sites, sample: site ? await sampleWith(sc, site) : null, sampleSite: site };
+  }
+  const sites = await listing;
+  const site = sites[0]?.siteUrl ?? null;
+  return { sites, sample: site ? await sampleWith(sc, site) : null, sampleSite: site };
+}
+
+// A 28-day search-analytics sample from one property - what the connect page
+// renders to prove the roundtrip works (and what the demo video shows).
+export async function oauthSampleQuery(refreshTokenEncrypted: string, siteUrl: string): Promise<OauthSample> {
+  return sampleWith(await oauthSearchConsole(refreshTokenEncrypted), siteUrl);
+}
+
+async function sampleWith(sc: Awaited<ReturnType<typeof oauthSearchConsole>>, siteUrl: string): Promise<OauthSample> {
   const end = new Date();
   const start = new Date(end.getTime() - 28 * 24 * 3600 * 1000);
   const ymd = (d: Date) => d.toISOString().slice(0, 10);
-  const res = await (await oauthSearchConsole(refreshTokenEncrypted)).searchanalytics.query({
+  const res = await sc.searchanalytics.query({
     siteUrl,
     requestBody: {
       startDate: ymd(start),
