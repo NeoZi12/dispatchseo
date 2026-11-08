@@ -80,6 +80,17 @@ async function assertAuthed() {
   }
 }
 
+// The same gate, with the cloud session confirmed by the Auth server on the
+// spot (auth-gate.ts dashboardAuthStrict): for the actions that destroy
+// something - a project, a repo link, a WordPress link - where a copied
+// session revoked an hour ago must not still work. Everything that only
+// reads or edits keeps the cheap check.
+async function assertAuthedStrict() {
+  if (!(await dashboardAuthStrict())) {
+    throw new Error("Unauthorized");
+  }
+}
+
 export async function decideSuggestion(
   id: string,
   decision: "approved" | "rejected",
@@ -921,7 +932,7 @@ export async function deleteProject(
   _prev: DeleteProjectState,
   formData: FormData,
 ): Promise<DeleteProjectState> {
-  await assertAuthed();
+  await assertAuthedStrict();
 
   const slug = String(formData.get("slug") ?? "");
   const confirm = String(formData.get("confirm") ?? "").trim().toLowerCase();
@@ -992,7 +1003,7 @@ export async function disconnectRepo(
   _prev: DisconnectRepoState,
   formData: FormData,
 ): Promise<DisconnectRepoState> {
-  await assertAuthed();
+  await assertAuthedStrict();
 
   const slug = String(formData.get("slug") ?? "");
   const confirm = String(formData.get("confirm") ?? "").trim().toLowerCase();
@@ -1054,7 +1065,7 @@ export async function cancelPlan(
   formData: FormData,
 ): Promise<CancelPlanState> {
   if (!isCloudMode()) return { error: "Plans only exist on the hosted version." };
-  const auth = await dashboardAuth();
+  const auth = await dashboardAuthStrict(); // billing changes hands: confirmed by the Auth server
   const user = auth?.user;
   if (!user) return { error: "Not signed in." };
 
@@ -2636,7 +2647,7 @@ export async function connectWordPressSite(
 }
 
 export async function disconnectWordPressSite() {
-  await assertAuthed();
+  await assertAuthedStrict();
   const project = await getActiveProject();
   await assertProjectOwned(project.id);
   const { disconnectWordPress } = await import("@/lib/wordpress-connect");
