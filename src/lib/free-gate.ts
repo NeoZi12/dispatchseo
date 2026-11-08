@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { domainToASCII } from "node:url";
 import { getDomain } from "tldts";
 import { db } from "./db";
@@ -29,12 +29,15 @@ const IP_WINDOW_DAYS = 30;
 
 // ---- keys -------------------------------------------------------------------
 
-// Stable on purpose: changing the salt forgets every claim. Hashed so the
-// table holds no raw IPs; a leak of it reveals nothing auth.users doesn't.
-const SALT = process.env.FREE_GATE_SALT || "dispatchseo-free-gate-v1";
+// Stable on purpose: changing the salt forgets every claim. HMAC'd with a
+// server-side secret so the tables hold no raw domain, email or IP, and a
+// leak of them can't be reversed by hashing guesses. No secret, no free plan:
+// keyOf throws, and every caller below turns that into a refusal.
+const SALT = process.env.FREE_GATE_SALT ?? "";
 
 function keyOf(kind: FreeKind, value: string): string {
-  return createHash("sha256").update(`${SALT}|${kind}|${value}`).digest("hex");
+  if (!SALT) throw new Error("FREE_GATE_SALT is not set - the free plan cannot run without it");
+  return createHmac("sha256", SALT).update(`${kind}|${value}`).digest("hex");
 }
 
 /** "https://Blog.Acme.co.uk/x" -> "acme.co.uk"; "foo.vercel.app" stays itself
@@ -107,15 +110,15 @@ export async function claimFreeLaunch(input: FreeLaunchInput): Promise<FreeLaunc
   const email = input.email ? normalizeEmail(input.email) : null;
   if (email && isDisposableEmail(email)) return { ok: false, reason: "disposable" };
 
-  const keys: { kind: FreeKind; key: string }[] = [{ kind: "domain", key: keyOf("domain", domain) }];
-  if (email) keys.push({ kind: "email", key: keyOf("email", email) });
-  for (const login of new Set(input.githubLogins.map((l) => l.trim().toLowerCase()).filter(Boolean))) {
-    keys.push({ kind: "github", key: keyOf("github", login) });
-  }
-  if (input.device) keys.push({ kind: "device", key: keyOf("device", input.device) });
-  const ipKey = input.ip ? keyOf("ip", input.ip) : null;
-
   try {
+    const keys: { kind: FreeKind; key: string }[] = [{ kind: "domain", key: keyOf("domain", domain) }];
+    if (email) keys.push({ kind: "email", key: keyOf("email", email) });
+    for (const login of new Set(input.githubLogins.map((l) => l.trim().toLowerCase()).filter(Boolean))) {
+      keys.push({ kind: "github", key: keyOf("github", login) });
+    }
+    if (input.device) keys.push({ kind: "device", key: keyOf("device", input.device) });
+    const ipKey = input.ip ? keyOf("ip", input.ip) : null;
+
     const unique = keys.map((k) => k.key);
     const { data: held, error } = await db().from("free_claims").select("kind, key, owner_user_id").in("key", unique).neq("kind", "ip");
     if (error) throw new Error(error.message);
@@ -220,9 +223,13 @@ export async function freeStartAllowed(ownerId: string): Promise<boolean> {
   }
 }
 
-/** The engine calls this the moment it starts a free article. */
+/** The engine calls this the moment it starts a free article. The domain
+ *  column holds the same keyed hash as free_claims, never the domain itself. */
 export async function recordFreeStart(ownerId: string, projectId: string, domain: string | null): Promise<void> {
-  const { error } = await db().from("free_article_starts").insert({ owner_user_id: ownerId, project_id: projectId, domain });
+  const reg = domain ? registrableDomain(domain) : null;
+  const { error } = await db()
+    .from("free_article_starts")
+    .insert({ owner_user_id: ownerId, project_id: projectId, domain: reg ? keyOf("domain", reg) : null });
   if (error) throw new Error(`free start not recorded: ${error.message}`);
 }
 
