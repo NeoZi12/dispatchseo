@@ -198,6 +198,49 @@ export async function promoteBacklog(projectId: string, articlesPerWeek: number)
 /** The seed the site's live ideas mostly came from, while it still has room
  *  (under CLUSTER_SIZE ideas queued or written). Null = no cluster open:
  *  the first run, or a full one, so the next seed's subject opens. */
+/** The first 90 days with us: the topic lock's window. */
+const YOUNG_SITE_DAYS = 90;
+/** Topics (clusters) a young site may have open at once. */
+const YOUNG_SITE_MAX_TOPICS = 2;
+/** Indexed engine articles before research may go one hop out. */
+const ONE_HOP_MIN_INDEXED = 5;
+
+function isYoungSite(createdAt: string | null | undefined, now = Date.now()): boolean {
+  return Boolean(createdAt) && now - Date.parse(createdAt!) < YOUNG_SITE_DAYS * DAY_MS;
+}
+
+/** The topics this site's live and published ideas already sit in. */
+async function topicsInUse(projectId: string): Promise<Set<string>> {
+  const { data } = await db()
+    .from("suggestions")
+    .select("spec")
+    .eq("project_id", projectId)
+    .eq("type", "guide")
+    .in("status", ["approved", "pending", "in_progress", "building", "done"])
+    .limit(500);
+  const out = new Set<string>();
+  for (const row of (data ?? []) as { spec: unknown }[]) {
+    const c = (row.spec as { cluster?: unknown } | null)?.cluster;
+    if (typeof c === "string" && c) out.add(c);
+  }
+  return out;
+}
+
+/** Published engine articles Google has indexed (pages.indexed_at). */
+async function indexedArticleCount(projectId: string): Promise<number> {
+  const { data: drafts } = await db()
+    .from("article_drafts")
+    .select("published_url")
+    .eq("project_id", projectId)
+    .eq("status", "published")
+    .not("published_url", "is", null)
+    .limit(200);
+  const urls = ((drafts ?? []) as { published_url: string }[]).map((d) => d.published_url);
+  if (!urls.length) return 0;
+  const { count } = await db().from("pages").select("url", { count: "exact", head: true }).eq("project_id", projectId).in("url", urls).not("indexed_at", "is", null);
+  return count ?? 0;
+}
+
 async function openClusterFor(projectId: string): Promise<string | null> {
   const { data, error } = await db()
     .from("suggestions")
@@ -664,7 +707,11 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
         // one hop out (ONE_HOP_RULE) instead of digging deeper into a
         // subject the site cannot rank for yet.
         const kdDropped = Number(dropped.kd ?? 0);
-        const tooHard = kdDropped >= 10 && kdDropped >= rung1Kept ? { kdCeiling, rejected: kdDropped } : undefined;
+        // ...but only once the core subject has earned some trust: 5 indexed
+        // articles (topic lock). Before that the wider search stays on the
+        // site's own subject.
+        const hopReady = kdDropped >= 10 && kdDropped >= rung1Kept && (await indexedArticleCount(project.id)) >= ONE_HOP_MIN_INDEXED;
+        const tooHard = hopReady ? { kdCeiling, rejected: kdDropped } : undefined;
         oneHop = Boolean(tooHard);
         const r = await proposeSeeds(project, profile, existing.texts, failedJudge, seeds, [...dead], { tooHard });
         costUsd += r.costUsd;
@@ -771,11 +818,18 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
 
   const added: ResearchAdded[] = [];
   let backlogged = 0;
+  // Topic lock: a young site keeps to YOUNG_SITE_MAX_TOPICS topics.
+  const youngSite = isYoungSite(project.created_at, now.getTime());
+  const openTopics = youngSite ? await topicsInUse(project.id) : new Set<string>();
   for (const [i, c] of passed.slice(0, needed).entries()) {
     // The rule, where it matters: an idea is queued only with a measured
     // monthly volume at or above the lowest floor and a measured KD.
     if (!(c.volume >= WIDEN2_MIN_VOLUME) || typeof c.kd !== "number") continue;
     const cluster = seedOf(c.keyword);
+    if (youngSite && cluster && !openTopics.has(cluster)) {
+      if (openTopics.size >= YOUNG_SITE_MAX_TOPICS) continue;
+      openTopics.add(cluster);
+    }
     const w = weakness.get(c.keyword);
     // The visible queue's shortfall lands approved, in pick order; the rest
     // waits as pending with its rank, promoted as the queue drains.
@@ -1293,7 +1347,24 @@ async function seedsFor(project: Project, profile: SiteProfile, dead: Set<string
     if (tracked.length >= 5) break;
   }
   const ownWords = homePageHeadings((digestRes.data as { link_candidates?: unknown } | null)?.link_candidates).slice(0, 1);
-  const ordered = [...queries, ...tracked, ...ownWords, ...profile.categories.filter((c) => profileSeeds.includes(c)), ...heads, ...profile.tags.filter((t) => profileSeeds.includes(t))];
+  // A Search Console query seeds only when it shares a word with what the
+  // site is about (its categories, tags, name): the queries a site is SEEN
+  // for can be off its subject (dispatchseo.com was seen for Claude Code and
+  // drifted there), and Labs expands a seed into its whole neighbourhood.
+  const topicWords = new Set(
+    [...profile.categories, ...profile.tags, ...siteTerms]
+      .flatMap((x) => normalizeKeyword(x ?? "").split(" "))
+      .filter((w) => w.length >= 4),
+  );
+  const onTopic = (q: string) => normalizeKeyword(q).split(" ").some((w) => topicWords.has(w));
+  const gscSeeds = queries.filter(onTopic);
+  // TOPIC LOCK (spam-safety research, 2026-11-08): in its first 90 days a site
+  // seeds only from what it is - its categories, its queued ideas' heads and
+  // its home page - so it builds depth on one subject before any breadth.
+  const young = isYoungSite(project.created_at);
+  const ordered = young
+    ? [...gscSeeds, ...profile.categories.filter((c) => profileSeeds.includes(c)), ...heads, ...ownWords]
+    : [...gscSeeds, ...tracked, ...ownWords, ...profile.categories.filter((c) => profileSeeds.includes(c)), ...heads, ...profile.tags.filter((t) => profileSeeds.includes(t))];
   const out: string[] = [];
   const seen = new Set<string>();
   let skippedDead = 0;
@@ -1322,10 +1393,14 @@ async function seedsFor(project: Project, profile: SiteProfile, dead: Set<string
 /** Everything the site already has or queued, as normalized keywords (for
  *  the exact check) and raw titles/keywords (for the near-duplicate check). */
 async function existingTopics(projectId: string): Promise<{ keywords: Set<string>; texts: string[] }> {
-  const [sugg, pages, drafts] = await Promise.all([
+  const [sugg, pages, drafts, digest] = await Promise.all([
     db().from("suggestions").select("title, primary_keyword").eq("project_id", projectId).eq("type", "guide").order("created_at", { ascending: false }).limit(2000),
     db().from("pages").select("title, primary_keyword").eq("project_id", projectId).limit(2000),
     db().from("article_drafts").select("title, primary_keyword").eq("project_id", projectId).neq("status", "discarded").limit(2000),
+    // The site's OWN pages from the crawl, not only what the engine logged:
+    // an idea that repeats the customer's service page is a duplicate too
+    // (spam-safety research, 2026-11-08).
+    db().from("site_digests").select("link_candidates").eq("project_id", projectId).maybeSingle(),
   ]);
   const keywords = new Set<string>();
   const texts: string[] = [];
@@ -1336,6 +1411,12 @@ async function existingTopics(projectId: string): Promise<{ keywords: Set<string
         texts.push(r.primary_keyword);
       }
       if (r.title) texts.push(r.title);
+    }
+  }
+  const crawled = (digest.data as { link_candidates?: unknown } | null)?.link_candidates;
+  if (Array.isArray(crawled)) {
+    for (const p of crawled.slice(0, 400) as { title?: unknown }[]) {
+      if (typeof p?.title === "string" && p.title.trim().length > 3) texts.push(p.title.trim());
     }
   }
   return { keywords, texts };
