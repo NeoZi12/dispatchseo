@@ -40,7 +40,7 @@ const caveat = Caveat({ subsets: ["latin"], weight: ["600"], variable: "--font-h
 const GITHUB_URL = "https://github.com/NeoZi12/dispatchseo";
 // Who the hero speaks to, in the order the slab cycles them. Every entry must
 // fit on ONE line after "for" at the desktop size - the headline is two rows
-// ("Free SEO automation" / "for <word>") by design, and "bootstrapped founders"
+// ("Google traffic on autopilot" / "for <word>") by design, and "bootstrapped founders"
 // was long enough to push "for" onto a row of its own. Ordered for reach, most
 // visitors first (owner, 2026-11-08): the broad label, the hot one, the launch
 // crowd, the biggest buyers, then devs who wouldn't call themselves founders.
@@ -249,12 +249,12 @@ export default async function LandingPage({
               indie hackers -> online stores -> agencies -> online schools -> side
               projects); the sentence around it and the
               two-row sub below never move. The first word is what the server
-              renders, so the crawlable headline is one stable sentence. Plain
-              English: row one of the sub is the value (a marketing channel that
-              costs nothing), row two is what we do. Two rows max - anything
-              more goes in the CTA's small print. */}
-          <h1>Free SEO automation<br className="br-desk" /> for <RotatingWord words={AUDIENCES} /></h1>
-          <p className="sub">Get found on Google, ChatGPT and Claude, for free.<br className="br-desk" /> Researched, fact-checked articles, published to your site on autopilot.</p>
+              renders, so the crawlable headline is one stable sentence. The sub
+              is two plain rows: the outcome and the price ("…traffic for free"),
+              then what we ship (SEO articles, published for you). Two rows max -
+              anything more goes in the CTA's small print. */}
+          <h1>Google traffic on autopilot<br className="br-desk" /> for <RotatingWord words={AUDIENCES} /></h1>
+          <p className="sub">Get Google, ChatGPT and Claude traffic for free.<br className="br-desk" /> Researched, fact-checked SEO articles, published to your site on autopilot.</p>
 
           <div className="cta-row" id="get-started">
             <DomainCta />
