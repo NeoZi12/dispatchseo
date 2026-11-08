@@ -137,10 +137,9 @@ export function themeFromCss(css: string): { accent: string | null; dark: boolea
   const inks = new Map<string, number>();
   const hits = new Map<string, number>();
   let dark: boolean | null = null;
-  const text = css.replace(/\/\*[\s\S]*?\*\//g, "").slice(0, 1_500_000);
-  for (const rule of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    const selector = rule[1].trim().toLowerCase();
-    for (const decl of rule[2].split(";")) {
+  for (const [rawSelector, body] of cssRules(css.slice(0, MAX_CSS_CHARS))) {
+    const selector = rawSelector.trim().toLowerCase();
+    for (const decl of body.split(";")) {
       const i = decl.indexOf(":");
       if (i < 0) continue;
       const prop = decl.slice(0, i).trim().toLowerCase();
@@ -176,6 +175,69 @@ export function themeFromCss(css: string): { accent: string | null; dark: boolea
   let inkBest = 0;
   for (const [c, n] of inks) if (n > inkBest) [ink, inkBest] = [c, n];
   return { accent, dark, ink };
+}
+
+/** The most CSS read per site: the homepage's inline styles plus three
+ *  stylesheets. A brand colour shows up long before this. */
+const MAX_CSS_CHARS = 600_000;
+
+/** Innermost CSS rules as [selector, body] pairs, in one linear pass.
+ *  A scanner rather than a regex: the input is a third party's file, and a
+ *  backtracking pattern over a long run without braces goes quadratic.
+ *  Comments are skipped; at-rule wrappers (@media) simply nest, and only the
+ *  rules that hold declarations are returned. */
+export function cssRules(css: string): Array<[string, string]> {
+  const out: Array<[string, string]> = [];
+  let start = 0; // where the current selector began
+  let open = -1; // index of the "{" of the innermost open block
+  for (let i = 0; i < css.length; i++) {
+    const ch = css.charCodeAt(i);
+    if (ch === 47 /* / */ && css.charCodeAt(i + 1) === 42 /* * */) {
+      const end = css.indexOf("*/", i + 2);
+      if (end < 0) break;
+      i = end + 1;
+      continue;
+    }
+    if (ch === 123 /* { */) {
+      // A block inside a block (@media { .a { ... } }): the inner selector
+      // starts after the outer brace, not at the @media.
+      if (open >= 0) start = open + 1;
+      open = i;
+    } else if (ch === 125 /* } */) {
+      if (open >= 0) out.push([css.slice(start, open), css.slice(open + 1, i)]);
+      open = -1;
+      start = i + 1;
+    } else if (ch === 59 /* ; */ && open < 0) {
+      start = i + 1; // a bare @import/@charset line is not part of the next selector
+    }
+  }
+  return out;
+}
+
+/** A response body as text, never more than `max` bytes read off the wire:
+ *  the stream is cancelled at the cap instead of buffering the whole file. */
+export async function readCapped(res: Response, max: number): Promise<string> {
+  const len = Number(res.headers.get("content-length") ?? "");
+  if (Number.isFinite(len) && len > max * 4) {
+    await res.body?.cancel().catch(() => undefined);
+    return "";
+  }
+  const reader = res.body?.getReader();
+  if (!reader) return "";
+  const decoder = new TextDecoder();
+  let text = "";
+  let bytes = 0;
+  try {
+    while (bytes < max) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+  return text.slice(0, max);
 }
 
 /** The CSS a page carries inline: <style> blocks and style="" attributes. */
@@ -276,7 +338,7 @@ export async function readSiteTheme(project: Pick<Project, "domain">): Promise<{
   if (!res || !res.ok) return null;
   let html = "";
   try {
-    html = (await res.text()).slice(0, 300_000);
+    html = await readCapped(res, 300_000);
   } catch {
     return null;
   }
@@ -295,7 +357,7 @@ export async function readSiteTheme(project: Pick<Project, "domain">): Promise<{
       const r = await fetchProjectUrl(href, project.domain, { timeoutMs: 5_000, userAgent: "DispatchSEO-Theme/1.0 (+https://dispatchseo.com)" });
       if (!r || !r.ok) return "";
       try {
-        return (await r.text()).slice(0, 500_000);
+        return await readCapped(r, 200_000);
       } catch {
         return "";
       }
