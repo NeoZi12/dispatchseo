@@ -4,6 +4,7 @@ import { isCloudMode } from "@/lib/cloud";
 import { supabaseAuth } from "@/lib/cloud-auth";
 import { backendBaseUrl } from "@/lib/pipeline-pack";
 import { isValidEmail } from "@/lib/waitlist";
+import { mintEmailLinkNonce } from "@/lib/email-link-nonce";
 import { DispatchMark } from "@/components/logo";
 import { AuthShell } from "@/components/auth-shell";
 
@@ -31,9 +32,11 @@ async function sendReset(formData: FormData) {
   // the instance's canonical origin chain; headers stay out of it.
   const base =
     process.env.NODE_ENV === "development" ? "http://localhost:3000" : await backendBaseUrl();
-  const redirectTo = `${base}/auth/callback?next=/reset-password`;
 
   try {
+    // The link only works in this browser (lib/email-link-nonce.ts).
+    const nonce = await mintEmailLinkNonce();
+    const redirectTo = `${base}/auth/callback?next=/reset-password&sn=${nonce}`;
     const supabase = await supabaseAuth();
     const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
     if (error) console.error("[reset] resetPasswordForEmail failed:", error.message);
@@ -99,6 +102,10 @@ export default async function ForgotPasswordPage({
         <input type="email" name="email" placeholder="Email" autoFocus className={inputCls} />
         {error === "invalid" ? (
           <p className="text-sm text-red-400">Enter a valid email address.</p>
+        ) : error === "device" ? (
+          <p className="text-sm text-red-400">
+            Open the reset link in the same browser you requested it from, then try again.
+          </p>
         ) : null}
         <button
           type="submit"

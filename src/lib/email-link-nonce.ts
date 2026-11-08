@@ -11,8 +11,9 @@ import { cookies } from "next/headers";
 // grant Search Console into it (security review, 2026-11-08). So the link
 // carries a random value that is also in this browser's cookie, and
 // /auth/callback signs a token_hash sign-in straight back out when the two
-// don't match. Recovery links are exempt: they land on the set-a-password
-// form, not on anything that collects a payment or a grant.
+// don't match. Password-reset links carry the same value (forgot-password
+// mints it) and get the same check: a forwarded reset link would otherwise
+// sign this browser into the sender's account with a reset form in front.
 
 export const EMAIL_LINK_COOKIE = "email_link_nonce";
 const TTL_S = 60 * 60;

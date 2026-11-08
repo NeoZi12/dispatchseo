@@ -13,11 +13,12 @@ import { emailLinkMatches } from "@/lib/email-link-nonce";
 //                            PKCE verifier cookie, so it's same-browser only.
 //   - `token_hash` + type  - the device-independent email-OTP shape, used when
 //                            the Supabase recovery template is switched to
-//                            {{ .TokenHash }} (verifyOtp). Survives opening the
-//                            link on a different device than it was requested.
+//                            {{ .TokenHash }} (verifyOtp). Every one of these
+//                            must carry `sn`, the same-browser value
+//                            (lib/email-link-nonce.ts), recovery included.
 // After the session is set we forward to `next` (a validated same-origin path,
-// default /dashboard). Password recovery points `next` at /reset-password, so
-// the user lands on the set-a-new-password form already signed in.
+// default /dashboard). A password recovery always lands on /reset-password
+// (pinned below, whatever `next` says), already signed in.
 
 // Only same-origin absolute paths - blocks //evil.com and /\evil.com open
 // redirects while still allowing /reset-password, /dashboard, etc.
@@ -44,8 +45,9 @@ export async function GET(req: NextRequest) {
   // by its verifier, so its `next` can be trusted for that.
   const rawNext = safeNext(params.get("next"));
   const isRecovery = tokenHash ? type === "recovery" : rawNext.startsWith("/reset-password");
-  // A non-recovery sign-in never lands on the set-a-password form.
-  const next = !isRecovery && rawNext.startsWith("/reset-password") ? "/dashboard" : rawNext;
+  // A recovery session goes to the set-a-password form and nowhere else, so
+  // the link's `next` can't steer it; a non-recovery sign-in never lands there.
+  const next = isRecovery ? "/reset-password" : rawNext.startsWith("/reset-password") ? "/dashboard" : rawNext;
 
   const url = req.nextUrl.clone();
   url.search = "";
@@ -88,14 +90,15 @@ export async function GET(req: NextRequest) {
     // An emailed sign-in link opened in a browser that didn't ask for it:
     // signed straight back out, so a link forwarded by someone else can't put
     // this browser into THEIR account (lib/email-link-nonce.ts). Recovery
-    // links are exempt.
-    if (tokenHash && !isRecovery && !(await emailLinkMatches(params.get("sn")))) {
+    // links included - a forwarded reset link is the same trick with a
+    // set-a-password form in front.
+    if (tokenHash && !(await emailLinkMatches(params.get("sn")))) {
       // Only the session this link just made - never the account's other
       // sessions. The default (global) scope signed the real owner out of
       // every browser whenever a link was opened without its nonce: an old
       // link after a newer one, or a mail scanner following it (2026-11-08).
       await supabase.auth.signOut({ scope: "local" }).catch(() => {});
-      url.pathname = "/login";
+      url.pathname = isRecovery ? "/forgot-password" : "/login";
       url.search = "?error=device";
       return NextResponse.redirect(url);
     }
