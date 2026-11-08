@@ -59,7 +59,9 @@ function walk(n: Node, problems: string[]): void {
       const shown = name ? `<${name}>` : "a fragment";
       // Lowercase names are HTML elements; a capitalised <Link> is the
       // site's own component and allowed.
-      if (name && name === name.toLowerCase() && DENIED_ELEMENTS.has(name)) problems.push(`a ${shown} element${at(n)}`);
+      // MDX treats a lowercase-initial name as an intrinsic (HTML) element,
+      // and the browser reads <sCRIPT> as <script>: judge the lowercased name.
+      if (name && /^[a-z]/.test(name) && DENIED_ELEMENTS.has(name.toLowerCase())) problems.push(`a ${shown} element${at(n)}`);
       for (const a of n.attributes ?? []) {
         if (a.type === "mdxJsxExpressionAttribute") {
           problems.push(`a spread attribute on ${shown}${at(n)}`);

@@ -797,7 +797,7 @@ const MD_LINK_RE =
   /!?\[([^\]\n]*)\]\(\s*(?:<([^>\n]*)>|([^()\s]*(?:\([^()\s]*\)[^()\s]*)*))(?:\s+(?:"[^"\n]*"|'[^'\n]*'))?\s*\)/g;
 // Lowercase names only: in MDX a capitalised <Link> is the site's own
 // component, not the HTML <link> element.
-const AGENT_DROP_NAMES = /^<\/?\s*(script|iframe|style|object|embed|form|meta|link|base|svg|math|template|noscript)\b/;
+const AGENT_DROP_NAMES = /^<\/?\s*(?=[a-z])(script|iframe|style|object|embed|form|meta|link|base|svg|math|template|noscript)\b/i;
 const AGENT_BAD_SCHEME_RE = /(javascript|vbscript|data|livescript|mocha):/;
 /** An on* attribute that is a handler, not a prop that happens to start
  *  with "on" (once, only, online, one). */
