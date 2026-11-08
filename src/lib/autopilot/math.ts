@@ -634,6 +634,14 @@ export function pageTypeOf(keyword: string): PageType | null {
   if (/\btop\s+\d+\b/.test(k)) return "self-promo";
   if (/\b(vs\.?|versus)\b/.test(k)) return "versus";
   if (/^(what\s+(is|are|does)|meaning\s+of|definition\s+of)\b/.test(k)) return "glossary";
+  // Hebrew sites (paperbot's glossary run, 2026-11-08). JS \b is ASCII-only,
+  // so Hebrew words are bounded by whitespace or the string ends instead.
+  const he = (re: string) => new RegExp(`(^|\\s)(${re})(\\s|$)`).test(k);
+  if (he("חלופות|חלופה|אלטרנטיבות|אלטרנטיבה|מתחרים")) return "self-promo";
+  if (/(^|\s)(ה)?(כלים|תוכנות|תוכנה|אפליקציות|אפליקציה|מערכות|פלטפורמות)(\s.*)?\s(ה)?(טובים|טובות|מומלצים|מומלצות)(\s|$)/.test(k)) return "self-promo";
+  if (he("לעומת") || /^מה\s+ההבדל\s+בין(\s|$)/.test(k)) return "versus";
+  if (/^(מה\s+(זה|זו|זאת|הם|הן|הוא|היא)|מהו|מהי|מהם|מהן|הגדרה\s+של|הגדרת|פירוש|משמעות)(\s|$)/.test(k)) return "glossary";
+  if (/\d+\s+(דרכים|טיפים|רעיונות|סיבות|דוגמאות|טעויות)(\s|$)/.test(k) || he("הטובים ביותר|הטובות ביותר")) return "listicle";
   // "best time to ..." / "best way to ..." are questions, not lists.
   if (/^(best|top)\b(?!\s+(time|way|age|place|month|season|day|temperature|setting|size)s?\b)/.test(k) || /\b\d+\s+(best|ways|tips|ideas|reasons|examples|mistakes)\b/.test(k)) return "listicle";
   return null;
