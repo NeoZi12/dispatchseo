@@ -882,9 +882,9 @@ async function plan(c: Ctx): Promise<void> {
     const others = await crossSiteCorpus(project, sheet.keyword);
     const outlineFeatures = extractFromMarkdown(outlineMd, new Set(tokenize(sheet.keyword)));
     for (const o of others) {
-      if (titleOverlap(parsed.title, o.title) >= CROSS_TITLE_LIMIT) problems.push("the title is nearly the same as another site's article on this keyword - pick a title from THIS site's own angle");
+      if (titleOverlap(parsed.title, o.title) >= CROSS_TITLE_LIMIT) problems.push("the title is too close to an existing article on this keyword - pick a title from THIS site's own angle");
       const cross = compareToCorpus(outlineFeatures, [o], "outline");
-      if (cross.flags.some((f) => f.kind === "headings")) problems.push(`the heading skeleton matches another site's article on this keyword - take this site's own angle and structure`);
+      if (cross.flags.some((f) => f.kind === "headings")) problems.push("the heading skeleton is too close to an existing article on this keyword - take this site's own angle and structure");
     }
   }
 
@@ -1954,13 +1954,15 @@ async function runChecks(c: Ctx, sheet: FactSheet, brief: SiteBrief, p: Plan, in
   // 5b. ...and against OTHER sites' articles on this keyword and market: the
   //     shared fact sheet makes near-twins possible across customers, and two
   //     near-identical pages on two domains read as a network to Google. The
-  //     other article is never named (another customer's page).
+  //     notes are generic on purpose ("an existing article"): a customer can
+  //     read them, and they must not reveal that another customer exists,
+  //     let alone what it published or how close it is.
   for (const o of await crossSiteCorpus(project, sheet.keyword)) {
     const cross = compareToCorpus(features, [o], "final");
     const overlap = phraseOverlap(features, o);
-    if (cross.flags.some((f) => f.kind === "opening")) issues.push({ section: "", note: "the opening repeats another site's article on this keyword word for word - open from this site's own angle", blocking: true });
-    if (cross.flags.some((f) => f.kind === "headings")) issues.push({ section: null, note: "the heading skeleton matches another site's article on this keyword - restructure around this site's angle", blocking: true });
-    if (overlap > CROSS_PHRASE_LIMIT) issues.push({ section: null, note: `${Math.round(overlap * 100)}% of the phrasing matches another site's article on this keyword - say it in this site's own words and with its own examples`, blocking: true });
+    if (cross.flags.some((f) => f.kind === "opening")) issues.push({ section: "", note: "the opening is too close to an existing article on this keyword - open from this site's own angle", blocking: true });
+    if (cross.flags.some((f) => f.kind === "headings")) issues.push({ section: null, note: "the heading skeleton is too close to an existing article on this keyword - restructure around this site's angle", blocking: true });
+    if (overlap > CROSS_PHRASE_LIMIT) issues.push({ section: null, note: "the phrasing is too close to an existing article on this keyword - say it in this site's own words and with its own examples", blocking: true });
   }
 
   // 6. The opening shape THIS article was given (layoutFor): a TL;DR callout
@@ -2365,7 +2367,7 @@ async function crossSiteCorpus(project: Project, keyword: string): Promise<(Corp
   return rows
     .filter((r) => sameMarket.has(r.project_id) && typeof r.markdown === "string")
     .slice(0, 8)
-    .map((r) => ({ ...extractFromMarkdown(r.markdown, new Set(tokenize(r.primary_keyword ?? ""))), label: "another site's article", title: r.title }));
+    .map((r) => ({ ...extractFromMarkdown(r.markdown, new Set(tokenize(r.primary_keyword ?? ""))), label: "an existing article", title: r.title }));
 }
 
 /** The site's last 20 accepted articles as sameness features (8 until
