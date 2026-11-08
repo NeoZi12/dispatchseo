@@ -1298,19 +1298,26 @@ const GSC_DEMAND_MIN_IMPRESSIONS = 30;
 const GSC_DEMAND_MIN_DAYS = 28;
 const GSC_DEMAND_MAX_SHARE = 0.5;
 const GSC_DEMAND_MAX_PER_RUN = 6;
+/** Distinct days a query must show on: one burst (or someone searching the
+ *  site with crafted text to plant a topic) is not demand. */
+const GSC_DEMAND_MIN_DAYS_SEEN = 5;
+/** What a search people type looks like: letters, digits, spaces, hyphens,
+ *  apostrophes - nothing that could carry markup or quote out of a prompt. */
+const QUERY_SHAPE = /^[\p{L}\p{N}][\p{L}\p{N}\s'’-]*$/u;
 
 async function queueSearchConsoleDemand(project: Project, profile: SiteProfile, now: Date): Promise<{ queued: number; costUsd: number }> {
   const since = new Date(now.getTime() - GSC_DEMAND_MIN_DAYS * DAY_MS).toISOString().slice(0, 10);
   const { data: days, error } = await db().from("gsc_stats").select("date, top_queries").eq("project_id", project.id).gte("date", since);
   if (error || !days || days.length < GSC_DEMAND_MIN_DAYS - 3) return { queued: 0, costUsd: 0 };
-  const agg = new Map<string, { impressions: number; posWeighted: number }>();
+  const agg = new Map<string, { impressions: number; posWeighted: number; days: number }>();
   for (const d of days as { top_queries: { query: string; impressions: number; position: number }[] | null }[]) {
     for (const q of d.top_queries ?? []) {
       const k = normalizeKeyword(q.query ?? "");
       const words = k.split(" ").filter(Boolean);
       // Searches people type, not pasted paths, commands or error dumps.
-      if (words.length < 2 || words.length > 8 || /[\\/:"%<>{}|]/.test(q.query ?? "")) continue;
-      const a = agg.get(k) ?? { impressions: 0, posWeighted: 0 };
+      if (words.length < 2 || words.length > 8 || !QUERY_SHAPE.test(k)) continue;
+      const a = agg.get(k) ?? { impressions: 0, posWeighted: 0, days: 0 };
+      a.days++;
       a.impressions += Number(q.impressions) || 0;
       a.posWeighted += (Number(q.position) || 100) * (Number(q.impressions) || 0);
       agg.set(k, a);
@@ -1318,7 +1325,15 @@ async function queueSearchConsoleDemand(project: Project, profile: SiteProfile, 
   }
   const existing = await existingTopics(project.id);
   const blocked = blockedTopicsOf(project);
+  // On the site's subject: a query must share a word with its categories,
+  // tags or name - the same bar a Search Console query needs to seed.
+  const topicWords = new Set(
+    [...profile.categories, ...profile.tags, profile.name, project.domain.replace(/^www\./, "").split(".")[0]]
+      .flatMap((x) => normalizeKeyword(x ?? "").split(" "))
+      .filter((w) => w.length >= 4),
+  );
   const pool = [...agg.entries()]
+    .filter(([keyword, a]) => a.days >= GSC_DEMAND_MIN_DAYS_SEEN && keyword.split(" ").some((w) => topicWords.has(w)))
     .map(([keyword, a]) => ({ keyword, impressions: a.impressions, position: a.impressions ? a.posWeighted / a.impressions : 100 }))
     .filter((c) => c.impressions >= GSC_DEMAND_MIN_IMPRESSIONS && c.position > 10)
     .filter((c) => !pageTypeOf(c.keyword) && !matchesBlockedTopic(c.keyword, blocked) && !existing.keywords.has(c.keyword))
