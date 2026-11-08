@@ -20,10 +20,10 @@
 //
 //   node --experimental-strip-types scripts/agent-golden.mjs          # regenerate
 //   node --experimental-strip-types scripts/agent-golden.mjs --check  # verify
-import { registerHooks } from "node:module";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { registerTsResolver } from "./agent-ci/resolve-ts.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const GOLDEN = resolve(here, "../test/golden/agent-commands.json");
@@ -37,15 +37,7 @@ const mcp = await import("../src/lib/mcp-connect.ts");
 // node has no idea what that means. Teaching the resolver the one alias this
 // repo uses is cheaper than making that module the odd one out - and it keeps
 // the registry assertion below possible at all.
-registerHooks({
-  resolve(specifier, context, next) {
-    if (specifier.startsWith("@/")) {
-      const abs = resolve(here, "../src", specifier.slice(2));
-      return next(abs.endsWith(".ts") ? abs : `${abs}.ts`, context);
-    }
-    return next(specifier, context);
-  },
-});
+registerTsResolver(resolve(here, "../src"));
 
 // The registry's id lookup, asserted here rather than only type-checked,
 // because TypeScript cannot see this class of bug at all: REGISTRY is a plain

@@ -27,12 +27,12 @@
 // The generated text is deliberately the exact shell/YAML the workflows always
 // shipped - this generator changes where the truth lives, not what runs.
 
-import { registerHooks } from "node:module";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { AGENTS, DEFAULT_AGENT, NON_DEFAULT_AGENTS } from "./agent-ci/index.mjs";
 import { WORKFLOWS } from "./agent-ci/workflows.mjs";
+import { registerTsResolver } from "./agent-ci/resolve-ts.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const WF_DIR = join(here, "..", "templates", "pipeline", ".github", "workflows");
@@ -43,15 +43,7 @@ const CHECK = process.argv.includes("--check");
 // src/lib/agents/index.ts is what the backend serves; these modules are what
 // the workflows run. An agent present in one but not the other is a
 // half-supported agent, which is worse than an unsupported one.
-registerHooks({
-  resolve(specifier, context, next) {
-    if (specifier.startsWith("@/")) {
-      const abs = resolve(here, "../src", specifier.slice(2));
-      return next(abs.endsWith(".ts") ? abs : `${abs}.ts`, context);
-    }
-    return next(specifier, context);
-  },
-});
+registerTsResolver(resolve(here, "../src"));
 const registry = await import("../src/lib/agents/index.ts");
 for (const agent of AGENTS) {
   const reg = registry.agentById(agent.id);

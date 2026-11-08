@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { getCronHealth, reportCronRun } from "./cron-alerts";
 import { dispatchResearch } from "./github";
-import { listProjects } from "./projects";
+import { listProjects, writerMode, type Project } from "./projects";
 import { isCloudMode, isLocalBackendUrl } from "./cloud";
 import { inStackBuilderOwnsBuilds } from "./builder-status";
 import { builderJobKey } from "./build-schedule";
@@ -74,11 +74,20 @@ async function refillProject(p: {
   slug: string;
   github_repo: string | null;
   pipeline_installed_at: string | null;
+  writer_mode: Project["writer_mode"];
   // Load-bearing on cloud: fireDispatch picks the credential from the App
   // installation id, so a RepoRef without it falls back to the self-host merge
   // token and the dispatch fails to authenticate.
   github_installation_id?: number | null;
 }): Promise<RefillOutcome> {
+  // A hosted-mode site is researched by the autopilot itself (scheduler.ts
+  // calls runResearch the moment its queue is empty). Firing the repo's
+  // research workflow on top would research it twice, under the agent's
+  // playbook instead of the engine's rules, and on a site with no App
+  // installation it only logged "No GitHub token connected" every 20 hours
+  // (dispatchseo, 2026-11-08). The GitHub refill is for agent-mode repos.
+  if (writerMode(p) === "hosted") return { skipped: "the autopilot researches hosted sites itself" };
+
   // Plan gate, same rule and same shape as api/cron/seo-dispatch: a lapsed or
   // uncovered project buys no work. This sweep was the one path left that still
   // WOKE a lapsed customer's repo - the dispatch fires a full research run on
