@@ -79,6 +79,21 @@ async function searchConsole() {
 
 export type GscClient = Awaited<ReturnType<typeof searchConsole>>;
 
+/**
+ * The shared service account with WRITE scope, for one job only: resubmitting
+ * the OPERATOR's own sites' sitemaps (gsc-sitemaps.ts). Built per call, never
+ * cached beside the read-only client, and never handed to anything tenant-
+ * facing: the caller must have checked the project is on the operator's
+ * allowlist (GH_MERGE_TOKEN_PROJECTS, the same list that gates the operator's
+ * GitHub token). Works once the property grants the account Full permission.
+ */
+export async function serviceAccountWriteClient(): Promise<GscClient> {
+  const raw = await credentialJson();
+  if (!raw) throw new Error("Missing GSC service account");
+  const auth = new google.auth.GoogleAuth({ credentials: JSON.parse(raw), scopes: ["https://www.googleapis.com/auth/webmasters"] });
+  return google.searchconsole({ version: "v1", auth, timeout: 25000 }) as unknown as GscClient;
+}
+
 // Per-project GSC client - the one resolver the crons and live cards read
 // through. Cloud projects connect Search Console via their OWN OAuth
 // (webmasters.readonly) and NEVER grant the shared service account, so their

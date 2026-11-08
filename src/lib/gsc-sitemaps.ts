@@ -1,5 +1,8 @@
 import { oauthSearchConsole } from "@/lib/gsc-oauth";
 import { fetchProjectUrl } from "@/lib/url-guard";
+import { readCapped } from "@/lib/hosted-theme";
+import { serviceAccountWriteClient } from "@/lib/gsc";
+import { instanceTokenAllowedFor } from "@/lib/github";
 import { siteOrigin } from "@/lib/hosted-blog";
 import type { Project } from "@/lib/projects";
 
@@ -31,17 +34,29 @@ export function hostedSitemapUrl(project: Pick<Project, "domain"> & { hosted_ori
 
 /** Submit the hosted blog's sitemap to the project's Search Console
  *  property. Returns what happened, for the publish log; never throws. */
+/** Who may write to this project's Search Console property: the owner's own
+ *  Google connection, else - for the operator's allowlisted sites only - the
+ *  shared service account with write scope. null = nobody. */
+async function sitemapClient(project: Project) {
+  if (project.gsc_oauth_refresh_token) return oauthSearchConsole(project.gsc_oauth_refresh_token);
+  if (instanceTokenAllowedFor({ github_repo: project.github_repo, id: project.id, slug: project.slug })) return serviceAccountWriteClient();
+  return null;
+}
+
 export async function submitHostedSitemap(project: Project): Promise<"submitted" | "no-connection" | "no-property" | "no-scope" | "failed"> {
-  if (!project.gsc_oauth_refresh_token) return "no-connection";
   if (!project.gsc_site_url) return "no-property";
   try {
-    const sc = await oauthSearchConsole(project.gsc_oauth_refresh_token);
+    const sc = await sitemapClient(project);
+    if (!sc) return "no-connection";
     await sc.sitemaps.submit({ siteUrl: project.gsc_site_url, feedpath: hostedSitemapUrl(project) });
     return "submitted";
   } catch (e) {
     const err = e as { code?: number | string; message?: string };
     const status = Number(err?.code);
-    if (status === 403 || /insufficient.*scope|ACCESS_TOKEN_SCOPE_INSUFFICIENT|insufficientPermissions/i.test(String(err?.message ?? ""))) return "no-scope";
+    if (status === 403 || /insufficient.*scope|ACCESS_TOKEN_SCOPE_INSUFFICIENT|insufficientPermissions|sufficient permission/i.test(String(err?.message ?? ""))) {
+      console.warn(`[gsc-sitemaps] ${project.slug}: no write access to its Search Console property (${err?.message ?? "403"}) - grant Full permission to resubmit sitemaps`);
+      return "no-scope";
+    }
     console.warn(`[gsc-sitemaps] sitemap submit for ${project.slug} failed: ${err?.message ?? String(e)}`);
     return "failed";
   }
@@ -59,17 +74,20 @@ export async function submitHostedSitemap(project: Project): Promise<"submitted"
  * Never the Indexing API - that is for job postings and livestreams only.
  */
 export async function submitSiteSitemap(project: Project): Promise<"submitted" | "no-connection" | "no-property" | "no-scope" | "failed"> {
-  if (!project.gsc_oauth_refresh_token) return "no-connection";
   if (!project.gsc_site_url) return "no-property";
   const feedpath = await siteSitemapUrl(project).catch(() => null);
   if (!feedpath) return "failed";
   try {
-    const sc = await oauthSearchConsole(project.gsc_oauth_refresh_token);
+    const sc = await sitemapClient(project);
+    if (!sc) return "no-connection";
     await sc.sitemaps.submit({ siteUrl: project.gsc_site_url, feedpath });
     return "submitted";
   } catch (e) {
     const err = e as { code?: number | string; message?: string };
-    if (Number(err?.code) === 403 || /insufficient.*scope|ACCESS_TOKEN_SCOPE_INSUFFICIENT|insufficientPermissions/i.test(String(err?.message ?? ""))) return "no-scope";
+    if (Number(err?.code) === 403 || /insufficient.*scope|ACCESS_TOKEN_SCOPE_INSUFFICIENT|insufficientPermissions|sufficient permission/i.test(String(err?.message ?? ""))) {
+      console.warn(`[gsc-sitemaps] ${project.slug}: no write access to its Search Console property (${err?.message ?? "403"}) - grant Full permission to resubmit sitemaps`);
+      return "no-scope";
+    }
     console.warn(`[gsc-sitemaps] sitemap submit for ${project.slug} failed: ${err?.message ?? String(e)}`);
     return "failed";
   }
@@ -79,7 +97,7 @@ async function siteSitemapUrl(project: Project): Promise<string> {
   const origin = `https://${project.domain.replace(/^www\./, "")}`;
   const res = await fetchProjectUrl(`${origin}/robots.txt`, project.domain, { timeoutMs: 5_000, userAgent: "DispatchSEO-Sitemap/1.0 (+https://dispatchseo.com)" });
   if (res?.ok) {
-    const text = (await res.text()).slice(0, 50_000);
+    const text = await readCapped(res, 50_000);
     for (const m of text.matchAll(/^\s*sitemap:\s*(\S+)\s*$/gim)) {
       try {
         const u = new URL(m[1]);
