@@ -7,6 +7,7 @@ import { missingMigrations } from "@/lib/schema-check";
 import { isCloudMode } from "@/lib/cloud";
 import { planGate, polarConfigured } from "@/lib/billing";
 import { appJwt } from "@/lib/github-app";
+import { rateLimitHit, rateLimitKey } from "@/lib/rate-limit";
 
 // Post-deploy smoke test. The deploy-check GitHub Action hits this after
 // every push to main: first polling with ?expect=<sha> until Vercel serves
@@ -36,6 +37,27 @@ const CORE_TABLES = [
   "gsc_stats",
   "cron_runs",
 ] as const;
+
+// The only job names a project token may report under: the basenames (no
+// extension) of the pipeline pack's workflows in
+// templates/pipeline/.github/workflows/, plus seo-pipeline-version, which
+// seo-token-check.yml reports the pack-update notice under. Keep this in step
+// with that folder - a workflow missing here gets every report 400'd. The
+// owner's CRON_SECRET (the in-stack builder, our own crons) is not limited.
+const PIPELINE_REPORT_JOBS: readonly string[] = [
+  "seo-auto-merge",
+  "seo-canary",
+  "seo-daily",
+  "seo-geo-scan",
+  "seo-setup",
+  "seo-token-check",
+  "seo-tool-validate",
+  "seo-tools",
+  "seo-trend-expand",
+  "seo-trend-scan",
+  "seo-weekly-research",
+  "seo-pipeline-version",
+];
 
 async function checkTable(name: string): Promise<string | null> {
   const { error } = await db().from(name).select("*", { count: "exact", head: true });
@@ -105,6 +127,17 @@ export async function GET(req: Request): Promise<Response> {
       },
       { status: 403 },
     );
+  }
+  if (reporterProject && jobParam) {
+    if (!PIPELINE_REPORT_JOBS.includes(jobParam)) {
+      return Response.json(
+        { error: `unknown job "${jobParam}" - project tokens may only report pipeline workflow outcomes` },
+        { status: 400 },
+      );
+    }
+    if (!(await rateLimitHit(rateLimitKey("deploy-report", reporterProject.slug), 60, 3600))) {
+      return Response.json({ error: "too many outcome reports from this project - try again later" }, { status: 429 });
+    }
   }
   const job = (jobParam ?? "deploy-check") + projectSuffix;
 
