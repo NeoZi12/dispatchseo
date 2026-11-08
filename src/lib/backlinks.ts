@@ -255,7 +255,10 @@ export function appendRelatedLine(
 ): string | null {
   const label = RELATED_LABEL[(languageCode ?? "en").slice(0, 2).toLowerCase()];
   if (!label || linksTo(markdown, url) || internalLinkCount(markdown, opts.siteDomain) >= MAX_INTERNAL_LINKS_IN_SOURCE) return null;
-  const safeTitle = title.replace(/[[\]]/g, "").trim();
+  // The title is model output going into a customer's source file: nothing
+  // that markdown, HTML or MDX would read as structure (a "<" or "{" can
+  // break an MDX build or inject a component), and no line break.
+  const safeTitle = title.replace(/[[\]<>{}`\\|]/g, "").replace(/\s+/g, " ").trim();
   if (!safeTitle) return null;
   const line = `${label} [${safeTitle}](${url})`;
   const lines = markdown.replace(/\s+$/, "").split("\n");
@@ -306,20 +309,79 @@ export async function indexedUrls(projectId: string, urls: string[]): Promise<Se
   return out;
 }
 
+// --- the not-indexed loop ------------------------------------------------------
+//
+// An article Google still has not indexed 14 days after going live gets more
+// ways in: on each later publish, the site's oldest such article (live 14-60
+// days, so the effort stops at two months) is linked from 1-2 related articles
+// Google HAS indexed - a link from a trusted page is how an unknown one gets
+// crawled. One per publish, so a site never rewrites its catalogue at once;
+// the index-rate brake (math.ts rampQuota) already counts these articles.
+
+export const STUCK_AFTER_DAYS = 14;
+export const STUCK_GIVE_UP_DAYS = 60;
+
+export async function stuckArticle(
+  projectId: string,
+  excludeId: string,
+  now = new Date(),
+): Promise<{ id: string; title: string; keyword: string; url: string } | null> {
+  const { data: drafts } = await db()
+    .from("article_drafts")
+    .select("id, title, primary_keyword, published_url")
+    .eq("project_id", projectId)
+    .eq("status", "published")
+    .neq("id", excludeId)
+    .not("published_url", "is", null)
+    .gte("published_at", new Date(now.getTime() - (STUCK_GIVE_UP_DAYS + 7) * 86_400_000).toISOString())
+    .limit(100);
+  const rows = (drafts ?? []) as { id: string; title: string; primary_keyword: string | null; published_url: string }[];
+  if (!rows.length) return null;
+  const { data: pages, error } = await db()
+    .from("pages")
+    .select("url, live_at, indexed_at")
+    .eq("project_id", projectId)
+    .in("url", rows.map((r) => r.published_url))
+    .is("indexed_at", null)
+    .not("live_at", "is", null)
+    .lte("live_at", new Date(now.getTime() - STUCK_AFTER_DAYS * 86_400_000).toISOString())
+    .gte("live_at", new Date(now.getTime() - STUCK_GIVE_UP_DAYS * 86_400_000).toISOString())
+    .order("live_at", { ascending: true })
+    .limit(1);
+  if (error) return null;
+  const page = ((pages ?? []) as { url: string }[])[0];
+  const row = page && rows.find((r) => r.published_url === page.url);
+  return row ? { id: row.id, title: row.title, keyword: row.primary_keyword ?? row.title, url: row.published_url } : null;
+}
+
 // --- hosted orchestrator --------------------------------------------------------
+
+type HostedRow = {
+  id: string;
+  title: string;
+  slug: string;
+  meta_description: string | null;
+  primary_keyword: string | null;
+  markdown: string;
+  faq: { question: string; answer: string }[] | null;
+  sources: { url: string; title?: string }[] | null;
+  published_url: string;
+  published_at: string | null;
+  updated_at: string;
+  rendered_html: string | null;
+};
 
 /**
  * After a hosted article goes live: link to it from its closest older hosted
- * articles. Best-effort by contract - the new article is already live, and a
- * failure here costs one inbound link, never the publish. Returns what it did.
+ * articles, then give the site's stuck article (above) links from indexed
+ * ones. Best-effort by contract - the new article is already live, and a
+ * failure here costs an inbound link, never the publish. Returns what it did.
  */
 export async function linkOlderHostedArticles(
   project: Project,
   draft: { id: string; title: string; primary_keyword: string | null },
   url: string,
-): Promise<{ sourceUrl: string; anchor: string }[]> {
-  const { renderDraftForRoute } = await import("@/lib/job-handlers/finish");
-  const { schemaScript } = await import("@/lib/article-render");
+): Promise<{ sourceUrl: string; anchor: string; to: string }[]> {
   const prefix = url.slice(0, url.lastIndexOf("/") + 1);
   const { data } = await db()
     .from("article_drafts")
@@ -330,19 +392,38 @@ export async function linkOlderHostedArticles(
     .not("published_url", "is", null)
     .order("published_at", { ascending: false })
     .limit(200);
-  type Row = Parameters<typeof renderDraftForRoute>[1] & { published_url: string; published_at: string | null; updated_at: string; rendered_html: string | null };
-  const rows = ((data ?? []) as Row[]).filter((r) => r.published_url.startsWith(prefix) && typeof r.markdown === "string");
+  const rows = ((data ?? []) as HostedRow[]).filter((r) => r.published_url.startsWith(prefix) && typeof r.markdown === "string");
   if (!rows.length) return [];
   const indexed = await indexedUrls(project.id, rows.map((r) => r.published_url));
-  const target: BacklinkTarget = { title: draft.title, keyword: draft.primary_keyword ?? draft.title, url };
+  const done = await linkToHosted(project, rows, indexed, { title: draft.title, keyword: draft.primary_keyword ?? draft.title, url }, false);
+
+  const stuck = await stuckArticle(project.id, draft.id).catch(() => null);
+  if (stuck && stuck.url.startsWith(prefix)) {
+    const touched = new Set(done.map((d) => d.sourceUrl));
+    const sources = rows.filter((r) => r.id !== stuck.id && !touched.has(r.published_url));
+    done.push(...(await linkToHosted(project, sources, indexed, { title: stuck.title, keyword: stuck.keyword, url: stuck.url }, true)));
+  }
+  return done;
+}
+
+async function linkToHosted(
+  project: Project,
+  rows: HostedRow[],
+  indexed: Set<string>,
+  target: BacklinkTarget,
+  onlyIndexed: boolean,
+): Promise<{ sourceUrl: string; anchor: string; to: string }[]> {
+  const { renderDraftForRoute } = await import("@/lib/job-handlers/finish");
+  const { schemaScript } = await import("@/lib/article-render");
+  const pool = rows.filter((r) => r.published_url !== target.url && (!onlyIndexed || indexed.has(r.published_url)));
   const picks = pickBacklinkSources(
     target,
-    rows.map((r) => ({ id: r.id, title: r.title, keyword: r.primary_keyword ?? r.title, url: r.published_url, indexed: indexed.has(r.published_url), publishedAt: r.published_at ?? "" })),
+    pool.map((r) => ({ id: r.id, title: r.title, keyword: r.primary_keyword ?? r.title, url: r.published_url, indexed: indexed.has(r.published_url), publishedAt: r.published_at ?? "" })),
   );
-  const done: { sourceUrl: string; anchor: string }[] = [];
+  const done: { sourceUrl: string; anchor: string; to: string }[] = [];
   for (const [i, pick] of picks.entries()) {
-    const row = rows.find((r) => r.id === pick.id)!;
-    const edit = backlinkEdit(row.markdown, target, pick.keyword, i === 0, project.language_code, url, { siteDomain: project.domain });
+    const row = pool.find((r) => r.id === pick.id)!;
+    const edit = backlinkEdit(row.markdown, target, pick.keyword, i === 0, project.language_code, target.url, { siteDomain: project.domain });
     if (!edit) continue;
     const finished = await renderDraftForRoute(project, { ...row, markdown: edit.markdown }, "hosted", row.published_at ?? new Date().toISOString());
     // The re-render re-inserts the article's other internal links from the
@@ -361,7 +442,7 @@ export async function linkOlderHostedArticles(
       if (error) console.warn(`[backlinks] ${project.slug}: could not link from ${row.published_url}: ${error.message}`);
       continue;
     }
-    done.push({ sourceUrl: row.published_url, anchor: edit.anchor });
+    done.push({ sourceUrl: row.published_url, anchor: edit.anchor, to: target.url });
   }
   return done;
 }

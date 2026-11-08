@@ -1097,7 +1097,7 @@ export async function publishDraftToRepo(
     "expects extra fields in the article header - reply here or ask your developer; it is a " +
     "one-time fix.\n\n" +
     (backlinks.length
-      ? `It also adds one link to the new article from ${backlinks.length === 1 ? "an older related article" : "two older related articles"}: ${backlinks.map((b) => `\`${b.path}\` ("${b.anchor}")`).join(", ")}.\n\n`
+      ? `It also adds ${backlinks.length === 1 ? "one internal link" : `${backlinks.length} internal links`} in older related articles, so Google finds the new article (and any older one it has not indexed yet) sooner: ${backlinks.map((b) => `\`${b.path}\` ("${b.anchor}")`).join(", ")}.\n\n`
       : "") +
     // Hosted sites have no Drafts screen; their article lives on /articles.
     `Review it on your dashboard: ${base}/${hostedWriter ? `articles/${draft.id}` : "drafts"}`;
@@ -1182,7 +1182,7 @@ async function repoBacklinkEntries(
   draft: RepoDraft,
   repoPath: string,
 ): Promise<{ path: string; content: string; anchor: string }[]> {
-  const { pickBacklinkSources, backlinkEdit, indexedUrls } = await import("./backlinks");
+  const { pickBacklinkSources, backlinkEdit, indexedUrls, stuckArticle } = await import("./backlinks");
   const { data } = await db()
     .from("article_drafts")
     .select("id, title, primary_keyword, repo_path, published_url, published_at")
@@ -1237,6 +1237,31 @@ async function repoBacklinkEntries(
     const text = Buffer.from(res.json.content as string, "base64").toString("utf8");
     const edit = backlinkEdit(text, target, pick.keyword, i === 0, project.language_code, newUrl, { mdx: /\.mdx$/i.test(row.path), siteDomain: project.domain });
     if (edit && edit.markdown !== text) out.push({ path: row.path, content: edit.markdown, anchor: edit.anchor });
+  }
+
+  // The not-indexed loop (backlinks.ts stuckArticle): the site's oldest
+  // article still unknown to Google two weeks after going live gets links
+  // from 1-2 related articles Google has indexed, in this same pull request.
+  const stuck = await stuckArticle(project.id, draft.id).catch(() => null);
+  const stuckRow = stuck && rows.find((r) => r.id === stuck.id);
+  if (stuck && stuckRow && busy) {
+    let stuckPath: string;
+    try {
+      stuckPath = new URL(stuck.url).pathname;
+    } catch {
+      return out;
+    }
+    const stuckTarget = { title: stuck.title, keyword: stuck.keyword, url: stuckPath };
+    const pool = rows.filter((r) => r.id !== stuck.id && indexed.has(r.url) && !out.some((o) => o.path === r.path) && !busy.has(r.path));
+    const stuckPicks = pickBacklinkSources(stuckTarget, pool.map((r) => ({ ...r, indexed: true })));
+    for (const [i, pick] of stuckPicks.entries()) {
+      const row = pool.find((r) => r.id === pick.id)!;
+      const res = await gh(token, "GET", `/repos/${repo}/contents/${encodeURI(row.path)}?ref=${encodeURIComponent(headSha)}`);
+      if (res.status !== 200 || typeof res.json?.content !== "string") continue;
+      const text = Buffer.from(res.json.content as string, "base64").toString("utf8");
+      const edit = backlinkEdit(text, stuckTarget, pick.keyword, i === 0, project.language_code, stuckPath, { mdx: /\.mdx$/i.test(row.path), siteDomain: project.domain });
+      if (edit && edit.markdown !== text) out.push({ path: row.path, content: edit.markdown, anchor: `${edit.anchor} -> ${stuckPath}` });
+    }
   }
   return out;
 }
