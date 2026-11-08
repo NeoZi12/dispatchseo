@@ -76,9 +76,11 @@ async function emailLink(formData: FormData) {
   const ip = clientIp(await headers());
   const allowed =
     (await rateLimitHit(rateLimitKey("auth-email-ip", ip), 10, 3600)) &&
-    // Per (email, IP), not per email: a per-address cap would let a stranger
-    // spend a victim's quota and lock them out; Supabase throttles the address.
-    (await rateLimitHit(rateLimitKey("auth-email", email, ip), 5, 3600));
+    // The tight (email, IP) key stops one network spending an address's quota;
+    // the loose cross-IP key bounds inbox bombing from many networks. Supabase's
+    // own 60-second per-address cooldown sits underneath both.
+    (await rateLimitHit(rateLimitKey("auth-email", email, ip), 5, 3600)) &&
+    (await rateLimitHit(rateLimitKey("auth-email-any", email), 20, 3600));
   if (!allowed) redirect("/login?error=rate");
   try {
     const supabase = await supabaseAuth();
