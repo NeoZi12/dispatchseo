@@ -6,7 +6,6 @@
 // (retry) pass through as references.
 import Link from "next/link";
 import { useState } from "react";
-import type { AutopilotArticle } from "@/lib/autopilot/report";
 import {
   ARTICLE_SORTS,
   ARTICLE_STATUS,
@@ -14,6 +13,7 @@ import {
   shortDate,
   articleHref,
   statusLabel,
+  type ArticleRow,
   type ArticleSort,
 } from "@/app/(dashboard)/article-status";
 import type { ArticleGlance } from "@/app/(dashboard)/articles/article-data";
@@ -29,16 +29,6 @@ import { cx, FOCUS_RING } from "./styles";
 
 const GRID = "sm:grid-cols-[10rem_minmax(0,1fr)_5rem_5.5rem_1rem]";
 
-/** The fields a row renders. The server hands the list these and not the
- *  whole report row (its error text, cost, position, URL, gain), which
- *  for 300 articles was most of the page's payload. */
-export type ArticleRow = Pick<AutopilotArticle, "draftId" | "runId" | "title" | "keyword" | "status" | "stage" | "createdAt" | "publishedAt" | "clicks28d" | "prUrl" | "prMerged">;
-export const ARTICLE_ROW_FIELDS = ["draftId", "runId", "title", "keyword", "status", "stage", "createdAt", "publishedAt", "clicks28d", "prUrl", "prMerged"] as const satisfies readonly (keyof ArticleRow)[];
-export function toArticleRow(a: AutopilotArticle): ArticleRow {
-  const row = {} as Record<string, unknown>;
-  for (const k of ARTICLE_ROW_FIELDS) row[k] = a[k];
-  return row as ArticleRow;
-}
 const css = (v: Record<string, string | number>) => v as React.CSSProperties;
 
 
