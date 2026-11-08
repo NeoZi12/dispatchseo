@@ -1028,6 +1028,15 @@ export async function publishDraftToRepo(
   });
   treeEntries.unshift({ path: repoPath, mode: "100644", type: "blob", content });
 
+  // Links TO the new article from its closest older ones, in this same commit
+  // so the link and its target go live together (backlinks.ts). Best-effort:
+  // a failure costs an inbound link, never the article.
+  const backlinks = await repoBacklinkEntries(token, repo, headSha, project, draft, repoPath).catch((e) => {
+    console.warn(`[repo-publish] ${repo}: older-article links skipped: ${e instanceof Error ? e.message : String(e)}`);
+    return [] as { path: string; content: string; anchor: string }[];
+  });
+  for (const b of backlinks) treeEntries.push({ path: b.path, mode: "100644", type: "blob", content: b.content });
+
   // The draft id rides in the branch name: a slug alone would let a later
   // draft that reuses it (the first was discarded, its PR left open) force-reset
   // the first draft's branch and adopt its pull request. Eight hex characters
@@ -1087,6 +1096,9 @@ export async function publishDraftToRepo(
     "Merge it to publish. If the build fails on this PR, your site " +
     "expects extra fields in the article header - reply here or ask your developer; it is a " +
     "one-time fix.\n\n" +
+    (backlinks.length
+      ? `It also adds one link to the new article from ${backlinks.length === 1 ? "an older related article" : "two older related articles"}: ${backlinks.map((b) => `\`${b.path}\` ("${b.anchor}")`).join(", ")}.\n\n`
+      : "") +
     // Hosted sites have no Drafts screen; their article lives on /articles.
     `Review it on your dashboard: ${base}/${hostedWriter ? `articles/${draft.id}` : "drafts"}`;
 
@@ -1153,6 +1165,95 @@ export async function publishDraftToRepo(
   });
 
   return { ok: true, prUrl, prNumber, repoPath, predictedUrls, merged };
+}
+
+/**
+ * The older-article edits for one new repo article (backlinks.ts). Only the
+ * engine's OWN published articles are candidates - never a page the owner
+ * wrote - and only ones in the same folder whose live URL ends in their file
+ * stem, because that proves the folder-to-URL mapping: the new article's URL
+ * is then the same prefix plus its own stem, not a guess.
+ */
+async function repoBacklinkEntries(
+  token: string,
+  repo: string,
+  headSha: string,
+  project: Project,
+  draft: RepoDraft,
+  repoPath: string,
+): Promise<{ path: string; content: string; anchor: string }[]> {
+  const { pickBacklinkSources, backlinkEdit, indexedUrls } = await import("./backlinks");
+  const { data } = await db()
+    .from("article_drafts")
+    .select("id, title, primary_keyword, repo_path, published_url, published_at")
+    .eq("project_id", project.id)
+    .eq("status", "published")
+    .neq("id", draft.id)
+    .not("repo_path", "is", null)
+    .not("published_url", "is", null)
+    .order("published_at", { ascending: false })
+    .limit(200);
+  const dir = dirOf(repoPath);
+  const stemNew = fileStem(baseOf(repoPath));
+  const prefixes = new Set<string>();
+  const rows: { id: string; title: string; keyword: string; path: string; url: string; publishedAt: string }[] = [];
+  for (const r of (data ?? []) as { id: string; title: string; primary_keyword: string | null; repo_path: string; published_url: string; published_at: string | null }[]) {
+    if (r.repo_path === repoPath || dirOf(r.repo_path) !== dir) continue;
+    let segs: string[];
+    let last: string | undefined;
+    try {
+      segs = new URL(r.published_url).pathname.split("/").filter(Boolean);
+      last = segs.pop();
+      last = last && decodeURIComponent(last);
+    } catch {
+      continue;
+    }
+    if (!last || last.toLowerCase() !== fileStem(baseOf(r.repo_path)).toLowerCase()) continue;
+    prefixes.add(segs.join("/"));
+    rows.push({ id: r.id, title: r.title, keyword: r.primary_keyword ?? r.title, path: r.repo_path, url: r.published_url, publishedAt: r.published_at ?? "" });
+  }
+  // One mapping or none: every sibling must sit under the SAME prefix, and a
+  // prefix with a date or a number in it (/2026/10/02/, a Jekyll or Hugo
+  // permalink) or several prefixes (categories from frontmatter) means the
+  // new article's address cannot be known from its folder - no link beats a
+  // dead one.
+  if (!rows.length || prefixes.size !== 1) return [];
+  const prefix = [...prefixes][0];
+  if (prefix.split("/").some((s) => /^\d+$/.test(s))) return [];
+  const newUrl = `/${[prefix, stemNew].filter(Boolean).join("/")}`;
+  // Files an open article pull request already changes are left alone: two
+  // article PRs editing one file conflict, and a conflicted PR never merges.
+  const busy = await filesInOpenArticlePrs(token, repo);
+  const indexed = await indexedUrls(project.id, rows.map((r) => r.url));
+  const target = { title: draft.title, keyword: draft.primary_keyword ?? draft.title, url: newUrl };
+  const picks = pickBacklinkSources(target, rows.map((r) => ({ ...r, indexed: indexed.has(r.url) })));
+  const out: { path: string; content: string; anchor: string }[] = [];
+  for (const [i, pick] of picks.entries()) {
+    const row = rows.find((r) => r.id === pick.id)!;
+    if (busy === null || busy.has(row.path)) continue;
+    // Read at the commit this one is built on, so the edit applies to the tree it lands on.
+    const res = await gh(token, "GET", `/repos/${repo}/contents/${encodeURI(row.path)}?ref=${encodeURIComponent(headSha)}`);
+    if (res.status !== 200 || typeof res.json?.content !== "string") continue;
+    const text = Buffer.from(res.json.content as string, "base64").toString("utf8");
+    const edit = backlinkEdit(text, target, pick.keyword, i === 0, project.language_code, newUrl, { mdx: /\.mdx$/i.test(row.path), siteDomain: project.domain });
+    if (edit && edit.markdown !== text) out.push({ path: row.path, content: edit.markdown, anchor: edit.anchor });
+  }
+  return out;
+}
+
+/** Paths changed by this repo's open DispatchSEO article pull requests; null
+ *  when GitHub could not say (then nothing older is touched). */
+async function filesInOpenArticlePrs(token: string, repo: string): Promise<Set<string> | null> {
+  const open = await gh(token, "GET", `/repos/${repo}/pulls?state=open&per_page=50`);
+  if (open.status !== 200 || !Array.isArray(open.json)) return null;
+  const prs = (open.json as unknown as { number: number; head?: { ref?: string } }[]).filter((p) => p.head?.ref?.startsWith("dispatchseo/article-"));
+  const out = new Set<string>();
+  for (const pr of prs.slice(0, 10)) {
+    const files = await gh(token, "GET", `/repos/${repo}/pulls/${pr.number}/files?per_page=100`);
+    if (files.status !== 200 || !Array.isArray(files.json)) return null;
+    for (const f of files.json as unknown as { filename?: string }[]) if (f.filename) out.add(f.filename);
+  }
+  return out;
 }
 
 /** "a/b/../c/./d.png" -> "a/c/d.png"; null when it climbs out of the repo. */

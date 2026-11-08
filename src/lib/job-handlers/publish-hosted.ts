@@ -8,6 +8,7 @@ import { dryDraftBlocked, parkDryDraft } from "./dry-guard";
 import { trackPublishedKeyword } from "@/lib/autopilot/tracking";
 import { ideaDone } from "@/lib/writer/runs";
 import { warmScreenshotsLater } from "@/lib/page-screenshot";
+import { linkOlderHostedArticles } from "@/lib/backlinks";
 
 // The hosted half of the publish job: the article is served by us under the
 // site's own /blog (src/lib/hosted-blog.ts), so "publishing" is a render for
@@ -81,12 +82,20 @@ export async function runHostedPublish(project: Project, draftId: string): Promi
 
   // Status re-checked in the write: a discard that landed between our read
   // and this update must win.
-  const { error } = await db()
+  const { data: flipped, error } = await db()
     .from("article_drafts")
     .update({ rendered_html: html, meta_description: finished.excerpt, status: "published", published_url: url, published_at: publishedAt, updated_at: now })
     .eq("id", row.id)
-    .in("status", LIVE);
+    .in("status", LIVE)
+    .select("id");
   if (error) throw new Error(`published, but could not record it: ${error.message}`);
+  // Its closest older articles link to it now that it is live (backlinks.ts) -
+  // only if it IS live: a discard that won the race above leaves nothing to
+  // link to. Best-effort: the article is published whatever happens here.
+  if (flipped?.length) await linkOlderHostedArticles(project, row, url).then(
+    (done) => { if (done.length) console.log(`[publish-hosted] ${project.slug}: linked from ${done.map((d) => `${d.sourceUrl} ("${d.anchor}")`).join(", ")}`); },
+    (e) => console.warn(`[publish-hosted] ${project.slug}: older-article links skipped: ${e instanceof Error ? e.message : String(e)}`),
+  );
   // The dashboard's preview of it (page-screenshot.ts). If the blog isn't
   // reachable at this address yet, the dashboard takes it later.
   warmScreenshotsLater(project.id, [url], 1);
