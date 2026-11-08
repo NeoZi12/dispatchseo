@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { cx, CONTROL, FOCUS_RING } from "@/components/ui/styles";
 import { BTN_PRIMARY, BTN_QUIET, Check, SceneCard, StepRow, type StepState } from "./primitives";
 import { FrameStrip } from "./strip";
@@ -21,6 +22,54 @@ export type SiteVerdict =
   | { kind: "refused"; platform: string }
   | { kind: "unknown" };
 
+// The host in whatever the customer has typed so far, once it looks like a
+// domain ("neozino.dev", "https://neozino.dev/blog"), else null.
+function faviconHost(value: string): string | null {
+  const host = value
+    .trim()
+    .toLowerCase()
+    .replace(/^[a-z]+:\/\//, "")
+    .split(/[/?#\s]/)[0]
+    .replace(/:\d+$/, "");
+  return /^([a-z0-9-]+\.)+[a-z]{2,}$/.test(host) ? host : null;
+}
+
+// The site's icon inside the address field, fetched from Google's favicon
+// service as soon as the text looks like a domain - so the customer sees
+// "yes, that site" while still typing. Invisible until it has loaded, so a
+// slow or missing icon never shows a broken image.
+function SiteFavicon({ value }: { value: string }) {
+  const host = faviconHost(value);
+  const [src, setSrc] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    if (!host) {
+      setSrc(null);
+      setLoaded(false);
+      return;
+    }
+    const t = setTimeout(() => {
+      setLoaded(false);
+      setSrc(`https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`);
+    }, 200);
+    return () => clearTimeout(t);
+  }, [host]);
+  if (!src) return null;
+  return (
+    <img
+      key={src}
+      src={src}
+      alt=""
+      aria-hidden="true"
+      width={28}
+      height={28}
+      onLoad={() => setLoaded(true)}
+      onError={() => setLoaded(false)}
+      className={cx("pointer-events-none absolute left-5 top-1/2 h-7 w-7 -translate-y-1/2 rounded-md transition-opacity duration-200", loaded ? "opacity-100" : "opacity-0")}
+    />
+  );
+}
+
 export function AddressScene({ value, onChange, onSubmit, onOverride, verdict, busy }: { value: string; onChange: (v: string) => void; onSubmit: () => void; onOverride?: () => void; verdict: SiteVerdict; busy?: boolean }) {
   const canGo = verdict.kind === "ok" || verdict.kind === "unknown";
   return (
@@ -35,6 +84,7 @@ export function AddressScene({ value, onChange, onSubmit, onOverride, verdict, b
           Website address
         </label>
         <div className="relative">
+          <SiteFavicon value={value} />
           <input
             id="site-address"
             type="text"
@@ -44,7 +94,7 @@ export function AddressScene({ value, onChange, onSubmit, onOverride, verdict, b
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder="yoursite.com"
-            className={cx(CONTROL, "h-16 rounded-2xl px-5 text-[22px] tracking-tight")}
+            className={cx(CONTROL, "h-16 rounded-2xl pr-5 text-[22px] tracking-tight transition-[padding] duration-200", faviconHost(value) ? "pl-14" : "pl-5")}
           />
           {verdict.kind === "checking" ? (
             <span aria-hidden="true" className="pointer-events-none absolute inset-x-5 bottom-2 h-[3px] overflow-hidden rounded-full">
