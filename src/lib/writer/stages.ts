@@ -4,7 +4,7 @@ import { getProjectById, writerProvider, type Project } from "@/lib/projects";
 import { loadSiteProfile } from "@/lib/site-profile";
 import { normalizeContentPrefs } from "@/lib/content-prefs";
 import { validateArticle, type ValidationReport } from "@/lib/article-validate";
-import { compareToCorpus, extractFromMarkdown, tokenize, type CorpusEntry } from "@/lib/similarity";
+import { compareToCorpus, extractFromMarkdown, phraseOverlap, titleOverlap, tokenize, type CorpusEntry } from "@/lib/similarity";
 import { AwaitingAgent, agentAnswerExists, agentKey, generate, judge, isAgentTaskFailed, isAwaitingAgent, isDryRun, parseJson, stableJson, yes, no, scoreOf, type Answer, type GenerateInput, type Question } from "./models";
 
 import {
@@ -874,6 +874,19 @@ async function plan(c: Ctx): Promise<void> {
   const outlineMd = `${parsed.angle}\n\n${parsed.sections.map((s) => `## ${s.heading}`).join("\n")}`;
   const sameness = isDryRun() ? { pass: true, flags: [] as { detail: string; against: string }[] } : compareToCorpus(extractFromMarkdown(outlineMd, new Set(tokenize(sheet.keyword))), await corpusEntries(project.id), "outline");
   if (!sameness.pass) problems.push(...sameness.flags.map((f) => `${f.detail} (against ${f.against}) - change the heading skeleton`));
+  // Other sites' articles on this same keyword and market (crossSiteCorpus):
+  // they were written from the same shared fact sheet, so two sites in one
+  // niche can converge on one article. Re-angle the title and the skeleton
+  // now, while that is a re-plan.
+  if (!isDryRun()) {
+    const others = await crossSiteCorpus(project, sheet.keyword);
+    const outlineFeatures = extractFromMarkdown(outlineMd, new Set(tokenize(sheet.keyword)));
+    for (const o of others) {
+      if (titleOverlap(parsed.title, o.title) >= CROSS_TITLE_LIMIT) problems.push("the title is nearly the same as another site's article on this keyword - pick a title from THIS site's own angle");
+      const cross = compareToCorpus(outlineFeatures, [o], "outline");
+      if (cross.flags.some((f) => f.kind === "headings")) problems.push(`the heading skeleton matches another site's article on this keyword - take this site's own angle and structure`);
+    }
+  }
 
   const total = planCost + judgeCost;
   if (problems.length && attempts < 1) {
@@ -1935,8 +1948,20 @@ async function runChecks(c: Ctx, sheet: FactSheet, brief: SiteBrief, p: Plan, in
   }
 
   // 5. Sameness against the site's own recent posts.
-  const sameness = compareToCorpus(extractFromMarkdown(full, new Set(tokenize(sheet.keyword))), await corpusEntries(project.id), "final");
+  const features = extractFromMarkdown(full, new Set(tokenize(sheet.keyword)));
+  const sameness = compareToCorpus(features, await corpusEntries(project.id), "final");
   for (const f of sameness.flags) issues.push({ section: f.kind === "opening" ? "" : null, note: `${f.detail} (against ${f.against}) - rewrite so it does not echo that post`, blocking: true });
+  // 5b. ...and against OTHER sites' articles on this keyword and market: the
+  //     shared fact sheet makes near-twins possible across customers, and two
+  //     near-identical pages on two domains read as a network to Google. The
+  //     other article is never named (another customer's page).
+  for (const o of await crossSiteCorpus(project, sheet.keyword)) {
+    const cross = compareToCorpus(features, [o], "final");
+    const overlap = phraseOverlap(features, o);
+    if (cross.flags.some((f) => f.kind === "opening")) issues.push({ section: "", note: "the opening repeats another site's article on this keyword word for word - open from this site's own angle", blocking: true });
+    if (cross.flags.some((f) => f.kind === "headings")) issues.push({ section: null, note: "the heading skeleton matches another site's article on this keyword - restructure around this site's angle", blocking: true });
+    if (overlap > CROSS_PHRASE_LIMIT) issues.push({ section: null, note: `${Math.round(overlap * 100)}% of the phrasing matches another site's article on this keyword - say it in this site's own words and with its own examples`, blocking: true });
+  }
 
   // 6. The opening shape THIS article was given (layoutFor): a TL;DR callout
   //    first when its layout has one, the one table before any H2 when its
@@ -2303,6 +2328,44 @@ async function existingTitles(projectId: string): Promise<{ titles: string[]; sl
     if (row.title) titles.push(row.title);
   }
   return { titles, slugs };
+}
+
+/** Two titles this alike, on two sites, for one keyword, are one title. */
+const CROSS_TITLE_LIMIT = 0.8;
+/** Shared 5-word phrasing above this with another site's article blocks. */
+const CROSS_PHRASE_LIMIT = 0.15;
+
+/**
+ * Other sites' articles for the same keyword in the same market (country and
+ * language), from the last 6 months, newest first: the articles this one
+ * could converge with, because research for one keyword+market is served
+ * from one cached fact sheet for 45 days. Labelled anonymously - another
+ * customer's article is never named in a note a customer can see.
+ */
+async function crossSiteCorpus(project: Project, keyword: string): Promise<(CorpusEntry & { title: string })[]> {
+  const kw = keyword.toLowerCase().trim();
+  if (!kw) return [];
+  const { data, error } = await db()
+    .from("article_drafts")
+    .select("project_id, title, primary_keyword, markdown")
+    .neq("project_id", project.id)
+    .ilike("primary_keyword", kw.replace(/[\\%_]/g, (m) => `\\${m}`))
+    .in("status", ["accepted", "blocked_setup", "finished", "published"])
+    .gte("created_at", new Date(Date.now() - 183 * 86_400_000).toISOString())
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (error || !data?.length) return [];
+  const rows = data as { project_id: string; title: string; primary_keyword: string | null; markdown: string }[];
+  const { data: projects } = await db().from("projects").select("id, location_code, language_code").in("id", [...new Set(rows.map((r) => r.project_id))]);
+  const sameMarket = new Set(
+    ((projects ?? []) as { id: string; location_code: number | null; language_code: string | null }[])
+      .filter((p) => p.location_code === project.location_code && p.language_code === project.language_code)
+      .map((p) => p.id),
+  );
+  return rows
+    .filter((r) => sameMarket.has(r.project_id) && typeof r.markdown === "string")
+    .slice(0, 8)
+    .map((r) => ({ ...extractFromMarkdown(r.markdown, new Set(tokenize(r.primary_keyword ?? ""))), label: "another site's article", title: r.title }));
 }
 
 /** The site's last 20 accepted articles as sameness features (8 until

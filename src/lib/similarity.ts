@@ -297,6 +297,18 @@ export function compareToCorpus(
   };
 }
 
+/** Shared 5-word phrasing between two articles (Jaccard of shingles):
+ *  ~0.01 for two articles that merely share a topic; a rewrite of the same
+ *  page sits well above 0.15. */
+export function phraseOverlap(a: Features, b: Features): number {
+  return jaccard(shingles(a.words, STOCK_PHRASE_LEN), shingles(b.words, STOCK_PHRASE_LEN));
+}
+
+/** Title tokens shared (Jaccard), keyword tokens included. */
+export function titleOverlap(a: string, b: string): number {
+  return jaccard(new Set(tokenize(a)), new Set(tokenize(b)));
+}
+
 // The pairwise score behind the weekly drift audit: one number per pair of
 // published guides, same signals as the gate. 0 = unrelated, 1 = identical.
 export function pairScore(a: Features, b: Features): number {
