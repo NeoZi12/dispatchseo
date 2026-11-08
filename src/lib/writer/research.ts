@@ -4,7 +4,7 @@ import { providerOrganic, serpProviderForProject } from "@/lib/serp";
 import { isCloudMode } from "@/lib/cloud";
 import { platformBudgetGate, platformDataforseoEnv } from "@/lib/dataforseo-usage";
 import { loadSiteProfile } from "@/lib/site-profile";
-import { normalizeContentPrefs } from "@/lib/content-prefs";
+import { normalizeContentPrefs, ownerFactsOf } from "@/lib/content-prefs";
 import type { Project } from "@/lib/projects";
 import { fetchPage, fetchPageText, type FetchedPage, type UnreadReason } from "./fetch";
 import { generate, judge, isDryRun, parseJson, yes, no, type Answer, type Question } from "./models";
@@ -544,6 +544,7 @@ export async function buildSiteBrief(project: Project, keyword: string): Promise
     pages,
     queries,
     alreadyRanks: already ? { url: "", position: already.position } : null,
+    ownerFacts: ownerFactsOf(project.content_prefs),
   };
 }
 

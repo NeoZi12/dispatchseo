@@ -54,6 +54,7 @@ import {
   type SiteBrief,
   type UnsupportedFigure,
   unsupportedFigures,
+  usesOwnerFact,
 } from "./evidence";
 import { advanceRun, failRun, getWriterRun, recordDraft, saveScratch, suggestionIdsInFlight, VENDOR_FAILURE_RE, type FailureKind, type Stage, type WriterRun } from "./runs";
 
@@ -1951,6 +1952,12 @@ async function runChecks(c: Ctx, sheet: FactSheet, brief: SiteBrief, p: Plan, in
   const features = extractFromMarkdown(full, new Set(tokenize(sheet.keyword)));
   const sameness = compareToCorpus(features, await corpusEntries(project.id), "final");
   for (const f of sameness.flags) issues.push({ section: f.kind === "opening" ? "" : null, note: `${f.detail} (against ${f.against}) - rewrite so it does not echo that post`, blocking: true });
+  // 5a. The owner's own facts (content_prefs.owner_facts): when the owner gave
+  //     any, the article carries at least one - first-hand detail is what
+  //     separates it from the page-one rewrite a spam filter looks for.
+  if (brief.ownerFacts?.length && !usesOwnerFact(full, brief.ownerFacts)) {
+    issues.push({ section: null, note: `the article uses none of the owner's own facts; work ONE in where it genuinely fits, in plain words: ${brief.ownerFacts.map((f) => `"${f}"`).join("; ")}`, blocking: true });
+  }
   // 5b. ...and against OTHER sites' articles on this keyword and market: the
   //     shared fact sheet makes near-twins possible across customers, and two
   //     near-identical pages on two domains read as a network to Google. The

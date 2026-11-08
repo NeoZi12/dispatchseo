@@ -1650,8 +1650,9 @@ agents working without the repo checked out.
 
 The owner's template controls from the dashboard's Instructions page:
 `house_rules` (free text injected into every build), `disabled_archetypes`
-(guide shapes removed from rotation), and `disabled_blocks` (skeleton
-parts dropped). Takes no parameters. Build workflows don't need to call
+(guide shapes removed from rotation), `disabled_blocks` (skeleton
+parts dropped), and `owner_facts` (the owner's own first-hand facts).
+Takes no parameters. Build workflows don't need to call
 this directly - the same preferences are already rendered into
 `get_instructions`.
 
@@ -1672,6 +1673,11 @@ current value.
   <Field name="disabled_archetypes" type="array">
     Any of `tutorial`, `comparison`, `data-study`, `opinion`,
     `reference`. At least 2 must stay enabled.
+  </Field>
+  <Field name="owner_facts" type="array">
+    Up to 8 short first-hand facts about the business (its prices, years,
+    numbers, how it works), each up to 240 characters. Every hosted-writer
+    article then works in at least one. `[]` clears them.
   </Field>
   <Field name="disabled_blocks" type="array">
     Any of `cover`, `tldr`, `comparison_table`, `visuals`, `faq`. All are

@@ -39,8 +39,12 @@ import {
   GUIDE_BLOCKS,
   HOUSE_RULES_MAX,
   normalizeContentPrefs,
+  normalizeOwnerFacts,
+  ownerFactsOf,
+  OWNER_FACT_CHARS,
+  OWNER_FACTS_MAX,
 } from "@/lib/content-prefs";
-import { saveContentPrefs } from "@/lib/content-prefs-store";
+import { mergeContentPrefs, saveContentPrefs } from "@/lib/content-prefs-store";
 import { renderInstructions, WORKFLOWS } from "@/lib/instructions";
 import { backendBaseUrl, getPipelinePack, hasDataforseo } from "@/lib/pipeline-pack";
 import { deferStep, DEFERRABLE_IDS, getSetupStep, undeferStep } from "@/lib/setup-path";
@@ -4462,13 +4466,14 @@ const mcpHandler = createMcpHandler(
           "house_rules (free-text standing instructions injected into every build), " +
           "disabled_archetypes (guide shapes removed from rotation), and " +
           "disabled_blocks (guide skeleton parts dropped: cover, tldr, comparison_table, " +
-          "visuals, faq). Build workflows don't need to call this - the same " +
-          "preferences are already rendered into the get_instructions text.",
+          "visuals, faq), and owner_facts (the owner's own first-hand facts; every " +
+          "hosted-writer article uses at least one). Build workflows don't need to call " +
+          "this - the same preferences are already rendered into the get_instructions text.",
         inputSchema: {},
       },
       async () => {
         const p = currentProject();
-        return ok(normalizeContentPrefs(p.content_prefs));
+        return ok({ ...normalizeContentPrefs(p.content_prefs), owner_facts: ownerFactsOf(p.content_prefs) });
       },
     );
 
@@ -4483,7 +4488,9 @@ const mcpHandler = createMcpHandler(
           "this conversation; an autonomous build run must never adjust its own " +
           "content preferences. Provided fields replace their current value " +
           "wholesale (omitted fields keep theirs). At least 2 archetypes must " +
-          "stay in rotation.",
+          "stay in rotation. owner_facts: up to 8 first-hand facts about the business " +
+          "(its prices, years, numbers, how it works) - every hosted-writer article then " +
+          "works in at least one; [] clears them.",
         inputSchema: {
           house_rules: z
             .string()
@@ -4501,6 +4508,11 @@ const mcpHandler = createMcpHandler(
               "Guide skeleton parts to drop from every build: cover, tldr, comparison_table, " +
                 "visuals, faq. All are on by default; `cover` drops the agent-drawn cover image.",
             ),
+          owner_facts: z
+            .array(z.string().max(OWNER_FACT_CHARS))
+            .max(OWNER_FACTS_MAX)
+            .optional()
+            .describe("The owner's own facts, one short sentence each (e.g. \"Flat $95 call-out fee in Minneapolis\"). Replaces the current list."),
         },
       },
       async (patch) => {
@@ -4513,7 +4525,14 @@ const mcpHandler = createMcpHandler(
         };
         const { prefs, error } = await saveContentPrefs(p, next);
         if (error) return fail(error);
-        return ok({ saved: true, project: p.slug, content_prefs: prefs });
+        // Their own key, merged on its own (content-prefs.ts ownerFactsOf).
+        let ownerFacts = ownerFactsOf(p.content_prefs);
+        if (patch.owner_facts) {
+          ownerFacts = normalizeOwnerFacts(patch.owner_facts);
+          const factError = await mergeContentPrefs(p.id, { owner_facts: ownerFacts });
+          if (factError) return fail(factError);
+        }
+        return ok({ saved: true, project: p.slug, content_prefs: { ...prefs, owner_facts: ownerFacts } });
       },
     );
 

@@ -59,6 +59,36 @@ export const MIN_ENABLED_ARCHETYPES = 2;
 
 // Tolerant parse of whatever the JSONB column holds - unknown keys and bad
 // values degrade to defaults, never a crash (same posture as conventions).
+/**
+ * The owner's own facts (spam-safety research, 2026-11-08: the articles that
+ * rank carry something only this business knows - its prices, its years, its
+ * numbers). Stored as their own key in content_prefs, NOT in ContentPrefs, so
+ * a template-editor save (which writes the modelled knobs) can never wipe
+ * them. Every article uses at least one when any exist (writer verify).
+ */
+export const OWNER_FACTS_MAX = 8;
+export const OWNER_FACT_CHARS = 240;
+
+export function ownerFactsOf(contentPrefs: unknown): string[] {
+  const raw = (contentPrefs ?? {}) as { owner_facts?: unknown };
+  return normalizeOwnerFacts(raw.owner_facts);
+}
+
+export function normalizeOwnerFacts(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const x of raw) {
+    if (typeof x !== "string") continue;
+    const f = x.replace(/\s+/g, " ").trim().slice(0, OWNER_FACT_CHARS);
+    if (f.length < 8 || seen.has(f.toLowerCase())) continue;
+    seen.add(f.toLowerCase());
+    out.push(f);
+    if (out.length >= OWNER_FACTS_MAX) break;
+  }
+  return out;
+}
+
 export function normalizeContentPrefs(raw: unknown): ContentPrefs {
   const o = (raw ?? {}) as Record<string, unknown>;
   const houseRules =
