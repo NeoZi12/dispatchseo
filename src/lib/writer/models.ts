@@ -259,7 +259,11 @@ export async function generate(input: GenerateInput): Promise<GenerateResult> {
   // must reach the stage untouched, not be caught as a failed candidate and
   // ledgered as an error.
   if (input.provider === "agent") return generateViaAgent(input);
-  if (input.provider === "batch") return generateViaBatch(input);
+  // Batch is the default lane (projects.ts writerProvider), so it must
+  // degrade, never break: only a run's call (the task rows hang off the run)
+  // whose model is Anthropic's (the only batch API wired) parks; anything
+  // else - a self-host on another vendor, a call outside a run - goes live.
+  if (input.provider === "batch" && input.runId && slotSpecs(input.slot)[0]?.provider === "anthropic") return generateViaBatch(input);
   const candidates = slotSpecs(input.slot);
   const errors: string[] = [];
   // Money spent on candidates that threw (truncated output, no JSON after a

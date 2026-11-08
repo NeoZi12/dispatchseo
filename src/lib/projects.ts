@@ -306,13 +306,20 @@ export const DEFAULT_PROJECT_ID = "00000000-0000-4000-8000-000000000001";
 // dashboard hands this slug straight back to every server action.
 const FALLBACK_PROJECT_SLUG = "default";
 
-/** Which engine answers the hosted writer's generative calls. Anything but an
- *  explicit 'agent' or 'batch' (absence pre-0069 included) is the API: the
- *  subscription path parks a run until an operator-side workflow answers it,
- *  which no customer project has, so it must never be the fallback. 'batch'
- *  (0075, set by SQL) parks on Anthropic's Message Batches API at half price. */
+/** Which engine answers the hosted writer's generative calls.
+ *
+ *  BATCH IS THE DEFAULT (owner, 2026-11-08): every site, the column's old
+ *  'api' default and a missing column included, writes through Anthropic's
+ *  Message Batches API at half price. Every published cost (about $0.055 an
+ *  article) is measured on that lane, and the only price is latency - 40-90
+ *  minutes an article, which a done-for-you blog never notices. 'live' (set
+ *  by SQL, for an operator who needs an article in minutes) is the full-price
+ *  API; 'agent' is the operator's subscription writer, which parks a run
+ *  until an operator-side workflow answers it - never a customer's. */
 export function writerProvider(p: Pick<Project, "writer_provider">): "api" | "agent" | "batch" {
-  return p.writer_provider === "agent" ? "agent" : p.writer_provider === "batch" ? "batch" : "api";
+  if (p.writer_provider === "agent") return "agent";
+  if (p.writer_provider === "live") return "api";
+  return "batch";
 }
 
 // mcp_token deliberately excluded - only fetchProjectToken exposes it.
