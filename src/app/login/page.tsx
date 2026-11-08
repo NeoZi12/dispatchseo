@@ -58,7 +58,7 @@ async function cloudLogin(formData: FormData) {
 }
 
 const inputCls =
-  "w-full rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-3 text-white placeholder-neutral-500 focus:outline-none focus:border-neutral-400";
+  "w-full rounded-lg border border-neutral-800 bg-neutral-900/60 px-4 py-3 text-white placeholder-neutral-500 transition-colors focus:border-neutral-500 focus:outline-none";
 
 function CloudLoginPage({
   error,
@@ -88,12 +88,14 @@ function CloudLoginPage({
   const strandedExtra = matched.length - stranded.length;
   return (
     <AuthShell>
-      <h1 className="text-xl font-semibold text-white">
-        <Link href="/" className="flex items-center gap-2.5">
-          <DispatchMark className="h-7 w-auto" />
-          DispatchSEO
-        </Link>
-      </h1>
+      <Link href="/" className="inline-flex items-center gap-2 text-base font-semibold text-white">
+        <DispatchMark className="h-6 w-auto" />
+        DispatchSEO
+      </Link>
+      <div className="space-y-1.5 pt-4">
+        <h1 className="text-2xl font-semibold tracking-tight text-white">Welcome back</h1>
+        <p className="text-sm text-neutral-400">Sign in to see how your site is doing on Google.</p>
+      </div>
       {stranded.length > 0 ? (
         <div className="space-y-1.5 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-200/90">
           <p className="leading-relaxed">
@@ -126,31 +128,27 @@ function CloudLoginPage({
           Password updated - sign in with your new password.
         </p>
       ) : null}
-      <GoogleSignInButton label="Continue with Google" />
-      <AuthDivider />
-      <form action={cloudLogin} className="space-y-4">
-        <FormPending label="Signing you in" />
-        <input type="email" name="email" placeholder="Email" className={inputCls} />
-        <input type="password" name="password" placeholder="Password" className={inputCls} />
-        <div className="-mt-1 flex justify-end">
-          <Link
-            href="/forgot-password"
-            className="text-xs text-neutral-500 hover:text-neutral-300"
-          >
-            Forgot password?
-          </Link>
-        </div>
-        {error ? <p className="text-sm text-red-400">Sign-in failed - check the email and password.</p> : null}
-        <button
-          type="submit"
-          className="w-full rounded-lg bg-white px-4 py-3 font-medium text-neutral-950"
-        >
-          Sign in
-        </button>
-      </form>
-      <p className="text-sm text-neutral-500">
+      <div className="space-y-5 pt-2">
+        <GoogleSignInButton label="Continue with Google" />
+        <AuthDivider />
+        <form action={cloudLogin} className="space-y-3">
+          <FormPending label="Signing you in" />
+          <input type="email" name="email" autoComplete="email" placeholder="Email" className={inputCls} />
+          <input type="password" name="password" autoComplete="current-password" placeholder="Password" className={inputCls} />
+          {error ? <p className="text-sm text-red-400">Sign-in failed - check the email and password.</p> : null}
+          <button type="submit" className="w-full rounded-lg bg-white px-4 py-3 font-medium text-neutral-950 transition-colors hover:bg-neutral-200">
+            Sign in
+          </button>
+          <div className="flex items-center justify-end pt-1 text-sm">
+            <Link href="/forgot-password" className="text-neutral-500 transition-colors hover:text-neutral-300">
+              Forgot password?
+            </Link>
+          </div>
+        </form>
+      </div>
+      <p className="border-t border-neutral-800/80 pt-5 text-sm text-neutral-500">
         New here?{" "}
-        <Link href="/signup" className="text-neutral-300 underline">
+        <Link href="/signup" className="font-medium text-white underline-offset-4 hover:underline">
           Create an account
         </Link>
       </p>

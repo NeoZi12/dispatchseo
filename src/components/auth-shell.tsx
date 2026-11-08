@@ -40,7 +40,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
         </Link>
       ) : null}
       <div className="flex w-full items-center justify-center p-6 lg:w-1/2">
-        <div className="w-full max-w-sm space-y-4">{children}</div>
+        <div className="w-full max-w-sm space-y-5">{children}</div>
       </div>
       <aside className="hidden items-center justify-center border-l border-neutral-800/60 bg-neutral-900/30 lg:flex lg:w-1/2">
         <AuthShowcase />

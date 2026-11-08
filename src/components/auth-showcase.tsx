@@ -7,7 +7,8 @@ import { SLIDES } from "@/lib/showcase-slides";
 // The signup/login page's right column: the landing screenshot reel adapted
 // for auth pages (DataFast/Postiz pattern - form on the left, rotating
 // product proof on the right). Tailwind-only on purpose: auth pages don't
-// load landing.css.
+// load landing.css. The frame uses the screenshots' own 3020:1370 shape (the
+// landing's), so every shot shows whole - no side crop.
 
 const AUTOPLAY_MS = 2500;
 
@@ -22,14 +23,14 @@ export function AuthShowcase() {
   }, []);
 
   return (
-    <div className="flex w-full max-w-2xl flex-col items-center gap-5 px-4 py-12">
+    <div className="flex w-full max-w-3xl flex-col items-center gap-6 px-10 py-12">
       <div className="text-center" key={slide.id}>
-        <h2 className="text-xl font-semibold text-white">{slide.title}</h2>
+        <h2 className="text-2xl font-semibold tracking-tight text-white">{slide.title}</h2>
         <p className="mt-1 text-sm text-neutral-400">{slide.caption}</p>
       </div>
       <div
         className="relative w-full overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900 shadow-[0_24px_60px_-24px_rgba(0,0,0,0.8)]"
-        style={{ aspectRatio: "16 / 10" }}
+        style={{ aspectRatio: "3020 / 1370" }}
       >
         {SLIDES.map((s, i) => (
           <div
@@ -41,9 +42,9 @@ export function AuthShowcase() {
               src={s.image}
               alt={active === i ? s.alt : ""}
               fill
-              sizes="(max-width: 1024px) 0px, 55vw"
+              sizes="(max-width: 1024px) 0px, 50vw"
               quality={90}
-              className="object-cover object-top"
+              className="object-cover"
             />
           </div>
         ))}
