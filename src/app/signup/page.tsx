@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import Link from "next/link";
 import { DispatchMark } from "@/components/logo";
 import { AuthDivider } from "@/components/google-signin";
@@ -13,6 +13,8 @@ import { isCloudMode } from "@/lib/cloud";
 import { supabaseAuth } from "@/lib/cloud-auth";
 import { authCallbackUrl } from "@/lib/origin";
 import { mintEmailLinkNonce } from "@/lib/email-link-nonce";
+import { rateLimitHit, rateLimitKey } from "@/lib/rate-limit";
+import { clientIp } from "@/lib/login-lockout";
 import { cleanDomain, isValidDomain } from "@/lib/domain";
 import { captureServer, identifyServer } from "@/lib/posthog-server";
 
@@ -65,6 +67,10 @@ async function signup(formData: FormData) {
   // skipped rather than trusted to the client.
   if (formData.get("accept") !== "yes") redirect(`/signup?error=terms${back}`);
   if (!email || password.length < 8) redirect(`/signup?error=weak${back}`);
+  // Each signup sends a confirmation email: capped per network before
+  // Supabase is asked (fails closed).
+  const ip = clientIp(await headers());
+  if (!(await rateLimitHit(rateLimitKey("auth-signup-ip", ip), 5, 3600))) redirect(`/signup?error=rate${back}`);
   const supabase = await supabaseAuth();
   // Without emailRedirectTo, Supabase sends the confirmed visitor to the
   // project's Site URL, which is "/" - the landing page, which has no idea what
@@ -288,6 +294,8 @@ export default async function SignupPage({
             </p>
           ) : error === "weak" ? (
             <p className="text-sm text-red-400">Use a valid email and at least 8 characters.</p>
+          ) : error === "rate" ? (
+            <p className="text-sm text-red-400">Too many attempts from this network. Try again in an hour.</p>
           ) : error === "exists" ? (
             // Amber, not red: the person did nothing wrong, they already have
             // what they were trying to make. The point is to hand them the way

@@ -9,7 +9,7 @@
 // caller's own rows.
 
 import { randomBytes } from "node:crypto";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { isCloudMode } from "@/lib/cloud";
 import { currentUser, supabaseAuth } from "@/lib/cloud-auth";
@@ -17,6 +17,8 @@ import { freeSignupsOpen } from "@/lib/billing";
 import { PROJECT_COOKIE } from "@/lib/active-project";
 import { authCallbackUrl } from "@/lib/origin";
 import { mintEmailLinkNonce } from "@/lib/email-link-nonce";
+import { rateLimitHit, rateLimitKey } from "@/lib/rate-limit";
+import { clientIp } from "@/lib/login-lockout";
 import { chooseGithubRepo } from "@/app/actions";
 import {
   createHostedProjectForUser,
@@ -105,6 +107,13 @@ export async function startEmailSignIn(rawEmail: string, input: SignInInput): Pr
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "That email doesn't look right." };
   const blocked = await beforeSignIn(input);
   if (blocked) return blocked;
+  // Every call sends an email on our domain, so it is capped per network and
+  // per address before Supabase is asked (fails closed; never says which cap).
+  const ip = clientIp(await headers());
+  const allowed =
+    (await rateLimitHit(rateLimitKey("auth-email-ip", ip), 10, 3600)) &&
+    (await rateLimitHit(rateLimitKey("auth-email", email.trim().toLowerCase()), 3, 3600));
+  if (!allowed) return { error: "Too many attempts from this network. Try again in an hour." };
   // The link only works in this browser (lib/email-link-nonce.ts).
   const nonce = await mintEmailLinkNonce();
   const { error } = await (await supabaseAuth()).auth.signInWithOtp({

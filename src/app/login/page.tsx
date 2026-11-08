@@ -8,6 +8,7 @@ import { supabaseAuth } from "@/lib/cloud-auth";
 import { authCallbackUrl } from "@/lib/origin";
 import { mintEmailLinkNonce } from "@/lib/email-link-nonce";
 import { captureServer } from "@/lib/posthog-server";
+import { rateLimitHit, rateLimitKey } from "@/lib/rate-limit";
 import { REPO_SLUG } from "@/lib/repo-notice";
 import {
   clearLoginFailures,
@@ -44,14 +45,16 @@ async function login(formData: FormData) {
   redirect("/dashboard");
 }
 
-// CLOUD_MODE sign-in: a real account, not the shared password. Supabase
-// enforces its own per-IP rate limits on auth endpoints, so the self-host
-// login-lockout table isn't consulted here.
+// CLOUD_MODE sign-in: a real account, not the shared password. The self-host
+// login-lockout table isn't consulted here; a per-network cap is checked
+// before Supabase is asked, on top of Supabase's own limits.
 async function cloudLogin(formData: FormData) {
   "use server";
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   if (!email || !password) redirect("/login?error=1");
+  const ip = clientIp(await headers());
+  if (!(await rateLimitHit(rateLimitKey("auth-pw-ip", ip), 20, 900))) redirect("/login?error=rate");
   const supabase = await supabaseAuth();
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) redirect("/login?error=1");
@@ -68,6 +71,13 @@ async function emailLink(formData: FormData) {
   "use server";
   const email = String(formData.get("email") ?? "").trim();
   if (!email) redirect("/login?error=link");
+  // Each call sends an email: capped per network and per address before
+  // Supabase is asked (fails closed; the message never says which cap).
+  const ip = clientIp(await headers());
+  const allowed =
+    (await rateLimitHit(rateLimitKey("auth-email-ip", ip), 10, 3600)) &&
+    (await rateLimitHit(rateLimitKey("auth-email", email.trim().toLowerCase()), 3, 3600));
+  if (!allowed) redirect("/login?error=rate");
   try {
     const supabase = await supabaseAuth();
     // The link only works in this browser (lib/email-link-nonce.ts).
@@ -183,6 +193,8 @@ function CloudLoginPage({
           <input type="password" name="password" autoComplete="current-password" placeholder="Password" className={inputCls} />
           {error === "link" ? (
             <p className="text-sm text-red-400">Type your email first.</p>
+          ) : error === "rate" ? (
+            <p className="text-sm text-red-400">Too many attempts from this network. Try again in an hour.</p>
           ) : error === "device" ? (
             <p className="text-sm text-red-400">
               That sign-in link was asked for in a different browser. Open it in the browser you asked from, or send a new one here.

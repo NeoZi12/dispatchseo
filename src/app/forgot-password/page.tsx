@@ -1,10 +1,13 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import Link from "next/link";
 import { isCloudMode } from "@/lib/cloud";
 import { supabaseAuth } from "@/lib/cloud-auth";
 import { backendBaseUrl } from "@/lib/pipeline-pack";
 import { isValidEmail } from "@/lib/waitlist";
 import { mintEmailLinkNonce } from "@/lib/email-link-nonce";
+import { rateLimitHit, rateLimitKey } from "@/lib/rate-limit";
+import { clientIp } from "@/lib/login-lockout";
 import { DispatchMark } from "@/components/logo";
 import { AuthShell } from "@/components/auth-shell";
 
@@ -25,6 +28,13 @@ async function sendReset(formData: FormData) {
   "use server";
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   if (!isValidEmail(email)) redirect("/forgot-password?error=invalid");
+  // Each request sends an email: capped per network and per address before
+  // Supabase is asked (fails closed; the message never says which cap).
+  const ip = clientIp(await headers());
+  const allowed =
+    (await rateLimitHit(rateLimitKey("auth-reset-ip", ip), 5, 3600)) &&
+    (await rateLimitHit(rateLimitKey("auth-reset-email", email), 3, 3600));
+  if (!allowed) redirect("/forgot-password?error=rate");
 
   // The reset link must point at OUR origin, never one derived from request
   // headers - a spoofed Host/X-Forwarded-Host would land the recovery token
@@ -102,6 +112,8 @@ export default async function ForgotPasswordPage({
         <input type="email" name="email" placeholder="Email" autoFocus className={inputCls} />
         {error === "invalid" ? (
           <p className="text-sm text-red-400">Enter a valid email address.</p>
+        ) : error === "rate" ? (
+          <p className="text-sm text-red-400">Too many attempts from this network. Try again in an hour.</p>
         ) : error === "device" ? (
           <p className="text-sm text-red-400">
             Open the reset link in the same browser you requested it from, then try again.
