@@ -431,8 +431,10 @@ async function compress(png: Buffer): Promise<Buffer> {
 // cheaper but square, and its 16:9 crop cut the subject). The scene call is
 // a few hundred output tokens, so a picture cover costs less than the drawn
 // one it replaces. The picture is stored once (Supabase Storage, bucket
-// "covers") as PNG - repo publishers commit it under a .png name - and
-// /api/cover serves it. No token, a refused prompt or any failure falls back
+// "covers") exactly as Workers AI returns it (JPEG), with its content type;
+// /api/cover serves it and repo publishers name the file by that type. No
+// re-encoding: sharp cannot load on Vercel (libvips is missing - the first
+// production picture died there on 2026-11-08 and fell back to the drawing). No token, a refused prompt or any failure falls back
 // to the drawn cover above; an article never waits on a picture.
 
 export const COVER_IMAGE_W = 1024;
@@ -477,7 +479,7 @@ export function pictureCoverPrompt(scene: string, theme: CoverTheme | null, hue:
 }
 
 /** One picture from Workers AI, as PNG. Null on any failure. */
-export async function paintCover(prompt: string): Promise<{ png: Buffer; costUsd: number; model: string; ms: number } | null> {
+export async function paintCover(prompt: string): Promise<{ bytes: Buffer; contentType: string; costUsd: number; model: string; ms: number } | null> {
   const ai = workersAi();
   if (!ai) return null;
   const t0 = Date.now();
@@ -500,15 +502,23 @@ export async function paintCover(prompt: string): Promise<{ png: Buffer; costUsd
       console.warn(`[cover] picture not painted (${res.status}): ${json?.errors?.[0]?.message ?? "no image in the reply"}`);
       return null;
     }
-    const raw = Buffer.from(b64.replace(/^data:image\/\w+;base64,/, ""), "base64");
-    if (raw.byteLength < 1_000 || raw.byteLength > 10 * 1024 * 1024) return null;
-    const sharp = (await import("sharp")).default;
-    const png = await sharp(raw).png({ compressionLevel: 9, adaptiveFiltering: true }).toBuffer();
-    return { png, costUsd: COVER_IMAGE_USD, model: COVER_IMAGE_MODEL.replace(/^@cf\//, ""), ms: Date.now() - t0 };
+    const bytes = Buffer.from(b64.replace(/^data:image\/\w+;base64,/, ""), "base64");
+    if (bytes.byteLength < 1_000 || bytes.byteLength > 10 * 1024 * 1024) return null;
+    const contentType = imageTypeOf(bytes);
+    if (!contentType) return null;
+    return { bytes, contentType, costUsd: COVER_IMAGE_USD, model: COVER_IMAGE_MODEL.replace(/^@cf\//, ""), ms: Date.now() - t0 };
   } catch (err) {
     console.warn(`[cover] picture not painted: ${err instanceof Error ? err.message : String(err)}`);
     return null;
   }
+}
+
+/** JPEG, PNG or WebP by their magic bytes; null for anything else. */
+function imageTypeOf(b: Buffer): string | null {
+  if (b[0] === 0xff && b[1] === 0xd8) return "image/jpeg";
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return "image/png";
+  if (b.subarray(0, 4).toString("ascii") === "RIFF" && b.subarray(8, 12).toString("ascii") === "WEBP") return "image/webp";
+  return null;
 }
 
 async function coverBucket(): Promise<void> {
@@ -517,11 +527,11 @@ async function coverBucket(): Promise<void> {
 }
 
 /** Store a picture cover at `path` inside the covers bucket. */
-export async function storePictureCover(path: string, png: Buffer): Promise<boolean> {
-  let { error } = await db().storage.from(COVER_BUCKET).upload(path, png, { contentType: "image/png", upsert: true });
+export async function storePictureCover(path: string, bytes: Buffer, contentType = "image/jpeg"): Promise<boolean> {
+  let { error } = await db().storage.from(COVER_BUCKET).upload(path, bytes, { contentType, upsert: true });
   if (error && /not found|bucket/i.test(error.message)) {
     await coverBucket().catch(() => undefined);
-    ({ error } = await db().storage.from(COVER_BUCKET).upload(path, png, { contentType: "image/png", upsert: true }));
+    ({ error } = await db().storage.from(COVER_BUCKET).upload(path, bytes, { contentType, upsert: true }));
   }
   if (error) console.warn(`[cover] picture not stored at ${path}: ${error.message}`);
   return !error;
@@ -535,21 +545,27 @@ export async function copyPictureCover(from: string, to: string): Promise<boolea
   return !error;
 }
 
-/** A stored picture cover, or null when there is none. */
-export async function loadPictureCover(path: string): Promise<Buffer | null> {
-  const { data, error } = await db().storage.from(COVER_BUCKET).download(path);
-  if (error || !data) return null;
-  return Buffer.from(await data.arrayBuffer());
+/** A stored picture cover with its type, or null when there is none. The
+ *  first pictures (2026-11-08, re-encoded locally) sit under a .png name. */
+export async function loadPictureCover(path: string): Promise<{ bytes: Buffer; contentType: string } | null> {
+  for (const p of [path, `${path}.png`]) {
+    const { data, error } = await db().storage.from(COVER_BUCKET).download(p);
+    if (error || !data) continue;
+    const bytes = Buffer.from(await data.arrayBuffer());
+    return { bytes, contentType: imageTypeOf(bytes) ?? "image/png" };
+  }
+  return null;
 }
 
-/** Where a draft's picture cover lives in the bucket. */
+/** Where a draft's picture cover lives in the bucket (no extension: the
+ *  stored object carries its own type). */
 export function draftPicturePath(draftId: string): string {
-  return `drafts/${draftId}.png`;
+  return `drafts/${draftId}`;
 }
 
 /** Where a run keeps its picture until the draft exists. */
 export function runPicturePath(runId: string): string {
-  return `runs/${runId}.png`;
+  return `runs/${runId}`;
 }
 
 /** The picture's line in the cost ledger, beside the model calls. */

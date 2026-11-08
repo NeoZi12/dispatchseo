@@ -1052,7 +1052,7 @@ async function paintPictureCover(c: Ctx, keyword: string, siteName: string, p: P
   await ledgerPicture(c.project.id, c.run.id, painted.model, painted.costUsd, painted.ms);
   costUsd += painted.costUsd;
   const path = runPicturePath(c.run.id);
-  return (await storePictureCover(path, painted.png)) ? { path, costUsd } : { path: null, costUsd };
+  return (await storePictureCover(path, painted.bytes, painted.contentType)) ? { path, costUsd } : { path: null, costUsd };
 }
 
 function archetypeContract(archetype: string): string {

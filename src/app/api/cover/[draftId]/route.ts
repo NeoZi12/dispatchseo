@@ -49,7 +49,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ draftId
   // covers"), is the cover; the drawing below is for everything else.
   const picture = await loadPictureCover(draftPicturePath(draftId)).catch(() => null);
   if (picture) {
-    return new Response(new Uint8Array(picture), { headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=3600" } });
+    return new Response(new Uint8Array(picture.bytes), { headers: { "Content-Type": picture.contentType, "Cache-Control": "public, max-age=3600" } });
   }
 
   // The site's colours, when we have read them (lib/hosted-theme.ts): the

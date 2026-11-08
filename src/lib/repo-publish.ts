@@ -990,6 +990,10 @@ export async function publishDraftToRepo(
       // before the deploy serving /api/cover was live, and nothing said so.
       if (!image) console.warn(`[publish-repo] cover dropped for ${slug}: ${draft.cover_url} did not return an image`);
       if (image) {
+        // Named by what it is: a picture cover arrives as JPEG (cover-art.ts),
+        // a drawn one as PNG.
+        const ext = image.mimeType === "image/jpeg" ? ".jpg" : image.mimeType === "image/webp" ? ".webp" : ".png";
+        if (ext !== ".png") coverTarget = { repoPath: coverTarget.repoPath.replace(/\.png$/, ext), ref: coverTarget.ref.replace(/\.png$/, ext) };
         const blob = await gh(token, "POST", `/repos/${repo}/git/blobs`, {
           content: Buffer.from(image.bytes).toString("base64"),
           encoding: "base64",
