@@ -1,5 +1,6 @@
 import { INSTALL_ID_RE } from "@/lib/heartbeat";
 import { captureServer } from "@/lib/posthog-server";
+import { rateLimitHit, rateLimitKey } from "@/lib/rate-limit";
 
 // Receiver for the self-host heartbeat. The sender, the exact payload, and the
 // opt-out all live in src/lib/heartbeat.ts - read that first.
@@ -41,6 +42,12 @@ export async function POST(req: Request): Promise<Response> {
   }
   if (typeof version !== "string" || !VERSION_RE.test(version)) {
     return Response.json({ ok: false, error: "invalid version" }, { status: 400 });
+  }
+
+  // A real install pings once a day; 10 an hour per id stops a loop from
+  // flooding PostHog. Fails OPEN - a database blip must not drop real pings.
+  if (!(await rateLimitHit(rateLimitKey("heartbeat", install_id), 10, 3600, { failOpen: true }))) {
+    return Response.json({ ok: false, error: "rate limited" }, { status: 429 });
   }
 
   // distinct_id IS the install id, which is what makes "unique users on
