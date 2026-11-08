@@ -6,6 +6,7 @@ import {
   isActive,
   ownerUserIdForProject,
   polarConfigured,
+  FREE_ARTICLES_PER_MONTH,
   writerGate,
   type Tier,
 } from "./billing";
@@ -229,6 +230,9 @@ async function monthToDateCostMicrousd(ownerId: string): Promise<number> {
 // fails OPEN (never double-deny), matching planGate's own tolerance. Only
 // returns allowed:false in the one case this exists to catch: an active,
 // covered cloud subscriber who has spent through this month's budget.
+/** A free-plan owner's DataForSEO allowance a month (platform-billed). */
+export const FREE_DATAFORSEO_BUDGET_MICROUSD = 300_000;
+
 export async function platformBudgetGate(
   projectId: string,
 ): Promise<{ allowed: true } | { allowed: false; reason: string }> {
@@ -240,7 +244,18 @@ export async function platformBudgetGate(
   const ownerId = await ownerUserIdForProject(projectId);
   if (!ownerId) return { allowed: true };
   const sub = await getSubscription(ownerId);
-  if (!isActive(sub)) return { allowed: true };
+  // No live plan: the free tier (writerGate lets its one site research) gets
+  // a small fixed monthly budget per owner - a first research is ~$0.06, a
+  // refill and two article SERPs about $0.02 - so a free account can never
+  // run up the platform's DataForSEO bill. With the free tier closed the
+  // writer never gets here for such an owner (writerGate says no first).
+  if (!isActive(sub)) {
+    if (FREE_ARTICLES_PER_MONTH <= 0) return { allowed: true };
+    const spent = await monthToDateCostMicrousd(ownerId);
+    return spent >= FREE_DATAFORSEO_BUDGET_MICROUSD
+      ? { allowed: false, reason: `DataForSEO usage budget reached for the free plan this month (${(FREE_DATAFORSEO_BUDGET_MICROUSD / 1_000_000).toFixed(2)})` }
+      : { allowed: true };
+  }
   const budgetMicrousd = budgetForSub(sub!);
   const spentMicrousd = await monthToDateCostMicrousd(ownerId);
   if (spentMicrousd >= budgetMicrousd) {
