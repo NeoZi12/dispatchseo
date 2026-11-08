@@ -74,6 +74,10 @@ export type ChangelogEntry = {
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "improved",
+    text: "The home page on a phone breathes more evenly and keeps the hand-drawn sketches beside the pixel desk, which used to appear only on desktop.",
+  },
+  {
+    kind: "improved",
     text: "Every dashboard page opens faster. The same facts were being read several times per page, one after another; they are now read once, together, and the pages download less code.",
   },
   {

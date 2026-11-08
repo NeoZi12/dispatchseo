@@ -244,7 +244,12 @@ export default async function LandingPage({
             </a>
           ) : null}
           {/* .br-desk: the composed two-line break is a desktop luxury - phones
-              drop it so the headline reflows to whatever fits. */}
+              drop it so the copy reflows to whatever fits. The h1 is the one
+              exception (.br-h1 stays at every width): its last word rotates,
+              and when the break was left to the browser a longer audience
+              pushed "autopilot" down a row and a shorter one pulled it back,
+              so the headline bounced every few seconds. With a hard break
+              before "for", only the final row ever changes shape. */}
           {/* The audience rotates inside the slab (startups -> vibe coders ->
               indie hackers -> online stores -> agencies -> online schools -> side
               projects); the sentence around it and the
@@ -253,7 +258,7 @@ export default async function LandingPage({
               is two plain rows: the outcome and the price ("…traffic for free"),
               then what we ship (SEO articles, published for you). Two rows max -
               anything more goes in the CTA's small print. */}
-          <h1>Google traffic on autopilot<br className="br-desk" /> for <RotatingWord words={AUDIENCES} /></h1>
+          <h1>Google traffic on autopilot<br className="br-h1" /> for <RotatingWord words={AUDIENCES} /></h1>
           <p className="sub">Get Google, ChatGPT and Claude traffic for free.<br className="br-desk" /> Researched, fact-checked SEO articles, published to your site on autopilot.</p>
 
           <div className="cta-row" id="get-started">

@@ -515,14 +515,30 @@ html:has(.ld) { scroll-behavior: smooth; }
   .ld .nav-links { display: none; }
   .ld .nav-cta { display: none; }
   .ld .nav-burger { display: grid; }
-  .ld .doodle { display: none; }
+  /* The final section's doodles go: that section is one tight column on a
+     phone and the sketches landed on top of its copy. The HERO keeps its
+     three - they are what makes the first screen feel drawn rather than
+     templated - just smaller and tucked into the gutters either side of the
+     pixel stage, where the column is narrowest and nothing can collide. */
+  .ld .doodle-f1, .ld .doodle-f2 { display: none; }
+  .ld .doodle-l { left: 4%; top: clamp(40px, 7svh, 84px); width: 50px; transform: rotate(-14deg); }
+  .ld .doodle-r { right: 6%; top: clamp(44px, 7svh, 84px); width: 42px; transform: rotate(16deg); }
+  .ld .doodle-arrow { right: 7%; top: 58%; width: 64px; }
   .ld .br-desk { display: none; }
 
-  /* hero: sized off the visible viewport, headline free to reflow */
+  /* hero: sized off the visible viewport, headline free to reflow. The gaps
+     between the blocks breathe with the viewport (svh) so a tall phone spends
+     its slack between the blocks instead of piling it all above and below the
+     centred column; the short-viewport tier further down still tightens. */
   .ld .hero { justify-content: center; padding: 24px 0 56px; }
-  .ld .hero h1 { font-size: clamp(30px, 7vw, 54px); margin-bottom: 18px; text-wrap: balance; }
-  .ld .hero .sub { font-size: clamp(16px, 3.4vw, 20px); line-height: 1.4; margin-bottom: 28px; }
-  .ld .pixel-stage { width: min(380px, 84vw); margin-bottom: 14px; }
+  /* No text-wrap: balance here: balance re-splits the whole headline off its
+     total width, which includes the rotating word, so the rows above moved
+     with it. With the hard .br-h1 the rows above the word are stable on their
+     own; pretty only tidies orphans within a row. */
+  .ld .hero h1 { font-size: clamp(30px, 7vw, 54px); margin-bottom: clamp(16px, 2.6svh, 24px); text-wrap: pretty; }
+  .ld .hero .sub { font-size: clamp(16px, 3.4vw, 20px); line-height: 1.45; max-width: 34ch; margin-bottom: clamp(26px, 4svh, 38px); }
+  .ld .pixel-stage { width: min(380px, 84vw); margin-bottom: clamp(16px, 3svh, 30px); }
+  .ld .gh-proof { margin-top: clamp(22px, 4svh, 38px); }
   .ld .domain-cta { width: min(340px, 100%); gap: 10px; }
   .ld .domain-cta .btn { padding: 14px 18px; min-height: 50px; font-size: 16px; }
   .ld .domain-group { padding: 5px 5px 5px 14px; }
@@ -611,6 +627,9 @@ html:has(.ld) { scroll-behavior: smooth; }
 
 @media (max-width: 600px) {
   .ld { --pad: 20px; --navpad: 20px; }
+  /* No room for the arrow beside a 340px CTA on a phone: the two corner
+     sketches carry the hand-drawn feel on their own. */
+  .ld .doodle-arrow { display: none; }
   .ld section { padding: 58px 0; }
   .ld section#features { padding-top: 66px; }
   .ld .sec-h { margin-bottom: 34px; }
@@ -805,7 +824,7 @@ html:has(.ld) { scroll-behavior: smooth; }
      The 14px gap is tighter than the note's 22px on purpose: these two now
      belong to each other, and the hero has to fit a phone viewport. Padding
      goes up so the tap target clears 44px, which 11px + a 21px mark did not. */
-  .ld .discord-hero { position: static; left: auto; bottom: auto; z-index: auto; margin-top: 14px; justify-content: center; }
+  .ld .discord-hero { position: static; left: auto; bottom: auto; z-index: auto; margin-top: clamp(14px, 2.4svh, 22px); justify-content: center; }
   .ld .dc-link { padding: 12px 16px 12px 14px; -webkit-tap-highlight-color: transparent; }
 
   .ld .why-scrim { position: fixed; inset: 0; z-index: 60; background: rgba(6, 6, 8, 0.7); backdrop-filter: blur(3px); animation: why-scrim-in 0.2s ease both; }
