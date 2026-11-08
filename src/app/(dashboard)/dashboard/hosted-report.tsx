@@ -309,7 +309,7 @@ export async function HostedReport({
         </Callout>
       ) : null}
 
-      {operatorSites ? <OperatorStrip sites={operatorSites} /> : null}
+      {operatorSites?.length ? <OperatorStrip sites={operatorSites} /> : null}
 
       <SiteIssues issues={siteIssues.filter((h) => !(r.paused && h.job.startsWith("autopilot-pause--")))} />
 
@@ -530,29 +530,28 @@ function SiteIssues({ issues }: { issues: CronHealth[] }) {
 
 /** The operator's view across every hosted site (OPERATOR_USER_IDS only;
  *  see autopilot/operator.ts). Raw error text on purpose - this reader
- *  debugs it. */
+ *  debugs it. Only rendered when a site has an issue: a healthy fleet shows
+ *  nothing, and dismissing the last line removes the box. */
 function OperatorStrip({ sites }: { sites: OperatorSite[] }) {
   return (
     <Card as="section" aria-labelledby="ops-title" className="border-l-2 border-l-warn">
       <CardHeader
         id="ops-title"
         title="All sites"
-        description={sites.length ? `${sites.length} ${sites.length === 1 ? "site needs" : "sites need"} a look. Only operators see this. A dismissed line comes back if its job fails again.` : "Every hosted site is healthy. Only operators see this."}
+        description={`${sites.length} ${sites.length === 1 ? "site needs" : "sites need"} a look. Only operators see this. A dismissed line comes back if its job fails again.`}
       />
-      {sites.length ? (
-        <ul className="mt-4 divide-y divide-line-soft">
-          {sites.map((site) => (
-            <li key={site.slug || "instance"} className="space-y-2 py-3.5 first:pt-0 last:pb-0">
-              <p className="text-sm font-medium text-ink">
-                {site.name} <span className="font-normal text-ink-faint">{site.domain}</span>
-              </p>
-              {site.issues.map((i) => (
-                <OperatorIssue key={i.job} job={i.job} error={i.error} />
-              ))}
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      <ul className="mt-4 divide-y divide-line-soft">
+        {sites.map((site) => (
+          <li key={site.slug || "instance"} className="space-y-2 py-3.5 first:pt-0 last:pb-0">
+            <p className="text-sm font-medium text-ink">
+              {site.name} <span className="font-normal text-ink-faint">{site.domain}</span>
+            </p>
+            {site.issues.map((i) => (
+              <OperatorIssue key={i.job} job={i.job} error={i.error} />
+            ))}
+          </li>
+        ))}
+      </ul>
     </Card>
   );
 }
