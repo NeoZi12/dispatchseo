@@ -147,7 +147,7 @@ export async function getAnalyticsOverview(project: Project, opts: AnalyticsOver
     // No GSC property connected yet -> no fresh numbers, by definition.
     project.gsc_site_url && opts.fresh24 !== false
       ? gscClientForProject(project)
-          .then((sc) => getFresh24h(project.gsc_site_url!, sc))
+          .then((sc) => getFresh24h(project.gsc_site_url!, sc, project.id))
           .catch(() => null)
       : Promise.resolve(null),
   ]);

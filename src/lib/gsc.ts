@@ -257,8 +257,14 @@ const fresh24Cache = new Map<string, { at: number; data: Fresh24h }>();
 // HOURLY_ALL), plus the 24 hours before for the trend arrow. Fresh numbers
 // are provisional - Google revises them as hours finalize. Throws on API
 // errors; callers decide the fallback.
-export async function getFresh24h(site: string, scArg?: GscClient): Promise<Fresh24h> {
-  const hit = fresh24Cache.get(site);
+// Keyed by `${cacheScope}|${site}`, never by site alone: two projects can
+// name the same property, and a site-only key served one project's cached
+// numbers (read with ITS credential) to the other. Callers holding a
+// per-project client pass the project id; the default scope is the shared
+// service account's.
+export async function getFresh24h(site: string, scArg?: GscClient, cacheScope = "service-account"): Promise<Fresh24h> {
+  const cacheKey = `${cacheScope}|${site}`;
+  const hit = fresh24Cache.get(cacheKey);
   if (hit && Date.now() - hit.at < FRESH24_TTL) return hit.data;
   const sc = scArg ?? (await searchConsole());
   const now = Date.now();
@@ -289,7 +295,7 @@ export async function getFresh24h(site: string, scArg?: GscClient): Promise<Fres
       out.prevImpressions += r.impressions ?? 0;
     }
   }
-  fresh24Cache.set(site, { at: now, data: out });
+  fresh24Cache.set(cacheKey, { at: now, data: out });
   return out;
 }
 
