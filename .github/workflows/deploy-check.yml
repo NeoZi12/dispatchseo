@@ -18,6 +18,11 @@ concurrency:
   group: deploy-check
   cancel-in-progress: true # a newer push supersedes this check
 
+# Checks out the repo to run the Vercel ignore-build script; every probe
+# after that is plain curl, not the GitHub API.
+permissions:
+  contents: read
+
 jobs:
   smoke:
     runs-on: ubuntu-latest

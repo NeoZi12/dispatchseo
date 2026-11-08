@@ -16,6 +16,9 @@ concurrency:
   group: hourly-gsc
   cancel-in-progress: false
 
+# Only curls the backend with a secret - no GitHub API, no checkout.
+permissions: {}
+
 jobs:
   ping:
     runs-on: ubuntu-latest

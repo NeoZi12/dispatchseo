@@ -44,6 +44,11 @@ concurrency:
   group: changelog-announce
   cancel-in-progress: false # never cancel mid-post - a half-posted release is worse than a slow one
 
+# Checks out the repo to diff the changelog; the Discord post and the
+# dashboard report go out over plain curl, not the GitHub API.
+permissions:
+  contents: read
+
 jobs:
   announce:
     runs-on: ubuntu-latest
