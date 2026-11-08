@@ -529,6 +529,14 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
       "finished article is no longer held back for being a little shorter than its target. Articles are now " +
       "written by Claude Sonnet, which keeps the cost per article down.",
   },
+  {
+    kind: "improved",
+    text:
+      "A security pass before the new engine ships. Password-reset links now open only in the browser " +
+      "that asked for them, sign-in and reset emails are rate-limited, connecting the GitHub App requires " +
+      "proof that you installed it, Search Console numbers come only from the Google account you " +
+      "connected, and the dashboard session cookie is no longer readable by page scripts.",
+  },
 ];
 
 // Newest first. The head of this list is what the banner announces.
