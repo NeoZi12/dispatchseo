@@ -22,12 +22,12 @@ overrides:
   postcss: ">=8.5.10"
   # Dependabot: fast-uri host-confusion fix; sharp libvips CVEs (next
   # otherwise pulls 0.34.x).
-  fast-uri: ">=3.1.4"
-  sharp: ">=0.35.0"
+  fast-uri: ">=4.2.3"
+  sharp: ">=0.35.5"
   # Dependabot GHSA-mh99-v99m-4gvg: brace-expansion DoS via unbounded
   # expansion length (pulled in transitively through googleapis -> gaxios ->
   # rimraf -> glob -> minimatch).
-  brace-expansion: ">=5.0.8"
+  brace-expansion: ">=5.0.12"
   # GHSA-frvp-7c67-39w9: path traversal in @hono/node-server's serve-static on
   # Windows via an encoded backslash. It rides in transitively under
   # @modelcontextprotocol/sdk (twice - directly and through mcp-handler). Our
@@ -35,9 +35,21 @@ overrides:
   # static server, so this is not reachable here - but an unpatched advisory in
   # the tree is a thing every self-hoster's scanner will flag, and the fix is a
   # patch bump.
-  '@hono/node-server': ">=2.0.5"
+  '@hono/node-server': ">=2.1.3"
   # mcp-handler@1.1.0 pins its @modelcontextprotocol/sdk peer to exactly
   # 1.26.0; force the patched SDK we depend on directly so only one copy
   # resolves. (pnpm 11 ignores the package.json "pnpm" field, so the
   # override lives here with the others.)
   '@modelcontextprotocol/sdk': "1.32.2"
+  # 2026-11-08 audit: patch-level fixes for the transitive advisories pnpm
+  # audit still listed after the direct bumps. Same-major ranges only, so each
+  # is a drop-in: js-yaml 4 removed safeLoad (gray-matter needs 3.x) and
+  # postcss needs nanoid 3.
+  js-yaml: ">=3.15.2 <4"
+  nanoid: ">=3.3.18 <4"
+  source-map-js: ">=1.2.2"
+  ip-address: ">=10.7.4"
+  qs: ">=6.16.1"
+  body-parser: ">=2.4.0"
+  proxy-addr: ">=2.0.8"
+  hono: ">=4.13.11"
