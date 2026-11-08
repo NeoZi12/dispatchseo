@@ -741,7 +741,13 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
   }
   const inPillar = (c: Judged) => (openPillar && seedOf(c.keyword) === openPillar ? 1 : 0);
   const weak = (c: Judged) => weakness.get(c.keyword)?.score ?? 0;
-  passed.sort((a, b) => inPillar(b) - inPillar(a) || weak(b) - weak(a)); // stable: ties keep opportunity order
+  // Weakness says how winnable page one is; volume says what winning is
+  // worth. Ranked on weakness alone, a 140-search idea with one forum on page
+  // one went ahead of a 9,900-search one at KD 0 (MNS Plumbing, 2026-11-08).
+  // One point of weakness (a forum result, a stale page) is worth about a
+  // 4.6x volume step: 1.5 x log10(volume).
+  const worth = (c: Judged) => weak(c) + 1.5 * Math.log10(Math.max(10, c.volume ?? 0));
+  passed.sort((a, b) => inPillar(b) - inPillar(a) || worth(b) - worth(a)); // stable: ties keep opportunity order
 
   const added: ResearchAdded[] = [];
   let backlogged = 0;
