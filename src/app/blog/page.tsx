@@ -19,7 +19,7 @@ import { coversForPosts } from "@/lib/blog-covers";
 export const metadata: Metadata = {
   title: "Blog - DispatchSEO",
   description:
-    "Guides on agent-driven SEO: running your coding agent as your SEO manager, keyword research, and publishing pipelines.",
+    "Guides on SEO on autopilot: what Google and the AI engines pick up, how articles get researched, fact-checked and published for you, and what it costs.",
   alternates: { canonical: "/blog" },
 };
 

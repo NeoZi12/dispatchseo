@@ -10,12 +10,14 @@ import { DispatchMark } from "@/components/logo";
 const SITE_URL = "https://dispatchseo.com/";
 
 // Keep each label short enough to sit on ONE row in the narrow rail - benefit
-// first, no wrapping.
+// first, no wrapping. Same four lines as the landing's Free card: the
+// product writes and publishes the articles now (pivot, 2026-11-08), there
+// is no coding agent in the pitch any more.
 const TICKS = [
-  "Keyword research",
-  "Fresh content weekly",
-  "Daily rank tracking",
-  "Free & open source",
+  "Topics people search for",
+  "Fact-checked articles",
+  "Published for you",
+  "Free to start",
 ];
 
 function CheckIcon({ className }: { className?: string }) {
@@ -44,7 +46,7 @@ export function SideAd({ className = "" }: { className?: string }) {
       <DispatchMark className="h-7 w-7" />
       <p className="mt-3 text-[15px] font-semibold text-neutral-100">DispatchSEO</p>
       <p className="mt-1.5 text-[13px] leading-relaxed text-neutral-400">
-        Your coding agent as your SEO manager.
+        SEO articles, researched and published to your site on autopilot.
       </p>
       <ul className="mt-4 flex flex-col gap-2.5">
         {TICKS.map((tick) => (
@@ -58,14 +60,14 @@ export function SideAd({ className = "" }: { className?: string }) {
         href={SITE_URL}
         className="mt-5 block rounded-lg bg-violet-500 px-3.5 py-2 text-center text-[13px] font-semibold text-white outline-none transition-colors hover:bg-violet-400 focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-900"
       >
-        Try it free
+        Start for free
       </a>
       <p className="mt-4 flex items-center gap-2 border-t border-neutral-800 pt-3 text-xs text-neutral-500">
         <span
           className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400 ring-2 ring-emerald-400/20"
           aria-hidden="true"
         />
-        Written and shipped by DispatchSEO&apos;s own pipeline
+        This post was written and published by DispatchSEO itself
       </p>
     </aside>
   );
