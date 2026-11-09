@@ -217,7 +217,12 @@ async function laneOf(project: Project, run: WriterRun): Promise<"live" | "defau
   const stamped = run.stage_outputs.lane;
   if (stamped === "live" || stamped === "default") return stamped;
   let lane: "live" | "default" = "default";
-  const fresh = run.stage === "pick" && Object.keys(run.stage_outputs).length === 0;
+  // "Nothing saved" must ignore the free plan's ledger stamp: recordIfFree
+  // writes free_start_id before pick is queued, so counting every key sent
+  // every free site's first article down the Batch lane (easyrender,
+  // 2026-11-09: the one customer the fast lane exists for).
+  const scratch = Object.keys(run.stage_outputs).filter((k) => k !== "free_start_id");
+  const fresh = run.stage === "pick" && scratch.length === 0;
   if (fresh && writerProvider(project) === "batch") {
     const [done, prior] = await Promise.all([
       db().from("writer_runs").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("status", "done").neq("id", run.id),

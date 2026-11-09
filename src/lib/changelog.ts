@@ -89,6 +89,10 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
     text: "On the free plan, an article that fails because of a problem on our side no longer counts as one of your two for the month.",
   },
   {
+    kind: "fixed",
+    text: "A free site's first article now takes the fast lane like every other first article. It was quietly going through the slow overnight lane, which could add hours to the wait.",
+  },
+  {
     kind: "improved",
     text: "Setup asks you to pick a plan up front, free included, instead of only showing a payment step to people who came from the pricing page.",
   },
