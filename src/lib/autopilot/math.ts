@@ -708,9 +708,11 @@ export const BACKLOG_REFILL_WEEKS = 4;
  *  2026: $4.26 of DataForSEO for 14 articles). */
 export const BACKLOG_FILL_WEEKS = 8;
 export const BACKLOG_FILL_MIN = 8;
-/** The free tier's backlog: two articles a month need a year of ideas, not
- *  a hundred (the locked freemium number). */
-export const FREE_BACKLOG_TARGET = 24;
+/** The free tier's backlog: four months of its two articles a month, the
+ *  same floor a Starter site gets (BACKLOG_FILL_MIN). It was 24 until
+ *  2026-11-09, three times a paid site's, so a free site's first research
+ *  could spend most of its $0.30 DataForSEO month before its first article. */
+export const FREE_BACKLOG_TARGET = BACKLOG_FILL_MIN;
 export function backlogTarget(articlesPerWeek: number, free: boolean): number {
   if (free) return FREE_BACKLOG_TARGET;
   const weeks = BACKLOG_FILL_WEEKS * Math.max(0, Math.floor(articlesPerWeek));

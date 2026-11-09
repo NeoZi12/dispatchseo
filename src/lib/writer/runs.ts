@@ -442,6 +442,23 @@ export async function failRun(run: WriterRun, reason: string, costUsd = 0, kind?
   if (!data) return;
   if (outputs) run.stage_outputs = outputs;
   run.status = "failed";
+  // The same "our failure" predicate as scheduler.ts returnSlotAfterOurFailure
+  // and usage.ts: a vendor fault, a refusal at pick, or page one unreadable
+  // for under a cent. Paid sites get their slot back through those two; a
+  // free site's two-a-month live in free_article_starts, written at start,
+  // so without this an outage on our side cost a free owner half their month.
+  const ours = kind === "infra" || run.stage === "pick" || (run.stage === "research" && extra.unreadable_serp === true && Number(run.cost_usd) + costUsd < 0.01);
+  if (ours) {
+    try {
+      const { isCloudMode } = await import("@/lib/cloud");
+      if (isCloudMode()) {
+        const { refundFreeStart } = await import("@/lib/free-gate");
+        await refundFreeStart(run.project_id, run.created_at);
+      }
+    } catch (e) {
+      console.warn(`[writer] free start refund skipped for run ${run.id}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 }
 
 

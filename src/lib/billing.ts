@@ -92,11 +92,10 @@ export function planAllowsTools(tier: Tier | null | undefined): boolean {
  *  operator's ownerless rows) - there is no tier to read. */
 export const UNBILLED_ARTICLES_PER_WEEK = 2;
 
-/** Articles a month a free-tier site (isFreePlan) gets. 0 until the free
- *  tier opens in the engine - today a free site gets articlesPerWeek 0 -
- *  and the scheduler must read THIS constant when it does, because the
- *  dashboard's upgrade panel compares Starter against it ("2x the free
- *  plan" appears only once this is above 0). */
+/** Articles a month a free-tier site (isFreePlan) gets (the free tier opened
+ *  2026-11-08). The scheduler, the free start ledger (free-gate.ts) and the
+ *  dashboard's upgrade panel ("2x the free plan") all read THIS constant;
+ *  0 closes the tier again. */
 export const FREE_ARTICLES_PER_MONTH = 2;
 
 /** Days between two free-tier articles: the monthly number as the spacing

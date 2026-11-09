@@ -5,7 +5,7 @@ import { db } from "./db";
 
 // The free plan's abuse gate and memory (owner, 2026-11-08). Server-only.
 //
-// A free site costs us about $0.12 a month, and a new domain costs an abuser
+// A free site costs us about $0.21 a month, and a new domain costs an abuser
 // about $10 a year, so the DOMAIN is the wall: one free site per registrable
 // domain, ever. The other keys catch the same person coming back with a
 // different email, GitHub account, browser or network. Everything here is
@@ -231,6 +231,28 @@ export async function recordFreeStart(ownerId: string, projectId: string, domain
     .from("free_article_starts")
     .insert({ owner_user_id: ownerId, project_id: projectId, domain: reg ? keyOf("domain", reg) : null });
   if (error) throw new Error(`free start not recorded: ${error.message}`);
+}
+
+/** Hands a free article back when its run died on OUR side (a vendor fault,
+ *  a refusal at pick before any work, page one unreadable): the start row
+ *  goes, so freeStartAllowed counts two real articles a month, the way
+ *  usage.ts and the scheduler already treat such runs for paid sites. The
+ *  row is matched on the run's site AND a tight window around the run's
+ *  start, never on the site alone - recordFreeStart writes seconds before
+ *  the first stage, and two starts on one day must not take each other's
+ *  row. Best effort: a missed refund costs the owner one article, never
+ *  money, so a read error is logged and swallowed. */
+export async function refundFreeStart(projectId: string, runStartedAt: string): Promise<void> {
+  const t = Date.parse(runStartedAt);
+  if (!Number.isFinite(t)) return;
+  const windowMs = 2 * 60_000;
+  const { error } = await db()
+    .from("free_article_starts")
+    .delete()
+    .eq("project_id", projectId)
+    .gte("started_at", new Date(t - windowMs).toISOString())
+    .lte("started_at", new Date(t + windowMs).toISOString());
+  if (error) console.warn(`[free-gate] free start not refunded for ${projectId}: ${error.message}`);
 }
 
 /** A free owner's platform DataForSEO spend this month, in micro-dollars.

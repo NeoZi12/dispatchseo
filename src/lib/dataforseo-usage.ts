@@ -65,8 +65,8 @@ export const CHECK_SERP_DAILY_CAP = 30;
 const CHECK_SERP_ENDPOINT = "check_serp";
 
 // keyword_ideas is the other tool a caller can hold down. Each call expands up
-// to 5 seeds and each seed costs 2 metered DataForSEO requests, so one call is
-// worth up to 10 - which makes an unattended loop the most expensive mistake
+// to 5 seeds and each seed costs one metered Labs request (100 rows, ~$0.02),
+// so one call is worth up to 5 - an unattended loop is the most expensive mistake
 // available through this server. A real research session makes one to three
 // calls; ten is three times a heavy day and still bounds the worst case at
 // 100 requests.
@@ -244,8 +244,9 @@ export async function platformBudgetGate(
   if (!ownerId) return { allowed: true };
   const sub = await getSubscription(ownerId);
   // No live plan: the free tier (writerGate lets its one site research) gets
-  // a small fixed monthly budget per owner - a first research is ~$0.06, a
-  // refill and two article SERPs about $0.02 - so a free account can never
+  // a small fixed monthly budget per owner - a first research filling the
+  // 8-idea free backlog is ~$0.03-0.15, a refill and two article SERPs about
+  // $0.02 - so a free account can never
   // run up the platform's DataForSEO bill. With the free tier closed the
   // writer never gets here for such an owner (writerGate says no first).
   if (!isActive(sub)) {

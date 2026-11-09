@@ -1,3 +1,4 @@
+import { isFreeProject } from "./billing";
 import { db } from "./db";
 import { credsForProject } from "./dataforseo";
 import { getDomainRating, type DomainRating } from "./domain-rating";
@@ -140,9 +141,12 @@ export async function getAnalyticsOverview(project: Project, opts: AnalyticsOver
       // "current rank" a month old, always, instead of occasionally.
       .order("checked_at", { ascending: false })
       .range(0, 19999),
+    // A free site reads whatever DR snapshot exists and never pays for a
+    // fresh one (null creds = cache only): research already skips DR for
+    // free, and this read is on every Overview and get_overview call.
     opts.dr === false
       ? Promise.resolve(null)
-      : credsForProject(project).then((creds) => getDomainRating(project.id, project.domain, creds)),
+      : isFreeProject(project.id).then((free) => (free ? Promise.resolve(null) : credsForProject(project))).then((creds) => getDomainRating(project.id, project.domain, creds)),
     // Fresh data is a nice-to-have; a GSC hiccup must not take down the page.
     // No GSC property connected yet -> no fresh numbers, by definition.
     project.gsc_site_url && opts.fresh24 !== false

@@ -206,24 +206,26 @@ export async function runStage(run: WriterRun, deadline: number): Promise<void> 
  * live lane answers inline, and their saved state is not interchangeable.
  * Only a run still at `pick` with nothing saved is decided fresh; an unstamped
  * run already past that (started before this shipped) keeps its old lane.
- * "First" = no earlier run of this site reached done, so a first run that
- * failed leaves the next one on the fast lane too. Agent and explicit live
- * sites are never touched.
+ * "First" = no earlier run of this site reached done AND the site has had
+ * fewer than two runs: one failed first attempt leaves the retry on the fast
+ * lane, but a first article that keeps failing does not retry at full price
+ * forever (2026-11-09; each live attempt is ~2x a Batch run). Agent and
+ * explicit live sites are never touched.
  */
+const LIVE_LANE_MAX_PRIOR_RUNS = 2;
 async function laneOf(project: Project, run: WriterRun): Promise<"live" | "default"> {
   const stamped = run.stage_outputs.lane;
   if (stamped === "live" || stamped === "default") return stamped;
   let lane: "live" | "default" = "default";
   const fresh = run.stage === "pick" && Object.keys(run.stage_outputs).length === 0;
   if (fresh && writerProvider(project) === "batch") {
-    const { count, error } = await db()
-      .from("writer_runs")
-      .select("id", { count: "exact", head: true })
-      .eq("project_id", project.id)
-      .eq("status", "done")
-      .neq("id", run.id);
+    const [done, prior] = await Promise.all([
+      db().from("writer_runs").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("status", "done").neq("id", run.id),
+      // Runs that got past pick: a $0 refusal at pick is not an attempt.
+      db().from("writer_runs").select("id", { count: "exact", head: true }).eq("project_id", project.id).neq("id", run.id).neq("stage", "pick"),
+    ]);
     // A failed count keeps the cheap lane: the article is only slower.
-    if (!error && (count ?? 0) === 0) lane = "live";
+    if (!done.error && !prior.error && (done.count ?? 0) === 0 && (prior.count ?? 0) < LIVE_LANE_MAX_PRIOR_RUNS) lane = "live";
   }
   await mergeRunOutput(run.id, { lane });
   run.stage_outputs = { ...run.stage_outputs, lane };
