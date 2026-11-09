@@ -230,7 +230,7 @@ function ArticlesTable({ d, rows }: { d: CustomerDetail; rows: CustomerArticle[]
               <th scope="col" className={cx(TH, "px-3 text-right")}>Impressions</th>
               <th scope="col" className={cx(TH, "px-3 text-right")}>Clicks</th>
               <th scope="col" className={cx(TH, "px-3 text-right")}>Position</th>
-              <th scope="col" className={cx(TH, "pl-3 pr-5 text-right sm:pr-6")}>Cost</th>
+              <th scope="col" className={cx(TH, "pl-3 pr-5 text-right sm:pr-6")}>AI cost</th>
             </tr>
           </thead>
           <tbody>
@@ -274,7 +274,7 @@ function ArticlesTable({ d, rows }: { d: CustomerDetail; rows: CustomerArticle[]
                 ["Impr.", fmt(a.impressions28d)],
                 ["Clicks", fmt(a.clicks28d)],
                 ["Pos.", a.position != null ? a.position.toFixed(1) : "–"],
-                ["Cost", a.costUsd != null ? money(a.costUsd) : "–"],
+                ["AI cost", a.costUsd != null ? money(a.costUsd) : "–"],
               ].map(([k, v]) => (
                 <div key={k} className="min-w-0">
                   <dt className="font-sans text-[11px] text-ink-faint">{k}</dt>
@@ -401,7 +401,7 @@ export function CustomerDetailView({ d, now, inModal = false }: { d: CustomerDet
           <Figure
             label="Cost us, all time"
             value={money(d.cost.totalUsd, { precise: true })}
-            sub={`AI ${money(d.cost.llmUsd, { precise: true })} · data ${money(d.cost.dfsUsd, { precise: true })}${d.money?.feeUsd ? ` · fees ${money(d.money.feeUsd)}` : ""}`}
+            sub={`AI ${money(d.cost.llmUsd, { precise: true })}${d.cost.claudeCreditUsd ? ` after ${money(d.cost.claudeCreditUsd, { precise: true })} free Claude credit` : ""} · data ${money(d.cost.dfsUsd, { precise: true })}${d.money?.feeUsd ? ` · fees ${money(d.money.feeUsd)}` : ""}`}
           />
         )}
         {d.costError ? (
@@ -481,7 +481,7 @@ export function CustomerDetailView({ d, now, inModal = false }: { d: CustomerDet
       <Panel label="Articles">
         <PanelHead
           title="Articles"
-          sub="Every article published for them, most clicked first, with its own Google numbers for the last 28 days. Mark is what the live page carried at its last nightly scan: our hidden signature, the visible credit, or neither."
+          sub="Every article published for them, most clicked first, with its own Google numbers for the last 28 days. Mark is what the live page carried at its last nightly scan: our hidden signature, the visible credit, or neither. AI cost is the writer's own spend on that article, before the free Claude credit; keyword data is bought per site, not per article."
           meta={`${fmt(d.articleCount)} live`}
         />
         <div className="mt-4">

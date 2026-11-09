@@ -199,9 +199,9 @@ function PlanCard({ x, now }: { x: Customer; now: number }) {
 export function PlansPanel({ c, range, now }: { c: CustomersReport; range: number; now: number }) {
   const { groups, cancelled, idle } = planGroups(c);
   const total = groups.reduce((a, g) => a + g.people.length, 0);
-  // Cancelled people get a section of their own at the end of the table, no
-  // tile, and no place in the headcount: they are on no plan.
-  const filled = [...groups, cancelled].filter((g) => g.people.length > 0);
+  // Cancelled people get no tile and no place in the headcount: they are on
+  // no plan, and they sit folded under the table (CancelledSection).
+  const filled = groups.filter((g) => g.people.length > 0);
   return (
     <Panel id="plans" label="Plans">
       <SectionHead
@@ -269,6 +269,7 @@ export function PlansPanel({ c, range, now }: { c: CustomersReport; range: numbe
           </div>
         </>
       )}
+      <CancelledSection people={cancelled.people} />
       {idle.length ? (
         <p className="border-t border-line-soft px-5 py-3 text-[12.5px] text-ink-faint sm:px-6">
           {fmt(idle.length)} {idle.length === 1 ? "account" : "accounts"} signed up and never added a site or picked a plan, so they are on nothing yet.
@@ -322,42 +323,12 @@ function MobileCustomer({ x, now }: { x: Customer; now: number; range: number })
   );
 }
 
-export function CustomersPanel({ c, range, now }: { c: CustomersReport; range: number; now: number }) {
-  // Accounts that never added a site or picked a plan cost nothing and say
-  // little each; they fold into one list under the table. People who
-  // cancelled fold into another (owner, 2026-11-09: "I don't want to see
-  // them"). What is left is sorted by when they were last seen, newest
-  // first, the operator's own account last.
-  const cancelled = c.customers.filter((x) => !x.operator && x.plan.cancelled);
-  const engaged = c.customers
-    .filter((x) => !cancelled.includes(x) && (x.operator || x.plan.status !== "none" || x.sites.length > 0 || x.costUsd > 0))
-    .sort((a, b) => {
-      if (a.operator !== b.operator) return a.operator ? 1 : -1;
-      return (b.lastSeen ?? b.createdAt).localeCompare(a.lastSeen ?? a.createdAt);
-    });
-  const idle = c.customers.filter((x) => !engaged.includes(x) && !cancelled.includes(x));
+/** The customer rows: cards on a phone, the table otherwise. */
+function CustomerRows({ rows, now, range }: { rows: Customer[]; now: number; range: number }) {
   return (
-    <Panel id="customers" label="Customers">
-      <SectionHead
-        title="Customers"
-        says={`${
-          c.ordersRead
-            ? "What each customer pays you, what they cost you, and what is left."
-            : "What each customer pays you (their plan price), what they cost you, and what is left."
-        }${c.totals.claudeCreditMonthly > 0 ? ` The first ${money(c.totals.claudeCreditMonthly)} of Claude each month is free credit, so it is not counted as cost.` : ""}`}
-        note={`${fmt(engaged.filter((x) => !x.operator).length)} with a site or plan`}
-      />
-      <StatCells
-        className="border-t-0"
-        items={[
-          { label: "Paying", value: `${fmt(c.totals.paying)}${c.totals.trialing ? ` · ${fmt(c.totals.trialing)} on trial` : ""}` },
-          { label: `Revenue, ${rangeShort(range)}`, value: money(c.totals.revenueRecent) },
-          { label: `Cost, ${rangeShort(range)}`, value: money(c.totals.costRecent) },
-          { label: `Margin, ${rangeShort(range)}`, value: money(c.totals.revenueRecent - c.totals.costRecent), tone: c.totals.revenueRecent - c.totals.costRecent < 0 ? "danger" : "ok" },
-        ]}
-      />
+    <>
       <ol className="divide-y divide-line-soft md:hidden">
-        {engaged.map((x) => (
+        {rows.map((x) => (
           <MobileCustomer key={x.userId} x={x} now={now} range={range} />
         ))}
       </ol>
@@ -377,7 +348,7 @@ export function CustomersPanel({ c, range, now }: { c: CustomersReport; range: n
             </tr>
           </thead>
           <tbody>
-            {engaged.map((x) => (
+            {rows.map((x) => (
               <ClickRow
                 key={x.userId}
                 href={`/owner/customers/${x.userId}`}
@@ -408,32 +379,94 @@ export function CustomersPanel({ c, range, now }: { c: CustomersReport; range: n
           </tbody>
         </table>
       </div>
-      {cancelled.length ? (
-        <details className="group/gone border-t border-line-soft">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-3.5 text-[13px] text-ink-muted hover:text-ink sm:px-6">
-            <span>
-              {cancelled.length} {cancelled.length === 1 ? "person" : "people"} cancelled
+    </>
+  );
+}
+
+/** The people who cancelled, one compact line each, inside a disclosure. */
+function CancelledList({ people }: { people: Customer[] }) {
+  return (
+    <ul className="px-5 pb-4 sm:px-6">
+      {people
+        .slice()
+        .sort((a, b) => (b.plan.canceledAt ?? b.createdAt).localeCompare(a.plan.canceledAt ?? a.createdAt))
+        .map((x) => (
+          <li key={x.userId} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-line-soft py-2.5 text-[12.5px]">
+            <span className="min-w-0 flex-1">
+              <Link href={`/owner/customers/${x.userId}`} scroll={false} className="block truncate text-ink hover:underline" title={x.email}>
+                {x.email}
+              </Link>
+              <SiteList x={x} />
             </span>
-            <span className="font-mono text-[12px] text-ink-faint group-open/gone:hidden">Show</span>
-            <span className="hidden font-mono text-[12px] text-ink-faint group-open/gone:inline">Hide</span>
+            <span className="text-danger/90">{cancelNote(x.plan) ?? "Cancelled"}</span>
+            <span className="w-24 text-right font-mono text-[11.5px] tabular-nums text-ink-faint">{x.revenueAllUsd ? `${money(x.revenueAllUsd)} paid` : "nothing paid"}</span>
+          </li>
+        ))}
+    </ul>
+  );
+}
+
+/** "N people cancelled - Show": the same disclosure on Customers and Plans. */
+function CancelledSection({ people }: { people: Customer[] }) {
+  if (!people.length) return null;
+  return (
+    <details className="group/gone border-t border-line-soft">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-3.5 text-[13px] text-ink-muted hover:text-ink sm:px-6">
+        <span>
+          {people.length} {people.length === 1 ? "person" : "people"} cancelled
+        </span>
+        <span className="font-mono text-[12px] text-ink-faint group-open/gone:hidden">Show</span>
+        <span className="hidden font-mono text-[12px] text-ink-faint group-open/gone:inline">Hide</span>
+      </summary>
+      <CancelledList people={people} />
+    </details>
+  );
+}
+
+export function CustomersPanel({ c, range, now }: { c: CustomersReport; range: number; now: number }) {
+  // Accounts that never added a site or picked a plan cost nothing and say
+  // little each; they fold into one list under the table. People who
+  // cancelled fold into another (owner, 2026-11-09: "I don't want to see
+  // them"). What is left is sorted by when they were last seen, newest
+  // first, the operator's own account last.
+  // The operator's own accounts sit in a section of their own under the
+  // table (owner, 2026-11-09: "I won't see them in the table with all the
+  // other users"), with the same columns so their costs stay readable.
+  const mine = c.customers.filter((x) => x.operator);
+  const cancelled = c.customers.filter((x) => !x.operator && x.plan.cancelled);
+  const byRecency = (a: Customer, b: Customer) => (b.lastSeen ?? b.createdAt).localeCompare(a.lastSeen ?? a.createdAt);
+  const engaged = c.customers.filter((x) => !x.operator && !cancelled.includes(x) && (x.plan.status !== "none" || x.sites.length > 0 || x.costUsd > 0)).sort(byRecency);
+  const idle = c.customers.filter((x) => !x.operator && !engaged.includes(x) && !cancelled.includes(x));
+  return (
+    <Panel id="customers" label="Customers">
+      <SectionHead
+        title="Customers"
+        says={`${
+          c.ordersRead
+            ? "What each customer pays you, what they cost you, and what is left."
+            : "What each customer pays you (their plan price), what they cost you, and what is left."
+        }${c.totals.claudeCreditMonthly > 0 ? ` The first ${money(c.totals.claudeCreditMonthly)} of Claude each month is free credit, so it is not counted as cost.` : ""}`}
+        note={`${fmt(engaged.filter((x) => !x.operator).length)} with a site or plan`}
+      />
+      <StatCells
+        className="border-t-0"
+        items={[
+          { label: "Paying", value: `${fmt(c.totals.paying)}${c.totals.trialing ? ` · ${fmt(c.totals.trialing)} on trial` : ""}` },
+          { label: `Revenue, ${rangeShort(range)}`, value: money(c.totals.revenueRecent) },
+          { label: `Cost, ${rangeShort(range)}`, value: money(c.totals.costRecent) },
+          { label: `Margin, ${rangeShort(range)}`, value: money(c.totals.revenueRecent - c.totals.costRecent), tone: c.totals.revenueRecent - c.totals.costRecent < 0 ? "danger" : "ok" },
+        ]}
+      />
+      <CustomerRows rows={engaged} now={now} range={range} />
+      <CancelledSection people={cancelled} />
+      {mine.length ? (
+        <details className="group/mine border-t border-line-soft">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-3.5 text-[13px] text-ink-muted hover:text-ink sm:px-6">
+            <span>Your own {mine.length === 1 ? "account" : "accounts"}: what your sites cost</span>
+            <span className="font-mono text-[12px] text-ink-faint group-open/mine:hidden">Show</span>
+            <span className="hidden font-mono text-[12px] text-ink-faint group-open/mine:inline">Hide</span>
           </summary>
-          <ul className="px-5 pb-4 sm:px-6">
-            {cancelled
-              .slice()
-              .sort((a, b) => (b.plan.canceledAt ?? b.createdAt).localeCompare(a.plan.canceledAt ?? a.createdAt))
-              .map((x) => (
-                <li key={x.userId} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-line-soft py-2.5 text-[12.5px]">
-                  <span className="min-w-0 flex-1">
-                    <Link href={`/owner/customers/${x.userId}`} scroll={false} className="block truncate text-ink hover:underline" title={x.email}>
-                      {x.email}
-                    </Link>
-                    <SiteList x={x} />
-                  </span>
-                  <span className="text-danger/90">{cancelNote(x.plan) ?? "Cancelled"}</span>
-                  <span className="w-24 text-right font-mono text-[11.5px] tabular-nums text-ink-faint">{x.revenueAllUsd ? `${money(x.revenueAllUsd)} paid` : "nothing paid"}</span>
-                </li>
-              ))}
-          </ul>
+          <CustomerRows rows={mine} now={now} range={range} />
         </details>
       ) : null}
       {idle.length ? (

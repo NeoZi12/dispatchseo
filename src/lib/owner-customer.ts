@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { isOperator } from "./autopilot/operator";
 import { markState, type MarkState } from "./article-signature";
+import { claudeCredit } from "./claude-credit";
 import { polar, polarConfigured } from "./billing";
 import { normalizePageUrl, type GscPageStat } from "./metrics";
 import { polarOrders, polarOrdersError, revenueUsd, summarize, type MoneySummary, type PolarOrder } from "./owner-money";
@@ -62,7 +63,7 @@ export type CustomerDetail = {
     startedAt: string | null;
     canceledAt: string | null;
   };
-  /** What the last 30 days cost, AI + DataForSEO + Polar fees. */
+  /** What the last 30 days cost, AI (after the credit) + DataForSEO + Polar fees. */
   cost30Usd: number;
   qualifier: { domain: string; platform: string; aiChoice: string | null; verdict: string | null; at: string } | null;
   sites: Array<{
@@ -78,7 +79,10 @@ export type CustomerDetail = {
   orders: PolarOrder[] | null;
   money: MoneySummary | null;
   moneyError: string | null;
-  cost: { totalUsd: number; llmUsd: number; dfsUsd: number; lines: CostLine[] };
+  /** What they cost, after the free Claude credit (claude-credit.ts), the
+   *  same way the customers table counts it: the month's Claude spend up to
+   *  the credit is free, spread over every Claude call in proportion. */
+  cost: { totalUsd: number; llmUsd: number; dfsUsd: number; lines: CostLine[]; claudeCreditUsd: number };
   /** Set when the cost read failed (migration 0076 not applied): every cost figure is unknown, not zero. */
   costError: string | null;
   /** Lifetime, one point per UTC day from sign-up to today: revenue so far vs cost so far (Polar fees included). */
@@ -189,7 +193,7 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
   const day56 = ISO(lastDay - 55 * DAY).slice(0, 10);
 
   const empty = Promise.resolve({ data: [] as Row[], error: null });
-  const [costRes, artRes, draftsRes, runsRes, failRes, gscRes, citeRes, daysRes, pages] = await Promise.all([
+  const [costRes, artRes, draftsRes, runsRes, failRes, gscRes, citeRes, daysRes, pages, credit] = await Promise.all([
     ids.length ? db().rpc("owner_cost_breakdown", { p_projects: ids }) : empty,
     ids.length
       ? db()
@@ -211,15 +215,17 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
     ids.length ? db().from("ai_snapshots").select("cited").in("project_id", ids).gte("checked_at", ISO(now - 90 * DAY)).limit(5000) : empty,
     db().rpc("owner_user_days", { p_user: userId, p_from: ISO(now - 90 * DAY), p_to: ISO(now + DAY) }),
     pagesFor(ids),
+    claudeCredit(ISO(now - 30 * DAY)),
   ]);
 
   // Orders: the checkout's external id, else the Polar customer on file.
   const polarCustomer = (sub?.provider_customer_id as string | null) ?? null;
   const mine = orders ? orders.filter((o) => o.externalId === userId || (polarCustomer != null && o.customerId === polarCustomer)) : null;
 
-  // Cost lines and the per-day ledger.
+  // Cost lines and the per-day ledger, gross first.
   const lines = new Map<string, CostLine>();
-  const costByDay = new Map<string, number>();
+  const llmByDay = new Map<string, number>();
+  const dfsByDay = new Map<string, number>();
   for (const r of (costRes.data ?? []) as Row[]) {
     const kind = r.kind === "dfs" ? "dfs" : "llm";
     const usd = Number(r.microusd ?? 0) / 1e6;
@@ -227,8 +233,21 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
     const line = lines.get(key) ?? { kind, item: String(r.item ?? "other"), usd: 0 };
     line.usd += usd;
     lines.set(key, line);
-    costByDay.set(String(r.day), (costByDay.get(String(r.day)) ?? 0) + usd);
+    const byDay = kind === "dfs" ? dfsByDay : llmByDay;
+    byDay.set(String(r.day), (byDay.get(String(r.day)) ?? 0) + usd);
   }
+  // The free Claude credit, exactly as the customers table takes it off
+  // (owner-analytics siteOf): their sites' share of each month's covered
+  // spend, never below zero. One factor over their AI lines and days keeps
+  // every figure on this page summing to the same net total.
+  const llmGross = [...lines.values()].filter((l) => l.kind === "llm").reduce((a, l) => a + l.usd, 0);
+  const creditAll = Math.min(llmGross, ids.reduce((a, id) => a + (credit?.allByProject.get(id) ?? 0), 0));
+  const creditRecent = ids.reduce((a, id) => a + (credit?.recentByProject.get(id) ?? 0), 0);
+  const netFactor = llmGross > 0 ? (llmGross - creditAll) / llmGross : 1;
+  for (const l of lines.values()) if (l.kind === "llm") l.usd *= netFactor;
+  const costByDay = new Map<string, number>();
+  for (const [d, v] of dfsByDay) costByDay.set(d, (costByDay.get(d) ?? 0) + v);
+  for (const [d, v] of llmByDay) costByDay.set(d, (costByDay.get(d) ?? 0) + v * netFactor);
   const revenueByDay = new Map<string, number>();
   let fees = 0;
   for (const o of mine ?? []) {
@@ -237,10 +256,15 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
     costByDay.set(d, (costByDay.get(d) ?? 0) + o.feeUsd);
     fees += o.feeUsd;
   }
-  const allLines = [...lines.values()];
+  const allLines = [...lines.values()].filter((l) => l.usd > 0);
   if (fees > 0) allLines.push({ kind: "fee", item: "Polar fees", usd: fees });
   const llmUsd = allLines.filter((l) => l.kind === "llm").reduce((a, l) => a + l.usd, 0);
   const dfsUsd = allLines.filter((l) => l.kind === "dfs").reduce((a, l) => a + l.usd, 0);
+  // Last 30 days: data and fees in the window, plus the window's AI spend
+  // after the credit that fell in it.
+  const day30 = ISO(now - 30 * DAY).slice(0, 10);
+  const inWindow = (m: Map<string, number>) => [...m].filter(([day]) => day >= day30).reduce((a, [, v]) => a + v, 0);
+  const cost30Usd = inWindow(dfsByDay) + Math.max(0, inWindow(llmByDay) - creditRecent) + (mine ?? []).filter((o) => o.at.slice(0, 10) >= day30).reduce((a, o) => a + o.feeUsd, 0);
 
   const days: string[] = [];
   const revenue: number[] = [];
@@ -416,7 +440,7 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
       startedAt,
       canceledAt,
     },
-    cost30Usd: [...costByDay].filter(([day]) => day >= ISO(now - 30 * DAY).slice(0, 10)).reduce((a, [, v]) => a + v, 0),
+    cost30Usd,
     qualifier: q
       ? { domain: String(q.domain ?? ""), platform: String(q.platform ?? ""), aiChoice: (q.ai_choice as string | null) ?? null, verdict: (q.verdict as string | null) ?? null, at: String(q.created_at ?? "") }
       : null,
@@ -425,7 +449,7 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
     orders: mine,
     money: mine ? summarize(mine) : null,
     moneyError: mine ? null : polarOrdersError(),
-    cost: { totalUsd: llmUsd + dfsUsd + fees, llmUsd, dfsUsd, lines: allLines.sort((a, b) => b.usd - a.usd) },
+    cost: { totalUsd: llmUsd + dfsUsd + fees, llmUsd, dfsUsd, lines: allLines.sort((a, b) => b.usd - a.usd), claudeCreditUsd: creditAll },
     costError: costRes.error ? costRes.error.message : null,
     ledger: { days, revenue, cost },
     articles,
