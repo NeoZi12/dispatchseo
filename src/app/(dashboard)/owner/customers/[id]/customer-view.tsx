@@ -226,10 +226,12 @@ function ArticlesTable({ d, rows }: { d: CustomerDetail; rows: CustomerArticle[]
             <tr className="border-b border-line-soft">
               <th scope="col" className={cx(TH, "w-9 pl-5 text-right sm:pl-6")}>#</th>
               <th scope="col" className={cx(TH, "pl-4")}>Article</th>
-              <th scope="col" className={cx(TH, "px-3")}>Mark</th>
+              <th scope="col" className={cx(TH, "px-3 text-right")} title="Monthly searches for the keyword it targets">Volume</th>
+              <th scope="col" className={cx(TH, "px-3 text-right")} title="Keyword difficulty, 0 to 100">KD</th>
               <th scope="col" className={cx(TH, "px-3 text-right")}>Impressions</th>
               <th scope="col" className={cx(TH, "px-3 text-right")}>Clicks</th>
               <th scope="col" className={cx(TH, "px-3 text-right")}>Position</th>
+              <th scope="col" className={cx(TH, "px-3")}>Mark</th>
               <th scope="col" className={cx(TH, "pl-3 pr-5 text-right sm:pr-6")}>AI cost</th>
             </tr>
           </thead>
@@ -240,12 +242,14 @@ function ArticlesTable({ d, rows }: { d: CustomerDetail; rows: CustomerArticle[]
                 <td className="max-w-0 py-3 pl-4">
                   <ArticleTitle a={a} />
                 </td>
-                <td className="px-3 py-3">
-                  <Mark state={a.mark} />
-                </td>
+                <td className={cx(TD_NUM, "px-3 text-ink-muted")}>{a.volume != null ? fmt(a.volume) : <span className="text-ink-faint">–</span>}</td>
+                <td className={cx(TD_NUM, "px-3 text-ink-muted")}>{a.difficulty != null ? a.difficulty : <span className="text-ink-faint">–</span>}</td>
                 <td className={cx(TD_NUM, "px-3 text-ink-muted")}>{a.impressions28d ? fmt(a.impressions28d) : <span className="text-ink-faint">0</span>}</td>
                 <td className={cx(TD_NUM, "px-3", a.clicks28d ? "text-ink" : "text-ink-faint")}>{fmt(a.clicks28d)}</td>
                 <td className={cx(TD_NUM, "px-3 text-ink-muted")}>{a.position != null ? a.position.toFixed(1) : <span className="text-ink-faint">–</span>}</td>
+                <td className="px-3 py-3">
+                  <Mark state={a.mark} />
+                </td>
                 <td className={cx(TD_NUM, "pl-3 pr-5 text-ink-muted sm:pr-6")}>{a.costUsd != null ? money(a.costUsd) : <span className="text-ink-faint">–</span>}</td>
               </tr>
             ))}
@@ -257,8 +261,10 @@ function ArticlesTable({ d, rows }: { d: CustomerDetail; rows: CustomerArticle[]
                 {fmt(rows.length)} {rows.length === 1 ? "article" : "articles"} · last 28 days
               </td>
               <td />
+              <td />
               <td className={cx(TD_NUM, "px-3 text-ink")}>{fmt(totals.impressions)}</td>
               <td className={cx(TD_NUM, "px-3 text-ink")}>{fmt(totals.clicks)}</td>
+              <td />
               <td />
               <td className={cx(TD_NUM, "pl-3 pr-5 text-ink sm:pr-6")}>{money(totals.cost)}</td>
             </tr>
@@ -269,8 +275,10 @@ function ArticlesTable({ d, rows }: { d: CustomerDetail; rows: CustomerArticle[]
         {rows.map((a) => (
           <li key={a.id} className="px-5 py-3.5">
             <ArticleTitle a={a} />
-            <dl className="mt-2.5 grid grid-cols-4 gap-2 font-mono text-[13px] tabular-nums">
+            <dl className="mt-2.5 grid grid-cols-3 gap-2 font-mono text-[13px] tabular-nums">
               {[
+                ["Volume", a.volume != null ? fmt(a.volume) : "–"],
+                ["KD", a.difficulty != null ? String(a.difficulty) : "–"],
                 ["Impr.", fmt(a.impressions28d)],
                 ["Clicks", fmt(a.clicks28d)],
                 ["Pos.", a.position != null ? a.position.toFixed(1) : "–"],
@@ -500,6 +508,86 @@ export function CustomerDetailView({ d, now, inModal = false }: { d: CustomerDet
             {scanned === 0 ? " - live pages are read nightly" : ""}
           </p>
         ) : null}
+      </Panel>
+
+      <Panel label="Queue">
+        <PanelHead
+          title="Idea queue"
+          sub="Ideas waiting for the writer, in the order it takes them: approved first, then pending. Volume is monthly searches, KD is difficulty out of 100."
+          meta={[d.queue.items.length ? `${fmt(d.queue.items.length)} waiting` : "empty", d.queue.nextArticleAt ? `next article ${shortDate(d.queue.nextArticleAt)}` : null].filter(Boolean).join(" · ")}
+        />
+        {d.queue.items.length ? (
+          <>
+            <div className="mt-4 hidden md:block">
+              <table className="w-full text-left">
+                <caption className="sr-only">Ideas waiting for the writer</caption>
+                <thead>
+                  <tr className="border-b border-line-soft">
+                    <th scope="col" className={cx(TH, "w-9 pl-5 text-right sm:pl-6")}>#</th>
+                    <th scope="col" className={cx(TH, "pl-4")}>Idea</th>
+                    <th scope="col" className={cx(TH, "px-3 text-right")}>Volume</th>
+                    <th scope="col" className={cx(TH, "px-3 text-right")}>KD</th>
+                    <th scope="col" className={cx(TH, "px-3")}>Intent</th>
+                    <th scope="col" className={cx(TH, "pl-3 pr-5 sm:pr-6")}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.queue.items.map((q, i) => (
+                    <tr key={q.id} className="border-b border-line-soft last:border-b-0">
+                      <td className="py-3 pl-5 text-right font-mono text-[12px] tabular-nums text-ink-faint sm:pl-6">{i + 1}</td>
+                      <td className="max-w-0 py-3 pl-4">
+                        <span className="block truncate text-[13.5px] font-medium text-ink" title={q.title}>
+                          {q.title}
+                        </span>
+                        <span className="mt-0.5 block truncate text-[12px] text-ink-faint">
+                          {q.domain}
+                          {q.keyword ? ` · "${q.keyword}"` : ""} · found {shortDate(q.foundAt)}
+                        </span>
+                      </td>
+                      <td className={cx(TD_NUM, "px-3 text-ink-muted")}>{q.volume != null ? fmt(q.volume) : <span className="text-ink-faint">–</span>}</td>
+                      <td className={cx(TD_NUM, "px-3 text-ink-muted")}>{q.difficulty != null ? q.difficulty : <span className="text-ink-faint">–</span>}</td>
+                      <td className="px-3 py-3 text-[12.5px] capitalize text-ink-muted">{q.intent ?? <span className="text-ink-faint">–</span>}</td>
+                      <td className={cx("py-3 pl-3 pr-5 text-[12.5px] sm:pr-6", q.status === "approved" ? "text-ink-muted" : "text-ink-faint")}>{q.status === "approved" ? "Approved" : "Pending"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <ol className="mt-2 divide-y divide-line-soft md:hidden">
+              {d.queue.items.map((q) => (
+                <li key={q.id} className="px-5 py-3.5">
+                  <span className="block truncate text-[13.5px] font-medium text-ink">{q.title}</span>
+                  <span className="mt-0.5 block truncate text-[12px] text-ink-faint">
+                    {q.domain}
+                    {q.keyword ? ` · "${q.keyword}"` : ""} · {q.status === "approved" ? "approved" : "pending"}
+                  </span>
+                  <dl className="mt-2.5 grid grid-cols-3 gap-2 font-mono text-[13px] tabular-nums">
+                    {[
+                      ["Volume", q.volume != null ? fmt(q.volume) : "–"],
+                      ["KD", q.difficulty != null ? String(q.difficulty) : "–"],
+                      ["Intent", q.intent ?? "–"],
+                    ].map(([k, val]) => (
+                      <div key={k} className="min-w-0">
+                        <dt className="font-sans text-[11px] text-ink-faint">{k}</dt>
+                        <dd className="mt-0.5 truncate capitalize text-ink">{val}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </li>
+              ))}
+            </ol>
+          </>
+        ) : (
+          <p className="m-5 rounded-xl border border-dashed border-line px-4 py-6 text-center text-[13px] text-ink-faint sm:m-6">
+            Queue empty - the next research pass fills it.
+            {d.queue.rejected || d.queue.done ? ` So far ${fmt(d.queue.rejected)} ${d.queue.rejected === 1 ? "idea was" : "ideas were"} rejected and ${fmt(d.queue.done)} ${d.queue.done === 1 ? "was" : "were"} written.` : ""}
+          </p>
+        )}
+        <p className="border-t border-line-soft px-5 py-3 text-[12.5px] text-ink-faint sm:px-6">
+          {d.queue.lastResearchAt ? `Last research ${fullDate(d.queue.lastResearchAt)} (${ago(d.queue.lastResearchAt, now)})` : "No research run yet"}
+          {d.queue.nextArticleAt ? ` · next article due ${fullDate(d.queue.nextArticleAt)}` : ""}
+          {d.queue.items.length && (d.queue.rejected || d.queue.done) ? ` · ${fmt(d.queue.rejected)} rejected, ${fmt(d.queue.done)} written so far` : ""}
+        </p>
       </Panel>
 
       <div className="grid gap-4 sm:gap-5 lg:grid-cols-2">

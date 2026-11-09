@@ -31,6 +31,11 @@ export type CustomerArticle = {
   costUsd: number | null;
   domain: string;
   keyword: string | null;
+  /** The keyword's monthly searches and difficulty (0-100), from the idea
+   *  the article was written for; null when the idea carried none. */
+  volume: number | null;
+  difficulty: number | null;
+  intent: string | null;
   /** Google, from the daily top-pages snapshots: the last 28 days and the last 90. */
   clicks28d: number;
   impressions28d: number;
@@ -42,6 +47,19 @@ export type CustomerArticle = {
   live: boolean | null;
   /** Which DispatchSEO marks the live page carried at its last scan (article-signature.ts). */
   mark: MarkState;
+};
+
+/** An idea still waiting for the writer, in the order it will be taken. */
+export type QueueItem = {
+  id: string;
+  title: string;
+  keyword: string | null;
+  volume: number | null;
+  difficulty: number | null;
+  intent: string | null;
+  status: "approved" | "pending";
+  foundAt: string;
+  domain: string;
 };
 
 export type CustomerDetail = {
@@ -71,7 +89,12 @@ export type CustomerDetail = {
     /** Hosted-blog forwarding, one line: "live", "PR merged, waiting for deploy", "PR open (next-config)", "merge failed: …", "manual snippet". Null = not a hosted-blog site. */
     forwarding: string | null;
     forwardingUrl: string | null;
+    /** When the writer is due to publish next, and when research last ran. */
+    nextArticleAt: string | null;
+    lastResearchAt: string | null;
   }>;
+  /** Their sites' idea queue: what waits, plus how the rest of the ideas ended. */
+  queue: { items: QueueItem[]; rejected: number; done: number; nextArticleAt: string | null; lastResearchAt: string | null };
   /** Where they stand in setup: the first site still setting up, else the
    *  account's first step when they have no site, else complete. Null only
    *  when the setup engine could not answer. */
@@ -146,7 +169,7 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
 
   const [subRes, projRes, qualRes, eventsRes, orders] = await Promise.all([
     db().from("subscriptions").select("tier, status, cancel_at_period_end, current_period_end, provider_customer_id, provider_subscription_id, created_at").eq("user_id", userId).maybeSingle(),
-    db().from("projects").select("id, domain, name, writer_mode, created_at, gsc_site_url, github_repo, publish_target, hosted_rewrite_pr_url, hosted_rewrite_state, hosted_rewrite_live_at").eq("owner_user_id", userId),
+    db().from("projects").select("id, domain, name, writer_mode, created_at, gsc_site_url, github_repo, next_article_at, last_research_at, publish_target, hosted_rewrite_pr_url, hosted_rewrite_state, hosted_rewrite_live_at").eq("owner_user_id", userId),
     db().from("signup_qualifiers").select("domain, platform, ai_choice, verdict, created_at").eq("user_id", userId).order("created_at", { ascending: false }).limit(1),
     db().from("app_events").select("at, event, props").eq("distinct_id", userId).order("at", { ascending: false }).limit(60),
     polarOrders(),
@@ -180,6 +203,8 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
     gscConnected: Boolean(p.gsc_site_url),
     repo: (p.github_repo as string | null) ?? null,
     forwarding: forwardingLine(p),
+    nextArticleAt: (p.next_article_at as string | null) ?? null,
+    lastResearchAt: (p.last_research_at as string | null) ?? null,
     forwardingUrl: typeof p.hosted_rewrite_pr_url === "string" && p.hosted_rewrite_pr_url.startsWith("http") ? p.hosted_rewrite_pr_url : null,
   }));
   const ids = projects.map((p) => p.id);
@@ -193,12 +218,12 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
   const day56 = ISO(lastDay - 55 * DAY).slice(0, 10);
 
   const empty = Promise.resolve({ data: [] as Row[], error: null });
-  const [costRes, artRes, draftsRes, runsRes, failRes, gscRes, citeRes, daysRes, pages, credit] = await Promise.all([
+  const [costRes, artRes, draftsRes, runsRes, failRes, gscRes, citeRes, daysRes, pages, credit, ideasRes, runLinkRes] = await Promise.all([
     ids.length ? db().rpc("owner_cost_breakdown", { p_projects: ids }) : empty,
     ids.length
       ? db()
           .from("article_drafts")
-          .select("id, title, primary_keyword, published_url, published_at, pr_merged_at, created_at, cost_usd, project_id")
+          .select("id, title, primary_keyword, published_url, published_at, pr_merged_at, created_at, cost_usd, project_id, suggestion_id")
           .in("project_id", ids)
           .eq("status", "published")
           .order("created_at", { ascending: false })
@@ -216,6 +241,18 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
     db().rpc("owner_user_days", { p_user: userId, p_from: ISO(now - 90 * DAY), p_to: ISO(now + DAY) }),
     pagesFor(ids),
     claudeCredit(ISO(now - 30 * DAY)),
+    // Every guide idea their sites ever had: the queue is what still waits,
+    // and the rest says how research went (rejected vs written).
+    ids.length
+      ? db()
+          .from("suggestions")
+          .select("id, project_id, title, primary_keyword, keyword_volume, keyword_difficulty, spec, status, created_at, queue_position")
+          .in("project_id", ids)
+          .eq("type", "guide")
+          .limit(2000)
+      : empty,
+    // Drafts that never stored their idea link it through their run.
+    ids.length ? db().from("writer_runs").select("draft_id, suggestion_id").in("project_id", ids).not("draft_id", "is", null).not("suggestion_id", "is", null).limit(2000) : empty,
   ]);
 
   // Orders: the checkout's external id, else the Polar customer on file.
@@ -326,18 +363,62 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
     return null;
   };
 
+  // Ideas: by id for the articles' keyword facts, by keyword text for the
+  // pages an agent built (no draft, no link), and the queue itself in the
+  // writer's own order (stages.ts pick: approved by queue_position then age,
+  // pending after).
+  type IdeaRow = { id: string; project_id: string; title: string | null; primary_keyword: string | null; keyword_volume: number | null; keyword_difficulty: number | null; spec: unknown; status: string | null; created_at: string | null; queue_position: number | null };
+  const ideas = (ideasRes.data ?? []) as IdeaRow[];
+  const ideaById = new Map(ideas.map((i) => [i.id, i]));
+  const ideaByKeyword = new Map<string, IdeaRow>();
+  for (const i of ideas) if (i.primary_keyword) ideaByKeyword.set(`${i.project_id}:${i.primary_keyword.trim().toLowerCase()}`, i);
+  const ideaOfDraft = new Map<string, string>();
+  for (const r of (runLinkRes.data ?? []) as Array<{ draft_id: string; suggestion_id: string }>) ideaOfDraft.set(r.draft_id, r.suggestion_id);
+  const intentOf = (i: IdeaRow | undefined): string | null => {
+    const spec = (i?.spec ?? null) as { intent?: unknown } | null;
+    return spec && typeof spec.intent === "string" && spec.intent.trim() ? spec.intent.trim() : null;
+  };
+  const facts = (i: IdeaRow | undefined) => ({
+    volume: i?.keyword_volume == null ? null : Number(i.keyword_volume),
+    difficulty: i?.keyword_difficulty == null ? null : Math.round(Number(i.keyword_difficulty)),
+    intent: intentOf(i),
+  });
+  const rank = (i: IdeaRow) => (i.status === "approved" ? 0 : 1);
+  const queueItems: QueueItem[] = ideas
+    .filter((i) => i.status === "approved" || i.status === "pending")
+    .sort((a, b) => rank(a) - rank(b) || (a.queue_position ?? 1e9) - (b.queue_position ?? 1e9) || String(a.created_at).localeCompare(String(b.created_at)))
+    .map((i) => ({
+      id: i.id,
+      title: i.title?.trim() || i.primary_keyword || "Untitled idea",
+      keyword: i.primary_keyword ?? null,
+      ...facts(i),
+      status: i.status === "approved" ? "approved" : "pending",
+      foundAt: String(i.created_at ?? ""),
+      domain: domainOf.get(i.project_id) ?? "",
+    }));
+  const earliest = (xs: Array<string | null>) => xs.filter((x): x is string => Boolean(x)).sort()[0] ?? null;
+  const latest = (xs: Array<string | null>) => xs.filter((x): x is string => Boolean(x)).sort().at(-1) ?? null;
+  const queue = {
+    items: queueItems,
+    rejected: ideas.filter((i) => i.status === "rejected").length,
+    done: ideas.filter((i) => i.status === "done").length,
+    nextArticleAt: earliest(projects.map((p) => p.nextArticleAt)),
+    lastResearchAt: latest(projects.map((p) => p.lastResearchAt)),
+  };
+
   // Every article: the writer's drafts (article_drafts, with their cost and
   // keyword) plus the pages an agent-mode customer's own agent built and
   // logged (pages rows with no draft) - the same union the customers list
   // counts. Google numbers join by host and path, so `?lang=fr` and `www`
   // variants of one page fold into it.
   const published = (artRes.data ?? []) as Row[];
-  const withGoogle = (key: string | null, base: Omit<CustomerArticle, "clicks28d" | "impressions28d" | "clicks90d" | "impressions90d" | "position" | "live" | "mark">): CustomerArticle => {
+  const withGoogle = (key: string | null, base: Omit<CustomerArticle, "clicks28d" | "impressions28d" | "clicks90d" | "impressions90d" | "position" | "live" | "mark" | "volume" | "difficulty" | "intent">, idea: IdeaRow | undefined): CustomerArticle => {
     const t28 = key ? pages28.get(key) : undefined;
     const t90 = key ? pages90.get(key) : undefined;
     const page = key ? pageByUrl.get(key) : undefined;
     return {
       ...base,
+      ...facts(idea),
       clicks28d: t28?.clicks ?? 0,
       impressions28d: t28?.impressions ?? 0,
       clicks90d: t90?.clicks ?? 0,
@@ -352,6 +433,9 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
     const url = (a.published_url as string | null) ?? null;
     const key = url ? pageKey(url) : null;
     if (key) seen.add(key);
+    const ideaId = (a.suggestion_id as string | null) ?? ideaOfDraft.get(String(a.id)) ?? null;
+    const kw = (a.primary_keyword as string | null) ?? null;
+    const idea = (ideaId ? ideaById.get(ideaId) : undefined) ?? (kw ? ideaByKeyword.get(`${String(a.project_id)}:${kw.trim().toLowerCase()}`) : undefined);
     return withGoogle(key, {
       id: String(a.id),
       title: String(a.title ?? "Untitled"),
@@ -360,14 +444,16 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
       publishedAt: String(a.published_at ?? a.pr_merged_at ?? a.created_at ?? ""),
       costUsd: a.cost_usd == null ? null : Number(a.cost_usd),
       domain: domainOf.get(String(a.project_id)) ?? "",
-      keyword: (a.primary_keyword as string | null) ?? null,
-    });
+      keyword: kw,
+    }, idea);
   });
   for (const p of pages) {
     const key = pageKey(p.url);
     // A page that never served is a PR nobody merged yet, not an article.
     if (seen.has(key) || !p.live_at) continue;
     seen.add(key);
+    const pid = projects.find((pr) => pr.domain.replace(/^www\./, "") === hostOf(p.url))?.id;
+    const idea = pid && p.primary_keyword ? ideaByKeyword.get(`${pid}:${p.primary_keyword.trim().toLowerCase()}`) : undefined;
     articles.push(
       withGoogle(key, {
         id: `page:${key}`,
@@ -377,7 +463,7 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
         costUsd: null,
         domain: hostOf(p.url),
         keyword: p.primary_keyword ?? null,
-      }),
+      }, idea),
     );
   }
   articles.sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
@@ -454,6 +540,7 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
     ledger: { days, revenue, cost },
     articles,
     articleCount: articles.length,
+    queue,
     drafts,
     firstArticleAt,
     writer: {
