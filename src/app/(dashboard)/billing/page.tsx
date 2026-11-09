@@ -138,7 +138,7 @@ export default async function BillingPage({
             </div>
             <p className="mt-3 text-[15px] text-ink">
               {hostedMode
-                ? `${perMonth} ${perMonth === 1 ? "article" : "articles"} a month${sub.sites_limit > 1 ? `, up to ${sub.sites_limit} sites` : ", one site"}`
+                ? `${perMonth} ${perMonth === 1 ? "article" : "articles"} / month${sub.sites_limit > 1 ? `, up to ${sub.sites_limit} sites` : ", one site"}`
                 : `Up to ${sub.sites_limit} ${sub.sites_limit === 1 ? "site" : "sites"}`}
             </p>
             <p className="mt-1 text-[14px] text-ink-muted">{state.line}</p>
@@ -205,7 +205,7 @@ export default async function BillingPage({
                 <p className="mt-4 text-[14px] text-ink">
                   {hostedMode ? (
                     <>
-                      <span className="font-semibold tabular-nums">{monthly}</span> {monthly === 1 ? "article" : "articles"} a month
+                      <span className="font-semibold tabular-nums">{monthly}</span> {monthly === 1 ? "article" : "articles"} / month
                     </>
                   ) : (
                     <>

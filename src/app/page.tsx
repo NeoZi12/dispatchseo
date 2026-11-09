@@ -145,12 +145,12 @@ const PM_PAID: { tier: Tier; perMonth: number; tagline: string; lead: string; ti
   {
     tier: "growth", perMonth: articlesPerMonthFor("growth"), pick: true,
     tagline: "Serious about traffic", lead: "Everything in Starter, plus",
-    ticks: ["8 more articles a month"],
+    ticks: ["8 more articles / month"],
   },
   {
     tier: "scale", perMonth: articlesPerMonthFor("scale"), pick: false,
     tagline: "All in on content", lead: "Everything in Growth, plus",
-    ticks: ["8 more articles a month", "Priority support"],
+    ticks: ["8 more articles / month", "Priority support"],
   },
 ];
 
@@ -417,7 +417,7 @@ export default async function LandingPage({
               <div className="p-price">$0<small>/forever</small></div>
               <div className="p-sub">Try it on a side project</div>
               <ul>
-                <li>2 articles a month</li>
+                <li>2 articles / month</li>
                 <li>Topics people search for</li>
                 <li>Fact-checked articles</li>
                 <li>Published for you</li>
@@ -430,7 +430,7 @@ export default async function LandingPage({
               <PlanPrice tier="starter" annual={annual} />
               <div className="p-sub">Steady start, weekly articles</div>
               <ul>
-                <li>4 articles a month</li>
+                <li>4 articles / month</li>
                 <li>Weekly keyword research</li>
                 <li>Fact-checked articles</li>
                 <li>Keyword rankings</li>
@@ -447,7 +447,7 @@ export default async function LandingPage({
               <PlanPrice tier="growth" annual={annual} />
               <div className="p-sub">Serious about traffic</div>
               <ul>
-                <li>12 articles a month</li>
+                <li>12 articles / month</li>
                 <li>Weekly keyword research</li>
                 <li>Fact-checked articles</li>
                 <li>Keyword rankings</li>
@@ -461,7 +461,7 @@ export default async function LandingPage({
               <PlanPrice tier="scale" annual={annual} />
               <div className="p-sub">All in on content</div>
               <ul>
-                <li>20 articles a month</li>
+                <li>20 articles / month</li>
                 <li>Weekly keyword research</li>
                 <li>Fact-checked articles</li>
                 <li>Keyword rankings</li>

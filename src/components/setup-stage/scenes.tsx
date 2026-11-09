@@ -593,7 +593,9 @@ const WHO: Record<PlanTier, string> = {
   scale: "All in on content",
 };
 
-const perWeekLine = (n: number) => (n === 1 ? "1 article a week" : `${n} articles a week`);
+// Plans are stated per month everywhere (owner, 2026-11-09): 1 / 3 / 5 a week
+// x 4 = 4 / 12 / 20, the same count the landing cards show.
+const perMonthLine = (n: number) => (n === 1 ? "1 article / month" : `${n} articles / month`);
 // Three rows at most: the pill already says the pace, the row says the rest.
 const PAID_ROWS = ["Topics people search for", "Rankings and analytics", "No badge"];
 const FREE_ROWS = ["Topics people search for", "Your Google stats", "Small DispatchSEO badge"];
@@ -615,7 +617,7 @@ function PlanCard({
   name: string;
   price: string;
   billing: string;
-  /** "1 article a week": the first row, in bold. */
+  /** "4 articles / month": the first row, in bold. */
   pace: string;
   who: string;
   rows: string[];
@@ -755,7 +757,7 @@ export function PlanScene({
                 name="Free"
                 price="$0"
                 billing="Free forever"
-                pace={menu.free.perMonth === 1 ? "1 article a month" : `${menu.free.perMonth} articles a month`}
+                pace={perMonthLine(menu.free.perMonth)}
                 who={WHO.free}
                 rows={FREE_ROWS}
                 on={choice.tier === "free"}
@@ -772,7 +774,7 @@ export function PlanScene({
                   name={o.name}
                   price={money(y ? y.perMonth : o.monthly)}
                   billing={y ? `Billed ${money(y.charge)} a year, save ${y.savePct}%` : "Billed monthly"}
-                  pace={perWeekLine(o.perWeek)}
+                  pace={perMonthLine(o.perWeek * 4)}
                   who={WHO[o.tier]}
                   rows={o.tier === "scale" ? [...PAID_ROWS, "Priority support"] : PAID_ROWS}
                   popular={o.tier === "growth"}
