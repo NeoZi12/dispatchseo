@@ -558,23 +558,25 @@ html:has(.ld) { scroll-behavior: smooth; }
    differ plus one shared list. Hidden here, switched on in the media query. */
 .ld .plans-m { display: none; }
 /* Phone: the free plan as its own strip above the paid scoreboard. */
-/* One card per plan. The article count is the card's headline: it is the
-   only thing the paid plans differ by besides support, so it gets the big
-   number and the price sits beside it. */
-.ld .pm-list { display: grid; gap: 12px; }
-.ld .pm-card { position: relative; border: 1px solid var(--line2); border-radius: 16px; background: var(--card); padding: 16px 18px 18px; }
+/* One card per plan, centred: the plan's name and its articles a month are
+   the two big lines (the count is what the plans differ by), then the price,
+   the one-line note and a full-width button. Owner, 2026-11-09: name and
+   count big and in the middle of the card, not on the left. */
+.ld .pm-list { display: grid; gap: 14px; }
+.ld .pm-card { position: relative; border: 1px solid var(--line2); border-radius: 16px; background: var(--card); padding: 24px 20px 20px; text-align: center; }
 .ld .pm-card.pm-pick { border-color: rgba(139, 92, 246, 0.6); background: linear-gradient(180deg, rgba(139, 92, 246, 0.12), rgba(139, 92, 246, 0.02) 70%), var(--card); box-shadow: 0 20px 44px -26px rgba(139, 92, 246, 0.65); }
-.ld .pm-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 22px; margin-bottom: 10px; }
-.ld .pm-name { font-family: var(--disp); font-size: 15px; font-weight: 700; color: var(--txt); letter-spacing: 0.01em; }
-.ld .pm-flag { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #fff; background: var(--vio); border-radius: 999px; padding: 4px 9px; }
-.ld .pm-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.ld .pm-count { display: flex; align-items: center; gap: 10px; }
-.ld .pm-count b { font-family: var(--disp); font-size: 44px; font-weight: 800; line-height: 1; letter-spacing: -0.04em; color: #fff; font-variant-numeric: tabular-nums; }
-.ld .pm-count span { font-size: 13.5px; font-weight: 600; line-height: 1.2; color: var(--mut); }
-.ld .pm-cost { text-align: right; }
-.ld .pm-price { display: block; font-family: var(--disp); font-size: 24px; font-weight: 800; letter-spacing: -0.03em; color: #fff; white-space: nowrap; }
+/* the flag rides the card's top border, so every card keeps the same inner rhythm */
+.ld .pm-flag { position: absolute; top: 0; left: 50%; transform: translate(-50%, -50%); white-space: nowrap; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #fff; background: var(--vio); border-radius: 999px; padding: 5px 11px; }
+.ld .pm-head { margin-bottom: 6px; }
+.ld .pm-name { font-family: var(--disp); font-size: 24px; font-weight: 800; letter-spacing: -0.02em; color: #fff; }
+.ld .pm-row { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.ld .pm-count { display: flex; align-items: baseline; justify-content: center; gap: 8px; font-family: var(--disp); font-weight: 800; letter-spacing: -0.02em; color: var(--txt); }
+.ld .pm-count b { font-size: 34px; line-height: 1.05; letter-spacing: -0.04em; color: #fff; font-variant-numeric: tabular-nums; }
+.ld .pm-count span { font-size: 22px; line-height: 1.1; }
+.ld .pm-cost { text-align: center; }
+.ld .pm-price { display: block; font-family: var(--disp); font-size: 20px; font-weight: 800; letter-spacing: -0.02em; color: var(--txt); white-space: nowrap; }
 .ld .pm-price small { font-family: var(--body); font-size: 12px; font-weight: 600; color: var(--dim); letter-spacing: 0; }
-.ld .pm-note { font-size: 13.5px; line-height: 1.5; color: var(--mut); margin: 12px 0 14px; }
+.ld .pm-note { font-size: 13.5px; line-height: 1.5; color: var(--mut); margin: 10px auto 16px; max-width: 300px; }
 .ld .pm-card .btn { width: 100%; min-height: 46px; }
 .ld .pm-card:not(.pm-pick):not(.pm-free) .btn { background: transparent; color: var(--txt); border-color: var(--line3); }
 .ld .pm-all { margin-top: 30px; border-top: 1px solid var(--line); padding-top: 22px; }

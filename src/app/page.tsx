@@ -471,7 +471,7 @@ export default async function LandingPage({
                   <span className="pm-name">Free</span>
                 </div>
                 <div className="pm-row">
-                  <div className="pm-count"><b>2</b><span>articles<br />a month</span></div>
+                  <div className="pm-count"><b>2</b><span>articles a month</span></div>
                   <span className="pm-price">$0<small>/forever</small></span>
                 </div>
                 <p className="pm-note">Fact-checked, published for you, with your Google stats. No card.</p>
@@ -479,12 +479,12 @@ export default async function LandingPage({
               </div>
               {PM_PAID.map((plan) => (
                 <div key={plan.tier} className={`pm-card${plan.pick ? " pm-pick" : ""}`}>
+                  {plan.pick ? <span className="pm-flag">Most popular</span> : null}
                   <div className="pm-head">
                     <span className="pm-name">{TIER_NAMES[plan.tier]}</span>
-                    {plan.pick ? <span className="pm-flag">Most popular</span> : null}
                   </div>
                   <div className="pm-row">
-                    <div className="pm-count"><b>{plan.perMonth}</b><span>articles<br />a month</span></div>
+                    <div className="pm-count"><b>{plan.perMonth}</b><span>articles a month</span></div>
                     <div className="pm-cost"><PmPrice tier={plan.tier} annual={annual} /></div>
                   </div>
                   <p className="pm-note">{plan.note}</p>
