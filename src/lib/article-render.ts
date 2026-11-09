@@ -717,6 +717,97 @@ export function renderMarkdown(markdown: string, opts: RenderMarkdownOpts = {}):
   };
 }
 
+// --- Public: markdownBlocks ----------------------------------------------------
+
+export type MarkdownBlockKind = "heading" | "paragraph" | "list" | "quote" | "table" | "code" | "hr" | "image";
+export type MarkdownBlock = { kind: MarkdownBlockKind; source: string };
+
+/**
+ * The article as the in-place editor sees it: one entry per block, each
+ * carrying its OWN markdown source, cut at exactly the boundaries
+ * renderMarkdown() uses - the same regexes and the same helpers walk the
+ * same escaped lines (escaping never adds or removes a line), so a block
+ * here renders to exactly what the page shows for it, and the blocks joined
+ * back with blank lines render to the same article. Headings, paragraphs,
+ * lists and quotes are what the editor lets the owner type into; the rest
+ * is edited as source.
+ */
+export function markdownBlocks(markdown: string): MarkdownBlock[] {
+  const raw = (markdown ?? "").replace(/\r\n/g, "\n");
+  const rawLines = raw.split("\n");
+  const lines = escapeHtml(raw).split("\n");
+  const ctx: InlineCtx = { siteHost: null };
+  const out: MarkdownBlock[] = [];
+  const push = (kind: MarkdownBlockKind, from: number, to: number) => {
+    const source = rawLines.slice(from, to).join("\n").replace(/\s+$/, "");
+    if (source.trim()) out.push({ kind, source });
+  };
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.trim() === "") {
+      i++;
+      continue;
+    }
+    const fenceOpen = FENCE_OPEN_RE.exec(line);
+    if (fenceOpen) {
+      const marker = fenceOpen[1][0];
+      const markerLen = fenceOpen[1].length;
+      let j = i + 1;
+      for (; j < lines.length; j++) {
+        const close = /^ {0,3}([`~]{3,})[ \t]*$/.exec(lines[j]);
+        if (close && close[1][0] === marker && close[1].length >= markerLen) {
+          j++;
+          break;
+        }
+      }
+      push("code", i, j);
+      i = j;
+      continue;
+    }
+    if (HEADING_RE.test(line)) {
+      push("heading", i, i + 1);
+      i++;
+      continue;
+    }
+    if (isHr(line)) {
+      push("hr", i, i + 1);
+      i++;
+      continue;
+    }
+    if (isBlockquoteLine(line)) {
+      let j = i;
+      while (j < lines.length && (isBlockquoteLine(lines[j]) || lines[j].trim() === "")) {
+        if (lines[j].trim() === "") {
+          if (j + 1 >= lines.length || !isBlockquoteLine(lines[j + 1])) break;
+        }
+        j++;
+      }
+      push("quote", i, j);
+      i = j;
+      continue;
+    }
+    if (looksLikeTableStart(lines, i)) {
+      const { next } = parseTable(lines, i, ctx);
+      push("table", i, next);
+      i = next;
+      continue;
+    }
+    if (TOP_ITEM_RE.test(line)) {
+      const { next } = parseList(lines, i, ctx);
+      push("list", i, next);
+      i = next;
+      continue;
+    }
+    let j = i;
+    while (j < lines.length && lines[j].trim() !== "" && !(j > i && isBlockStart(lines[j], lines, j))) j++;
+    const text = rawLines.slice(i, j).join(" ").trim();
+    push(/^!\[[^\]]*\]\([^)]*\)$/.test(text) ? "image" : "paragraph", i, j);
+    i = j;
+  }
+  return out;
+}
+
 // --- Public: addInternalLinks -------------------------------------------------
 
 export type LinkCandidate = {

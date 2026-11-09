@@ -536,6 +536,14 @@ const CSP = [
   "frame-ancestors 'none'",
 ].join("; ");
 
+/** The page's own stylesheet for the dashboard's in-place editor, which
+ *  renders the article inside a shadow root so it looks exactly as the blog
+ *  shows it: the palette on :host instead of :root, the body rules on a
+ *  .page wrapper, and no html-level rules (there is no document to style). */
+export function editorStyles(project: Pick<Project, "hosted_theme">): string {
+  return palette(normalizeTheme(project.hosted_theme)).replace(":root{", ":host{") + CSS.replace(/html\{[^}]*\}/g, "").replace(/\nbody\{/, "\n.page{");
+}
+
 export function hostedHeaders(contentType: string): HeadersInit {
   return {
     "content-type": contentType,
@@ -543,8 +551,9 @@ export function hostedHeaders(contentType: string): HeadersInit {
     "content-security-policy": CSP,
     "x-content-type-options": "nosniff",
     "referrer-policy": "strict-origin-when-cross-origin",
-    // Five minutes at the edge, a day stale-while-revalidate: a new article
-    // shows within minutes and a database blip never takes the blog down.
-    "cache-control": "public, s-maxage=300, stale-while-revalidate=86400",
+    // One minute at the edge, five stale: an owner's edit (article-owner.ts)
+    // shows on the live page within a minute or two, and a database blip
+    // still never takes the blog down. Was 5 min / a day before the editor.
+    "cache-control": "public, s-maxage=60, stale-while-revalidate=300",
   };
 }

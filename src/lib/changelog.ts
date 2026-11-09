@@ -74,7 +74,7 @@ export type ChangelogEntry = {
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "new",
-    text: "You can now edit a live article - its title, description and text - from its page, and take an article off your site. Both work the way the article went out: a hosted page changes at once, a GitHub site gets a pull request. The same two controls exist for your agent as the edit_article and remove_article tools.",
+    text: "You can now edit a live article in place - open it from its page, click any heading or paragraph and change it right there, drop a section, save - and take an article off your site. Both work the way the article went out: a hosted page changes at once, a GitHub site gets a pull request. The same two controls exist for your agent as the edit_article and remove_article tools.",
   },
   {
     kind: "improved",

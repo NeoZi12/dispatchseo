@@ -18,7 +18,7 @@ import {
   type ControlResult,
 } from "@/lib/autopilot/controls";
 import { removeQueuedIdea, restoreQueuedIdea } from "@/lib/autopilot/queue";
-import { editArticle, previewArticleHtml, removeArticle } from "@/lib/article-owner";
+import { editArticle, removeArticle } from "@/lib/article-owner";
 import { redirect } from "next/navigation";
 import type { ActionState } from "@/components/ui/action-state";
 
@@ -399,15 +399,4 @@ export async function removeArticleAction(_prev: ActionState, fd: FormData): Pro
   // the article is gone from the list, which says so once.
   if (r.pending) redirect(`/articles/${encodeURIComponent(id)}`);
   redirect("/articles?removed=1");
-}
-
-/** The editor's Preview tab: the body rendered exactly as the page renders
- *  it, with none of the page around it. */
-export async function previewArticle(slug: string, body: string): Promise<{ html: string } | { error: string }> {
-  if (!(await dashboardAuth())) throw new Error("Unauthorized");
-  const project = await getActiveProject();
-  await assertProjectOwned(project.id);
-  if (slug !== project.slug) return { error: "You switched sites in another tab. Reload this page." };
-  if (body.length > 200_000) return { error: "That's too long to preview." };
-  return { html: previewArticleHtml(project, body) };
 }

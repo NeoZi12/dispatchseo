@@ -2,11 +2,11 @@ import "server-only";
 import { db } from "@/lib/db";
 import { effectiveAutomations, publishTarget, type Project } from "@/lib/projects";
 import { renderDraftForRoute } from "@/lib/job-handlers/finish";
-import { buildExcerpt, buildSchema, renderMarkdown, schemaScript, yamlDoubleQuote } from "@/lib/article-render";
+import { buildExcerpt, buildSchema, schemaScript, yamlDoubleQuote } from "@/lib/article-render";
 import { DESCRIPTION_KEYS, fetchPullRequest, githubApi, parseFrontmatter, relativizeOwnLinks } from "@/lib/repo-publish";
 import { articleSignature } from "@/lib/article-signature";
 import { tokenForRef } from "@/lib/github";
-import { decorateBody, siteOrigin } from "@/lib/hosted-blog";
+import { siteOrigin } from "@/lib/hosted-blog";
 import { backendBaseUrl } from "@/lib/pipeline-pack";
 import { enqueue } from "@/lib/jobs";
 import { EDIT_LIMITS, type ArticleRoute } from "@/lib/article-owner-shared";
@@ -273,17 +273,6 @@ async function readRepoFile(project: Project, path: string): Promise<RepoFile> {
   if (!m) return { ok: false, error: `The article's file in your repo doesn't start with a front matter block, so it can't be changed safely from here. ${ON_GITHUB}` };
   const body = text.slice(m[0].length).replace(/\s*<span data-dispatchseo="[^"]*" hidden><\/span>\s*$/, "").trim();
   return { ok: true, sha: String(file.json.sha), text, frontmatter: m[1], body, hadH1: LEADING_H1.test(body) };
-}
-
-/** The body as the dashboard's Preview tab shows it: the same markdown
- *  renderer the page uses, plus the hosted blog's decorations (TL;DR callout,
- *  FAQ folds). No chrome at all - the preview is the article, nothing
- *  around it; the free tier's credit line is page chrome (hosted-blog.ts
- *  renders it outside the article) and so is never part of what the owner
- *  edits or sees here. */
-export function previewArticleHtml(project: Project, body: string): string {
-  const siteUrl = publishTarget(project) === "hosted" ? siteOrigin(project) : (project.wp_url ?? `https://${project.domain}`);
-  return decorateBody(renderMarkdown(body.replace(LEADING_H1, ""), { siteUrl }).html);
 }
 
 export type EditInput = {
