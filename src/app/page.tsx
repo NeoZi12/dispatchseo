@@ -65,6 +65,11 @@ const STARS_FALLBACK = 97;
 // starred the repo. Added on top of the live star count, so the badge keeps
 // climbing with the stars. 2 on 2026-11-09: one paid, one free (owner's count).
 const LOVED_BEYOND_GITHUB = 2;
+/** Below 100 the exact count; from 100 a round "100+", "150+", ... (owner,
+ *  2026-11-09: a round figure reads stronger than 103 and never looks stale). */
+function lovedLabel(n: number): string {
+  return n < 100 ? String(n) : `${Math.floor(n / 50) * 50}+`;
+}
 // Six real stargazers' avatars (picked 2026-11-08 from the repo's stargazer
 // list). Owner's rule: no photos of real faces - two cartoon avatars and four
 // picture avatars (scenery, a cat, a keyboard). GitHub user ids, so a rename
@@ -310,7 +315,7 @@ export default async function LandingPage({
             <span className="gh-proof-text">
               <span className="gh-proof-stars" aria-hidden="true">★★★★★</span>
               <span>
-                Loved by <b>{stars}</b> people
+                Loved by <b>{lovedLabel(stars)}</b> people
               </span>
             </span>
           </a>
