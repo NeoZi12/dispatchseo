@@ -13,6 +13,12 @@ export type Slide = {
    *  default cover crop eats the app's top bar - dark bars at the sides
    *  read as nothing on a black stage, a sliced top bar reads as broken. */
   fit?: "contain";
+  /** Landing reel on phones (<=600px): a phone-shaped (4:3) version of the
+   *  shot, for screenshots whose point is spread across the full width (the
+   *  top-posts numbers sit at the far right of each title). Without one, a
+   *  phone crops the wide shot from its LEFT edge, where every other shot's
+   *  headline number or title lives. */
+  mobileImage?: string;
 };
 
 // Real screenshots of ClockedCode, the owner's own site on the autopilot
@@ -43,6 +49,9 @@ export const SLIDES: Slide[] = [
     title: "See which articles bring people in",
     caption: "Clicks, impressions and your spot on Google, per article.",
     image: "/screenshots/landing-top-posts-v5.png",
+    // The same first three rows, each title with its numbers stacked under
+    // it (cut from the v5 shot, nothing redrawn).
+    mobileImage: "/screenshots/landing-top-posts-m1.png",
     alt: "The top posts list: each article with its position on Google, impressions and clicks over the last 30 days",
   },
   {

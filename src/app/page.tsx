@@ -16,7 +16,9 @@ import { dashboardAuth, maybeSignedIn } from "@/lib/auth-gate";
 import { hasConfiguredProject } from "@/lib/onboarding-gate";
 import {
   TIER_LIMITS,
+  TIER_NAMES,
   annualBillingAvailable,
+  articlesPerMonthFor,
   annualSavingsPct,
   priceLabel,
   type Tier,
@@ -132,7 +134,15 @@ function PlanLink({ tier, annual, children }: { tier: Tier; annual: boolean; chi
   );
 }
 
-// The same price, sized for a third of a phone screen.
+// The mobile pricing cards' paid plans. Articles a month come from billing.ts
+// (1 / 3 / 5 a week x 4), so a pace change can't leave these behind.
+const PM_PAID: { tier: Tier; perMonth: number; note: string; pick: boolean }[] = [
+  { tier: "starter", perMonth: articlesPerMonthFor("starter"), note: "Email support", pick: false },
+  { tier: "growth", perMonth: articlesPerMonthFor("growth"), note: "Email support", pick: true },
+  { tier: "scale", perMonth: articlesPerMonthFor("scale"), note: "Priority support", pick: false },
+];
+
+// The same price, sized for a phone card.
 function PmPrice({ tier, annual }: { tier: Tier; annual: boolean }) {
   if (!annual) {
     return (
@@ -450,58 +460,38 @@ export default async function LandingPage({
               <PlanLink tier="scale" annual={annual}>Choose Scale</PlanLink>
             </div>
           </div>
-          {/* Mobile pricing (<=980px): the free plan as one strip, then the
-              three paid plans as a compare scoreboard (they differ only in
-              pace and support) plus one shared list. Nothing is dropped:
-              every tick above appears in the strip, a row or the list. */}
+          {/* Mobile pricing (<=980px): one stacked card per plan, led by the
+              articles a month (the thing the plans differ by), then one
+              shared list for what every paid plan has. Nothing is dropped:
+              every tick above appears on a card or in the list. */}
           <div className="plans-m">
-            <div className="pm-free">
-              <div className="pm-free-top">
-                <span className="pm-name">Free</span>
-                <span className="pm-price">$0<small>/forever</small></span>
+            <div className="pm-list">
+              <div className="pm-card pm-free">
+                <div className="pm-head">
+                  <span className="pm-name">Free</span>
+                </div>
+                <div className="pm-row">
+                  <div className="pm-count"><b>2</b><span>articles<br />a month</span></div>
+                  <span className="pm-price">$0<small>/forever</small></span>
+                </div>
+                <p className="pm-note">Fact-checked, published for you, with your Google stats. No card.</p>
+                <a className="btn btn-solid" href="/onboarding">Get free traffic</a>
               </div>
-              <p>2 articles a month, fact-checked and published for you, with your Google visitors and impressions. No card.</p>
-              <a className="btn btn-solid" href="/onboarding">Get free traffic</a>
+              {PM_PAID.map((plan) => (
+                <div key={plan.tier} className={`pm-card${plan.pick ? " pm-pick" : ""}`}>
+                  <div className="pm-head">
+                    <span className="pm-name">{TIER_NAMES[plan.tier]}</span>
+                    {plan.pick ? <span className="pm-flag">Most popular</span> : null}
+                  </div>
+                  <div className="pm-row">
+                    <div className="pm-count"><b>{plan.perMonth}</b><span>articles<br />a month</span></div>
+                    <div className="pm-cost"><PmPrice tier={plan.tier} annual={annual} /></div>
+                  </div>
+                  <p className="pm-note">{plan.note}</p>
+                  <PlanLink tier={plan.tier} annual={annual}>Choose {TIER_NAMES[plan.tier]}</PlanLink>
+                </div>
+              ))}
             </div>
-            <table className="pm-table">
-              <caption className="ld-sr">Compare paid plans</caption>
-              <thead>
-                <tr>
-                  <th scope="col">
-                    <span className="pm-name">Starter</span>
-                    <PmPrice tier="starter" annual={annual} />
-                  </th>
-                  <th scope="col" className="pm-pick">
-                    <span className="pm-flag">Most popular</span>
-                    <span className="pm-name">Growth</span>
-                    <PmPrice tier="growth" annual={annual} />
-                  </th>
-                  <th scope="col">
-                    <span className="pm-name">Scale</span>
-                    <PmPrice tier="scale" annual={annual} />
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td><b>4</b> a month</td>
-                  <td className="pm-pick"><b>12</b> a month</td>
-                  <td><b>20</b> a month</td>
-                </tr>
-                <tr>
-                  <td>Email support</td>
-                  <td className="pm-pick">Email support</td>
-                  <td>Priority support</td>
-                </tr>
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td><PlanLink tier="starter" annual={annual}>Choose</PlanLink></td>
-                  <td className="pm-pick"><PlanLink tier="growth" annual={annual}>Choose</PlanLink></td>
-                  <td><PlanLink tier="scale" annual={annual}>Choose</PlanLink></td>
-                </tr>
-              </tfoot>
-            </table>
             <div className="pm-all">
               <h3>On every paid plan</h3>
               <ul>

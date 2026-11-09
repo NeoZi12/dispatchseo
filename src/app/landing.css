@@ -558,30 +558,25 @@ html:has(.ld) { scroll-behavior: smooth; }
    differ plus one shared list. Hidden here, switched on in the media query. */
 .ld .plans-m { display: none; }
 /* Phone: the free plan as its own strip above the paid scoreboard. */
-.ld .pm-free { border: 1px solid var(--line2); border-radius: 14px; background: var(--card); padding: 18px 18px 16px; margin-bottom: 18px; }
-.ld .pm-free-top { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
-.ld .pm-free p { font-size: 14px; color: var(--mut); line-height: 1.55; margin-bottom: 14px; }
-.ld .pm-free .btn { width: 100%; }
-.ld .pm-table { width: 100%; table-layout: fixed; border-collapse: collapse; }
-.ld .pm-table th, .ld .pm-table td { padding: 10px 6px; text-align: center; vertical-align: middle; border-bottom: 1px solid var(--line); }
-.ld .pm-table thead th { padding: 16px 6px 14px; border-bottom: 1px solid var(--line2); vertical-align: bottom; }
-.ld .pm-table tfoot td { border-bottom: 0; padding: 16px 5px 0; }
-.ld .pm-name { display: block; font-family: var(--disp); font-size: 13px; font-weight: 700; color: var(--mut); letter-spacing: 0.01em; }
-.ld .pm-price { display: block; font-family: var(--disp); font-size: clamp(22px, 6.4vw, 30px); font-weight: 800; letter-spacing: -0.03em; color: #fff; margin-top: 2px; }
-.ld .pm-price small { font-family: var(--body); font-size: 11px; font-weight: 600; color: var(--dim); letter-spacing: 0; }
-.ld .pm-annual { display: block; margin-top: 3px; font-family: var(--body); font-size: 10.5px; font-weight: 600; color: var(--mut); white-space: nowrap; }
-.ld .pm-per { display: block; font-family: var(--body); font-size: 10.5px; font-weight: 600; color: var(--dim); margin-top: 1px; }
-/* Flat marker for the recommended column - a violet cap on the column plus
-   small caps, deliberately not a floating pill. */
-.ld .pm-flag { display: block; font-size: 9.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--vio2); margin-bottom: 5px; }
-.ld .pm-table .pm-pick { background: rgba(139, 92, 246, 0.07); }
-.ld .pm-table thead .pm-pick { box-shadow: inset 0 3px 0 var(--vio); border-radius: 4px 4px 0 0; }
-.ld .pm-table tfoot .pm-pick { background: transparent; }
-.ld .pm-table tbody td { font-size: 12.5px; line-height: 1.35; color: var(--mut); }
-.ld .pm-table tbody td b { display: block; font-family: var(--disp); font-size: 17px; font-weight: 800; color: var(--txt); letter-spacing: -0.02em; }
-.ld .pm-table tbody .pm-off { color: var(--line3); font-size: 15px; }
-.ld .pm-table tfoot .btn { width: 100%; padding: 11px 4px; min-height: 46px; font-size: 13.5px; border-radius: 9px; }
-.ld .pm-table tfoot td:not(.pm-pick) .btn { background: transparent; color: var(--txt); border-color: var(--line3); }
+/* One card per plan. The article count is the card's headline: it is the
+   only thing the paid plans differ by besides support, so it gets the big
+   number and the price sits beside it. */
+.ld .pm-list { display: grid; gap: 12px; }
+.ld .pm-card { position: relative; border: 1px solid var(--line2); border-radius: 16px; background: var(--card); padding: 16px 18px 18px; }
+.ld .pm-card.pm-pick { border-color: rgba(139, 92, 246, 0.6); background: linear-gradient(180deg, rgba(139, 92, 246, 0.12), rgba(139, 92, 246, 0.02) 70%), var(--card); box-shadow: 0 20px 44px -26px rgba(139, 92, 246, 0.65); }
+.ld .pm-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 22px; margin-bottom: 10px; }
+.ld .pm-name { font-family: var(--disp); font-size: 15px; font-weight: 700; color: var(--txt); letter-spacing: 0.01em; }
+.ld .pm-flag { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #fff; background: var(--vio); border-radius: 999px; padding: 4px 9px; }
+.ld .pm-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ld .pm-count { display: flex; align-items: center; gap: 10px; }
+.ld .pm-count b { font-family: var(--disp); font-size: 44px; font-weight: 800; line-height: 1; letter-spacing: -0.04em; color: #fff; font-variant-numeric: tabular-nums; }
+.ld .pm-count span { font-size: 13.5px; font-weight: 600; line-height: 1.2; color: var(--mut); }
+.ld .pm-cost { text-align: right; }
+.ld .pm-price { display: block; font-family: var(--disp); font-size: 24px; font-weight: 800; letter-spacing: -0.03em; color: #fff; white-space: nowrap; }
+.ld .pm-price small { font-family: var(--body); font-size: 12px; font-weight: 600; color: var(--dim); letter-spacing: 0; }
+.ld .pm-note { font-size: 13.5px; line-height: 1.5; color: var(--mut); margin: 12px 0 14px; }
+.ld .pm-card .btn { width: 100%; min-height: 46px; }
+.ld .pm-card:not(.pm-pick):not(.pm-free) .btn { background: transparent; color: var(--txt); border-color: var(--line3); }
 .ld .pm-all { margin-top: 30px; border-top: 1px solid var(--line); padding-top: 22px; }
 .ld .pm-all h3 { font-size: 11.5px; font-weight: 700; letter-spacing: 0.11em; text-transform: uppercase; color: var(--dim); margin-bottom: 14px; }
 .ld .pm-all ul { list-style: none; column-gap: 20px; }
@@ -601,7 +596,9 @@ html:has(.ld) { scroll-behavior: smooth; }
 /* ---------- final cta ---------- */
 .ld .final { text-align: center; position: relative; overflow: hidden; border-top: 1px solid var(--line); }
 .ld .final h2 { font-size: clamp(32px, 5vw, 52px); font-weight: 800; margin-bottom: 18px; }
-.ld .final p { color: var(--mut); max-width: 520px; margin: 0 auto 36px; font-size: 17px; }
+/* 48px bottom: the CTA mascot (.cta-mascot, top: -41px) stands on the button
+   and must clear the last line of this text, not sit on it. */
+.ld .final p { color: var(--mut); max-width: 520px; margin: 0 auto 48px; font-size: 17px; }
 .ld .final .email-group { margin: 0 auto; }
 .ld .final .hero-note { color: var(--dim); }
 .ld .final .hero-note a { color: var(--txt); }
@@ -739,7 +736,7 @@ html:has(.ld) { scroll-behavior: smooth; }
 
   /* final cta */
   .ld .final h2 { font-size: clamp(27px, 6.2vw, 44px); text-wrap: balance; }
-  .ld .final p { font-size: 16px; margin-bottom: 28px; }
+  .ld .final p { font-size: 16px; margin-bottom: 50px; }
   .ld .final .btn { width: min(340px, 100%); min-height: 50px; font-size: 16px; }
 
   /* footer: brand gets its own full-width row, links pair off below it */
@@ -779,10 +776,14 @@ html:has(.ld) { scroll-behavior: smooth; }
      that a 40px button at the edge covers nothing that matters. */
   .ld .show-arrow { display: none; }
   /* Same reasoning for the frame itself: the native 2.2:1 is a ~120px sliver
-     on a phone. A 16:10 crop off the top-centre trades ~27% of the width for a
-     1.4x bigger, legible screenshot. Tablets are wide enough to skip it. */
-  .ld .show-stack { aspect-ratio: 16 / 10; }
-  .ld .show-slide img { object-position: center top; }
+     on a phone. A 4:3 crop trades ~40% of the width for a 1.65x bigger,
+     legible screenshot. It crops from the LEFT, not the centre: every shot
+     puts its point there (414 / 59,316, the queue's titles and KD, the
+     article's headline), and a centred crop sliced those off - a phone saw
+     bare chart lines. Shots whose point spans the width carry a phone-shaped
+     mobileImage instead (showcase-slides.ts). Tablets skip all of this. */
+  .ld .show-stack { aspect-ratio: 4 / 3; }
+  .ld .show-slide img { object-position: left top; }
   .ld .email-group { flex-direction: column; gap: 8px; border-radius: 14px; }
   .ld .email-group input[type="email"] { padding: 10px 14px; }
   .ld .foot-grid { gap: 30px 16px; }
@@ -816,8 +817,6 @@ html:has(.ld) { scroll-behavior: smooth; }
   .ld { --pad: 16px; --navpad: 16px; }
   .ld .logo { font-size: 17px; gap: 8px; }
   .ld .logo-mark { height: 24px; }
-  .ld .pm-table th, .ld .pm-table td { padding: 9px 3px; }
-  .ld .pm-table tfoot .btn { font-size: 12.5px; padding: 10px 2px; }
   .ld .who-card { padding: 26px 20px 28px; }
 }
 

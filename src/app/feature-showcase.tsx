@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Image from "next/image";
+import Image, { getImageProps } from "next/image";
 import { SLIDES } from "@/lib/showcase-slides";
 
 const AUTOPLAY_MS = 3000;
@@ -31,6 +31,21 @@ function BrowserFrame({ children }: { children: React.ReactNode }) {
         <div className="show-media">{children}</div>
       </div>
     </div>
+  );
+}
+
+/** A slide with a phone-shaped version: <picture> picks the file, so a phone
+ *  downloads only the phone shot. Breakpoint matches landing.css's 600px. */
+function ArtDirected({ slide }: { slide: (typeof SLIDES)[number] }) {
+  const common = { alt: slide.alt, fill: true, quality: 90 } as const;
+  const { props: { srcSet: mobileSrcSet } } = getImageProps({ ...common, src: slide.mobileImage!, sizes: "100vw" });
+  const { props } = getImageProps({ ...common, src: slide.image, sizes: "(max-width: 900px) 100vw, 1080px" });
+  return (
+    <picture>
+      <source media="(max-width: 600px)" srcSet={mobileSrcSet} />
+      {/* eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text */}
+      <img {...props} />
+    </picture>
   );
 }
 
@@ -102,13 +117,15 @@ export function FeatureShowcase() {
                 className={`show-slide${active === i ? " active" : ""}${s.fit === "contain" ? " show-slide-contain" : ""}`}
                 aria-hidden={active !== i}
               >
-                <Image
-                  src={s.image}
-                  alt={s.alt}
-                  fill
-                  sizes="(max-width: 900px) 100vw, 1080px"
-                  quality={90}
-                />
+                {s.mobileImage ? <ArtDirected slide={s} /> : (
+                  <Image
+                    src={s.image}
+                    alt={s.alt}
+                    fill
+                    sizes="(max-width: 900px) 100vw, 1080px"
+                    quality={90}
+                  />
+                )}
               </div>
             ))}
           </div>

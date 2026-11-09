@@ -74,6 +74,10 @@ export type ChangelogEntry = {
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "improved",
+    text: "The home page reads properly on a phone: the product screenshots now show their numbers instead of a cropped middle, pricing is one clear card per plan led by its articles a month, and the mascot no longer sits on the closing line of text.",
+  },
+  {
+    kind: "improved",
     text: "Plans now state their articles per month instead of per week: Starter 4 a month, Growth 12, Scale 20. Same pace as before, counted the way the price is.",
   },
   {
