@@ -24,8 +24,14 @@ export function railFor(withPlan: boolean): SceneStep[] {
   return withPlan ? SCENES : SCENES.filter((x) => x.id !== "checkout");
 }
 
+// Purple, not lavender: the accent-strong -> accent gradient read blue on
+// the account step (owner, 2026-11-09), so the primary runs violet-600 to
+// purple-600 and the secondary is a violet-tinted outline.
 export const BTN_PRIMARY =
-  "inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-accent-strong to-accent px-6 py-3.5 text-[15px] font-semibold text-white shadow-lg shadow-accent/25 transition hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none " +
+  "inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#6d28d9] to-[#9333ea] px-6 py-3.5 text-[15px] font-semibold text-white shadow-lg shadow-[#7c3aed]/30 transition hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none " +
+  FOCUS_RING;
+export const BTN_SECONDARY =
+  "inline-flex items-center justify-center gap-2 rounded-xl border border-[#8b5cf6]/40 bg-[#8b5cf6]/10 px-6 py-3.5 text-[15px] font-semibold text-ink transition hover:border-[#a855f7]/70 hover:bg-[#8b5cf6]/20 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 " +
   FOCUS_RING;
 export const BTN_QUIET =
   "inline-flex items-center justify-center gap-2 rounded-xl border border-line bg-surface-2 px-5 py-3 text-[14px] font-medium text-ink-muted transition hover:border-line hover:text-ink " + FOCUS_RING;

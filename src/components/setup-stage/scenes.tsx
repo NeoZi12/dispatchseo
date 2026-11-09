@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { cx, CONTROL, FOCUS_RING } from "@/components/ui/styles";
-import { BTN_PRIMARY, BTN_QUIET, Check, SceneCard, StepRow, type StepState } from "./primitives";
+import { BTN_PRIMARY, BTN_QUIET, BTN_SECONDARY, Check, SceneCard, StepRow, type StepState } from "./primitives";
 import { FrameStrip } from "./strip";
 import { SHOTS } from "./shot";
 import s from "./stage.module.css";
@@ -486,8 +486,48 @@ export function AccountScene({
   }
   return (
     <SceneCard id="account" title="Create your account" lead={`${domain} fits. Next, an account so your articles have a home.`}>
-      <label className="flex cursor-pointer items-start gap-3 text-[14px] text-ink-muted">
-        <input type="checkbox" checked={accept} onChange={(e) => onAccept(e.target.checked)} className="mt-0.5 h-4 w-4 accent-accent" />
+      {/* Order (owner, 2026-11-09): the two sign-in buttons first, then the
+          email fallback behind an "or", and the Terms tick last. */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <button type="button" className={cx(BTN_PRIMARY, "w-full")} onClick={() => onProvider("github")} disabled={busy}>
+          <GithubMark />
+          Continue with GitHub
+        </button>
+        <button type="button" className={cx(BTN_SECONDARY, "w-full")} onClick={() => onProvider("google")} disabled={busy}>
+          <GoogleG />
+          Continue with Google
+        </button>
+      </div>
+      <div className="my-5 flex items-center gap-3 text-[12px] font-medium uppercase tracking-wider text-ink-faint" aria-hidden="true">
+        <span className="h-px flex-1 bg-line" />
+        or
+        <span className="h-px flex-1 bg-line" />
+      </div>
+      <form
+        className="flex flex-col gap-2 sm:flex-row"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onEmailSubmit();
+        }}
+      >
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => onEmail(e.target.value)}
+          placeholder="Your email"
+          autoComplete="email"
+          className={cx(CONTROL, "h-12 flex-1 rounded-xl text-[15px]")}
+        />
+        <button
+          type="submit"
+          className={cx(/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim()) ? BTN_PRIMARY : BTN_SECONDARY, "h-12 whitespace-nowrap px-5 py-0 text-[15px] transition-all duration-300")}
+          disabled={busy}
+        >
+          Email me a link
+        </button>
+      </form>
+      <label className="mt-6 flex cursor-pointer items-start gap-3 text-[13.5px] text-ink-muted">
+        <input type="checkbox" checked={accept} onChange={(e) => onAccept(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[#8b5cf6]" />
         <span>
           I agree to the{" "}
           <a href="/terms" target="_blank" className="text-ink underline decoration-line underline-offset-4">
@@ -500,39 +540,6 @@ export function AccountScene({
           .
         </span>
       </label>
-      <div className="mt-5 grid gap-3 sm:grid-cols-2">
-        <button type="button" className={cx(BTN_PRIMARY, "w-full")} onClick={() => onProvider("github")} disabled={busy}>
-          <GithubMark />
-          Continue with GitHub
-        </button>
-        <button type="button" className={cx(BTN_QUIET, "w-full py-3.5 text-[15px] text-ink")} onClick={() => onProvider("google")} disabled={busy}>
-          <GoogleG />
-          Continue with Google
-        </button>
-      </div>
-      <form
-        className="mt-4 flex flex-col gap-2 sm:flex-row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          onEmailSubmit();
-        }}
-      >
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => onEmail(e.target.value)}
-          placeholder="Or your email"
-          autoComplete="email"
-          className={cx(CONTROL, "h-12 flex-1 rounded-xl text-[15px]")}
-        />
-        <button
-          type="submit"
-          className={cx(/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim()) ? BTN_PRIMARY : BTN_QUIET, "h-12 whitespace-nowrap px-5 py-0 text-[15px] transition-all duration-300")}
-          disabled={busy}
-        >
-          Email me a link
-        </button>
-      </form>
       {error ? <p className="mt-4 rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-[14px] text-ink">{error}</p> : null}
       {onChangeAddress ? (
         <button type="button" onClick={onChangeAddress} className="mt-4 rounded text-[13px] text-ink-faint underline decoration-line underline-offset-4 hover:text-ink">
