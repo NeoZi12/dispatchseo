@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MDXRemote } from "next-mdx-remote/rsc";
+import remarkGfm from "remark-gfm";
 import { getAllPosts, getPost, getPostHeadings } from "@/lib/blog";
 import { mdxComponents } from "@/components/blog/registry";
 import { TableOfContents } from "@/components/blog/TableOfContents";
@@ -138,7 +139,7 @@ export default async function BlogPost({ params }: { params: Promise<{ slug: str
         ) : (
           <SideAd className="mb-8" />
         )}
-        <MDXRemote source={post.content} components={mdxComponents} />
+        <MDXRemote source={post.content} components={mdxComponents} options={{ mdxOptions: { remarkPlugins: [remarkGfm] } }} />
         <div className="mt-12 border-t border-neutral-800 pt-6">
           <Link
             href="/blog"
