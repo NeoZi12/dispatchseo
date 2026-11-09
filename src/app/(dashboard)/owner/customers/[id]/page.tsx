@@ -101,8 +101,8 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
 
   return (
     <div className="mx-auto max-w-[1280px] space-y-4 sm:space-y-5">
-      <Link href="/owner" className="inline-flex items-center gap-1.5 text-[13px] text-ink-faint hover:text-ink">
-        <span aria-hidden="true">←</span> Owner
+      <Link href="/owner/customers" className="inline-flex items-center gap-1.5 text-[13px] text-ink-faint hover:text-ink">
+        <span aria-hidden="true">←</span> Customers
       </Link>
 
       <header className="flex flex-col gap-3 pb-1 sm:flex-row sm:items-end sm:justify-between">

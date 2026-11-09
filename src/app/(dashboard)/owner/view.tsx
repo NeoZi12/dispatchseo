@@ -1,6 +1,6 @@
 import { cx } from "@/components/ui/styles";
 import type { Customer, CustomersReport, TopRow, TrafficReport } from "@/lib/owner-analytics";
-import type { Tier } from "@/lib/billing";
+import { TIER_LIMITS, TIER_NAMES, type Tier } from "@/lib/billing";
 import { AreaChart, MetricChart } from "./area";
 import { BarList, DeltaPill, Panel, PublishStrip, Sparkline, StatCells, type BarRow } from "./bits";
 import { ago, cancelNote, compact, delta, fmt, fullDate, money, rangeShort, shortDate } from "./format";
@@ -259,6 +259,229 @@ export function SignupsSection({ t, c, who, now }: { t: TrafficReport; c: Custom
   );
 }
 
+// ---------- who is on which plan ----------
+
+type PlanKey = "free" | Tier;
+const PLAN_KEYS: PlanKey[] = ["free", "starter", "growth", "scale"];
+const PLAN_COLOR: Record<PlanKey, string> = { free: "var(--color-ink-faint)", ...TIER_COLOR };
+const PLAN_NAME: Record<PlanKey, string> = { free: "Free", ...TIER_NAMES };
+
+/** The plan a customer is on today. A live or trialing subscription is its
+ *  tier; anyone else with a site is on the free plan (lib/billing isFreePlan:
+ *  no plan yet, or one that ended). Accounts with no site and no plan are on
+ *  nothing yet and stay out of the groups. */
+function planKeyOf(x: Customer): PlanKey | null {
+  const live = x.plan.status === "active" || x.plan.status === "past_due" || (x.plan.status === "trialing" && !x.plan.cancelled);
+  if (live) return x.plan.tier ?? "starter";
+  return x.sites.length > 0 ? "free" : null;
+}
+
+type PlanGroup = { key: PlanKey; people: Customer[]; mrr: number; revenue: number; cost: number; margin: number; trials: number; leaving: number };
+
+function planGroups(c: CustomersReport): { groups: PlanGroup[]; idle: Customer[] } {
+  const real = c.customers.filter((x) => !x.operator);
+  const idle: Customer[] = [];
+  const by = new Map<PlanKey, Customer[]>(PLAN_KEYS.map((k) => [k, []]));
+  for (const x of real) {
+    const k = planKeyOf(x);
+    if (k) by.get(k)!.push(x);
+    else idle.push(x);
+  }
+  const groups = PLAN_KEYS.map((key) => {
+    const people = by.get(key)!;
+    const revenue = people.reduce((a, x) => a + x.revenueRecentUsd, 0);
+    const cost = people.reduce((a, x) => a + x.totalCostRecentUsd, 0);
+    return {
+      key,
+      people,
+      mrr: people.reduce((a, x) => a + x.plan.monthlyUsd, 0),
+      revenue,
+      cost,
+      margin: revenue - cost,
+      trials: people.filter((x) => x.plan.status === "trialing").length,
+      leaving: people.filter((x) => x.plan.cancelAtPeriodEnd && x.plan.status === "active").length,
+    };
+  });
+  return { groups, idle };
+}
+
+function PlanTile({ g, range }: { g: PlanGroup; range: number }) {
+  const price = g.key === "free" ? "$0" : `${money(TIER_LIMITS[g.key].price)}/mo`;
+  const notes = [g.trials ? `${g.trials} on trial` : null, g.leaving ? `${g.leaving} leaving` : null].filter(Boolean).join(" · ");
+  return (
+    <div className="flex min-w-0 flex-col bg-surface px-4 pb-4 pt-4 sm:px-6 sm:pt-5">
+      <p className="flex items-center gap-2 text-[12.5px] text-ink-muted sm:text-[13px]">
+        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: PLAN_COLOR[g.key] }} aria-hidden="true" />
+        {PLAN_NAME[g.key]}
+        <span className="ml-auto font-mono text-[11.5px] tabular-nums text-ink-faint">{price}</span>
+      </p>
+      <p className="mt-2 flex items-baseline gap-2 sm:mt-2.5">
+        <span className="text-[1.5rem] font-light leading-none tracking-tight tabular-nums text-ink sm:text-[2.1rem]">{fmt(g.people.length)}</span>
+        <span className="text-[12px] text-ink-faint">{g.people.length === 1 ? "person" : "people"}</span>
+      </p>
+      <p className="mt-2 min-h-[1rem] text-[12px] leading-snug text-ink-faint sm:text-[12.5px]">{notes || (g.key === "free" ? "sites with no paid plan" : " ")}</p>
+      <dl className="mt-4 grid grid-cols-3 gap-2 border-t border-line-soft pt-3 font-mono text-[12.5px] tabular-nums">
+        {[
+          ["MRR", money(g.mrr), "text-ink"],
+          [`Cost ${rangeShort(range)}`, money(g.cost, { precise: true }), "text-ink"],
+          ["Margin", money(g.margin), marginClass(g.people.length ? g.margin : null)],
+        ].map(([k, v, cls]) => (
+          <div key={k} className="min-w-0">
+            <dt className="truncate font-sans text-[11px] text-ink-faint">{k}</dt>
+            <dd className={cx("mt-0.5 truncate", cls)}>{v}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+function PlanRow({ x, now }: { x: Customer; now: number }) {
+  const note = cancelNote(x.plan);
+  return (
+    <tr className="group border-t border-line-soft transition-colors hover:bg-surface-2/40">
+      <td className="max-w-[17rem] px-6 py-3">
+        <a href={`/owner/customers/${x.userId}`} className="block truncate text-[13.5px] font-medium text-ink group-hover:underline" title={x.email}>
+          {x.email}
+        </a>
+        <SiteList x={x} />
+      </td>
+      <td className="px-3 py-3">
+        <div className="flex items-center gap-2">
+          <StatusChip c={x} />
+          {x.plan.monthlyUsd ? (
+            <span className="font-mono text-[11px] tabular-nums text-ink-faint">
+              {money(x.plan.monthlyUsd)}/mo{x.plan.interval === "year" ? " · yearly" : ""}
+            </span>
+          ) : null}
+        </div>
+        {note ? <span className="mt-0.5 block whitespace-nowrap text-[11.5px] text-danger/90">{note}</span> : null}
+      </td>
+      <td className="px-3 py-3 text-right font-mono tabular-nums text-ink">{money(x.revenueRecentUsd)}</td>
+      <td className="px-3 py-3 text-right font-mono tabular-nums">
+        <span className="text-ink">{money(x.totalCostRecentUsd, { precise: true })}</span>
+        <CostSplit x={x} />
+      </td>
+      <td className={cx("px-3 py-3 text-right font-mono tabular-nums", marginClass(x.marginRecentUsd))}>{money(x.marginRecentUsd)}</td>
+      <td className="hidden px-6 py-3 text-right font-mono tabular-nums sm:table-cell">
+        <span className="text-ink">{ago(x.lastSeen, now)}</span>
+        {x.daysActiveRecent ? <span className="block text-[11px] text-ink-faint">{x.daysActiveRecent}d active</span> : null}
+      </td>
+    </tr>
+  );
+}
+
+function PlanCard({ x, now }: { x: Customer; now: number }) {
+  const note = cancelNote(x.plan);
+  return (
+    <li>
+      <a href={`/owner/customers/${x.userId}`} className="block px-5 py-3.5 transition-colors active:bg-surface-2/60">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-[14px] font-medium text-ink">{x.email}</p>
+            <SiteList x={x} />
+          </div>
+          <StatusChip c={x} />
+        </div>
+        {note ? <p className="mt-1.5 text-[12px] text-danger/90">{note}</p> : null}
+        <dl className="mt-3 grid grid-cols-4 gap-2 font-mono tabular-nums">
+          {[
+            ["Revenue", money(x.revenueRecentUsd), "text-ink"],
+            ["Cost", money(x.totalCostRecentUsd, { precise: true }), "text-ink"],
+            ["Margin", money(x.marginRecentUsd), marginClass(x.marginRecentUsd)],
+            ["Seen", ago(x.lastSeen, now), "text-ink"],
+          ].map(([k, v, cls]) => (
+            <div key={k} className="min-w-0">
+              <dt className="font-sans text-[11px] text-ink-faint">{k}</dt>
+              <dd className={cx("mt-0.5 truncate text-[13px]", cls)}>{v}</dd>
+            </div>
+          ))}
+        </dl>
+      </a>
+    </li>
+  );
+}
+
+export function PlansPanel({ c, range, now }: { c: CustomersReport; range: number; now: number }) {
+  const { groups, idle } = planGroups(c);
+  const total = groups.reduce((a, g) => a + g.people.length, 0);
+  const filled = groups.filter((g) => g.people.length > 0);
+  return (
+    <Panel id="plans" label="Plans">
+      <SectionHead
+        title="Plans"
+        says="How many people are on the free plan and on each paid plan, and who they are. Free means a site with no live subscription."
+        note={`${fmt(total)} ${total === 1 ? "person" : "people"} on a plan`}
+      />
+      <div className="grid grid-cols-2 gap-px bg-line-soft md:grid-cols-4">
+        {groups.map((g) => (
+          <PlanTile key={g.key} g={g} range={range} />
+        ))}
+      </div>
+      {filled.length === 0 ? (
+        <p className="border-t border-line-soft px-5 py-6 text-center text-[13px] text-ink-faint sm:px-6">Nobody has a site or a plan yet.</p>
+      ) : (
+        <>
+          <div className="hidden border-t border-line-soft md:block">
+            <table className="w-full text-left text-[13px]">
+              <caption className="sr-only">Every customer, grouped by plan</caption>
+              <thead>
+                <tr className="text-[11px] uppercase tracking-wider text-ink-faint">
+                  <th scope="col" className="px-6 pb-3 pt-4 font-medium">Customer</th>
+                  <th scope="col" className="px-3 pb-3 pt-4 font-medium">Status</th>
+                  <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Revenue, {rangeShort(range)}</th>
+                  <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Cost</th>
+                  <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Margin</th>
+                  <th scope="col" className="hidden px-6 pb-3 pt-4 text-right font-medium sm:table-cell">Last seen</th>
+                </tr>
+              </thead>
+              {filled.map((g) => (
+                <tbody key={g.key}>
+                  <tr className="border-t border-line-soft bg-surface-2/50">
+                    <th scope="rowgroup" colSpan={6} className="px-6 py-2 text-left">
+                      <span className="flex items-center gap-2 text-[12px] font-medium text-ink">
+                        <span className="h-2 w-2 rounded-full" style={{ background: PLAN_COLOR[g.key] }} aria-hidden="true" />
+                        {PLAN_NAME[g.key]}
+                        <span className="font-mono font-normal tabular-nums text-ink-faint">
+                          {fmt(g.people.length)} · {money(g.mrr)} MRR · margin {money(g.margin)}
+                        </span>
+                      </span>
+                    </th>
+                  </tr>
+                  {g.people.map((x) => (
+                    <PlanRow key={x.userId} x={x} now={now} />
+                  ))}
+                </tbody>
+              ))}
+            </table>
+          </div>
+          <div className="md:hidden">
+            {filled.map((g) => (
+              <div key={g.key} className="border-t border-line-soft">
+                <p className="flex items-center gap-2 bg-surface-2/50 px-5 py-2 text-[12px] font-medium text-ink">
+                  <span className="h-2 w-2 rounded-full" style={{ background: PLAN_COLOR[g.key] }} aria-hidden="true" />
+                  {PLAN_NAME[g.key]}
+                  <span className="font-mono font-normal tabular-nums text-ink-faint">{fmt(g.people.length)}</span>
+                </p>
+                <ol className="divide-y divide-line-soft">
+                  {g.people.map((x) => (
+                    <PlanCard key={x.userId} x={x} now={now} />
+                  ))}
+                </ol>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      {idle.length ? (
+        <p className="border-t border-line-soft px-5 py-3 text-[12.5px] text-ink-faint sm:px-6">
+          {fmt(idle.length)} {idle.length === 1 ? "account" : "accounts"} signed up and never added a site or picked a plan, so they are on nothing yet.
+        </p>
+      ) : null}
+    </Panel>
+  );
+}
+
 // ---------- every customer ----------
 
 function SiteList({ x }: { x: Customer }) {
@@ -316,7 +539,7 @@ function MobileCustomer({ x, now }: { x: Customer; now: number; range: number })
   );
 }
 
-export function CustomersPanel({ c, t, range, now }: { c: CustomersReport; t: TrafficReport | null; range: number; now: number }) {
+export function CustomersPanel({ c, range, now }: { c: CustomersReport; range: number; now: number }) {
   // Accounts that never added a site or picked a plan cost nothing and say
   // little each; they fold into one list under the table.
   const engaged = c.customers.filter((x) => x.operator || x.plan.status !== "none" || x.sites.length > 0 || x.costUsd > 0);
