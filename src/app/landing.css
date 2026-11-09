@@ -558,30 +558,31 @@ html:has(.ld) { scroll-behavior: smooth; }
    differ plus one shared list. Hidden here, switched on in the media query. */
 .ld .plans-m { display: none; }
 /* Phone: the free plan as its own strip above the paid scoreboard. */
-/* Mobile pricing cards (owner, 2026-11-09: premium, name and articles a
-   month big and in the middle). Same language as the desktop .plan cards -
-   card surface, violet 2px border + mascot on the pick - centred, with the
-   article count in its own inset panel as the headline. */
-.ld .pm-list { display: grid; gap: 20px; max-width: 460px; margin: 0 auto; }
-.ld .pm-card { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; border: 1px solid var(--line2); border-radius: 20px; padding: 30px 22px 24px; background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0) 45%), var(--card); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 24px 48px -32px rgba(0, 0, 0, 0.8); }
-.ld .pm-card.pm-pick { border: 2px solid var(--vio); margin-top: 26px; background: radial-gradient(120% 70% at 50% 0%, rgba(139, 92, 246, 0.20), rgba(139, 92, 246, 0) 70%), var(--card); box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.10), 0 30px 70px -30px rgba(139, 92, 246, 0.55); }
-.ld .pm-flag { position: absolute; top: 0; left: 50%; transform: translate(-50%, -50%); white-space: nowrap; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #fff; background: var(--vio); border-radius: 999px; padding: 6px 14px; box-shadow: 0 6px 16px -6px rgba(139, 92, 246, 0.8); }
+/* Mobile pricing cards. Shape chosen by the owner 2026-11-09 after Postiz's
+   pricing page: left-aligned, name + pill up top, big price, tagline, a
+   rule, a long list of filled check-circles, button last. The pick card is
+   a solid violet fill, so it reads as the one to take without a badge
+   doing the work. Everything else is our own palette and type. */
+.ld .pm-list { display: grid; gap: 18px; max-width: 460px; margin: 0 auto; }
+.ld .pm-card { position: relative; display: flex; flex-direction: column; text-align: left; border: 1px solid var(--line2); border-radius: 22px; padding: 26px 24px 24px; background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0) 40%), var(--card); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 24px 48px -32px rgba(0, 0, 0, 0.8); }
+/* the pick: the desktop hero-plan treatment (2px violet border, mascot on
+   the top edge), not a solid fill - same design as desktop, owner 2026-11-09 */
+.ld .pm-card.pm-pick { border: 2px solid var(--vio); margin-top: 30px; background: radial-gradient(120% 70% at 50% 0%, rgba(139, 92, 246, 0.16), rgba(139, 92, 246, 0) 70%), var(--card); box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.10), 0 30px 70px -30px rgba(139, 92, 246, 0.55); }
 .ld .pm-mascot { position: absolute; top: -49px; right: 22px; width: 52px; height: 52px; z-index: 2; image-rendering: pixelated; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45)); pointer-events: none; }
-.ld .pm-name { font-family: var(--disp); font-size: 26px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; color: #fff; }
-.ld .pm-tag { margin-top: 6px; font-size: 14px; font-weight: 500; color: var(--vio2); }
-/* The count is the hero: one big number, 'articles / month' under it, no
-   box around it (owner, 2026-11-09 - the inset panel looked wrong). */
-.ld .pm-stat { display: flex; flex-direction: column; align-items: center; gap: 4px; margin: 22px 0 18px; }
-.ld .pm-stat b { font-family: var(--disp); font-size: 72px; font-weight: 800; line-height: 0.95; letter-spacing: -0.05em; color: #fff; font-variant-numeric: tabular-nums; }
-.ld .pm-pick .pm-stat b { color: var(--vio2); text-shadow: 0 0 28px rgba(139, 92, 246, 0.45); }
-.ld .pm-stat span { font-size: 15px; font-weight: 600; letter-spacing: 0.01em; color: var(--mut); }
-.ld .pm-price { display: block; font-family: var(--disp); font-size: 34px; font-weight: 800; letter-spacing: -0.03em; line-height: 1; color: #fff; white-space: nowrap; margin-bottom: 20px; }
-.ld .pm-price small { margin-left: 2px; font-family: var(--body); font-size: 14px; font-weight: 600; color: var(--dim); letter-spacing: 0; }
-.ld .pm-card .btn { width: 100%; min-height: 50px; font-size: 16px; border-radius: 12px; }
+.ld .pm-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.ld .pm-name { font-family: var(--disp); font-size: 22px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.1; color: #fff; }
+.ld .pm-flag { font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; color: #fff; background: var(--vio); border-radius: 999px; padding: 5px 12px; white-space: nowrap; }
+.ld .pm-price { display: flex; align-items: baseline; gap: 8px; font-family: var(--disp); font-size: 42px; font-weight: 800; letter-spacing: -0.035em; line-height: 1; color: #fff; white-space: nowrap; }
+.ld .pm-price small { font-family: var(--body); font-size: 16px; font-weight: 600; color: var(--mut); letter-spacing: 0; }
+.ld .pm-tag { display: block; margin-top: 10px; font-size: 15px; font-weight: 500; color: var(--vio2); }
+.ld .pm-ticks { list-style: none; margin: 20px 0 22px; padding-top: 20px; border-top: 1px solid var(--line2); }
+.ld .pm-pick .pm-ticks { border-top-color: rgba(139, 92, 246, 0.3); }
+.ld .pm-ticks li { position: relative; display: flex; align-items: center; gap: 12px; padding: 7px 0; font-size: 15.5px; line-height: 1.3; color: var(--txt); }
+.ld .pm-ticks li b { font-weight: 700; color: #fff; }
+.ld .pm-ticks li::before { content: "✓"; flex: 0 0 auto; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: rgba(139, 92, 246, 0.18); border: 1px solid rgba(167, 139, 250, 0.45); color: var(--vio2); font-size: 11px; font-weight: 800; line-height: 1; }
+.ld .pm-pick .pm-ticks li::before { background: var(--vio); border-color: var(--vio); color: #fff; }
+.ld .pm-card .btn { width: 100%; min-height: 50px; font-size: 16px; border-radius: 999px; margin-top: auto; }
 .ld .pm-card:not(.pm-pick) .btn:not([href="/onboarding"]) { background: transparent; color: #fff; border-color: var(--line3); }
-.ld .pm-ticks { list-style: none; width: 100%; margin: 22px 0 0; padding-top: 18px; border-top: 1px solid var(--line); text-align: left; }
-.ld .pm-ticks li { position: relative; padding: 6px 0 6px 28px; font-size: 15px; color: var(--txt); }
-.ld .pm-ticks li::before { content: "✓"; position: absolute; left: 3px; top: 6px; font-size: 15px; font-weight: 700; color: var(--vio2); }
 
 /* ---------- faq ---------- */
 .ld .faq-list { max-width: 760px; margin: 0 auto; }

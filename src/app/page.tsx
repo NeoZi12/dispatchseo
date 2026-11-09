@@ -472,41 +472,44 @@ export default async function LandingPage({
               <PlanLink tier="scale" annual={annual}>Choose Scale</PlanLink>
             </div>
           </div>
-          {/* Mobile pricing (<=980px): one stacked card per plan in the desktop
-              cards' language - name, tagline, the articles a month as the
-              headline, price, button, then the same ticks the desktop card
-              carries (owner, 2026-11-09: keep every tick on every card). */}
+          {/* Mobile pricing (<=980px): one stacked card per plan, in the shape
+              the owner picked 2026-11-09 (Postiz's pricing page as the model,
+              in our theme): name top-left and the "Most popular" pill
+              top-right, the price big with the tagline under it, a rule, then
+              every tick as a filled check-circle with the articles a month as
+              the first row, and the button last. Growth is a solid violet
+              card. Same ticks as the desktop card above - keep them in step. */}
           <div className="plans-m">
             <div className="pm-list">
               <div className="pm-card">
-                <span className="pm-name">Free</span>
-                <span className="pm-tag">Try it on a side project</span>
-                <div className="pm-stat"><b>2</b><span>articles / month</span></div>
+                <div className="pm-head">
+                  <span className="pm-name">Free</span>
+                </div>
                 <span className="pm-price">$0<small>/forever</small></span>
-                <a className="btn btn-solid" href="/onboarding">Get free traffic</a>
+                <span className="pm-tag">Try it on a side project</span>
                 <ul className="pm-ticks">
+                  <li><b>2 articles / month</b></li>
                   <li>Topics people search for</li>
                   <li>Fact-checked articles</li>
                   <li>Published for you</li>
                   <li>Your Google stats</li>
                 </ul>
+                <a className="btn btn-solid" href="/onboarding">Get free traffic</a>
               </div>
               {PM_PAID.map((plan) => (
                 <div key={plan.tier} className={`pm-card${plan.pick ? " pm-pick" : ""}`}>
-                  {plan.pick ? (
-                    <>
-                      <span className="pm-flag">Most popular</span>
-                      <CardMascot className="pm-mascot" />
-                    </>
-                  ) : null}
-                  <span className="pm-name">{TIER_NAMES[plan.tier]}</span>
-                  <span className="pm-tag">{plan.tagline}</span>
-                  <div className="pm-stat"><b>{plan.perMonth}</b><span>articles / month</span></div>
+                  {plan.pick ? <CardMascot className="pm-mascot" /> : null}
+                  <div className="pm-head">
+                    <span className="pm-name">{TIER_NAMES[plan.tier]}</span>
+                    {plan.pick ? <span className="pm-flag">Most popular</span> : null}
+                  </div>
                   <PmPrice tier={plan.tier} annual={annual} />
-                  <PlanLink tier={plan.tier} annual={annual}>Choose {TIER_NAMES[plan.tier]}</PlanLink>
+                  <span className="pm-tag">{plan.tagline}</span>
                   <ul className="pm-ticks">
+                    <li><b>{plan.perMonth} articles / month</b></li>
                     {plan.ticks.map((t) => <li key={t}>{t}</li>)}
                   </ul>
+                  <PlanLink tier={plan.tier} annual={annual}>Choose {TIER_NAMES[plan.tier]}</PlanLink>
                 </div>
               ))}
             </div>
