@@ -219,39 +219,72 @@ export type RepoFiles = {
 };
 
 /** Decide the files from the repo's listing (relative to the deployed app). */
-export function planRewrite(paths: string[], existing: RepoFiles, backend: string, slug: string, opts: { blogEmpty?: boolean } = {}): RewritePlan {
+/** Where the live site is served, read from its response headers. Vercel
+ *  and Netlify announce themselves; anything else (a VPS, Render, Fly, a
+ *  Docker box) reads vercel.json and _redirects as plain files, so only an
+ *  in-app rule can forward there. "unknown" = the site did not answer. */
+export type SiteHost = "vercel" | "netlify" | "other" | "unknown";
+
+export async function detectSiteHost(project: Pick<Project, "domain"> & { hosted_origin?: string | null }): Promise<SiteHost> {
+  const res = await fetchProjectUrl(`${siteOrigin(project)}/`, project.domain, { timeoutMs: 6_000, userAgent: "DispatchSEO-Check/1.0" }).catch(() => null);
+  if (!res) return "unknown";
+  const server = (res.headers.get("server") ?? "").toLowerCase();
+  if (server.includes("vercel") || res.headers.has("x-vercel-id")) return "vercel";
+  if (server.includes("netlify") || res.headers.has("x-nf-request-id")) return "netlify";
+  return "other";
+}
+
+export type PlanOptions = { blogEmpty?: boolean; host?: SiteHost; avoid?: RewritePlan["kind"][] };
+
+export function planRewrite(paths: string[], existing: RepoFiles, backend: string, slug: string, opts: PlanOptions = {}): RewritePlan {
   const has = (p: string) => paths.includes(p);
+  const avoid = new Set(opts.avoid ?? []);
+  const host: SiteHost = opts.host ?? "unknown";
   const isNext = paths.some((p) => /^next\.config\.(js|mjs|ts|cjs)$/.test(p));
-  // Netlify evidence wins over the Next.js guess: a Next app deployed on
-  // Netlify ignores vercel.json entirely.
-  const onNetlify = has("netlify.toml") || has("public/_redirects") || has("_redirects");
-  if (onNetlify) {
+  // Netlify evidence (in the repo or on the wire) wins over the Next.js
+  // guess: a Next app deployed on Netlify ignores vercel.json entirely.
+  const onNetlify = host === "netlify" || has("netlify.toml") || has("public/_redirects") || has("_redirects");
+  if (onNetlify && !avoid.has("netlify")) {
     const path = has("public/_redirects") ? "public/_redirects" : has("_redirects") ? "_redirects" : paths.some((p) => p.startsWith("public/")) ? "public/_redirects" : "_redirects";
     return { kind: "netlify", files: [{ path, content: withNetlifyRedirects(existing.redirects, backend, slug) }] };
   }
   const dest = rewriteDestination(backend, slug);
-  const blog = isNext ? nextBlogRoute(paths) : null;
-  if (isNext && blog) {
-    if (!nextProxyFile(paths)) {
+  const vercelPlan = (): RewritePlan | null => {
+    if (avoid.has("vercel")) return null;
+    const content = withVercelRewrites(existing.vercelJson, backend, slug);
+    return content ? { kind: "vercel", files: [{ path: "vercel.json", content }] } : null;
+  };
+  if (isNext) {
+    const blog = nextBlogRoute(paths);
+    // vercel.json only when the live site is on Vercel (or unseen) AND the
+    // app has no /blog page of its own - Vercel's filesystem beats that file
+    // (easyrender.app, 2026-11-09), and a self-hosted Next app never reads
+    // it at all. Everything else forwards inside the app, which works on
+    // any host once the site is deployed.
+    if (host !== "other" && !blog) {
+      const plan = vercelPlan();
+      if (plan) return plan;
+    }
+    if (!nextProxyFile(paths) && !avoid.has("next-proxy")) {
       const src = !paths.some((p) => /^(app|pages)\//.test(p)) && paths.some((p) => /^src\/(app|pages)\//.test(p));
       const ts = has("tsconfig.json");
       const proxy = (nextMajor(existing.packageJson) ?? 0) >= 16;
       const path = `${src ? "src/" : ""}${proxy ? "proxy" : "middleware"}.${ts ? "ts" : "js"}`;
       return { kind: "next-proxy", files: [{ path, content: nextProxyContent(dest, { ts, proxy }) }] };
     }
-    if (existing.nextConfig) {
+    if (existing.nextConfig && !avoid.has("next-config")) {
       const edited = withNextConfigRewrites(existing.nextConfig.content, dest);
       if (edited) return { kind: "next-config", files: [{ path: existing.nextConfig.path, content: edited }] };
     }
-    if (opts.blogEmpty && blog.files.length) {
+    if (blog && opts.blogEmpty && blog.files.length && host !== "other" && !avoid.has("next-remove-blog")) {
       const vercel = withVercelRewrites(existing.vercelJson, backend, slug);
       if (vercel) return { kind: "next-remove-blog", files: [...blog.files.map((path) => ({ path, content: null })), { path: "vercel.json", content: vercel }] };
     }
     return { kind: "manual" };
   }
-  if (has("vercel.json") || isNext) {
-    const content = withVercelRewrites(existing.vercelJson, backend, slug);
-    return content ? { kind: "vercel", files: [{ path: "vercel.json", content }] } : { kind: "manual" };
+  if (has("vercel.json") && host !== "other") {
+    const plan = vercelPlan();
+    if (plan) return plan;
   }
   return { kind: "manual" };
 }
@@ -363,7 +396,7 @@ export function looksLikeBlogIndex(html: string): boolean {
   return /\bblog\b/i.test(title) && links.size >= 1;
 }
 
-export async function openRewritePr(project: Project, opts: { blogEmpty?: boolean } = {}): Promise<{ url: string; merged: boolean; kind: RewritePlan["kind"] } | null> {
+export async function openRewritePr(project: Project, opts: PlanOptions = {}): Promise<{ url: string; merged: boolean; kind: RewritePlan["kind"] } | null> {
   const repo = project.github_repo;
   if (!repo) return null;
   const token = await tokenForRef(project);
@@ -397,6 +430,7 @@ export async function openRewritePr(project: Project, opts: { blogEmpty?: boolea
   if (!project.hosted_key) return null;
   let planned: RewritePlan = { kind: "manual" };
   if (!app.ambiguous) {
+    const host = opts.host ?? (await detectSiteHost(project));
     const nextConfigPath = appPaths.find((p) => /^next\.config\.(js|mjs|ts|cjs)$/.test(p)) ?? null;
     const nextConfigText = nextConfigPath ? await read(nextConfigPath) : null;
     planned = planRewrite(
@@ -409,7 +443,7 @@ export async function openRewritePr(project: Project, opts: { blogEmpty?: boolea
       },
       backend,
       project.hosted_key,
-      { blogEmpty: Boolean(opts.blogEmpty) },
+      { blogEmpty: Boolean(opts.blogEmpty), host, avoid: opts.avoid },
     );
   }
   if (planned.kind === "manual") {
@@ -520,7 +554,7 @@ async function mergeRewritePrNow(project: Project, prUrl: string): Promise<void>
   const state = await githubApi(token, "GET", `/repos/${repo}/pulls/${number}`);
   if (state.status !== 200 || !state.json) throw new Error(`could not read the forwarding pull request (HTTP ${state.status})`);
   if (state.json.merged) {
-    await db().from("projects").update({ hosted_rewrite_state: "merged" }).eq("id", project.id);
+    await db().from("projects").update({ hosted_rewrite_state: mergedState(project) }).eq("id", project.id);
     return;
   }
   if (state.json.state !== "open") throw new Error("the forwarding pull request was closed without merging");
@@ -543,7 +577,41 @@ async function mergeRewritePrNow(project: Project, prUrl: string): Promise<void>
     const why = typeof merged.json?.message === "string" ? merged.json.message : `HTTP ${merged.status}`;
     throw new Error(`GitHub did not merge the forwarding pull request: ${why}`);
   }
-  await db().from("projects").update({ hosted_rewrite_state: "merged" }).eq("id", project.id);
+  await db().from("projects").update({ hosted_rewrite_state: mergedState(project) }).eq("id", project.id);
+}
+
+/** "merged:<kind>", the kind carried over from "opened:<kind>"; plain
+ *  "merged" when the row predates the kind (treated as unknown). */
+function mergedState(project: Pick<Project, "hosted_rewrite_state">): string {
+  const kind = forwardingKind(project.hosted_rewrite_state);
+  return kind ? `merged:${kind}` : "merged";
+}
+
+/** The plan kind recorded in hosted_rewrite_state, or null when unknown. */
+export function forwardingKind(state: string | null | undefined): RewritePlan["kind"] | null {
+  const m = (state ?? "").match(/^(?:opened|merged):([a-z-]+)$/);
+  return m ? (m[1] as RewritePlan["kind"]) : null;
+}
+
+/**
+ * A merged forwarding change that the site still does not serve: when the
+ * site turns out NOT to be on Vercel or Netlify and the merged change was a
+ * host config file (or its kind is unknown), that file is inert there, so a
+ * second pull request forwards inside the app instead. Returns true when
+ * one was opened. In-app kinds are never re-planned: on those hosts only
+ * the owner's deploy is missing.
+ */
+export async function replanForwarding(project: Project): Promise<boolean> {
+  const kind = forwardingKind(project.hosted_rewrite_state);
+  if (kind && kind !== "vercel" && kind !== "netlify") return false;
+  const host = await detectSiteHost(project);
+  if (host !== "other") return false;
+  const pr = await openRewritePr(project, { blogEmpty: true, host, avoid: ["vercel", "netlify", "next-remove-blog"] });
+  if (!pr) return false;
+  if (project.auto_merge) {
+    await mergeRewritePr({ ...project, hosted_rewrite_pr_url: pr.url, hosted_rewrite_state: `opened:${pr.kind}` }, pr.url).catch((e) => console.warn("[hosted] re-planned PR not merged:", e instanceof Error ? e.message : e));
+  }
+  return true;
 }
 
 /** Start (or leave running) the chain that watches for the site's /blog to

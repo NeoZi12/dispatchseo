@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { enqueue, type Job } from "@/lib/jobs";
 import { getProjectById, publishTarget, type Project } from "@/lib/projects";
-import { checkRewriteLive, manualSnippet, mergeRewritePr } from "@/lib/hosted-rewrite";
+import { checkRewriteLive, manualSnippet, mergeRewritePr, replanForwarding } from "@/lib/hosted-rewrite";
 import { notifyFirstArticleLive } from "@/lib/first-article-email";
 import { backendBaseUrl } from "@/lib/pipeline-pack";
 import { siteOrigin } from "@/lib/hosted-blog";
@@ -20,6 +20,8 @@ import { siteOrigin } from "@/lib/hosted-blog";
 
 const EVERY_MS = 5 * 60_000;
 const GIVE_UP_MS = 24 * 3_600_000;
+/** A merged change not serving after this long is on a host that needs a deploy or a different rule. */
+const REPLAN_AFTER_MS = 20 * 60_000;
 
 export async function runHostedLiveJob(job: Job): Promise<void> {
   const project = await getProjectById(job.project_id);
@@ -36,7 +38,7 @@ export async function runHostedLiveJob(job: Job): Promise<void> {
   // pass until the site answers. Best-effort; the state column says why.
   const pr = project.hosted_rewrite_pr_url;
   const state = project.hosted_rewrite_state ?? "";
-  if (project.auto_merge && pr && pr.startsWith("http") && state !== "merged" && state !== "owner-merge") {
+  if (project.auto_merge && pr && pr.startsWith("http") && !state.startsWith("merged") && state !== "owner-merge") {
     await mergeRewritePr(project, pr).catch(() => undefined);
   }
 
@@ -44,6 +46,13 @@ export async function runHostedLiveJob(job: Job): Promise<void> {
   if (live) {
     await emailFirstPublished(project);
     return;
+  }
+  // Merged twenty minutes ago and still not answering: a Vercel deploy
+  // would be done by now. If the site is not on Vercel/Netlify, the merged
+  // config file is inert there and an in-app rule is opened instead
+  // (hosted-rewrite.ts replanForwarding; a no-op for in-app kinds).
+  if (state.startsWith("merged") && Date.now() - Date.parse(since) > REPLAN_AFTER_MS) {
+    await replanForwarding(project).catch((e) => console.warn(`[hosted-live] ${project.slug}: re-plan failed: ${e instanceof Error ? e.message : String(e)}`));
   }
   if (Date.now() - Date.parse(since) > GIVE_UP_MS) {
     await notifyForwardingNeeded(project);
@@ -87,19 +96,24 @@ async function notifyForwardingNeeded(project: Project): Promise<void> {
     const snippets = manualSnippet(backend, project.hosted_key);
     const origin = siteOrigin(project);
     const domain = project.domain || project.slug;
-    const text =
-      `Hi,\n\n` +
-      `Your first article for ${domain} is written and waiting. One thing is missing on your side: ${origin}/blog does not forward to your hosted blog yet, so nobody can reach it.\n\n` +
-      `If your site is Next.js, add this to next.config.js and deploy:\n\n${snippets.next}\n\n` +
-      `On Vercel without Next.js, put this in vercel.json:\n\n${snippets.vercel}\n\n` +
-      `On Netlify, add these two lines to _redirects:\n\n${snippets.netlify}\n` +
-      `The same rules, for copying, are on your settings screen: ${backend}/settings?section=publishing\n\n` +
-      `As soon as ${origin}/blog answers, the article is live and you get a mail with the link.\n\n` +
-      `DispatchSEO`;
+    const merged = (project.hosted_rewrite_state ?? "").startsWith("merged") && typeof project.hosted_rewrite_pr_url === "string" && project.hosted_rewrite_pr_url.startsWith("http");
+    const text = merged
+      ? `Hi,\n\n` +
+        `Your first article for ${domain} is written and waiting. The one change it needs is already merged into your repo (${project.hosted_rewrite_pr_url}), but your site has not been deployed since, so ${origin}/blog does not forward to your hosted blog yet and nobody can reach the article.\n\n` +
+        `Deploy your site the way you usually do. As soon as ${origin}/blog answers, the article is live and you get a mail with the link.\n\n` +
+        `DispatchSEO`
+      : `Hi,\n\n` +
+        `Your first article for ${domain} is written and waiting. One thing is missing on your side: ${origin}/blog does not forward to your hosted blog yet, so nobody can reach it.\n\n` +
+        `If your site is Next.js, add this to next.config.js and deploy:\n\n${snippets.next}\n\n` +
+        `On Vercel without Next.js, put this in vercel.json:\n\n${snippets.vercel}\n\n` +
+        `On Netlify, add these two lines to _redirects:\n\n${snippets.netlify}\n` +
+        `The same rules, for copying, are on your settings screen: ${backend}/settings?section=publishing\n\n` +
+        `As soon as ${origin}/blog answers, the article is live and you get a mail with the link.\n\n` +
+        `DispatchSEO`;
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to, subject: `One line to switch on your blog at ${domain}`, text }),
+      body: JSON.stringify({ from, to, subject: merged ? `Deploy your site and your blog at ${domain} is on` : `One line to switch on your blog at ${domain}`, text }),
       signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) console.warn(`[hosted-live] ${project.slug}: Resend answered ${res.status}`);

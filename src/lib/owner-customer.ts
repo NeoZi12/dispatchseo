@@ -506,7 +506,7 @@ function forwardingLine(p: Record<string, unknown>): string | null {
   if (p.publish_target !== "hosted") return null;
   if (p.hosted_rewrite_live_at) return "live";
   const state = typeof p.hosted_rewrite_state === "string" ? p.hosted_rewrite_state : "";
-  if (state === "merged") return "PR merged, waiting for their deploy";
+  if (state === "merged" || state.startsWith("merged:")) return `PR merged${state.includes(":") ? ` (${state.slice(7)})` : ""}, waiting for their deploy`;
   if (state === "owner-merge") return "PR open, removes their template blog - their merge";
   if (state.startsWith("merge-failed")) return state.replace("merge-failed:", "merge failed:");
   if (state.startsWith("opened:")) return `PR open (${state.slice(7)})`;
