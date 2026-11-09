@@ -56,32 +56,40 @@ export function SectionHead({ title, says, note }: { title: string; says: string
 const TIER_COLOR: Record<Tier, string> = { starter: "var(--color-info)", growth: "var(--color-accent)", scale: "var(--color-ok)" };
 
 type PlanKey = "free" | Tier;
+/** The table's sections: the four plans, then the people who cancelled. */
+type GroupKey = PlanKey | "cancelled";
 const PLAN_KEYS: PlanKey[] = ["free", "starter", "growth", "scale"];
-const PLAN_COLOR: Record<PlanKey, string> = { free: "var(--color-ink-faint)", ...TIER_COLOR };
-const PLAN_NAME: Record<PlanKey, string> = { free: "Free", ...TIER_NAMES };
+const PLAN_COLOR: Record<GroupKey, string> = { free: "var(--color-ink-faint)", cancelled: "var(--color-ink-faint)", ...TIER_COLOR };
+const PLAN_NAME: Record<GroupKey, string> = { free: "Free", cancelled: "Cancelled", ...TIER_NAMES };
 
-/** The plan a customer is on today. A live or trialing subscription is its
- *  tier; anyone else with a site is on the free plan (lib/billing isFreePlan:
- *  no plan yet, or one that ended). Accounts with no site and no plan are on
- *  nothing yet and stay out of the groups. */
-function planKeyOf(x: Customer): PlanKey | null {
+/** Where a customer sits today. A live or trialing subscription is its tier.
+ *  Someone whose subscription ended, or is set to end, is CANCELLED - their
+ *  own section, counted on no plan (owner, 2026-11-09: a lapsed trial is not
+ *  a free-plan user; the engine gives such a site nothing). Someone with a
+ *  site who never had a subscription is on the free plan. Accounts with no
+ *  site and no plan are on nothing yet and stay out of the groups. */
+function planKeyOf(x: Customer): GroupKey | null {
   const live = x.plan.status === "active" || x.plan.status === "past_due" || (x.plan.status === "trialing" && !x.plan.cancelled);
   if (live) return x.plan.tier ?? "starter";
+  if (x.plan.cancelled) return "cancelled";
   return x.sites.length > 0 ? "free" : null;
 }
 
-type PlanGroup = { key: PlanKey; people: Customer[]; mrr: number; revenue: number; cost: number; margin: number; trials: number; leaving: number };
+type PlanGroup = { key: GroupKey; people: Customer[]; mrr: number; revenue: number; cost: number; margin: number; trials: number; leaving: number };
 
-function planGroups(c: CustomersReport): { groups: PlanGroup[]; idle: Customer[] } {
+/** The four plan groups (tiles + table sections), the cancelled section, and
+ *  the accounts on nothing. Cancelled people count toward no plan. */
+function planGroups(c: CustomersReport): { groups: PlanGroup[]; cancelled: PlanGroup; idle: Customer[] } {
   const real = c.customers.filter((x) => !x.operator);
   const idle: Customer[] = [];
-  const by = new Map<PlanKey, Customer[]>(PLAN_KEYS.map((k) => [k, []]));
+  const keys: GroupKey[] = [...PLAN_KEYS, "cancelled"];
+  const by = new Map<GroupKey, Customer[]>(keys.map((k) => [k, []]));
   for (const x of real) {
     const k = planKeyOf(x);
     if (k) by.get(k)!.push(x);
     else idle.push(x);
   }
-  const groups = PLAN_KEYS.map((key) => {
+  const all = keys.map((key) => {
     const people = by.get(key)!;
     const revenue = people.reduce((a, x) => a + x.revenueRecentUsd, 0);
     const cost = people.reduce((a, x) => a + x.totalCostRecentUsd, 0);
@@ -96,11 +104,11 @@ function planGroups(c: CustomersReport): { groups: PlanGroup[]; idle: Customer[]
       leaving: people.filter((x) => x.plan.cancelAtPeriodEnd && x.plan.status === "active").length,
     };
   });
-  return { groups, idle };
+  return { groups: all.filter((g) => g.key !== "cancelled"), cancelled: all.find((g) => g.key === "cancelled")!, idle };
 }
 
 function PlanTile({ g, range }: { g: PlanGroup; range: number }) {
-  const price = g.key === "free" ? "$0" : `${money(TIER_LIMITS[g.key].price)}/mo`;
+  const price = g.key === "free" || g.key === "cancelled" ? "$0" : `${money(TIER_LIMITS[g.key].price)}/mo`;
   const notes = [g.trials ? `${g.trials} on trial` : null, g.leaving ? `${g.leaving} leaving` : null].filter(Boolean).join(" · ");
   return (
     <div className="flex min-w-0 flex-col bg-surface px-4 pb-4 pt-4 sm:px-6 sm:pt-5">
@@ -197,14 +205,16 @@ function PlanCard({ x, now }: { x: Customer; now: number }) {
 }
 
 export function PlansPanel({ c, range, now }: { c: CustomersReport; range: number; now: number }) {
-  const { groups, idle } = planGroups(c);
+  const { groups, cancelled, idle } = planGroups(c);
   const total = groups.reduce((a, g) => a + g.people.length, 0);
-  const filled = groups.filter((g) => g.people.length > 0);
+  // Cancelled people get a section of their own at the end of the table, no
+  // tile, and no place in the headcount: they are on no plan.
+  const filled = [...groups, cancelled].filter((g) => g.people.length > 0);
   return (
     <Panel id="plans" label="Plans">
       <SectionHead
         title="Plans"
-        says="How many people are on the free plan and on each paid plan, and who they are. Free means a site with no live subscription."
+        says="How many people are on the free plan and on each paid plan, and who they are. Free means a site that never had a subscription; people who cancelled sit in their own section and count toward no plan."
         note={`${fmt(total)} ${total === 1 ? "person" : "people"} on a plan`}
       />
       <div className="grid grid-cols-2 gap-px bg-line-soft md:grid-cols-4">
