@@ -91,7 +91,7 @@ async function githubStars(): Promise<number> {
 }
 
 export const metadata: Metadata = {
-  title: "DispatchSEO - Free SEO automation for bootstrappers, solo devs and small shops",
+  title: "DispatchSEO",
   description:
     "Free SEO automation: researched, fact-checked articles published to your site on autopilot. Get found on Google, ChatGPT and Claude. Two a month free.",
   // "/" is reachable as itself and as "?home=1" (the signed-in opt-out below),
