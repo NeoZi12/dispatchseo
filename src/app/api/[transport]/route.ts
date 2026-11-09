@@ -12,7 +12,7 @@ import { getWeeklyProgress } from "@/lib/progress";
 import { getBriefing } from "@/lib/briefing";
 import { AUTOMATIONS, gatherEvidence } from "@/lib/automations";
 import { credsForProject, type KeywordIdea } from "@/lib/dataforseo";
-import { cachedKeywordSuggestions, cachedRelatedKeywords } from "@/lib/keyword-research-cache";
+import { cachedKeywordSuggestions } from "@/lib/keyword-research-cache";
 import { MARKETS } from "@/lib/market";
 import { setProjectMarket } from "@/lib/market-store";
 import { isCloudMode } from "@/lib/cloud";
@@ -241,10 +241,11 @@ function slugFromUrl(url: string): string {
   }
 }
 
-// keyword_ideas (2026-07-30 rewrite): each expanded seed now costs 2 metered
-// DataForSEO calls (keyword_suggestions + related_keywords) instead of the
-// old 1-call-for-all-seeds shape, so cap how many seeds a single tool call
-// actually expands rather than trusting every caller to self-limit.
+// keyword_ideas (2026-07-30 rewrite): each expanded seed costs a metered
+// DataForSEO call (keyword_suggestions; related_keywords ran beside it until
+// 2026-11-09 and returned mostly the same rows for double the spend) instead
+// of the old 1-call-for-all-seeds shape, so cap how many seeds a single tool
+// call actually expands rather than trusting every caller to self-limit.
 const KEYWORD_IDEAS_SEED_CAP = 5;
 
 // How much research one note may carry. 64KB is roughly 10,000 words: room for
@@ -2648,19 +2649,18 @@ const mcpHandler = createMcpHandler(
           "\"audemars piguet marketing\" and \"agent provocateur sale\" (same rough market segment, " +
           "zero topical relation), and language_code never filtered the output language either, " +
           "so French/Italian keywords leaked into English-seed results unfiltered. This tool now " +
-          "calls keyword_suggestions (results GUARANTEED to contain the seed phrase) + " +
-          "related_keywords (Google's real \"searches related to\" graph) per seed, merges and " +
-          `dedupes both, and drops anything with no search volume or a detected language other ` +
+          "calls keyword_suggestions (results GUARANTEED to contain the seed phrase) per seed, " +
+          `dedupes across seeds, and drops anything with no search volume or a detected language other ` +
           `than the project's configured one (see set_market) before it ever reaches you. ` +
           `Queries the project's configured market. Works whenever the project has DataForSEO - its ` +
           "OWN account or the platform's BUNDLED plan (cloud). Returns " +
           "{ ideas: [{keyword, volume, kd, cpc}], note } sorted by volume, highest first. COST: " +
           `up to ${KEYWORD_IDEAS_SEED_CAP} seeds are actually expanded per call (send your ` +
           "highest-signal seeds first - extras beyond the cap are silently skipped, but named in " +
-          "the note), and each expanded seed costs 2 metered DataForSEO calls (one " +
-          "keyword_suggestions + one related_keywords), billed to the platform on the bundled " +
+          "the note), and each expanded seed costs 1 metered DataForSEO call (keyword_suggestions, " +
+          "up to 100 rows), billed to the platform on the bundled " +
           "plan and counted against the project's monthly budget - so a full call can cost up to " +
-          `${KEYWORD_IDEAS_SEED_CAP * 2} calls, not 1. The note always states how many seeds were ` +
+          `${KEYWORD_IDEAS_SEED_CAP} calls, not 1. The note always states how many seeds were ` +
           "expanded vs skipped so you are never silently handed partial data. Returns an empty " +
           "ideas list WITH a note (never an error) when the project has no DataForSEO access or " +
           "the monthly budget is spent - fall back to check_serp + product judgment then.",
@@ -2671,7 +2671,7 @@ const mcpHandler = createMcpHandler(
             .max(20)
             .describe(
               `Seed keywords to expand from, BEST FIRST - only the first ${KEYWORD_IDEAS_SEED_CAP} are ` +
-                "actually expanded (2 metered calls each), the rest are skipped and named in the response note.",
+                "actually expanded (1 metered call each), the rest are skipped and named in the response note.",
             ),
           limit: z
             .number()
@@ -2714,17 +2714,22 @@ const mcpHandler = createMcpHandler(
         void recordKeywordIdeasCall(p.id);
 
         // Cost control (2026-07-30): the old call was 1 metered call for up
-        // to 20 seeds; two-endpoints-per-seed makes cost scale with seed
-        // count, so cap how many are actually expanded rather than trusting
-        // every caller to self-limit. Seeds arrive highest-signal-first (the
-        // tool description says so), so a plain slice keeps the best ones.
+        // to 20 seeds; a call per seed makes cost scale with seed count, so
+        // cap how many are actually expanded rather than trusting every
+        // caller to self-limit. Seeds arrive highest-signal-first (the tool
+        // description says so), so a plain slice keeps the best ones.
         const expanded = seeds.slice(0, KEYWORD_IDEAS_SEED_CAP);
         const skipped = seeds.slice(KEYWORD_IDEAS_SEED_CAP);
 
-        // Merge keyword_suggestions + related_keywords per seed, deduped by
-        // lowercased keyword (keep the higher-volume duplicate when both
-        // endpoints surface the same keyword). Never fabricate: a seed whose
-        // calls both fail contributes nothing, not a guess.
+        // keyword_suggestions per seed, merged across seeds and deduped by
+        // lowercased keyword (keep the higher-volume duplicate when two seeds
+        // surface the same keyword). related_keywords ran beside it until
+        // 2026-11-09: Labs bills per REQUEST ($0.01) far more than per row
+        // ($0.0001), and the second endpoint returned mostly near-duplicates
+        // of the first (38 of 256 candidates new on the 2026-11-07 test) for
+        // half of every run's keyword-data spend. The autopilot dropped it on
+        // 2026-11-08; this tool is the agent-mode path to the same data.
+        // Never fabricate: a seed whose call fails contributes nothing.
         const merged = new Map<string, KeywordIdea>();
         const callErrors: string[] = [];
         // Cache first (keyword-research-cache.ts): a seed expanded by any
@@ -2734,7 +2739,6 @@ const mcpHandler = createMcpHandler(
         for (const seed of expanded) {
           const settled = await Promise.allSettled([
             cachedKeywordSuggestions(seed, creds, limit ?? 100, p.location_code, p.language_code),
-            cachedRelatedKeywords(seed, creds, limit ?? 100, p.location_code, p.language_code),
           ]);
           for (const result of settled) {
             if (result.status === "rejected") {
@@ -2780,9 +2784,9 @@ const mcpHandler = createMcpHandler(
           }));
 
         const noteParts = [
-          `Expanded ${expanded.length} of ${seeds.length} seed(s) via keyword_suggestions + ` +
-            `related_keywords (2 calls each, ${expanded.length * 2} total; ${cacheHits} served from the ` +
-            `30-day research cache, ${expanded.length * 2 - cacheHits} metered).`,
+          `Expanded ${expanded.length} of ${seeds.length} seed(s) via keyword_suggestions ` +
+            `(1 call each, ${expanded.length} total; ${cacheHits} served from the ` +
+            `30-day research cache, ${expanded.length - cacheHits} metered).`,
         ];
         if (skipped.length > 0) {
           noteParts.push(

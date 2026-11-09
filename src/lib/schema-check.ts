@@ -230,6 +230,12 @@ export const UNPROBEABLE: Record<string, string> = {
   // every other duplicate.
   "0068_autopilot_hardening":
     "partial unique index rebuild - artifact is in pg_indexes, not queryable via PostgREST",
+  // DROPS dataforseo_usage's FK to projects so a deleted site's spend stays
+  // in the ledger. Artifact is an absence in pg_constraint. Unapplied it
+  // costs nothing until a project is deleted, and then only the ledger rows
+  // of that site (the cascade), never a failed delete.
+  "0081_dataforseo_usage_survives_delete":
+    "drops an FK constraint - artifact is an absence in pg_constraint, not queryable via PostgREST",
 };
 
 async function probeMissing(p: Probe): Promise<boolean> {

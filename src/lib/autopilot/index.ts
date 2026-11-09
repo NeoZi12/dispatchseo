@@ -3,7 +3,8 @@ import { writerMode } from "@/lib/projects";
 import { isDryRun } from "@/lib/writer/models";
 import { evaluateAutoPause } from "./pause";
 import { promoteBacklog, RESEARCH_EVERY_MS, runResearch, type ResearchOutcome } from "./research";
-import { backlogShort } from "./math";
+import { backlogShort, EARLY_RESEARCH_FLOOR_DAYS, earlyResearchAllowed } from "./math";
+import { readResearchState } from "@/lib/keyword-research-cache";
 import { runScheduler, type SchedulerOutcome } from "./scheduler";
 import { reportSiteHealth, siteHealthProblems } from "./health";
 import { reprobeRewriteWeekly } from "@/lib/hosted-rewrite";
@@ -83,11 +84,20 @@ export async function runAutopilotPass(project: Project, now = new Date()): Prom
   // five a week, two queued ideas on a Saturday ran dry by Tuesday while the
   // next research sat six days out. runResearch itself tops up to the
   // plan's target and stamps the date, so an early run just moves the clock.
-  // The early run is floored at two days since the last one: setting ideas
-  // aside every morning must not buy keyword data every morning (each run is
-  // ~$0.15 of DataForSEO on the platform account).
-  const twoDaysOn = !project.last_research_at || now.getTime() - Date.parse(project.last_research_at) >= 2 * DAY_MS;
-  const short = stale || !twoDaysOn ? false : await queueShort(project, now);
+  // The early run is floored at EARLY_RESEARCH_FLOOR_DAYS since the last one
+  // (two until 2026-11-09, now four): setting ideas aside every morning must
+  // not buy keyword data every morning (each run is ~$0.15 of DataForSEO on
+  // the platform account). And it only goes ahead while research is still
+  // finding things (math.ts earlyResearchAllowed): on a thin niche the judge
+  // rejects nearly every candidate, so paperbot's short queue bought ten runs
+  // in 30 days for a handful of kept ideas. The weekly run is never gated.
+  const floorOn =
+    !project.last_research_at ||
+    now.getTime() - Date.parse(project.last_research_at) >= EARLY_RESEARCH_FLOOR_DAYS * DAY_MS;
+  const short =
+    stale || !floorOn
+      ? false
+      : (await queueShort(project, now)) && earlyResearchAllowed(await readResearchState(project.id));
   if (stale || short) {
     try {
       research = await runResearch(project, now);

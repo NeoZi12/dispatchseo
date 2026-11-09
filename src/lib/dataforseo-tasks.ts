@@ -145,7 +145,7 @@ export async function postSerpTasks(
     // owner's monthly budget exactly like dataforseo.ts's postOnce hook does
     // for live calls. Fire-and-forget: a ledger failure must never fail the
     // run it's recording.
-    if (creds.billedTo === "platform" && creds.meterProjectId && json.cost > 0) {
+    if (creds.meterProjectId && json.cost > 0) {
       recordDataforseoUsage(creds.meterProjectId, TASK_POST_PATH, json.cost).catch(console.error);
     }
     const rows: Array<Record<string, unknown>> = [];

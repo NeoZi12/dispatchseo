@@ -21,7 +21,7 @@ import { generate, judge, JUDGE_MAX_QUESTIONS_PER_CALL, choiceOf, isDryRun, miss
 import { writerMode, type Project } from "@/lib/projects";
 import {
   BACKLOG_TARGET,
-  FREE_BACKLOG_TARGET,
+  backlogTarget,
   LIST_WINDOW,
   PITCH_MAX,
   pageTypeOf,
@@ -92,7 +92,11 @@ const MAX_SEEDS = 8;
  *  keyword_overview call, and the judge calls that round may spend. */
 const MODEL_FIRST_KEYWORDS = 30;
 const MODEL_FIRST_JUDGE_CALLS = 3;
-const LABS_LIMIT = 50;
+// 100, not 50 (2026-11-09): Labs bills $0.01 per request and $0.0001 per
+// row, so one call for 100 rows ($0.02) buys twice the candidates of two
+// calls for 50 ($0.03). The judge discards most rows anyway; more rows per
+// seed means fewer seeds for the same kept ideas.
+const LABS_LIMIT = 100;
 /** Four questions per candidate (fit, intent, evergreen, pitch), so 10
  *  candidates fill one Jev call. */
 const QUESTIONS_PER_CANDIDATE = 4;
@@ -434,7 +438,10 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
   // is the strict KD zone a new small site belongs in anyway.
   const free = isFreePlan(plan);
   const visibleNeeded = ideasNeeded(approvedCount ?? 0, plan.articlesPerWeek);
-  const needed = backlogNeeded(liveCount ?? 0, free ? FREE_BACKLOG_TARGET : BACKLOG_TARGET);
+  // The target scales with the plan (math.ts backlogTarget): eight weeks of
+  // the site's own cadence, not a flat hundred, so a 1-a-week site stops
+  // buying eight seeds to fill a backlog it drains four a month.
+  const needed = backlogNeeded(liveCount ?? 0, backlogTarget(plan.articlesPerWeek, free));
   if (needed === 0) {
     await stamp();
     return { skipped: "the idea backlog is already full" };
@@ -956,7 +963,7 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
     ...(oneHop ? { oneHop: true as const } : {}),
     ...(serpScored || serpError ? { serp: { scored: serpScored, usd: Math.round(serpUsd * 10_000) / 10_000, ...(serpError ? { error: serpError } : {}) } } : {}),
     ...(openPillar ? { cluster: openPillar } : {}),
-    backlog: { live: liveCount ?? 0, target: free ? FREE_BACKLOG_TARGET : BACKLOG_TARGET, added: backlogged },
+    backlog: { live: liveCount ?? 0, target: backlogTarget(plan.articlesPerWeek, free), added: backlogged },
     ...(proposeError ? { proposeError } : {}),
     ...(judgeError ? { judgeError } : {}),
     ...(thin ? { note: thinNote(lang, rung, added.length, { topics: widerSearched, needed, soon }) } : {}),

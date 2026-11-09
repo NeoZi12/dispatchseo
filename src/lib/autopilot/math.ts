@@ -699,11 +699,37 @@ export const BACKLOG_TARGET = 100;
 /** Research refills the backlog when it holds less than this many weeks of
  *  the plan's articles. */
 export const BACKLOG_REFILL_WEEKS = 4;
+/** ...and fills it to this many weeks of the plan's articles (owner,
+ *  2026-11-09): 8 weeks is 24 ideas for a 3-a-week site. The flat 100 above
+ *  stays as the hard ceiling (and promoteBacklog's read window), but as a
+ *  TARGET it meant `needed` was always ~90, so every run bought the full
+ *  eight seeds plus the wider search for a queue that only ever drains three
+ *  a week - keyword data cost 6x the writer per article (paperbot, Oct-Nov
+ *  2026: $4.26 of DataForSEO for 14 articles). */
+export const BACKLOG_FILL_WEEKS = 8;
+export const BACKLOG_FILL_MIN = 8;
 /** The free tier's backlog: two articles a month need a year of ideas, not
  *  a hundred (the locked freemium number). */
 export const FREE_BACKLOG_TARGET = 24;
+export function backlogTarget(articlesPerWeek: number, free: boolean): number {
+  if (free) return FREE_BACKLOG_TARGET;
+  const weeks = BACKLOG_FILL_WEEKS * Math.max(0, Math.floor(articlesPerWeek));
+  return Math.min(BACKLOG_TARGET, Math.max(BACKLOG_FILL_MIN, weeks));
+}
 export function backlogNeeded(liveIdeaCount: number, target = BACKLOG_TARGET): number {
   return Math.max(0, target - liveIdeaCount);
+}
+/** An early (queue-short) research run may only go ahead when research is
+ *  still finding things. The judge rejects most candidates on a thin niche
+ *  (paperbot: 267 of 278 in 30 days), so a short queue used to re-buy eight
+ *  seeds of Labs data every other day for one or two kept ideas. When the
+ *  last two runs each kept at most one idea, the early run waits for the
+ *  weekly one; the weekly run is never gated here. */
+export const EARLY_RESEARCH_FLOOR_DAYS = 4;
+export const EARLY_RESEARCH_MIN_RECENT_ADDED = 2;
+export function earlyResearchAllowed(s: BackoffState): boolean {
+  if (s.recent_added.length < 2) return true;
+  return s.recent_added[0] >= EARLY_RESEARCH_MIN_RECENT_ADDED || s.recent_added[1] >= EARLY_RESEARCH_MIN_RECENT_ADDED;
 }
 export function backlogShort(liveIdeaCount: number, articlesPerWeek: number): boolean {
   return liveIdeaCount < Math.max(4, BACKLOG_REFILL_WEEKS * Math.max(0, Math.floor(articlesPerWeek)));

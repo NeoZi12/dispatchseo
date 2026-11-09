@@ -51,10 +51,11 @@ export type DataforseoCreds = {
   login: string;
   password: string;
   // "own" = the project's (or the instance's default-project env fallback's)
-  // own DataForSEO account - never metered here. "platform" = this backend's
-  // bundled account, billed to a paid cloud project with no account of its
-  // own; meterProjectId is who to charge (see the postOnce hook below and
-  // dataforseo-usage.ts).
+  // own DataForSEO account. "platform" = this backend's bundled account,
+  // billed to a paid cloud project with no account of its own. meterProjectId
+  // is who the ledger charges (see the postOnce hook below and
+  // dataforseo-usage.ts): always set for "platform", and for the default
+  // project's env creds in cloud, where that env pair is the platform account.
   billedTo: "own" | "platform";
   meterProjectId?: string;
 };
@@ -108,7 +109,20 @@ export async function credsForProject(
     process.env.DATAFORSEO_LOGIN &&
     process.env.DATAFORSEO_PASSWORD
   ) {
-    return { login: process.env.DATAFORSEO_LOGIN, password: process.env.DATAFORSEO_PASSWORD, billedTo: "own" };
+    // Still "own" for every gate and pacing decision, but METERED in cloud
+    // (2026-11-09): on dispatchseo.com this env pair IS the platform account
+    // (platformDataforseoEnv falls back to it), so the operator's default
+    // site was spending the same money as every bundled tenant with no
+    // ledger row - a third of the account's burn was invisible to /owner
+    // and to the balance maths. Self-host keeps the unmetered path: the env
+    // pair there is the owner's own account, and the ledger is the bundled
+    // plan's budget book.
+    return {
+      login: process.env.DATAFORSEO_LOGIN,
+      password: process.env.DATAFORSEO_PASSWORD,
+      billedTo: "own",
+      meterProjectId: isCloudMode() ? project.id : undefined,
+    };
   }
   // Bundled cloud DataForSEO. These credentials are server-side ONLY: never
   // written into a customer repo's secrets (the pipeline pack's dataforseo
@@ -254,7 +268,9 @@ async function postOnce<T = unknown>(
   // post() - so hooking here (not post()) catches every real paid call
   // exactly once. Fire-and-forget: a ledger failure must never fail or slow
   // down the call it's recording.
-  if (creds.billedTo === "platform" && creds.meterProjectId) {
+  // meterProjectId alone decides: "platform" always carries one, and the
+  // default project's env creds carry one in cloud (see credsForProject).
+  if (creds.meterProjectId) {
     recordDataforseoUsage(creds.meterProjectId, path, json.cost).catch(console.error);
   }
   return json as T;

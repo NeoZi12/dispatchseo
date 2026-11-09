@@ -12,17 +12,19 @@ import { backlinksSummary, type DataforseoCreds } from "./dataforseo";
 // show at all (no stored row and no creds / a failed first fetch). DR 0
 // (indexed, no authority yet) is a real value, distinct from null.
 //
-// TTL was cut to weekly on 2026-07-27 and to TWO weeks on 2026-10-08: DR
-// moves on a monthly scale, and the backlinks-summary call ($0.024) is the
-// priciest single request the backend makes for a number that almost never
-// changes week to week.
+// TTL was cut to weekly on 2026-07-27, to TWO weeks on 2026-10-08 and to a
+// MONTH on 2026-11-09: DR moves on a monthly scale, and the backlinks-summary
+// call ($0.024) is the priciest single request the backend makes for a number
+// that almost never changes week to week. The cron used to refresh every
+// 6.5 days regardless of the TTL - a weekly $0.024 per site for a monthly
+// number - so its refresh age now trails the TTL by a few days instead.
 
 const DAY_MS = 86_400_000;
-export const DR_TTL_MS = 14 * DAY_MS;
-// The cron refreshes slightly early so the weekly cadence never drifts a day
-// forward each week (a row refreshed at 04:00 is 6.99d old at the next
-// Monday's 04:00 run, not 7d).
-const CRON_REFRESH_AGE_MS = 6.5 * DAY_MS;
+export const DR_TTL_MS = 30 * DAY_MS;
+// The cron refreshes slightly early so the cadence never drifts forward a
+// day each cycle (a row refreshed at 04:00 is 27.99d old at the matching
+// 04:00 run four weeks on, not 28d).
+const CRON_REFRESH_AGE_MS = 27.5 * DAY_MS;
 
 export type DomainRating = {
   dr: number | null; // 0-100 (rank / 10, rounded)
