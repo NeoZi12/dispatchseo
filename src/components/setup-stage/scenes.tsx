@@ -574,28 +574,28 @@ export type PlanMenu = {
 // here): whole dollars plain, half-dollars with cents, never rounded.
 const money = (n: number) => (Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`);
 
-/** Who each plan is for, in one sentence (owner, 2026-11-09): the same
- *  lines as the landing's pricing cards and /plans. */
+/** Who each plan is for, one short row (owner, 2026-11-09): the same
+ *  words as the landing's pricing cards and /plans. */
 const WHO: Record<PlanTier, string> = {
-  free: "For a side project, or a first look before you pay anything.",
-  starter: "For a new or small site that wants steady articles without the work.",
-  growth: "For a site with some traffic already that wants to grow it faster.",
-  scale: "For a site where content is the main growth channel and speed matters.",
+  free: "Try it on a side project",
+  starter: "Small site, steady articles",
+  growth: "More traffic, faster",
+  scale: "All in on content",
 };
 
 const perWeekLine = (n: number) => (n === 1 ? "1 article a week" : `${n} articles a week`);
-const PAID_ROWS = ["Weekly keyword research", "Fact-checked articles", "Keyword rankings", "Advanced analytics", "No DispatchSEO badge"];
-const FREE_ROWS = ["Topics people search for", "Fact-checked articles", "Published for you", "Your Google stats"];
+// Three rows at most: the pill already says the pace, the row says the rest.
+const PAID_ROWS = ["Topics people search for", "Rankings and analytics", "No badge"];
+const FREE_ROWS = ["Topics people search for", "Your Google stats", "Small DispatchSEO badge"];
 
 function PlanCard({
   tier,
   name,
   price,
   billing,
+  pace,
   who,
-  lead,
   rows,
-  note,
   popular,
   on,
   busy,
@@ -605,63 +605,60 @@ function PlanCard({
   name: string;
   price: string;
   billing: string;
+  /** "1 article a week": the first row, in bold. */
+  pace: string;
   who: string;
-  lead: string;
   rows: string[];
-  note?: string;
   popular?: boolean;
   on: boolean;
   busy?: boolean;
   onPick: (tier: PlanTier) => void;
 }) {
+  // The landing's pricing card (landing.css .plan), shortened to fit the
+  // stage: same border, radius, type sizes, floating "Most popular" pill and
+  // violet ticks; picking a card gives it the hero-plan's 2px violet border.
   return (
     <label
       className={cx(
-        "relative flex cursor-pointer flex-col rounded-2xl border p-4 transition duration-200 motion-reduce:transition-none sm:p-5",
+        "relative flex cursor-pointer flex-col rounded-2xl border bg-surface px-5 pb-5 pt-6 transition duration-200 motion-reduce:transition-none",
         on
-          ? "-translate-y-0.5 border-accent/70 bg-surface-2 shadow-lg shadow-accent/10 ring-1 ring-accent/40 motion-reduce:translate-y-0"
-          : "border-line-soft bg-surface-2/50 hover:border-line hover:bg-surface-2",
+          ? "border-2 border-accent-strong shadow-[0_0_60px_-24px_rgba(139,92,246,0.7)]"
+          : "border-line hover:-translate-y-0.5 hover:border-ink-faint/50 motion-reduce:hover:translate-y-0",
         "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent/70 has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-surface",
         busy ? "pointer-events-none opacity-60" : "",
       )}
     >
       <input type="radio" name="plan" value={tier} checked={on} onChange={() => onPick(tier)} disabled={busy} className="sr-only" />
-      <span className="flex items-center gap-2.5">
+      {popular ? (
+        <span className="absolute -top-3 left-5 rounded-full bg-accent-strong px-3 py-1 text-[11.5px] font-bold tracking-wide text-white">Most popular</span>
+      ) : null}
+
+      <span className="flex items-center justify-between gap-2">
+        <span className="text-[17px] font-bold text-ink">{name}</span>
         <span
           aria-hidden="true"
           className={cx("grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full border-2 transition-colors", on ? "border-accent bg-accent" : "border-line")}
         >
           {on ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
         </span>
-        <span className="text-[16px] font-semibold text-ink">{name}</span>
-        {popular ? <span className="rounded-md bg-accent-soft px-1.5 py-0.5 text-[11.5px] font-medium text-accent">Most popular</span> : null}
       </span>
 
-      <span className="mt-4 flex flex-col">
-        <span className="flex items-baseline gap-1">
-          <span className="text-[30px] font-semibold leading-none tracking-tight text-ink tabular-nums">{price}</span>
-          <span className="text-[13.5px] text-ink-muted">/month</span>
-        </span>
-        <span className="mt-1.5 text-[12.5px] text-ink-faint">{billing}</span>
+      <span className="mt-2 flex items-baseline gap-1">
+        <span className="text-[36px] font-extrabold leading-none tracking-tight text-white tabular-nums">{price}</span>
+        <span className="text-[14px] font-semibold text-ink-faint">/mo</span>
       </span>
+      <span className="mt-1.5 text-[13px] font-medium text-ink-muted">{billing}</span>
+      <span className="mt-1 text-[13.5px] text-ink-faint">{who}</span>
 
-      <span className="mt-3 text-[14px] leading-snug text-ink-muted">{who}</span>
-
-      {/* Phones: only the selected card lists its features, so four plans
-          fit on a screen; from sm up every card shows its list. */}
-      <ul className={cx("mt-4 space-y-2 border-t border-line-soft pt-4 text-[13.5px]", on ? "block" : "hidden sm:block")}>
-        {[lead, ...rows].map((r, i) => (
-          <li key={r} className={cx("flex items-start gap-2", i === 0 ? "font-medium text-ink" : "text-ink-muted")}>
-            <Check className={cx("mt-px h-4 w-4 shrink-0", on ? "text-accent" : "text-ink-faint")} delay={i * 40} />
+      {/* Phones: only the picked card lists its rows, so four plans fit on
+          a screen; from sm up every card shows them. */}
+      <ul className={cx("mt-5 space-y-1 text-[15px] text-ink", on ? "block" : "hidden sm:block")}>
+        {[pace, ...rows].map((r, i) => (
+          <li key={r} className={cx("flex items-start gap-2.5 py-1", i === 0 ? "font-semibold" : "")}>
+            <Check className="mt-[3px] h-4 w-4 shrink-0 text-accent" delay={i * 40} />
             <span>{r}</span>
           </li>
         ))}
-        {note ? (
-          <li className="flex items-start gap-2 text-ink-faint">
-            <span aria-hidden="true" className="mt-[7px] ml-[5px] mr-[3px] h-1.5 w-1.5 shrink-0 rounded-full bg-line" />
-            <span>{note}</span>
-          </li>
-        ) : null}
       </ul>
     </label>
   );
@@ -739,17 +736,16 @@ export function PlanScene({
 
         <fieldset className="min-w-0">
           <legend className="sr-only">Plan</legend>
-          <div className={cx("grid gap-3", cards >= 4 ? "sm:grid-cols-2 lg:grid-cols-4" : cards === 3 ? "md:grid-cols-3" : "sm:grid-cols-2")}>
+          <div className={cx("grid gap-3.5 pt-3", cards >= 4 ? "sm:grid-cols-2 lg:grid-cols-4" : cards === 3 ? "md:grid-cols-3" : "sm:grid-cols-2")}>
             {menu.free ? (
               <PlanCard
                 tier="free"
                 name="Free"
                 price="$0"
                 billing="Free forever"
+                pace={menu.free.perMonth === 1 ? "1 article a month" : `${menu.free.perMonth} articles a month`}
                 who={WHO.free}
-                lead={menu.free.perMonth === 1 ? "1 article a month" : `${menu.free.perMonth} articles a month`}
                 rows={FREE_ROWS}
-                note="Articles carry a small Made with DispatchSEO badge"
                 on={choice.tier === "free"}
                 busy={busy}
                 onPick={pick}
@@ -764,8 +760,8 @@ export function PlanScene({
                   name={o.name}
                   price={money(y ? y.perMonth : o.monthly)}
                   billing={y ? `Billed ${money(y.charge)} a year, save ${y.savePct}%` : "Billed monthly"}
+                  pace={perWeekLine(o.perWeek)}
                   who={WHO[o.tier]}
-                  lead={perWeekLine(o.perWeek)}
                   rows={o.tier === "scale" ? [...PAID_ROWS, "Priority support"] : PAID_ROWS}
                   popular={o.tier === "growth"}
                   on={choice.tier === o.tier}

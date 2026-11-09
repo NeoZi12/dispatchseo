@@ -33,19 +33,19 @@ const TIER_COPY: Record<
 > = {
   starter: {
     name: "Starter",
-    tagline: "For a new or small site that wants steady articles without the work.",
+    tagline: "Small site, steady articles",
     cta: "Choose Starter",
     recommended: false,
   },
   growth: {
     name: "Growth",
-    tagline: "For a site with some traffic already that wants to grow it faster.",
+    tagline: "More traffic, faster",
     cta: "Choose Growth",
     recommended: true,
   },
   scale: {
     name: "Scale",
-    tagline: "For a site where content is the main growth channel and speed matters.",
+    tagline: "All in on content",
     cta: "Choose Scale",
     recommended: false,
   },
