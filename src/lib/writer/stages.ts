@@ -195,42 +195,34 @@ export async function runStage(run: WriterRun, deadline: number): Promise<void> 
 }
 
 /**
- * A site's FIRST article skips the Batch lane (owner, 2026-11-08): a new
- * customer is waiting for it, and Batch adds 40-90 minutes. Every later
- * article stays on Batch at half price. Full price is fine here: the first
- * article is one per site, and Claude spend sits inside the monthly free API
- * credit (claude-credit.ts).
+ * THE RULE (owner, stated three times, last 2026-11-09): a site's FIRST
+ * article is ALWAYS on the live lane. The Batch lane is only for articles
+ * after the first one. No heuristic, no cap, no exception for a stamp on
+ * the run - "first" means the site has no run that reached done, full stop.
+ * A new customer is waiting for that article, and Batch adds 40-90 minutes
+ * per stage. Full price is fine here: one article per site, inside the
+ * monthly free API credit (claude-credit.ts).
  *
  * Decided ONCE per run and stamped as stage_outputs.lane, because a run must
  * never change lanes mid-way: the batch lane parks and replays stages, the
  * live lane answers inline, and their saved state is not interchangeable.
- * Only a run still at `pick` with nothing saved is decided fresh; an unstamped
- * run already past that (started before this shipped) keeps its old lane.
- * "First" = no earlier run of this site reached done AND the site has had
- * fewer than two runs: one failed first attempt leaves the retry on the fast
- * lane, but a first article that keeps failing does not retry at full price
- * forever (2026-11-09; each live attempt is ~2x a Batch run). Agent and
- * explicit live sites are never touched.
+ * The stamp is written before the first stage runs, so a run still at `pick`
+ * is always deciding fresh; an unstamped run already past pick (started
+ * before this shipped) keeps the default lane. Nothing else about the run's
+ * stage_outputs may enter this decision: the free plan stamps free_start_id
+ * on the run before pick is queued, and a "nothing saved yet" check that
+ * counted it sent every free site's first article down the Batch lane
+ * (easyrender.app, 2026-11-09). Agent and explicit live sites are never
+ * touched.
  */
-const LIVE_LANE_MAX_PRIOR_RUNS = 2;
 async function laneOf(project: Project, run: WriterRun): Promise<"live" | "default"> {
   const stamped = run.stage_outputs.lane;
   if (stamped === "live" || stamped === "default") return stamped;
   let lane: "live" | "default" = "default";
-  // "Nothing saved" must ignore the free plan's ledger stamp: recordIfFree
-  // writes free_start_id before pick is queued, so counting every key sent
-  // every free site's first article down the Batch lane (easyrender,
-  // 2026-11-09: the one customer the fast lane exists for).
-  const scratch = Object.keys(run.stage_outputs).filter((k) => k !== "free_start_id");
-  const fresh = run.stage === "pick" && scratch.length === 0;
-  if (fresh && writerProvider(project) === "batch") {
-    const [done, prior] = await Promise.all([
-      db().from("writer_runs").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("status", "done").neq("id", run.id),
-      // Runs that got past pick: a $0 refusal at pick is not an attempt.
-      db().from("writer_runs").select("id", { count: "exact", head: true }).eq("project_id", project.id).neq("id", run.id).neq("stage", "pick"),
-    ]);
+  if (run.stage === "pick" && writerProvider(project) === "batch") {
+    const { count, error } = await db().from("writer_runs").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("status", "done").neq("id", run.id);
     // A failed count keeps the cheap lane: the article is only slower.
-    if (!done.error && !prior.error && (done.count ?? 0) === 0 && (prior.count ?? 0) < LIVE_LANE_MAX_PRIOR_RUNS) lane = "live";
+    if (!error && (count ?? 0) === 0) lane = "live";
   }
   await mergeRunOutput(run.id, { lane });
   run.stage_outputs = { ...run.stage_outputs, lane };
