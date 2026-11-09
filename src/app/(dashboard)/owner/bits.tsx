@@ -160,7 +160,7 @@ export function Sparkline({ values, tone = "blue", className = "", bars = false 
 
 /** One cell per day, violet by how many articles went live. Up to five
  *  weeks it is one row; longer ranges become a weeks-by-weekdays grid. */
-export function PublishStrip({ days }: { days: Array<{ day: string; count: number }> }) {
+export function PublishStrip({ days, label = "Articles published per day", unit = "article", units = "articles" }: { days: Array<{ day: string; count: number }>; label?: string; unit?: string; units?: string }) {
   const max = Math.max(1, ...days.map((d) => d.count));
   const n = days.length;
   const grid = n > 35;
@@ -176,7 +176,7 @@ export function PublishStrip({ days }: { days: Array<{ day: string; count: numbe
         justifyContent: grid ? undefined : "space-between",
       }}
       role="img"
-      aria-label="Articles published per day"
+      aria-label={label}
     >
       {Array.from({ length: lead }, (_, i) => (
         <div key={`lead-${i}`} aria-hidden="true" />
@@ -184,7 +184,7 @@ export function PublishStrip({ days }: { days: Array<{ day: string; count: numbe
       {days.map((d) => (
         <div
           key={d.day}
-          title={`${fullDate(d.day)}: ${d.count} ${d.count === 1 ? "article" : "articles"}`}
+          title={`${fullDate(d.day)}: ${d.count} ${d.count === 1 ? unit : units}`}
           className={cx("aspect-square rounded-[3px]", d.count ? "bg-accent" : "bg-surface-2")}
           style={d.count ? { opacity: 0.3 + (d.count / max) * 0.7 } : undefined}
         />

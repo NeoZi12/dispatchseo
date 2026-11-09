@@ -4,6 +4,8 @@ import { TIER_LIMITS, TIER_NAMES, polar, polarConfigured, type Tier } from "./bi
 import { isOperator } from "./autopilot/operator";
 import { ordersByUser, polarOrders, polarOrdersError, summarize, revenueUsd, type MoneySummary, type PolarOrder } from "./owner-money";
 import { memoMinute } from "./owner-memo";
+import { claudeCredit, type ClaudeCredit } from "./claude-credit";
+import { siteSetupProgress, type SetupProgress } from "./owner-setup";
 
 // Everything /owner shows, in two reads: the site's traffic and funnel
 // (web_visits + app_events, migration 0073) and the customer ledger (auth
@@ -309,6 +311,9 @@ export type CustomerSite = {
   dfsCostUsd: number;
   llmRecentUsd: number;
   dfsRecentUsd: number;
+  /** Free Claude API credit already taken off the AI cost above (claude-credit.ts). */
+  claudeCreditRecentUsd: number;
+  claudeCreditUsd: number;
 };
 
 export type Customer = {
@@ -360,9 +365,14 @@ export type Customer = {
   marginAllUsd: number | null;
   llmRecentUsd: number;
   dfsRecentUsd: number;
+  /** Free Claude API credit already taken off their cost. */
+  claudeCreditRecentUsd: number;
   lastSeen: string | null;
   viewsRecent: number;
   daysActiveRecent: number;
+  /** Where they stand in setup, for accounts with a site and no article yet
+   *  (owner-setup.ts); null once an article is out, or for accounts with no site. */
+  setup: SetupProgress | null;
 };
 
 export type CustomersReport = {
@@ -380,8 +390,14 @@ export type CustomersReport = {
     feesRecent: number;
     /** null when Polar's payments are not readable. */
     revenueAllTime: number | null;
+    /** Cost after the free Claude credit. */
     costRecent: number;
     costAllTime: number;
+    /** The free Claude credit already taken off costRecent / costAllTime. */
+    claudeCreditRecent: number;
+    claudeCreditAllTime: number;
+    /** The monthly credit in USD; 0 when it is off. */
+    claudeCreditMonthly: number;
     articles: number;
     articlesRecent: number;
   };
@@ -534,10 +550,14 @@ function planOf(sub: SubRow | undefined, facts: PolarFacts | undefined): Custome
   };
 }
 
-function siteOf(p: ProjectRow, r: RollupRow | undefined): CustomerSite {
-  const llm = Number(r?.llm_cost_microusd ?? 0) / 1e6;
+function siteOf(p: ProjectRow, r: RollupRow | undefined, credit: ClaudeCredit | null): CustomerSite {
+  // AI cost is net of the free Claude credit; never below zero (the rollup
+  // and the credit read are two queries a moment apart).
+  const creditAll = credit?.allByProject.get(p.id) ?? 0;
+  const creditRecent = credit?.recentByProject.get(p.id) ?? 0;
+  const llm = Math.max(0, Number(r?.llm_cost_microusd ?? 0) / 1e6 - creditAll);
   const dfs = Number(r?.dfs_cost_microusd ?? 0) / 1e6;
-  const llmRecent = Number(r?.llm_cost_recent_microusd ?? 0) / 1e6;
+  const llmRecent = Math.max(0, Number(r?.llm_cost_recent_microusd ?? 0) / 1e6 - creditRecent);
   const dfsRecent = Number(r?.dfs_cost_recent_microusd ?? 0) / 1e6;
   return {
     id: p.id,
@@ -557,6 +577,8 @@ function siteOf(p: ProjectRow, r: RollupRow | undefined): CustomerSite {
     dfsCostUsd: dfs,
     llmRecentUsd: llmRecent,
     dfsRecentUsd: dfsRecent,
+    claudeCreditRecentUsd: creditRecent,
+    claudeCreditUsd: creditAll,
   };
 }
 
@@ -567,13 +589,14 @@ async function customersReportFresh(range: Range, now = Date.now()): Promise<Cus
   if (!isCloudMode()) return null;
   const w = windows(range, now);
   const since = ISO(w.from);
-  const [usersRes, subsRes, projectsRes, rollupRes, activityRes, costRes] = await Promise.all([
+  const [usersRes, subsRes, projectsRes, rollupRes, activityRes, costRes, credit] = await Promise.all([
     db().auth.admin.listUsers({ page: 1, perPage: 1000 }),
     db().from("subscriptions").select("user_id, provider_customer_id, tier, status, provider_subscription_id, current_period_end, cancel_at_period_end, created_at"),
     db().from("projects").select("id, slug, name, domain, owner_user_id, writer_mode, created_at"),
     db().rpc("owner_project_rollup", { p_since: since }),
     db().rpc("owner_user_activity", { p_since: since }),
     db().rpc("owner_cost_daily", { p_from: since, p_to: ISO(w.to) }),
+    claudeCredit(since),
   ]);
   if (usersRes.error) throw usersRes.error;
   if (subsRes.error) throw subsRes.error;
@@ -597,7 +620,7 @@ async function customersReportFresh(range: Range, now = Date.now()): Promise<Cus
   const sitesByOwner = new Map<string, CustomerSite[]>();
   const orphanSites: CustomerSite[] = [];
   for (const p of projects) {
-    const site = siteOf(p, rollup.get(p.id));
+    const site = siteOf(p, rollup.get(p.id), credit);
     if (!p.owner_user_id) {
       orphanSites.push(site);
       continue;
@@ -644,11 +667,24 @@ async function customersReportFresh(range: Range, now = Date.now()): Promise<Cus
       marginAllUsd: money ? money.all.revenueUsd - totalCostAllUsd : null,
       llmRecentUsd: sites.reduce((a, s) => a + s.llmRecentUsd, 0),
       dfsRecentUsd: sites.reduce((a, s) => a + s.dfsRecentUsd, 0),
+      claudeCreditRecentUsd: sites.reduce((a, s) => a + s.claudeCreditRecentUsd, 0),
       lastSeen: act?.lastSeen ?? u.last_sign_in_at ?? null,
       viewsRecent: act?.views ?? 0,
       daysActiveRecent: act?.days ?? 0,
+      setup: null,
     };
   });
+
+  // Where the ones still setting up stand: only accounts with a site and no
+  // article yet ask the setup engine (a few reads each, no remote calls), so
+  // the list stays quick however many finished customers there are.
+  const settingUp = customers.filter((c) => !c.operator && c.sites.length > 0 && c.articles === 0).slice(0, 40);
+  await Promise.all(
+    settingUp.map(async (c) => {
+      const p = await siteSetupProgress(c.sites[0].id, now);
+      c.setup = p && !p.complete ? p : null;
+    }),
+  );
 
   // Paying first (by what they pay), then trials, then the rest by sign-up
   // date; the operator's own account sinks to the bottom of its group.
@@ -673,6 +709,9 @@ async function customersReportFresh(range: Range, now = Date.now()): Promise<Cus
     revenueAllTime: orders ? real.reduce((a, c) => a + (c.revenueAllUsd ?? 0), 0) : null,
     costRecent: customers.reduce((a, c) => a + c.totalCostRecentUsd, 0) + orphanSites.reduce((a, s) => a + s.costRecentUsd, 0),
     costAllTime: customers.reduce((a, c) => a + c.totalCostAllUsd, 0) + orphanSites.reduce((a, s) => a + s.costUsd, 0),
+    claudeCreditRecent: credit?.recentUsd ?? 0,
+    claudeCreditAllTime: credit?.allUsd ?? 0,
+    claudeCreditMonthly: credit?.monthlyUsd ?? 0,
     articles: customers.reduce((a, c) => a + c.articles, 0) + orphanSites.reduce((a, s) => a + s.articles, 0),
     articlesRecent: customers.reduce((a, c) => a + c.articlesRecent, 0) + orphanSites.reduce((a, s) => a + s.articlesRecent, 0),
   };
@@ -686,7 +725,9 @@ async function customersReportFresh(range: Range, now = Date.now()): Promise<Cus
   const costMap = new Map<string, number>();
   if (!costRes.error) {
     for (const r of (costRes.data ?? []) as RollupRow[]) {
-      costMap.set(String(r.day), (Number(r.llm_microusd ?? 0) + Number(r.dfs_microusd ?? 0)) / 1e6);
+      const day = String(r.day).slice(0, 10);
+      const gross = (Number(r.llm_microusd ?? 0) + Number(r.dfs_microusd ?? 0)) / 1e6;
+      costMap.set(day, Math.max(0, gross - (credit?.byDay.get(day) ?? 0)));
     }
   }
   return {

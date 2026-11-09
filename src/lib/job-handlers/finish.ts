@@ -84,6 +84,7 @@ export async function renderDraftForRoute(
     // structured data and self-link check must name that path.
     ownSlug: route === "hosted" ? `blog/${encodeURIComponent(row.slug)}` : row.slug,
     publishedAt,
+    draftId: row.id,
     // The byline. A real person the owner named (Settings > Author, or the
     // set_author MCP tool) is a Person, with their page when they gave one.
     // Without one the byline is the site itself - and a site is an

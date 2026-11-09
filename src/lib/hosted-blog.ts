@@ -351,6 +351,7 @@ function shell(site: Site, opts: { title: string; description: string; canonical
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(opts.title)}</title>
 <meta name="description" content="${esc(opts.description)}">
+<meta name="generator" content="DispatchSEO">
 <link rel="canonical" href="${esc(opts.canonical)}">
 <meta name="theme-color" content="${esc(site.theme.mode === "dark" ? "#0a0a0a" : "#ffffff")}">
 <meta property="og:type" content="article"><meta property="og:title" content="${esc(opts.title)}"><meta property="og:description" content="${esc(opts.description)}"><meta property="og:url" content="${esc(opts.canonical)}"><meta property="og:site_name" content="${esc(site.name)}">

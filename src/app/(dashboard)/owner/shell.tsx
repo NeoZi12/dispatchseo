@@ -18,12 +18,16 @@ export const OWNER_SECTIONS: Array<{ key: OwnerSection; href: string; label: str
   { key: "ai", href: "/owner/ai", label: "AI visibility", says: "Whether ChatGPT, Claude and Perplexity read you, send people, and name you." },
 ];
 
-export function OwnerShell({ section, range, now, children }: { section: OwnerSection; range: Range; now: number; children: React.ReactNode }) {
-  const w = windows(range, now);
+/** `range: null` is the ghost (each section's loading.tsx): the title, the
+ *  sentence and the tabs are real - they never depend on data - and only the
+ *  date span and the chosen range are placeholders, so the real page lands
+ *  on top of it without a jump. */
+export function OwnerShell({ section, range, now, children }: { section: OwnerSection; range: Range | null; now: number; children: React.ReactNode }) {
+  const w = windows(range ?? 30, now);
   const from = new Date(w.from).toISOString();
   const to = new Date(w.to - 1).toISOString();
   const current = OWNER_SECTIONS.find((s) => s.key === section)!;
-  const q = range === 30 ? "" : `?range=${range}`;
+  const q = range == null || range === 30 ? "" : `?range=${range}`;
   return (
     <div className="mx-auto max-w-[1280px] space-y-4 sm:space-y-5">
       <header className="flex flex-col gap-4 pb-1 sm:flex-row sm:items-end sm:justify-between">
@@ -33,10 +37,14 @@ export function OwnerShell({ section, range, now, children }: { section: OwnerSe
           </h1>
           <p className="mt-1 text-[13.5px] text-ink-muted">
             {current.says}
-            <span className="text-ink-faint">
-              {" "}
-              · {shortDate(from)} – {shortDate(to)}, UTC
-            </span>
+            {range == null ? (
+              <span className="sk ml-1.5 inline-block h-3 w-28 translate-y-0.5 align-baseline" aria-hidden="true" />
+            ) : (
+              <span className="text-ink-faint">
+                {" "}
+                · {shortDate(from)} – {shortDate(to)}, UTC
+              </span>
+            )}
           </p>
         </div>
         <nav aria-label="Range" className="flex w-full rounded-xl border border-line-soft bg-surface p-1 sm:w-auto">
@@ -48,7 +56,7 @@ export function OwnerShell({ section, range, now, children }: { section: OwnerSe
               aria-current={r === range ? "page" : undefined}
               className={cx(
                 "flex-1 rounded-lg px-4 py-1.5 text-center font-mono text-[12.5px] tabular-nums transition-colors sm:flex-none",
-                r === range ? "bg-surface-3 text-ink" : "text-ink-faint hover:text-ink",
+                r === range ? "bg-surface-3 text-ink" : range == null ? "text-ink-faint/60" : "text-ink-faint hover:text-ink",
                 FOCUS_RING,
               )}
             >

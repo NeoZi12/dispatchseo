@@ -18,6 +18,7 @@ import {
 } from "@/lib/ai-visibility";
 import { reportCronRun } from "@/lib/cron-alerts";
 import { detectRefreshCandidates } from "@/lib/refresh-detect";
+import { scanPageMarks } from "@/lib/page-marks";
 import { listProjectsChecked, publishTarget, writerMode, type Project } from "@/lib/projects";
 import { enqueue } from "@/lib/jobs";
 import { isCloudMode } from "@/lib/cloud";
@@ -353,6 +354,15 @@ async function runProject(project: Project): Promise<Record<string, unknown>> {
   } catch (e) {
     result.hadError = true;
     result.crawl = { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  // --- 6. The DispatchSEO marks on a few live pages (page-marks.ts): does
+  // the page still carry our signature, and the credit? Informational
+  // only - a customer's site being down is their weather, never our error.
+  try {
+    result.marks = await scanPageMarks(project);
+  } catch (e) {
+    result.marks = { error: e instanceof Error ? e.message : String(e) };
   }
 
   return result;

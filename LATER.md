@@ -245,3 +245,4 @@ running without any of them.)*
   tree and having the PR either edit `next.config.*` (`beforeFiles`) or remove
   the template page, or at least telling the owner up front to paste the
   snippet instead of merging.
+- **Google page matching ignores URL variants on the customer's /articles page (found 2026-11-09).** Search Console reports `?lang=fr` and `www.` variants of one article as separate rows, and `normalizePageUrl` keeps the query string, so an agent-mode site whose pages are served with a language query (Never Zero) shows 0 clicks per article on /articles and in `get_pages`, while the site total is right. The owner's customer page folds by host + path (`pageKey` in owner-customer.ts); the customer-facing report (autopilot/report.ts `gsc28Folded`, articles/article-data.ts `dayFor`) should fold the same way. Widening `normalizePageUrl` itself is the clean fix but it also keys the pages table, so check the uniqueness constraints first.

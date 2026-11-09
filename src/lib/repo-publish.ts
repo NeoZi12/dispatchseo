@@ -2,6 +2,7 @@ import { tokenForRef } from "./github";
 import { faqHeadingFor } from "@/lib/writer/evidence";
 import type { Project } from "./projects";
 import { yamlDoubleQuote } from "./article-render";
+import { articleSignature } from "./article-signature";
 import { backendBaseUrl } from "./pipeline-pack";
 import { db } from "./db";
 
@@ -390,6 +391,9 @@ export type ArticleFileInput = {
   /** The FAQ section heading in the article's language (writer/evidence
    *  faqHeadingFor); defaults to English. */
   faqHeading?: string | null;
+  /** The article_drafts id: when given, the file ends with the hidden
+   *  DispatchSEO signature (lib/article-signature.ts). */
+  draftId?: string | null;
 };
 
 /** Whether a sample has a cover-shaped key at all - the one signal that this
@@ -459,7 +463,11 @@ export function buildArticleFile(sample: ParsedSample | null, article: ArticleFi
     push("keyword", yamlDoubleQuote(article.primaryKeyword));
   }
 
-  return `---\n${lines.join("\n")}\n---\n\n${bodyWithFaq(article, sample)}\n`;
+  // The signature is the file's last line, outside the frontmatter and after
+  // the FAQ: an inline element both .md and .mdx accept (article-signature.ts
+  // says why not a comment), rendering nothing.
+  const signature = article.draftId ? `\n\n${articleSignature(article.draftId)}` : "";
+  return `---\n${lines.join("\n")}\n---\n\n${bodyWithFaq(article, sample)}${signature}\n`;
 }
 
 /** The article body plus its FAQ as plain markdown. The gate guarantees every
@@ -1025,6 +1033,7 @@ export async function publishDraftToRepo(
     coverPath,
     siteDomain: project.domain,
     faqHeading: faqHeadingFor(project.language_code),
+    draftId: draft.id,
   });
   treeEntries.unshift({ path: repoPath, mode: "100644", type: "blob", content });
 

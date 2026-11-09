@@ -89,6 +89,7 @@
 
 import type { ArticleSubmission, FaqPair } from "@/lib/article-validate";
 import { countWords } from "@/lib/article-validate";
+import { articleSignature } from "@/lib/article-signature";
 
 // --- Shared low-level text helpers ------------------------------------------
 
@@ -1076,6 +1077,10 @@ export type FinishArticleInput = {
   coverImageUrl?: string;
   /** Default 5 - see addInternalLinks(). */
   maxInternalLinks?: number;
+  /** The article_drafts id. When given, the HTML ends with the hidden
+   *  DispatchSEO signature (lib/article-signature.ts) so the page can be
+   *  recognised as ours later, credit or no credit. */
+  draftId?: string;
 };
 
 export type FinishedArticle = {
@@ -1145,7 +1150,7 @@ export function finishArticle(input: FinishArticleInput): FinishedArticle {
   );
 
   return {
-    html: linkResult.html,
+    html: input.draftId ? `${linkResult.html}\n${articleSignature(input.draftId)}` : linkResult.html,
     excerpt,
     schema,
     headings: rendered.headings,

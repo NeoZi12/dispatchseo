@@ -336,6 +336,12 @@ the build-tool workflow and must never be picked up here.
    not done this step - go back and build them. Reasoning yourself down to
    "a figure of some kind should be acceptable" is the one failure mode this
    paragraph exists to stop.
+   **SIGNATURE (mandatory, one line).** The very last line of the guide
+   file, after the FAQ and outside any code fence, is exactly
+   \`<span data-dispatchseo="<this suggestion's id>" hidden></span>\` - a
+   hidden, empty element that renders nothing and loads nothing. It is how
+   DispatchSEO recognises its own articles on the live site later, whether
+   or not the site shows a credit. Never drop, move, wrap or reword it.
 {{COVER_STEP}}
 8. **HUMANIZER (mandatory, not optional).** Apply the humanizer pass the
    conventions file points at (or its principles if the repo carries no

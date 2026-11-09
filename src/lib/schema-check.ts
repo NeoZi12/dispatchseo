@@ -176,6 +176,9 @@ const PROBES: Probe[] = [
   // 0080: the audit hardening's one new table; the policy/grant changes in the
   // same migration are invisible to PostgREST, this table stands in for them.
   { migration: "0080_audit_hardening", table: "rate_limits", column: "hits" },
+  // 0082: what the live page carried at its last scan (lib/page-marks.ts) -
+  // the owner's view reads "unchecked" without it, never an error.
+  { migration: "0082_page_marks", table: "pages", column: "mark_checked_at" },
 ];
 
 // Migrations that genuinely CANNOT be probed through this mechanism, with the
@@ -192,6 +195,11 @@ export const UNPROBEABLE: Record<string, string> = {
   // cost cards read "not available" - visible on the one page that uses it.
   "0074_owner_analytics_v2":
     "create or replace of SQL functions only - artifact is in pg_proc, not queryable via PostgREST",
+  // Swaps owner_project_rollup's article count from hosted drafts to live
+  // pages rows. Unapplied, /owner's Articles column undercounts sites whose
+  // own agent publishes through PRs - operator-only, no customer impact.
+  "0079_owner_rollup_counts_pages":
+    "create or replace of one SQL function - artifact is in pg_proc, not queryable via PostgREST",
   // Rewrites foreign keys to ON DELETE CASCADE. No table or column changes -
   // its artifact lives in pg_constraint. Failure mode if unapplied is a
   // failed project delete (loud, immediate, user-facing), not silent drift.

@@ -74,6 +74,10 @@ export type ChangelogEntry = {
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "improved",
+    text: "Every article DispatchSEO writes now ends with a hidden, empty signature element (a span with a data-dispatchseo attribute carrying the article's id). It renders nothing, loads nothing and links nowhere; it lets us recognise our own articles on the live site later, whether or not the credit is shown.",
+  },
+  {
+    kind: "improved",
     text: "The home page reads properly on a phone: the product screenshots now show their numbers instead of a cropped middle, pricing is one clear card per plan led by its articles a month, and the mascot no longer sits on the closing line of text.",
   },
   {

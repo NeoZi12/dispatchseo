@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { fetchProjectUrl, isProjectUrl } from "./url-guard";
+import { readMarks, stampMarks } from "./page-marks";
 import type { Project } from "./projects";
 
 // Truthful "published" state (migration 0033). log_page records a page when
@@ -85,6 +86,13 @@ export async function refreshPageLiveness<T extends LivenessRow>(
       const { error } = await db().from("pages").update(patch).eq("id", r.id);
       // A pre-0033 schema rejects the columns - leave the row as it was.
       if (!error) Object.assign(r, patch);
+      // The body is in hand the moment the page first serves: read it for
+      // the DispatchSEO marks too (page-marks.ts), in its own write so a
+      // schema without 0082 costs the marks and never the liveness stamp.
+      if (res?.ok) {
+        const marks = await readMarks(res);
+        if (marks) await stampMarks(r.id, marks, checkedAt).catch(() => undefined);
+      }
     }),
   );
 }

@@ -1,6 +1,7 @@
 import { cx } from "@/components/ui/styles";
 import type { Customer, CustomersReport } from "@/lib/owner-analytics";
 import { TIER_LIMITS, TIER_NAMES, type Tier } from "@/lib/billing";
+import { setupShort } from "@/lib/owner-setup";
 import { Panel, StatCells } from "./bits";
 import { ago, cancelNote, compact, fmt, money, rangeShort, shortDate } from "./format";
 
@@ -21,7 +22,9 @@ function StatusChip({ c }: { c: Customer }) {
           ? "Past due"
           : c.plan.status === "incomplete"
             ? "Unfinished"
-            : "No plan";
+            : c.sites.length
+              ? "Free plan"
+              : "No plan";
   const cls =
     tone === "ok"
       ? "border-ok/30 bg-ok/10 text-ok"
@@ -33,6 +36,17 @@ function StatusChip({ c }: { c: Customer }) {
             ? "border-danger/30 bg-danger/10 text-danger"
             : "border-line bg-surface-2 text-ink-faint";
   return <span className={cx("inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-[11.5px] font-medium", cls)}>{word}</span>;
+}
+
+/** Where a customer still setting up stands: "Connecting · 3/6 · Connect Google Search Console". */
+function SetupLine({ c, className = "" }: { c: Customer; className?: string }) {
+  if (!c.setup) return null;
+  return (
+    <span className={cx("block truncate text-[11.5px]", c.setup.slow || c.setup.error ? "text-warn" : "text-ink-faint", className)} title={c.setup.why}>
+      {setupShort(c.setup)} · {c.setup.title}
+      {c.setup.error ? " · stuck" : c.setup.slow ? " · slow" : ""}
+    </span>
+  );
 }
 
 // ---------- one subject per section ----------
@@ -158,6 +172,7 @@ function PlanRow({ x, now }: { x: Customer; now: number }) {
           ) : null}
         </div>
         {note ? <span className="mt-0.5 block whitespace-nowrap text-[11.5px] text-danger/90">{note}</span> : null}
+        <SetupLine c={x} className="mt-0.5 max-w-[16rem]" />
       </td>
       <td className="px-3 py-3 text-right font-mono tabular-nums text-ink">{money(x.revenueRecentUsd)}</td>
       <td className="px-3 py-3 text-right font-mono tabular-nums">
@@ -186,6 +201,7 @@ function PlanCard({ x, now }: { x: Customer; now: number }) {
           <StatusChip c={x} />
         </div>
         {note ? <p className="mt-1.5 text-[12px] text-danger/90">{note}</p> : null}
+        <SetupLine c={x} className="mt-1.5" />
         <dl className="mt-3 grid grid-cols-4 gap-2 font-mono tabular-nums">
           {[
             ["Revenue", money(x.revenueRecentUsd), "text-ink"],
@@ -323,6 +339,7 @@ function MobileCustomer({ x, now }: { x: Customer; now: number; range: number })
           <StatusChip c={x} />
         </div>
         {cancelNote(x.plan) ? <p className="mt-1.5 text-[12px] text-danger/90">{cancelNote(x.plan)}</p> : null}
+        <SetupLine c={x} className="mt-1.5" />
         <dl className="mt-3 grid grid-cols-3 gap-2 font-mono tabular-nums">
           {[
             ["Revenue", money(x.revenueRecentUsd), "text-ink"],
@@ -352,11 +369,11 @@ export function CustomersPanel({ c, range, now }: { c: CustomersReport; range: n
     <Panel id="customers" label="Customers">
       <SectionHead
         title="Customers"
-        says={
+        says={`${
           c.ordersRead
             ? "What each customer pays you, what they cost you, and what is left."
             : "What each customer pays you (their plan price), what they cost you, and what is left."
-        }
+        }${c.totals.claudeCreditMonthly > 0 ? ` The first ${money(c.totals.claudeCreditMonthly)} of Claude each month is free credit, so it is not counted as cost.` : ""}`}
         note={`${fmt(engaged.filter((x) => !x.operator).length)} with a site or plan`}
       />
       <StatCells
@@ -407,6 +424,7 @@ export function CustomersPanel({ c, range, now }: { c: CustomersReport; range: n
                     {x.plan.monthlyUsd ? `${money(x.plan.monthlyUsd)}/mo${x.plan.interval === "year" ? " · yearly" : ""}` : ""}
                   </span>
                   {cancelNote(x.plan) ? <span className="mt-0.5 block whitespace-nowrap text-[11.5px] text-danger/90">{cancelNote(x.plan)}</span> : null}
+                  <SetupLine c={x} className="mt-0.5 max-w-[16rem]" />
                 </td>
                 <td className="px-3 py-3 text-right font-mono tabular-nums">
                   <span className="text-ink">{money(x.revenueRecentUsd)}</span>
