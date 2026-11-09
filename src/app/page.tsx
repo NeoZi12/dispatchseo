@@ -136,21 +136,21 @@ function PlanLink({ tier, annual, children }: { tier: Tier; annual: boolean; chi
 
 // The mobile pricing cards' paid plans. Articles a month come from billing.ts
 // (1 / 3 / 5 a week x 4), so a pace change can't leave these behind.
-const PM_PAID: { tier: Tier; perMonth: number; tagline: string; lead: string; ticks: string[]; pick: boolean }[] = [
+const PM_PAID: { tier: Tier; perMonth: number; tagline: string; ticks: string[]; pick: boolean }[] = [
   {
     tier: "starter", perMonth: articlesPerMonthFor("starter"), pick: false,
-    tagline: "Steady start, weekly articles", lead: "Everything in Free, plus",
-    ticks: ["Weekly keyword research", "Keyword rankings", "Advanced analytics", "No DispatchSEO badge", "Email support"],
+    tagline: "Steady start, weekly articles",
+    ticks: ["Weekly keyword research", "Fact-checked articles", "Keyword rankings", "Advanced analytics", "No DispatchSEO badge"],
   },
   {
     tier: "growth", perMonth: articlesPerMonthFor("growth"), pick: true,
-    tagline: "Serious about traffic", lead: "Everything in Starter, plus",
-    ticks: ["8 more articles / month"],
+    tagline: "Serious about traffic",
+    ticks: ["Weekly keyword research", "Fact-checked articles", "Keyword rankings", "Advanced analytics", "No DispatchSEO badge"],
   },
   {
     tier: "scale", perMonth: articlesPerMonthFor("scale"), pick: false,
-    tagline: "All in on content", lead: "Everything in Growth, plus",
-    ticks: ["8 more articles / month", "Priority support"],
+    tagline: "All in on content",
+    ticks: ["Weekly keyword research", "Fact-checked articles", "Keyword rankings", "Advanced analytics", "No DispatchSEO badge", "Priority support"],
   },
 ];
 
@@ -474,8 +474,8 @@ export default async function LandingPage({
           </div>
           {/* Mobile pricing (<=980px): one stacked card per plan in the desktop
               cards' language - name, tagline, the articles a month as the
-              headline, price, button, then a short "everything in X, plus"
-              list so four cards don't repeat the same ticks four times. */}
+              headline, price, button, then the same ticks the desktop card
+              carries (owner, 2026-11-09: keep every tick on every card). */}
           <div className="plans-m">
             <div className="pm-list">
               <div className="pm-card">
@@ -504,7 +504,6 @@ export default async function LandingPage({
                   <div className="pm-stat"><b>{plan.perMonth}</b><span>articles / month</span></div>
                   <PmPrice tier={plan.tier} annual={annual} />
                   <PlanLink tier={plan.tier} annual={annual}>Choose {TIER_NAMES[plan.tier]}</PlanLink>
-                  <p className="pm-lead">{plan.lead}</p>
                   <ul className="pm-ticks">
                     {plan.ticks.map((t) => <li key={t}>{t}</li>)}
                   </ul>

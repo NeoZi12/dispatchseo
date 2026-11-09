@@ -569,17 +569,17 @@ html:has(.ld) { scroll-behavior: smooth; }
 .ld .pm-mascot { position: absolute; top: -49px; right: 22px; width: 52px; height: 52px; z-index: 2; image-rendering: pixelated; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45)); pointer-events: none; }
 .ld .pm-name { font-family: var(--disp); font-size: 26px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; color: #fff; }
 .ld .pm-tag { margin-top: 6px; font-size: 14px; font-weight: 500; color: var(--vio2); }
-.ld .pm-stat { display: flex; align-items: baseline; justify-content: center; gap: 10px; width: 100%; margin: 20px 0 18px; padding: 18px 12px; border-radius: 14px; border: 1px solid var(--line); background: rgba(0, 0, 0, 0.28); }
-.ld .pm-pick .pm-stat { border-color: rgba(139, 92, 246, 0.35); background: rgba(139, 92, 246, 0.08); }
-.ld .pm-stat b { font-family: var(--disp); font-size: 46px; font-weight: 800; line-height: 1; letter-spacing: -0.04em; color: #fff; font-variant-numeric: tabular-nums; }
-.ld .pm-stat span { font-family: var(--disp); font-size: 19px; font-weight: 700; letter-spacing: -0.01em; color: var(--txt); }
+/* The count is the hero: one big number, 'articles / month' under it, no
+   box around it (owner, 2026-11-09 - the inset panel looked wrong). */
+.ld .pm-stat { display: flex; flex-direction: column; align-items: center; gap: 4px; margin: 22px 0 18px; }
+.ld .pm-stat b { font-family: var(--disp); font-size: 72px; font-weight: 800; line-height: 0.95; letter-spacing: -0.05em; color: #fff; font-variant-numeric: tabular-nums; }
+.ld .pm-pick .pm-stat b { color: var(--vio2); text-shadow: 0 0 28px rgba(139, 92, 246, 0.45); }
+.ld .pm-stat span { font-size: 15px; font-weight: 600; letter-spacing: 0.01em; color: var(--mut); }
 .ld .pm-price { display: block; font-family: var(--disp); font-size: 34px; font-weight: 800; letter-spacing: -0.03em; line-height: 1; color: #fff; white-space: nowrap; margin-bottom: 20px; }
 .ld .pm-price small { margin-left: 2px; font-family: var(--body); font-size: 14px; font-weight: 600; color: var(--dim); letter-spacing: 0; }
 .ld .pm-card .btn { width: 100%; min-height: 50px; font-size: 16px; border-radius: 12px; }
 .ld .pm-card:not(.pm-pick) .btn:not([href="/onboarding"]) { background: transparent; color: #fff; border-color: var(--line3); }
-.ld .pm-lead { width: 100%; margin: 22px 0 0; padding-top: 18px; border-top: 1px solid var(--line); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); text-align: left; }
-.ld .pm-ticks { list-style: none; width: 100%; margin: 12px 0 0; text-align: left; }
-.ld .pm-card > .btn + .pm-ticks { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
+.ld .pm-ticks { list-style: none; width: 100%; margin: 22px 0 0; padding-top: 18px; border-top: 1px solid var(--line); text-align: left; }
 .ld .pm-ticks li { position: relative; padding: 6px 0 6px 28px; font-size: 15px; color: var(--txt); }
 .ld .pm-ticks li::before { content: "✓"; position: absolute; left: 3px; top: 6px; font-size: 15px; font-weight: 700; color: var(--vio2); }
 
