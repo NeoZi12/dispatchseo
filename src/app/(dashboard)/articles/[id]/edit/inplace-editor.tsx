@@ -220,8 +220,11 @@ export function InplaceEditor({
       if (!el) return [key];
       const b = blocksRef.current[i];
       const md = domToMarkdown(el, b.kind).trim();
-      if (md === b.source.trim()) {
-        // Unchanged in substance: still re-render so stray browser markup goes.
+      // Unchanged in substance (the same page output - a table's separator
+      // row can be spelled two ways): keep the original source untouched and
+      // only re-render, so stray browser markup goes and nothing reads as an
+      // edit the owner did not make.
+      if (md === b.source.trim() || renderMarkdown(md).html === renderMarkdown(b.source).html) {
         el.innerHTML = renderBlockHtml(b, i, blocksRef.current);
         return [key];
       }
@@ -321,6 +324,8 @@ export function InplaceEditor({
     root.innerHTML = `<style>${styles}${EDITOR_CSS}</style><div class="page" lang="${esc(lang)}" dir="${dir}"><main><article><h1 class="title" contenteditable="true" spellcheck="true"></h1><p class="meta">${esc(metaLine)}</p><div class="body"></div></article></main></div>`;
     root.querySelector("h1.title")!.textContent = titleRef.current;
     mountBlocks();
+    // Dev only: lets an automated check read the blocks back (never in prod).
+    if (process.env.NODE_ENV !== "production") (host as HTMLElement & { __blocks?: () => Block[] }).__blocks = () => blocksRef.current;
 
     const keyOf = (t: EventTarget | null) => (t instanceof Element ? t.closest<HTMLElement>(".blk")?.dataset.key ?? null : null);
 
@@ -394,6 +399,9 @@ export function InplaceEditor({
     const onKeyDown = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (!t) return;
+      // Mid-composition (Japanese, Korean, Chinese input) Enter and Backspace
+      // belong to the IME, not to us.
+      if (e.isComposing || e.keyCode === 229) return;
       if (t.matches("h1.title")) {
         if (e.key === "Enter") {
           e.preventDefault();
@@ -434,6 +442,52 @@ export function InplaceEditor({
       if (e.key === "Backspace" && kind === "paragraph" && (t.textContent ?? "").trim() === "") {
         e.preventDefault();
         removeBlocks([key]);
+        return;
+      }
+      if (e.key === "Backspace" && kind === "paragraph" && caretAtStart(t)) {
+        // Backspace at the very start joins this paragraph onto the previous
+        // one (a paragraph or a heading), caret at the seam.
+        const i = blocksRef.current.findIndex((b) => b.key === key);
+        const prev = blocksRef.current[i - 1];
+        if (!prev || (prev.kind !== "paragraph" && prev.kind !== "heading")) return;
+        e.preventDefault();
+        const mine = domToMarkdown(t, "paragraph").trim();
+        // The seam is measured on the VISIBLE text of the previous block (its
+        // source is longer wherever a link is written out).
+        const prevEd = root.querySelector<HTMLElement>(`.blk[data-key="${prev.key}"] .ed`);
+        const seam = (prevEd?.textContent ?? "").replace(/\s+$/, "").length;
+        remember();
+        const joined = `${prev.source.trim()} ${mine}`.trim();
+        blocksRef.current = [...blocksRef.current.slice(0, i - 1), { ...prev, source: joined }, ...blocksRef.current.slice(i + 1)];
+        mountBlocks();
+        bump();
+        focusBlock(prev.key, true);
+        placeCaret(rootRef.current?.querySelector<HTMLElement>(`.blk[data-key="${prev.key}"] .ed`) ?? null, seam + (mine ? 1 : 0));
+        return;
+      }
+      if (e.key === "Enter" && !e.shiftKey && kind === "list") {
+        // Enter on an empty item leaves the list: the item goes, a paragraph
+        // follows the list.
+        const li = ((root as unknown as { getSelection?: () => Selection | null }).getSelection?.() ?? window.getSelection())?.anchorNode;
+        const item = li instanceof Element ? li.closest("li") : li?.parentElement?.closest("li");
+        if (item && (item.textContent ?? "").trim() === "" && !item.querySelector("ul, ol")) {
+          e.preventDefault();
+          item.remove();
+          const keys = commitBlock(key);
+          insertAfter(keys[keys.length - 1] ?? null, "paragraph", "", true);
+        }
+        return;
+      }
+      if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey) {
+        // At the last (first) line, the caret crosses into the next (previous)
+        // block instead of stopping at the edge.
+        const edge = caretOnEdgeLine(t, e.key === "ArrowDown" ? "last" : "first", root);
+        if (!edge) return;
+        const i = blocksRef.current.findIndex((b) => b.key === key);
+        const next = blocksRef.current[i + (e.key === "ArrowDown" ? 1 : -1)];
+        if (!next || !TEXT_KINDS.has(next.kind)) return;
+        e.preventDefault();
+        focusBlock(next.key, e.key === "ArrowUp");
       }
     };
 
@@ -441,8 +495,20 @@ export function InplaceEditor({
       const t = e.target as HTMLElement | null;
       if (!t?.closest(".ed, h1.title")) return;
       e.preventDefault();
-      const text = e.clipboardData?.getData("text/plain") ?? "";
-      document.execCommand("insertText", false, text.replace(/\r\n/g, "\n"));
+      const text = (e.clipboardData?.getData("text/plain") ?? "").replace(/\r\n/g, "\n");
+      const blk = t.closest<HTMLElement>(".blk");
+      const kind = blk?.dataset.kind;
+      const paras = text.split(/\n[ \t]*\n+/).map((x) => x.trim()).filter(Boolean);
+      if (kind === "paragraph" && paras.length > 1 && blk?.dataset.key) {
+        // Pasted prose with blank lines: the first paragraph lands here, the
+        // rest become blocks of their own after it.
+        document.execCommand("insertText", false, paras[0]);
+        const keys = commitBlock(blk.dataset.key);
+        let after = keys[keys.length - 1] ?? null;
+        for (const [n, para] of paras.slice(1).entries()) after = insertAfter(after, "paragraph", para, n === paras.length - 2);
+        return;
+      }
+      document.execCommand("insertText", false, kind === "code" ? text : text.replace(/\s*\n\s*/g, " "));
     };
 
     root.addEventListener("click", onClick);
@@ -483,11 +549,15 @@ export function InplaceEditor({
   const replaceArticle = useCallback(() => {
     let text = pasteText.replace(/\r\n/g, "\n").trim();
     if (!text) return;
-    if (/^\s*<(!doctype|html|body|article|main|section|div|h[1-6]|p|ul|ol|table|pre|blockquote)\b/i.test(text)) text = htmlToMarkdown(text);
+    // HTML when it opens with a tag and carries block tags anywhere (a copy
+    // from Google Docs or a chat window starts with <meta> or a wrapper).
+    if (/^\s*<[a-z!]/i.test(text) && /<(p|h[1-6]|ul|ol|li|table|pre|blockquote|div|br|hr|img)\b/i.test(text)) text = htmlToMarkdown(text);
     const h1 = text.match(/^\s*#\s+([^\n]+)\n+/);
     remember();
     if (h1) {
-      titleRef.current = h1[1].trim();
+      // The title is plain text: a bolded heading from a pasted document
+      // must not carry its marks into the page title.
+      titleRef.current = h1[1].replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/\*\*|__|`|(?<![A-Za-z0-9])[*_](?=\S)|(?<=\S)[*_](?![A-Za-z0-9])/g, "").replace(/\s+/g, " ").trim();
       const el = rootRef.current?.querySelector<HTMLElement>("h1.title");
       if (el) el.textContent = titleRef.current;
       text = text.slice(h1[0].length);
@@ -649,6 +719,65 @@ export function InplaceEditor({
   );
 }
 
+// ---- caret helpers --------------------------------------------------------------
+
+function selectionIn(el: HTMLElement): Selection | null {
+  const root = el.getRootNode() as Document | ShadowRoot;
+  const sel = (root as unknown as { getSelection?: () => Selection | null }).getSelection?.() ?? window.getSelection();
+  return sel && sel.rangeCount ? sel : null;
+}
+
+/** Whether the caret sits at the very start of the editable, nothing selected. */
+function caretAtStart(el: HTMLElement): boolean {
+  const sel = selectionIn(el);
+  if (!sel || !sel.isCollapsed) return false;
+  const r = sel.getRangeAt(0);
+  const probe = document.createRange();
+  probe.setStart(el, 0);
+  probe.setEnd(r.startContainer, r.startOffset);
+  return probe.toString().length === 0;
+}
+
+/** Whether the caret is on the editable's first or last visual line. */
+function caretOnEdgeLine(el: HTMLElement, which: "first" | "last", root: ShadowRoot): boolean {
+  const sel = (root as unknown as { getSelection?: () => Selection | null }).getSelection?.() ?? window.getSelection();
+  if (!sel || !sel.rangeCount || !sel.isCollapsed) return false;
+  const r = sel.getRangeAt(0).cloneRange();
+  let rect = r.getBoundingClientRect();
+  if (!rect.height) {
+    // A collapsed range at an element boundary has no box: measure a zero-width marker.
+    const m = document.createElement("span");
+    m.textContent = "\u200b";
+    r.insertNode(m);
+    rect = m.getBoundingClientRect();
+    m.remove();
+  }
+  const box = el.getBoundingClientRect();
+  const line = rect.height || 24;
+  return which === "last" ? box.bottom - rect.bottom < line * 0.6 : rect.top - box.top < line * 0.6;
+}
+
+/** Put the caret at a text offset inside the editable. */
+function placeCaret(el: HTMLElement | null, offset: number): void {
+  if (!el) return;
+  const sel = selectionIn(el) ?? window.getSelection();
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  let n: Node | null;
+  let left = offset;
+  while ((n = walker.nextNode())) {
+    const len = n.textContent?.length ?? 0;
+    if (left <= len) {
+      const r = document.createRange();
+      r.setStart(n, Math.max(0, left));
+      r.collapse(true);
+      sel?.removeAllRanges();
+      sel?.addRange(r);
+      return;
+    }
+    left -= len;
+  }
+}
+
 // ---- DOM -> markdown ----------------------------------------------------------
 // Only the forms renderMarkdown emits (and what a browser adds while you
 // type: b/i, divs on Enter, spans). Anything else keeps its text.
@@ -658,10 +787,23 @@ function esc(s: string): string {
 }
 
 function inlineMd(node: Node): string {
-  if (node.nodeType === Node.TEXT_NODE) return (node.textContent ?? "").replace(/\s+/g, " ");
+  if (node.nodeType === Node.TEXT_NODE) return (node.textContent ?? "").replace(/\u00a0/g, " ").replace(/\s+/g, " ");
   if (!(node instanceof Element)) return "";
   const tag = node.tagName.toLowerCase();
   const inner = () => Array.from(node.childNodes).map(inlineMd).join("");
+  const style = (node as HTMLElement).style;
+  const weight = style?.fontWeight ?? "";
+  // Google Docs wraps a whole selection in <b style="font-weight:normal">;
+  // its real bold and italic are styled spans.
+  if ((tag === "b" || tag === "strong") && (weight === "normal" || weight === "400")) return inner();
+  if (tag === "span" && (weight === "bold" || Number(weight) >= 600)) {
+    const t = inner().trim();
+    return t ? `**${t}**` : "";
+  }
+  if (tag === "span" && style?.fontStyle === "italic") {
+    const t = inner().trim();
+    return t ? `*${t}*` : "";
+  }
   switch (tag) {
     case "strong":
     case "b": {
@@ -696,7 +838,7 @@ function inlineMd(node: Node): string {
   }
 }
 
-const BLOCKISH = new Set(["P", "DIV", "H1", "H2", "H3", "H4", "H5", "H6", "LI", "BLOCKQUOTE", "ASIDE", "UL", "OL", "PRE", "TABLE"]);
+const BLOCKISH = new Set(["P", "DIV", "H1", "H2", "H3", "H4", "H5", "H6", "LI", "BLOCKQUOTE", "ASIDE", "UL", "OL", "PRE", "TABLE", "HR"]);
 
 /** Top-level runs of a container: each block element on its own, and inline
  *  runs between them grouped. */
@@ -719,7 +861,7 @@ function parts(container: Node): Node[][] {
 function listMd(list: Element, depth: number): string {
   const ordered = list.tagName === "OL";
   const lines: string[] = [];
-  let n = 1;
+  let n = Math.max(1, Number(list.getAttribute("start")) || 1);
   for (const li of Array.from(list.children)) {
     if (li.tagName !== "LI") continue;
     const sub = Array.from(li.children).find((c) => c.tagName === "UL" || c.tagName === "OL") ?? null;
@@ -756,6 +898,8 @@ function anyBlockMd(el: Element): string {
   }
   if (tag === "PRE") return codeMd(el);
   if (tag === "TABLE") return tableMd(el);
+  if (tag === "HR") return "---";
+  if (tag === "IMG") return inlineMd(el);
   return Array.from(el.childNodes).map(inlineMd).join("").trim();
 }
 
@@ -769,7 +913,7 @@ function tableMd(table: Element): string {
   const cells = (r: Element) => [...r.children].map(cellText);
   const head = cells(rows[0]);
   const sep = [...rows[0].children].map((c) => {
-    const a = (c as HTMLElement).style.textAlign;
+    const a = (c as HTMLElement).style.textAlign || (c.getAttribute("align") ?? "").toLowerCase();
     return a === "center" ? ":---:" : a === "right" ? "---:" : a === "left" ? ":---" : "---";
   });
   return [`| ${head.join(" | ")} |`, `| ${sep.join(" | ")} |`, ...rows.slice(1).map((r) => `| ${cells(r).join(" | ")} |`)].join("\n");
@@ -783,19 +927,25 @@ function codeMd(pre: Element): string {
 }
 
 const CONTAINERS = new Set(["HTML", "BODY", "ARTICLE", "MAIN", "SECTION", "HEADER", "FOOTER", "NAV", "FIGURE", "DETAILS"]);
+const BLOCK_SELECTOR = "p, h1, h2, h3, h4, h5, h6, ul, ol, table, pre, blockquote, hr";
 
 /** A pasted HTML document as Markdown: wrappers are walked into, blocks are
  *  converted one by one, inline runs between them become paragraphs. Only
  *  what the renderer can show survives (that is the point of the trip). */
 function htmlToMarkdown(html: string): string {
   const doc = new DOMParser().parseFromString(html, "text/html");
-  doc.querySelectorAll("script, style, noscript, template, button, nav").forEach((n) => n.remove());
+  doc.querySelectorAll("script, style, noscript, template, button, nav, meta, link, head").forEach((n) => n.remove());
+  // Word's <o:p>, Docs' wrapper ids and StartFragment comments carry nothing.
+  doc.querySelectorAll("o\\:p").forEach((n) => n.remove());
   const out: string[] = [];
   const walk = (container: Node) => {
     for (const run of parts(container)) {
       const only = run.length === 1 && run[0] instanceof Element ? (run[0] as Element) : null;
-      if (only && CONTAINERS.has(only.tagName)) walk(only);
-      else if (only && only.tagName === "DIV" && Array.from(only.children).some((c) => BLOCKISH.has(c.tagName) || CONTAINERS.has(c.tagName))) walk(only);
+      // Any wrapper with blocks inside is walked into - a <div>, a <section>,
+      // or Google Docs' <b style="font-weight:normal"> around the whole copy.
+      const wraps = only && !BLOCKISH.has(only.tagName) && Array.from(only.children).some((c) => BLOCKISH.has(c.tagName) || CONTAINERS.has(c.tagName) || c.querySelector?.(BLOCK_SELECTOR));
+      if (only && (CONTAINERS.has(only.tagName) || wraps)) walk(only);
+      else if (only && only.tagName === "DIV" && only.querySelector(BLOCK_SELECTOR)) walk(only);
       else if (only && BLOCKISH.has(only.tagName)) out.push(anyBlockMd(only));
       else out.push(run.map(inlineMd).join("").trim());
     }
