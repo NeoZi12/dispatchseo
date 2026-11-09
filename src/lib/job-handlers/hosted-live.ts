@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { enqueue, type Job } from "@/lib/jobs";
 import { getProjectById, publishTarget, type Project } from "@/lib/projects";
-import { checkRewriteLive, manualSnippet } from "@/lib/hosted-rewrite";
+import { checkRewriteLive, manualSnippet, mergeRewritePr } from "@/lib/hosted-rewrite";
 import { notifyFirstArticleLive } from "@/lib/first-article-email";
 import { backendBaseUrl } from "@/lib/pipeline-pack";
 import { siteOrigin } from "@/lib/hosted-blog";
@@ -30,6 +30,15 @@ export async function runHostedLiveJob(job: Job): Promise<void> {
   // Already live before this pass: whoever stamped it (a publish, the
   // settings screen) also owned the email. Nothing left to watch.
   if (project.hosted_rewrite_live_at) return;
+
+  // On Auto, a merge GitHub refused the first time (mergeability is often
+  // still computing seconds after a pull request opens) is tried again each
+  // pass until the site answers. Best-effort; the state column says why.
+  const pr = project.hosted_rewrite_pr_url;
+  const state = project.hosted_rewrite_state ?? "";
+  if (project.auto_merge && pr && pr.startsWith("http") && state !== "merged" && state !== "owner-merge") {
+    await mergeRewritePr(project, pr).catch(() => undefined);
+  }
 
   const live = await checkRewriteLive(project).catch(() => false);
   if (live) {

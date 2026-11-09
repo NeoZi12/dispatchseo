@@ -179,6 +179,8 @@ const PROBES: Probe[] = [
   // 0082: what the live page carried at its last scan (lib/page-marks.ts) -
   // the owner's view reads "unchecked" without it, never an error.
   { migration: "0082_page_marks", table: "pages", column: "mark_checked_at" },
+  // 0083: where the hosted blog's forwarding pull request stands (hosted-rewrite.ts).
+  { migration: "0083_hosted_rewrite_state", table: "projects", column: "hosted_rewrite_state" },
 ];
 
 // Migrations that genuinely CANNOT be probed through this mechanism, with the

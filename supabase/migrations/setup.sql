@@ -3329,3 +3329,18 @@ alter table pages add column if not exists mark_checked_at timestamptz;
 alter table pages add column if not exists signature_seen boolean;
 alter table pages add column if not exists badge_seen boolean;
 
+-- ============ 0083_hosted_rewrite_state.sql ============
+-- Where the hosted blog's forwarding pull request stands, written by
+-- src/lib/hosted-rewrite.ts so the owner's customer page and the hosted-live
+-- job can see it without reading the customer's (private) repo:
+--
+--   opened:<kind>        the pull request is open (kind = vercel | netlify |
+--                        next-proxy | next-config | next-remove-blog)
+--   merged               we merged it (site on Auto)
+--   owner-merge          we never merge this kind (it removes files)
+--   merge-failed: <why>  GitHub refused the merge; the hosted-live job retries
+--   manual               no file we can write; the owner gets the snippet
+--
+-- Null = nothing opened yet (pre-0083 rows read as unknown, not failed).
+alter table projects add column if not exists hosted_rewrite_state text;
+

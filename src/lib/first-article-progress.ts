@@ -3,6 +3,8 @@ import { getAutopilotReport, type AutopilotArticle, type AutopilotReport } from 
 import { friendlyError } from "@/lib/autopilot/friendly";
 import { MAX_ATTEMPTS, type JobKind } from "@/lib/jobs";
 import { publishTarget, type Project } from "@/lib/projects";
+import { reachableArticleUrl } from "@/lib/hosted-blog";
+import { backendBaseUrl } from "@/lib/pipeline-pack";
 import { launchStepError, urlPrefixProperty } from "@/lib/job-handlers/launch";
 import type { FirstArticleProgress, ProgressStep, StuckNote } from "@/components/setup-stage/wait";
 
@@ -93,7 +95,7 @@ export async function firstArticleProgress(
   const first = everLive.find((d) => d.status !== "removed") ?? (everLive.length ? { published_url: null as string | null } : undefined);
   if (first || (guides.count ?? 0) > 0) {
     seenLive.add(project.id);
-    return { live: true, launched: true, progress: { ...ALL_DONE, liveUrl: first?.published_url ?? null } };
+    return { live: true, launched: true, progress: { ...ALL_DONE, liveUrl: reachableArticleUrl(project, first?.published_url ?? null, await backendBaseUrl()) } };
   }
   // No launch job = a site set up before the new setup (or one whose launch
   // never queued). The card would wait on steps nobody is running, so the

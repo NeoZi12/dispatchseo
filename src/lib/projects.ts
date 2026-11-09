@@ -160,6 +160,8 @@ export type Project = {
   hosted_cta_label: string | null;
   hosted_rewrite_pr_url: string | null;
   hosted_rewrite_live_at: string | null;
+  /** Forwarding pull request state (migration 0083) - see hosted-rewrite.ts. */
+  hosted_rewrite_state: string | null;
   /** { accent, bg, ink, mode, logo } read from the site's homepage, or the
    *  owner's overrides. Null = default theme. See hosted-theme.ts. */
   hosted_theme: unknown;
@@ -324,7 +326,7 @@ export function writerProvider(p: Pick<Project, "writer_provider">): "api" | "ag
 
 // mcp_token deliberately excluded - only fetchProjectToken exposes it.
 const COLS =
-  "id, slug, name, domain, gsc_site_url, github_repo, content_mode, content_path_hint, dataforseo_login, dataforseo_password, keyword_source, serpapi_key, powerups_skipped, location_code, language_code, mode, auto_approve, auto_approve_tools, auto_build_guides, auto_build_tools, auto_merge, last_trend_scan_at, site_launched_at, pipeline_installed_at, pipeline_verified, content_prefs, gsc_oauth_refresh_token, github_installation_id, github_app_installed_at, install_progress, onboarding_screen, owner_user_id, agent, internal_linking, publish_target, wp_url, wp_username, wp_app_password, wp_connected_at, wp_seo_plugin, wp_capabilities, publish_hour, ai_choice, chat_last_seen_at, agent_last_seen_at, agent_credential_at, setup_connected_at, setup_deferred, hosted_cta_url, hosted_cta_label, hosted_rewrite_pr_url, hosted_rewrite_live_at, hosted_theme, hosted_key, hosted_origin, writer_mode, writer_paused_at, writer_pause_reason, writer_resumed_at, author_name, author_bio, author_url, last_research_at, next_article_at, writer_provider, writer_weekly_quota, created_at";
+  "id, slug, name, domain, gsc_site_url, github_repo, content_mode, content_path_hint, dataforseo_login, dataforseo_password, keyword_source, serpapi_key, powerups_skipped, location_code, language_code, mode, auto_approve, auto_approve_tools, auto_build_guides, auto_build_tools, auto_merge, last_trend_scan_at, site_launched_at, pipeline_installed_at, pipeline_verified, content_prefs, gsc_oauth_refresh_token, github_installation_id, github_app_installed_at, install_progress, onboarding_screen, owner_user_id, agent, internal_linking, publish_target, wp_url, wp_username, wp_app_password, wp_connected_at, wp_seo_plugin, wp_capabilities, publish_hour, ai_choice, chat_last_seen_at, agent_last_seen_at, agent_credential_at, setup_connected_at, setup_deferred, hosted_cta_url, hosted_cta_label, hosted_rewrite_pr_url, hosted_rewrite_live_at, hosted_theme, hosted_key, hosted_origin, writer_mode, writer_paused_at, writer_pause_reason, writer_resumed_at, author_name, author_bio, author_url, last_research_at, next_article_at, writer_provider, writer_weekly_quota, hosted_rewrite_state, created_at";
 
 // Pre-0070 (per-site weekly quota): writer_weekly_quota is absent. Newest, so
 // dropped first; such a DB reads as "every site takes its plan's number".
@@ -536,6 +538,7 @@ function envFallbackProject(): Project {
     hosted_cta_label: null,
     hosted_rewrite_pr_url: null,
     hosted_rewrite_live_at: null,
+  hosted_rewrite_state: null,
     hosted_theme: null,
     hosted_key: null,
     hosted_origin: null,

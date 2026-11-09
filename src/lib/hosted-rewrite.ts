@@ -413,7 +413,7 @@ export async function openRewritePr(project: Project, opts: { blogEmpty?: boolea
     );
   }
   if (planned.kind === "manual") {
-    await db().from("projects").update({ hosted_rewrite_pr_url: "manual" }).eq("id", project.id);
+    await db().from("projects").update({ hosted_rewrite_pr_url: "manual", hosted_rewrite_state: "manual" }).eq("id", project.id);
     return null;
   }
   const plan = planned;
@@ -459,7 +459,7 @@ export async function openRewritePr(project: Project, opts: { blogEmpty?: boolea
 
   // Not merged here: launch.ts and switchToHostedBlog merge it on Auto
   // through mergeRewritePr, which also refuses the template-removal kind.
-  await db().from("projects").update({ hosted_rewrite_pr_url: url }).eq("id", project.id);
+  await db().from("projects").update({ hosted_rewrite_pr_url: url, hosted_rewrite_state: `opened:${plan.kind}` }).eq("id", project.id);
   return { url, merged: false, kind: plan.kind };
 }
 
@@ -501,6 +501,16 @@ const PLAN_WORDS: Record<Exclude<RewritePlan["kind"], "manual">, { title: string
  *  files and stays theirs to merge). A merge GitHub refuses (branch
  *  protection, a conflict) throws and leaves the PR open. */
 export async function mergeRewritePr(project: Project, prUrl: string): Promise<void> {
+  try {
+    await mergeRewritePrNow(project, prUrl);
+  } catch (e) {
+    const why = (e instanceof Error ? e.message : String(e)).slice(0, 200);
+    await db().from("projects").update({ hosted_rewrite_state: `merge-failed: ${why}` }).eq("id", project.id);
+    throw e;
+  }
+}
+
+async function mergeRewritePrNow(project: Project, prUrl: string): Promise<void> {
   const repo = project.github_repo;
   const number = prUrl.match(/\/pull\/(\d+)/)?.[1];
   if (!repo || !number) throw new Error("the forwarding pull request has no number we can read");
@@ -509,9 +519,15 @@ export async function mergeRewritePr(project: Project, prUrl: string): Promise<v
 
   const state = await githubApi(token, "GET", `/repos/${repo}/pulls/${number}`);
   if (state.status !== 200 || !state.json) throw new Error(`could not read the forwarding pull request (HTTP ${state.status})`);
-  if (state.json.merged) return;
+  if (state.json.merged) {
+    await db().from("projects").update({ hosted_rewrite_state: "merged" }).eq("id", project.id);
+    return;
+  }
   if (state.json.state !== "open") throw new Error("the forwarding pull request was closed without merging");
-  if (typeof state.json.title === "string" && state.json.title.includes(REMOVES_MARK)) return;
+  if (typeof state.json.title === "string" && state.json.title.includes(REMOVES_MARK)) {
+    await db().from("projects").update({ hosted_rewrite_state: "owner-merge" }).eq("id", project.id);
+    return;
+  }
 
   // The stored URL is a pointer, not proof: merge only our own branch into
   // the project's own repo, at the exact commit we just looked at.
@@ -527,6 +543,7 @@ export async function mergeRewritePr(project: Project, prUrl: string): Promise<v
     const why = typeof merged.json?.message === "string" ? merged.json.message : `HTTP ${merged.status}`;
     throw new Error(`GitHub did not merge the forwarding pull request: ${why}`);
   }
+  await db().from("projects").update({ hosted_rewrite_state: "merged" }).eq("id", project.id);
 }
 
 /** Start (or leave running) the chain that watches for the site's /blog to

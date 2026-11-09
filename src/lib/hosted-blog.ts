@@ -77,6 +77,28 @@ export function siteOrigin(project: Pick<Project, "domain"> & { hosted_origin?: 
   return project.hosted_origin || `https://${project.domain.replace(/^www\./, "")}`;
 }
 
+/** Where an article can be read this minute. A hosted site's published_url
+ *  is on the owner's domain, which only answers once their /blog forwards to
+ *  us; until then the dashboard's link would land on the site's own 404 (or
+ *  a template blog's error page - easyrender.app, 2026-11-09). So before
+ *  hosted_rewrite_live_at is stamped the link goes to the same page on our
+ *  address, and flips to theirs the moment the forwarding is seen. */
+export function reachableArticleUrl(
+  project: Pick<Project, "publish_target" | "hosted_key" | "hosted_rewrite_live_at">,
+  publishedUrl: string | null,
+  backend: string,
+): string | null {
+  if (!publishedUrl) return null;
+  if (publishTarget(project) !== "hosted" || !project.hosted_key || project.hosted_rewrite_live_at) return publishedUrl;
+  try {
+    const u = new URL(publishedUrl);
+    if (!u.pathname.startsWith("/blog")) return publishedUrl;
+    return `${backend}/hosted/${encodeURIComponent(project.hosted_key)}${u.pathname}${u.search}`;
+  } catch {
+    return publishedUrl;
+  }
+}
+
 export function hostedArticleUrl(project: Pick<Project, "domain"> & { hosted_origin?: string | null }, slug: string): string {
   return `${siteOrigin(project)}/blog/${encodeURIComponent(slug)}`;
 }

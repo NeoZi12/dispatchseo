@@ -7,6 +7,8 @@ import { loadSiteProfile } from "@/lib/site-profile";
 import { normalizeContentPrefs } from "@/lib/content-prefs";
 import { aggregatePageTraffic, aggregateQueries, normalizePageUrl, type GscPageStat, type GscQueryStat, type PageTraffic } from "@/lib/metrics";
 import { getProjectById, publishTarget, writerMode, type Project } from "@/lib/projects";
+import { reachableArticleUrl } from "@/lib/hosted-blog";
+import { backendBaseUrl } from "@/lib/pipeline-pack";
 import { deltaPct } from "./math";
 import { blockedTopicsOf } from "./prefs";
 import { weekUsage } from "./scheduler";
@@ -278,6 +280,7 @@ export async function getAutopilotReport(projectId: string, opts: { project?: Pr
   // --- articles: every draft, joined to its run; plus runs with no draft yet
   const runs = (runsRes.data ?? []) as RunRow[];
   const drafts = (draftsRes.data ?? []) as DraftRow[];
+  const backend = await backendBaseUrl();
   const runByDraft = new Map(runs.filter((r) => r.draft_id).map((r) => [r.draft_id!, r]));
   const articles: AutopilotArticle[] = drafts.map((d) => {
     const run = runByDraft.get(d.id) ?? null;
@@ -290,7 +293,7 @@ export async function getAutopilotReport(projectId: string, opts: { project?: Pr
       keyword: d.primary_keyword,
       status: articleStatus(run, d),
       stage: null,
-      url: d.published_url,
+      url: reachableArticleUrl(project, d.published_url, backend),
       publishedAt: d.published_at,
       createdAt: d.created_at,
       costUsd: Number(run?.cost_usd ?? d.cost_usd) || 0,

@@ -571,6 +571,12 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
                       {s.hosted ? "Hosted writer" : "Their own agent"} · added {shortDate(s.createdAt)}
                       {s.repo ? ` · ${s.repo}` : ""}
                       {s.setup && !s.setup.complete ? <span className={s.setup.slow || s.setup.error ? " text-warn" : ""}> · {setupShort(s.setup)}: {s.setup.title}</span> : null}
+                      {s.forwarding ? (
+                        <span className={s.forwarding === "live" ? "" : s.forwarding.startsWith("merge failed") ? " text-warn" : " text-ink-muted"}>
+                          {" · forwarding: "}
+                          {s.forwardingUrl ? <a href={s.forwardingUrl} target="_blank" rel="noopener noreferrer" className="underline decoration-line underline-offset-2 hover:text-ink">{s.forwarding}</a> : s.forwarding}
+                        </span>
+                      ) : null}
                     </span>
                   </span>
                   <span className="shrink-0 text-right font-mono text-[12.5px] tabular-nums text-ink-muted">

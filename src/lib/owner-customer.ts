@@ -65,7 +65,12 @@ export type CustomerDetail = {
   /** What the last 30 days cost, AI + DataForSEO + Polar fees. */
   cost30Usd: number;
   qualifier: { domain: string; platform: string; aiChoice: string | null; verdict: string | null; at: string } | null;
-  sites: Array<{ id: string; domain: string; name: string; hosted: boolean; createdAt: string; gscConnected: boolean; repo: string | null; articles: number; clicks28d: number; setup: SetupProgress | null }>;
+  sites: Array<{
+    id: string; domain: string; name: string; hosted: boolean; createdAt: string; gscConnected: boolean; repo: string | null; articles: number; clicks28d: number; setup: SetupProgress | null;
+    /** Hosted-blog forwarding, one line: "live", "PR merged, waiting for deploy", "PR open (next-config)", "merge failed: …", "manual snippet". Null = not a hosted-blog site. */
+    forwarding: string | null;
+    forwardingUrl: string | null;
+  }>;
   /** Where they stand in setup: the first site still setting up, else the
    *  account's first step when they have no site, else complete. Null only
    *  when the setup engine could not answer. */
@@ -137,7 +142,7 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
 
   const [subRes, projRes, qualRes, eventsRes, orders] = await Promise.all([
     db().from("subscriptions").select("tier, status, cancel_at_period_end, current_period_end, provider_customer_id, provider_subscription_id, created_at").eq("user_id", userId).maybeSingle(),
-    db().from("projects").select("id, domain, name, writer_mode, created_at, gsc_site_url, github_repo").eq("owner_user_id", userId),
+    db().from("projects").select("id, domain, name, writer_mode, created_at, gsc_site_url, github_repo, publish_target, hosted_rewrite_pr_url, hosted_rewrite_state, hosted_rewrite_live_at").eq("owner_user_id", userId),
     db().from("signup_qualifiers").select("domain, platform, ai_choice, verdict, created_at").eq("user_id", userId).order("created_at", { ascending: false }).limit(1),
     db().from("app_events").select("at, event, props").eq("distinct_id", userId).order("at", { ascending: false }).limit(60),
     polarOrders(),
@@ -170,6 +175,8 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
     createdAt: String(p.created_at ?? ""),
     gscConnected: Boolean(p.gsc_site_url),
     repo: (p.github_repo as string | null) ?? null,
+    forwarding: forwardingLine(p),
+    forwardingUrl: typeof p.hosted_rewrite_pr_url === "string" && p.hosted_rewrite_pr_url.startsWith("http") ? p.hosted_rewrite_pr_url : null,
   }));
   const ids = projects.map((p) => p.id);
   const domainOf = new Map(projects.map((p) => [p.id, p.domain]));
@@ -491,4 +498,18 @@ function foldPages(rows: Array<{ top_pages: GscPageStat[] | null }>): Map<string
     }
   }
   return new Map([...acc].map(([k, a]) => [k, { clicks: a.clicks, impressions: a.impressions, avgPosition: a.impressions > 0 ? a.posWeight / a.impressions : null }]));
+}
+
+/** The hosted-blog forwarding in one line for the operator (hosted-rewrite.ts
+ *  writes hosted_rewrite_state; the customer's repo is private to us). */
+function forwardingLine(p: Record<string, unknown>): string | null {
+  if (p.publish_target !== "hosted") return null;
+  if (p.hosted_rewrite_live_at) return "live";
+  const state = typeof p.hosted_rewrite_state === "string" ? p.hosted_rewrite_state : "";
+  if (state === "merged") return "PR merged, waiting for their deploy";
+  if (state === "owner-merge") return "PR open, removes their template blog - their merge";
+  if (state.startsWith("merge-failed")) return state.replace("merge-failed:", "merge failed:");
+  if (state.startsWith("opened:")) return `PR open (${state.slice(7)})`;
+  if (state === "manual" || p.hosted_rewrite_pr_url === "manual") return "no file we can write - owner has the snippet";
+  return p.hosted_rewrite_pr_url ? "PR open" : "not forwarded yet";
 }
