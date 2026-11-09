@@ -23,13 +23,16 @@ import { cx, FOCUS_RING } from "./styles";
 
 // The article list, one component for Home (the latest few) and the
 // Articles page (all of them, under status tabs), so the two behave the
-// same. Four columns a row - status, title, date, clicks - and the whole row
+// same. Five columns a row - status, title, date, impressions, clicks - and the whole row
 // is a link to the article's own page (preview, numbers, the live link and
 // whatever action applies).
 
-const GRID = "sm:grid-cols-[10rem_minmax(0,1fr)_5rem_5.5rem_1rem]";
+const GRID = "sm:grid-cols-[10rem_minmax(0,1fr)_5rem_6rem_5.5rem_1rem]";
 
 const css = (v: Record<string, string | number>) => v as React.CSSProperties;
+/** 1,240 -> "1.2K": impressions run into the thousands where clicks
+ *  stay small, and the column has to hold its width. */
+const compact = (n: number) => (n >= 10_000 ? `${Math.round(n / 1000)}K` : n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, "")}K` : n.toLocaleString("en-US"));
 
 
 /** "Sort: Newest | Oldest | Most clicks" - links, so it works
@@ -109,6 +112,7 @@ export function ArticleList({
           <span>Status</span>
           <span>Article</span>
           <span className="text-right">Date</span>
+          <span className="text-right">Impressions</span>
           <span className="text-right">Clicks</span>
           <span />
         </div>
@@ -164,10 +168,23 @@ function Row({ a, glance }: { a: ArticleRow; glance: ArticleGlance | undefined }
           )}
         </div>
         <span className="text-[13px] text-ink-muted tabular-nums sm:order-3 sm:text-right">{shortDate(articleDate(a))}</span>
+        {/* Impressions: how often Google showed it, in the top-posts row's
+            voice - grey magnifier, muted figure; colour stays on clicks. */}
+        {live ? (
+          <span className="inline-flex items-center gap-1.5 sm:order-4 sm:justify-end">
+            <SearchIcon className="h-4 w-4 shrink-0 text-ink-faint" />
+            <span className="text-[16px] font-semibold tracking-tight tabular-nums text-ink-muted">{compact(a.impressions28d)}</span>
+            <span className="text-[13px] text-ink-faint sm:sr-only">{a.impressions28d === 1 ? "impression" : "impressions"}</span>
+          </span>
+        ) : (
+          <span className="hidden text-right text-[13px] text-ink-faint sm:order-4 sm:block" aria-hidden="true">
+            -
+          </span>
+        )}
         {/* Clicks: the figure that rewards, icon and number as one
             right-aligned unit so the counts stack down the column. */}
         {live ? (
-          <span className="inline-flex items-center gap-1.5 sm:order-4 sm:justify-end">
+          <span className="inline-flex items-center gap-1.5 sm:order-5 sm:justify-end">
             <ClickIcon className={cx("h-4 w-4 shrink-0", a.clicks28d > 0 ? "text-ok" : "text-ink-faint")} />
             <span className={cx("text-[16px] font-semibold tracking-tight tabular-nums", a.clicks28d > 0 ? "text-ink" : "text-ink-muted")}>
               {a.clicks28d.toLocaleString("en-US")}
@@ -175,7 +192,7 @@ function Row({ a, glance }: { a: ArticleRow; glance: ArticleGlance | undefined }
             <span className="text-[13px] text-ink-faint sm:sr-only">{a.clicks28d === 1 ? "click" : "clicks"}</span>
           </span>
         ) : (
-          <span className="hidden text-right text-[13px] text-ink-faint sm:order-4 sm:block" aria-hidden="true">
+          <span className="hidden text-right text-[13px] text-ink-faint sm:order-5 sm:block" aria-hidden="true">
             -
           </span>
         )}

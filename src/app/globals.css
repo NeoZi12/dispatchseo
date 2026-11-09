@@ -670,7 +670,7 @@
    reason: eight to fifty rows of identical long class strings. ---- */
 @layer components {
   .al-sum {
-    @apply flex cursor-pointer list-none flex-col gap-1.5 px-4 py-4 outline-none transition-colors hover:bg-surface-2/50 focus-visible:bg-surface-2 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 sm:grid sm:items-center sm:gap-4 sm:px-5 sm:grid-cols-[10rem_minmax(0,1fr)_5rem_5.5rem_1rem];
+    @apply flex cursor-pointer list-none flex-col gap-1.5 px-4 py-4 outline-none transition-colors hover:bg-surface-2/50 focus-visible:bg-surface-2 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 sm:grid sm:items-center sm:gap-4 sm:px-5 sm:grid-cols-[10rem_minmax(0,1fr)_5rem_6rem_5.5rem_1rem];
   }
   .al-sum::-webkit-details-marker {
     display: none;
@@ -679,7 +679,7 @@
     @apply line-clamp-2 text-[15px] font-medium text-ink sm:truncate;
   }
   .al-chev {
-    @apply ml-auto h-4 w-4 shrink-0 text-ink-faint sm:order-5 sm:ml-0;
+    @apply ml-auto h-4 w-4 shrink-0 text-ink-faint sm:order-6 sm:ml-0;
   }
 }
 

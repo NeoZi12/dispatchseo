@@ -163,8 +163,8 @@ export function articleHref(a: Pick<AutopilotArticle, "draftId" | "runId">): str
  *  exported from a client module is a client reference on the server - the
  *  Articles page calling it there threw "Attempted to call toArticleRow()
  *  from the server" on every view (digest 1764446625, 2026-11-08). */
-export type ArticleRow = Pick<AutopilotArticle, "draftId" | "runId" | "title" | "keyword" | "status" | "stage" | "createdAt" | "publishedAt" | "clicks28d" | "prUrl" | "prMerged">;
-export const ARTICLE_ROW_FIELDS = ["draftId", "runId", "title", "keyword", "status", "stage", "createdAt", "publishedAt", "clicks28d", "prUrl", "prMerged"] as const satisfies readonly (keyof ArticleRow)[];
+export type ArticleRow = Pick<AutopilotArticle, "draftId" | "runId" | "title" | "keyword" | "status" | "stage" | "createdAt" | "publishedAt" | "clicks28d" | "impressions28d" | "prUrl" | "prMerged">;
+export const ARTICLE_ROW_FIELDS = ["draftId", "runId", "title", "keyword", "status", "stage", "createdAt", "publishedAt", "clicks28d", "impressions28d", "prUrl", "prMerged"] as const satisfies readonly (keyof ArticleRow)[];
 export function toArticleRow(a: AutopilotArticle): ArticleRow {
   const row = {} as Record<string, unknown>;
   for (const k of ARTICLE_ROW_FIELDS) row[k] = a[k];

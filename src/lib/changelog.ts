@@ -73,6 +73,10 @@ export type ChangelogEntry = {
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
+    kind: "improved",
+    text: "The Articles list shows each live article's impressions next to its clicks, so you can see Google is showing a page before anyone has clicked it.",
+  },
+  {
     kind: "new",
     text: "You can now edit a live article in place - open it from its page, click any heading or paragraph and change it right there, drop a section, save - and take an article off your site. Both work the way the article went out: a hosted page changes at once, a GitHub site gets a pull request. The same two controls exist for your agent as the edit_article and remove_article tools.",
   },
