@@ -202,7 +202,14 @@ export async function firstArticleProgress(
       writing = "done";
       publishing = "doing";
       if (newest.status === "needs_setup") {
-        stuck.publishing = { text: "The article is ready. It goes out the moment your blog is switched on." };
+        // A repo is connected but no folder in it looks like where its posts
+        // live (easyrender.app, 2026-11-09: a template /blog with no posts).
+        // Nothing switches on by itself here - the owner names the folder or
+        // lets us host the blog - so say that, not "the moment it's on".
+        stuck.publishing =
+          target === "github" && project.github_repo
+            ? { text: "The article is ready, but we couldn't find where your blog's posts live in the repo. Name the folder, or let us host the blog.", href: "/settings?section=publishing", linkLabel: "Open Settings" }
+            : { text: "The article is ready. It goes out the moment your blog is switched on." };
       } else if (newest.prUrl && !newest.prMerged) {
         stuck.publishing = { text: "The article is a pull request in your repo, waiting for a merge.", href: newest.prUrl, linkLabel: "Merge it" };
       }

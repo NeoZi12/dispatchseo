@@ -44,7 +44,10 @@ export function manualSnippet(backend: string, slug: string): { vercel: string; 
   return {
     vercel: JSON.stringify({ rewrites: [{ source: "/blog", destination: dest }, { source: "/blog/:path*", destination: `${dest}/:path*` }] }, null, 2),
     netlify: `/blog  ${dest}  200\n/blog/*  ${dest}/:splat  200\n`,
-    next: `// next.config.js\nasync rewrites() {\n  return [\n    { source: "/blog", destination: "${dest}" },\n    { source: "/blog/:path*", destination: "${dest}/:path*" },\n  ];\n}`,
+    // beforeFiles: a plain array runs AFTER the filesystem, so a site that
+    // already has an app/blog or pages/blog page (a template blog) would
+    // keep serving it and the rule would never fire.
+    next: `// next.config.js\nasync rewrites() {\n  return {\n    beforeFiles: [\n      { source: "/blog", destination: "${dest}" },\n      { source: "/blog/:path*", destination: "${dest}/:path*" },\n    ],\n  };\n}`,
   };
 }
 
@@ -211,11 +214,18 @@ export async function servesOwnBlog(project: Project): Promise<boolean> {
 
 /** Exported for testing: the blog-index shape servesOwnBlog requires. */
 export function looksLikeBlogIndex(html: string): boolean {
-  const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "";
-  if (/\bblog\b/i.test(title)) return true;
+  // Posts, not navigation: a template blog ships category/tag pages and a
+  // "Blog" title with zero articles behind them (ShipFast's /blog on
+  // easyrender.app, 2026-11-09), and that is not a blog worth keeping.
   const links = new Set<string>();
-  for (const m of html.matchAll(/href=["']([^"']*\/blog\/[^"'#?]+)["']/gi)) links.add(m[1].replace(/\/+$/, ""));
-  return links.size >= 3;
+  for (const m of html.matchAll(/href=["']([^"']*\/blog\/[^"'#?]+)["']/gi)) {
+    const path = m[1].replace(/\/+$/, "");
+    if (/\/blog\/(category|categories|tag|tags|topic|topics|author|authors|page|feed|rss)(\/|$)/i.test(path)) continue;
+    links.add(path);
+  }
+  if (links.size >= 3) return true;
+  const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "";
+  return /\bblog\b/i.test(title) && links.size >= 1;
 }
 
 export async function openRewritePr(project: Project): Promise<{ url: string; merged: boolean; kind: RewritePlan["kind"] } | null> {

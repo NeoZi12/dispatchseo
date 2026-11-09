@@ -101,6 +101,10 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
     text: "A free site's first article now takes the fast lane like every other first article. It was quietly going through the slow overnight lane, which could add hours to the wait.",
   },
   {
+    kind: "fixed",
+    text: "When your repo is connected but we can't tell where its blog posts live, the first-article card now says so and sends you to Settings to name the folder or let us host the blog. A template blog with no posts no longer blocks hosting. The Next.js forwarding snippet now wins over an existing /blog page.",
+  },
+  {
     kind: "improved",
     text: "Setup asks you to pick a plan up front, free included, instead of only showing a payment step to people who came from the pricing page.",
   },

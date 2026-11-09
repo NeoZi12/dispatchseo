@@ -235,3 +235,13 @@ running without any of them.)*
 - **Domain ownership proof for setup holders (security review 2026-11-08).** Today an unpaid site with no connected repo gives way to the next claimant, but one with a connected repo holds its domain even if its owner never proves the site is theirs (anyone can connect their own repo). Real fix: a holder keeps the domain only once Google confirms the Search Console property (gsc_site_url) or a live rewrite is verified; an unverified connected holder older than ~7 days is released (needs a safe project teardown - pages/keywords/suggestions/gsc_stats/rank_checks reference projects without ON DELETE CASCADE) and its free_claims domain row deleted. Until then, release by hand when an owner asks on Discord. Must land before FREE_SIGNUPS_OPEN=1.
 
 - **Split seo-tool-validate's validate job (security review 2026-11-08).** One job builds and serves the PR's LLM-authored code and then runs the validator agent holding the Claude token, so code from the PR can read that credential. Split it: an unprivileged job builds and serves the PR with no secrets, and a separate job runs the agent against it. Deferred by the lead; it touches the agent-steps generator and every customer repo's pack.
+
+- **Forwarding PR for a Next.js repo that already has a /blog page** (queued
+  2026-11-09, easyrender.app). The automatic pull request writes `vercel.json`
+  rewrites, and Vercel gives the filesystem precedence, so a repo with an
+  `app/blog` or `pages/blog` route (a ShipFast template blog) keeps serving its
+  own page and the rule never fires. The manual Next.js snippet now uses
+  `beforeFiles`, which does win. Not built: detecting that route in the repo
+  tree and having the PR either edit `next.config.*` (`beforeFiles`) or remove
+  the template page, or at least telling the owner up front to paste the
+  snippet instead of merging.

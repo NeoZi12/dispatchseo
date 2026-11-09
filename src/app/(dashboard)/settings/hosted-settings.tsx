@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Project } from "@/lib/projects";
+import { db } from "@/lib/db";
 import { publishTarget } from "@/lib/projects";
 import { hostBlogHere, saveBrand, saveFolder } from "@/app/autopilot-actions";
 import { RepoRow } from "@/components/repo-row";
@@ -95,8 +96,12 @@ export async function HostedSettings({
   // stuck-state links (first-article-progress, hosted-report, mode.ts) all
   // land here in exactly those states; once articles flow, the pane is gone.
   const target = publishTarget(project);
+  // A draft parked as blocked_setup is the one state where a connected repo
+  // still needs the owner (no folder in it looks like the blog): the card's
+  // "Open Settings" link must land on a pane that exists.
+  const { count: parked } = await db().from("article_drafts").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("status", "blocked_setup");
   const publishingOpen =
-    (target === "github" && !project.github_repo) || target === "manual" || target === "wordpress" || (target === "hosted" && !(await rewriteLiveCached(project)));
+    (target === "github" && !project.github_repo) || target === "manual" || target === "wordpress" || (target === "hosted" && !(await rewriteLiveCached(project))) || (parked ?? 0) > 0;
   const sections = SECTIONS.filter((x) => (x.id !== "plan" || isCloudMode()) && (x.id !== "publishing" || publishingOpen));
   const active: SectionId = sections.find((x) => x.id === section)?.id ?? "site";
   const meta = SECTIONS.find((x) => x.id === active)!;
