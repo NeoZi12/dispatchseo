@@ -34,6 +34,7 @@ import {
 import { browserCommand, resolveField } from "@/lib/playbook";
 import { FREE_BACKLINKS, PAID_BACKLINKS, PLAYBOOK_RESEARCHED } from "@/lib/playbook-data";
 import { loadConventions, saveConventions } from "@/lib/conventions";
+import { editArticle, loadArticleSource, removeArticle } from "@/lib/article-owner";
 import {
   GUIDE_ARCHETYPES,
   GUIDE_BLOCKS,
@@ -284,6 +285,11 @@ const CHAT_TOOLS = new Set([
   "get_research_notes",
   "submit_article",
   "get_drafts",
+  // The owner's levers over a live article: "fix the typo in my article" is
+  // the kind of thing an owner says to the chat app that is their only agent.
+  "get_article",
+  "edit_article",
+  "remove_article",
   // The setup path: a chat app is often the owner's ONLY agent, and "what
   // should I do next" is the first thing they ask it.
   "get_setup_step",
@@ -293,7 +299,7 @@ const CHAT_TOOLS = new Set([
 // Tools whose effects a client should confirm before running. Purely a UX
 // hint - nothing is gated on it, and a client that ignores annotations loses
 // no safety, because every one of these is owner-gated in its own handler.
-const DESTRUCTIVE_TOOLS = new Set(["merge_pr", "discard_draft", "disconnect_repo"]);
+const DESTRUCTIVE_TOOLS = new Set(["merge_pr", "discard_draft", "disconnect_repo", "remove_article"]);
 
 // Reads, by naming convention. The convention is load-bearing enough to
 // derive from: a get_/check_ tool that mutated tenant state would already be
@@ -1406,7 +1412,8 @@ const mcpHandler = createMcpHandler(
           "accepted (queued to publish) | blocked_setup (nowhere to publish yet - the " +
           "owner has not connected their site) | finished (posted to WordPress, or pull " +
           "request opened in the repo - not yet confirmed live; `pr_url` links it) | " +
-          "published (confirmed live) | discarded.",
+          "published (confirmed live) | discarded | removing (a repo article whose deleting pull " +
+          "request is open - still live) | removed (was live; the owner took it down).",
         inputSchema: {
           status: z
             .enum([
@@ -1417,6 +1424,8 @@ const mcpHandler = createMcpHandler(
               "finished",
               "published",
               "discarded",
+              "removing",
+              "removed",
             ])
             .optional()
             .describe("Only this status. Omit for everything, newest first."),
@@ -1570,6 +1579,97 @@ const mcpHandler = createMcpHandler(
         if (error) return fail(error.message);
         if (!data) return fail("No draft with that id on this site.");
         return ok({ discarded: true, ...(data as { id: string; title: string }) });
+      },
+    );
+
+    // ---- the owner's levers over a LIVE article (src/lib/article-owner.ts) --
+    // The dashboard's Edit and "Remove from site" on an article's page, as
+    // tools. Same module, same rules: the change goes out the way the
+    // article did (the hosted page re-renders this instant; a repo article
+    // becomes a pull request; a WordPress post is updated or trashed).
+    server.registerTool(
+      "get_article",
+      {
+        title: "Get an article's source",
+        description:
+          "A live article's own text, to edit it with edit_article: title, meta_description and " +
+          "`body` (markdown WITHOUT the leading H1 - the title is its own field; on a repo site " +
+          "this is the file's body as it is in the repository today, read from GitHub), plus " +
+          "its FAQ pairs, url, status and which way it was published (`route`: hosted | repo | " +
+          "wordpress). `canEdit` / `canRemove` say whether edit_article / remove_article will " +
+          "take it and `reason` says why not. Hand `updatedAt` (and `fileSha` on a repo site) " +
+          "back to edit_article. Works for any draft id, live or not; only a live one can be changed.",
+        inputSchema: {
+          id: z.string().uuid().describe("The draft id from get_drafts, get_overview or submit_article."),
+        },
+      },
+      async ({ id }) => {
+        const p = currentProject();
+        const source = await loadArticleSource(p, id, { repoBody: true });
+        if (!source) return fail("No article with that id on this site.");
+        return ok(source);
+      },
+    );
+
+    server.registerTool(
+      "edit_article",
+      {
+        title: "Edit a live article",
+        description:
+          "Owner-gated: change a LIVE article's title, meta description and/or body, and " +
+          "republish it the way it went out - the hosted page updates within minutes, a repo " +
+          "article becomes a pull request (`pr_url`; merged by us once its checks pass when " +
+          "the site is on Auto, otherwise the owner merges it), a WordPress post is updated " +
+          "in place. Pass only the fields that change; `body` is the full markdown body " +
+          "WITHOUT the H1 (read it with get_article first, then send the edited whole - this " +
+          "is a replace, not a patch) and `expected_updated_at` is get_article's `updatedAt`, " +
+          "so a save is refused if the article changed since you read it. Use ONLY for an " +
+          "edit the owner asked for in this conversation: fix wording, drop a section, correct " +
+          "a fact. The URL never changes. Not a quality gate - the owner's call stands - but a " +
+          "body that would break a repo's build (MDX safety) is refused with the reason. On a " +
+          "repo site the file in the repository is the source: pass `expected_file_sha` " +
+          "(get_article's `fileSha`) and the save is refused if the file changed on GitHub " +
+          "since; one edit is open at a time - a second waits for the first's PR.",
+        inputSchema: {
+          id: z.string().uuid().describe("The draft id."),
+          title: z.string().min(3).max(200).optional().describe("The new title."),
+          meta_description: z.string().max(320).optional().describe("The new meta description. Empty string = derive it from the first paragraph."),
+          body: z.string().max(200_000).optional().describe("The whole new body as markdown, without the H1."),
+          expected_updated_at: z.string().optional().describe("get_article's `updatedAt`. Strongly recommended: refuses the save when the article changed since."),
+          expected_file_sha: z.string().optional().describe("Repo sites: get_article's `fileSha`. Refuses the save when the file changed on GitHub since."),
+        },
+      },
+      async ({ id, title, meta_description, body, expected_updated_at, expected_file_sha }) => {
+        if (title === undefined && meta_description === undefined && body === undefined) return fail("Pass at least one of title, meta_description or body.");
+        const p = currentProject();
+        const r = await editArticle(p, id, { title, metaDescription: meta_description, body, expectedUpdatedAt: expected_updated_at, expectedFileSha: expected_file_sha }).catch(() => ({ ok: false as const, error: "The save failed on our side. Try again in a moment." }));
+        if (!r.ok) return fail(r.error);
+        return ok({ saved: true, pending: Boolean(r.pending), message: r.message, ...(r.prUrl ? { pr_url: r.prUrl } : {}) });
+      },
+    );
+
+    server.registerTool(
+      "remove_article",
+      {
+        title: "Remove a live article from the site",
+        description:
+          "Owner-gated: take a LIVE article off the site. Use ONLY when the owner asked for it " +
+          "in this conversation. The hosted page answers 410 Gone and leaves the blog's index, " +
+          "sitemap and feed within minutes; a repo article becomes a pull request that deletes " +
+          "its file (`pr_url`; merged by us once its checks pass when the site is on Auto, " +
+          "otherwise the owner merges) and stays live with status `removing` until that PR " +
+          "merges; a WordPress post moves to the trash. The row is kept as history with status " +
+          "`removed`, never deleted.",
+        inputSchema: {
+          id: z.string().uuid().describe("The draft id of a live article."),
+        },
+        annotations: { destructiveHint: true },
+      },
+      async ({ id }) => {
+        const p = currentProject();
+        const r = await removeArticle(p, id).catch(() => ({ ok: false as const, error: "The removal failed on our side. Try again in a moment." }));
+        if (!r.ok) return fail(r.error);
+        return ok({ removed: !r.pending, pending: Boolean(r.pending), message: r.message, ...(r.prUrl ? { pr_url: r.prUrl } : {}) });
       },
     );
 

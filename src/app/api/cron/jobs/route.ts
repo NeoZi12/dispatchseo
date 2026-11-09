@@ -78,6 +78,9 @@ const HANDLERS: Record<string, () => Promise<Handler>> = {
   // A hosted site waiting for its own /blog to forward to us: the
   // first-article email goes out when it does, the owner is asked after a day.
   "hosted-live": async () => (await import("@/lib/job-handlers/hosted-live")).runHostedLiveJob,
+  // The owner edited or removed a repo article (src/lib/article-owner.ts):
+  // watch its pull request, merge on Auto once clean, settle the row.
+  "owner-pr": async () => (await import("@/lib/job-handlers/owner-pr")).runOwnerPrJob,
   publish: async () => (await import("@/lib/job-handlers/publish")).runPublishJob,
   verify: async () => (await import("@/lib/job-handlers/verify")).runVerifyJob,
   // One stage of a hosted-writer run (src/lib/writer/) - the pivot of

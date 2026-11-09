@@ -200,7 +200,7 @@ const MAX_UPLOAD_BYTES = 20_000_000;
 const UA = "Mozilla/5.0 (compatible; DispatchSEO-Publisher/1.0; +https://dispatchseo.com/docs/wordpress)";
 
 type WpFetchOpts = {
-  method?: "GET" | "POST";
+  method?: "GET" | "POST" | "DELETE";
   json?: unknown;
   rawBody?: { bytes: Uint8Array; contentType: string; contentDisposition: string };
 };
@@ -823,6 +823,37 @@ export async function updatePostContent(
     method: "POST",
     json: { content: html },
   });
+  if (!res.ok) return { ok: false, reason: res.reason, message: res.message };
+  return { ok: true };
+}
+
+/**
+ * The owner edited a live article (src/lib/article-owner.ts): title, body
+ * and excerpt in one write. Same endpoint as updatePostContent; WordPress
+ * takes whichever fields are present.
+ */
+export async function updatePost(
+  creds: WordPressCredentials,
+  postId: number,
+  fields: { title?: string; html?: string; excerpt?: string },
+): Promise<{ ok: true } | WordPressFailure> {
+  const json: Record<string, unknown> = {};
+  if (fields.title !== undefined) json.title = fields.title;
+  if (fields.html !== undefined) json.content = fields.html;
+  if (fields.excerpt !== undefined) json.excerpt = fields.excerpt;
+  const res = await wpFetch(creds, `/wp-json/wp/v2/posts/${postId}`, { method: "POST", json });
+  if (!res.ok) return { ok: false, reason: res.reason, message: res.message };
+  return { ok: true };
+}
+
+/**
+ * Take a post off the site: WordPress's DELETE moves it to the trash (no
+ * `force`), so the owner can still restore it from their own admin for
+ * thirty days - the reversible choice, for the same reason a removed draft
+ * is kept as history on our side.
+ */
+export async function deletePost(creds: WordPressCredentials, postId: number): Promise<{ ok: true } | WordPressFailure> {
+  const res = await wpFetch(creds, `/wp-json/wp/v2/posts/${postId}`, { method: "DELETE" });
   if (!res.ok) return { ok: false, reason: res.reason, message: res.message };
   return { ok: true };
 }

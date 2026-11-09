@@ -193,6 +193,9 @@ export function articleStatus(run: Pick<RunRow, "status" | "stage"> | null, draf
   if (draft) {
     switch (draft.status) {
       case "published": return "published";
+      // A repo removal waiting on its pull request (article-owner.ts): the
+      // page is still up, so it is still Live here; its own page says more.
+      case "removing": return "published";
       case "blocked_setup": return "needs_setup";
       case "rejected": return "failed";
       default: return "scheduled"; // submitted / accepted / finished
@@ -237,7 +240,9 @@ export async function getAutopilotReport(projectId: string, opts: { project?: Pr
       .from("article_drafts")
       .select("id, title, primary_keyword, status, published_url, published_at, created_at, cost_usd, pr_url, pr_merged_at, plan:validation->plan")
       .eq("project_id", project.id)
-      .neq("status", "discarded")
+      // Discarded never went out; removed was taken down by the owner
+      // (article-owner.ts). Neither is an article the list should show.
+      .not("status", "in", "(discarded,removed)")
       .order("created_at", { ascending: false })
       .limit(DRAFT_LIMIT),
     // Newest first with a limit, then re-sorted: ascending + limit would pin

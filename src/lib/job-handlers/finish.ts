@@ -43,6 +43,9 @@ export async function renderDraftForRoute(
   row: FinishableDraft,
   route: ReturnType<typeof publishRoute>,
   publishedAt: string,
+  /** When the article was last changed by its owner (article-owner.ts). The
+   *  schema's dateModified; defaults to publishedAt, as a fresh post. */
+  modifiedAt?: string,
 ) {
   // The page inventory feeds internal linking. A project whose site has never
   // been crawled simply gets no internal links - worth having the article
@@ -84,6 +87,7 @@ export async function renderDraftForRoute(
     // structured data and self-link check must name that path.
     ownSlug: route === "hosted" ? `blog/${encodeURIComponent(row.slug)}` : row.slug,
     publishedAt,
+    modifiedAt,
     draftId: row.id,
     // The byline. A real person the owner named (Settings > Author, or the
     // set_author MCP tool) is a Person, with their page when they gave one.

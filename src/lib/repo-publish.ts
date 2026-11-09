@@ -342,7 +342,7 @@ function stripQuotes(value: string): string {
 // The key names a generator might use for each role, in the order we would
 // choose them. First hit in the sample wins; the head of each list is our
 // default when the sample has none of them.
-const DESCRIPTION_KEYS = [
+export const DESCRIPTION_KEYS = [
   "description",
   "summary",
   "excerpt",
@@ -476,7 +476,7 @@ export function buildArticleFile(sample: ParsedSample | null, article: ArticleFi
  *  script is injected: in MDX a raw <script> with JSON braces is parsed as an
  *  expression and breaks the build, and every static-site generator this
  *  targets emits its own structured data. */
-function bodyWithFaq(article: ArticleFileInput, sample: ParsedSample | null): string {
+export function bodyWithFaq(article: ArticleFileInput, sample: ParsedSample | null): string {
   // The frontmatter carries the title; unless this site's own posts open with
   // an H1, the layout prints it and a body H1 would show it twice.
   const withTitle = sample?.bodyHasH1 ? article.markdown : article.markdown.replace(/^\s*#\s+[^\n]*\n+/, "");

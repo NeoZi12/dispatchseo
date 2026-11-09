@@ -18,6 +18,8 @@ import {
   type ControlResult,
 } from "@/lib/autopilot/controls";
 import { removeQueuedIdea, restoreQueuedIdea } from "@/lib/autopilot/queue";
+import { editArticle, previewArticleHtml, removeArticle } from "@/lib/article-owner";
+import { redirect } from "next/navigation";
 import type { ActionState } from "@/components/ui/action-state";
 
 // The dashboard's door to the autopilot owner controls (decision 7 of the
@@ -358,4 +360,54 @@ export async function saveFolder(_prev: ActionState, fd: FormData): Promise<Acti
   refresh();
   if (!path) return state(true, "Saved. We'll work out the folder from your repo.");
   return state(true, backToRepo ? `Saved. Articles go to ${path} in your repo, as pull requests.` : `Saved. Articles go to ${path}.`);
+}
+
+// ---- the owner's levers over a live article (src/lib/article-owner.ts) ----
+
+/** Save the edited title, description and body of a live article. */
+export async function saveArticleEdit(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  const o = await ownedProject(fd);
+  if ("refused" in o) return o.refused;
+  const id = text(fd, "id");
+  if (!id) return state(false, "That article can't be edited from here.");
+  const r = await editArticle(o.project, id, {
+    title: text(fd, "title"),
+    metaDescription: text(fd, "meta_description"),
+    body: String(fd.get("body") ?? ""),
+    expectedUpdatedAt: text(fd, "updated_at") || undefined,
+    expectedFileSha: text(fd, "file_sha") || undefined,
+  }).catch(() => ({ ok: false as const, error: "We couldn't save it just now. Try again in a moment." }));
+  if (!r.ok) return state(false, r.error);
+  refresh();
+  revalidatePath(`/articles/${id}`);
+  revalidatePath(`/articles/${id}/edit`);
+  return state(true, r.message);
+}
+
+/** Take a live article off the site. Lands on the list: the article's own
+ *  page has nothing left to show. */
+export async function removeArticleAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  const o = await ownedProject(fd);
+  if ("refused" in o) return o.refused;
+  const id = text(fd, "id");
+  if (!id) return state(false, "That article can't be removed from here.");
+  const r = await removeArticle(o.project, id).catch(() => ({ ok: false as const, error: "We couldn't remove it just now. Try again in a moment." }));
+  if (!r.ok) return state(false, r.error);
+  refresh();
+  // A repo removal is pending on its pull request: the article stays listed
+  // (still live), so land on its own page, which shows the PR. Otherwise
+  // the article is gone from the list, which says so once.
+  if (r.pending) redirect(`/articles/${encodeURIComponent(id)}`);
+  redirect("/articles?removed=1");
+}
+
+/** The editor's Preview tab: the body rendered exactly as the page renders
+ *  it, with none of the page around it. */
+export async function previewArticle(slug: string, body: string): Promise<{ html: string } | { error: string }> {
+  if (!(await dashboardAuth())) throw new Error("Unauthorized");
+  const project = await getActiveProject();
+  await assertProjectOwned(project.id);
+  if (slug !== project.slug) return { error: "You switched sites in another tab. Reload this page." };
+  if (body.length > 200_000) return { error: "That's too long to preview." };
+  return { html: previewArticleHtml(project, body) };
 }

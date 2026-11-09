@@ -109,7 +109,9 @@ async function hasPublishedHostedArticle(projectId: string): Promise<boolean> {
     .select("id", { count: "exact", head: true })
     .eq("project_id", projectId)
     .eq("client_kind", CLIENT_KIND)
-    .eq("status", "published");
+    // A removed article was live (article-owner.ts): the forwarding gate
+    // must not reopen because the owner took the first one down.
+    .in("status", ["published", "removing", "removed"]);
   return (count ?? 0) > 0;
 }
 

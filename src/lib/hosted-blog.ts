@@ -128,6 +128,14 @@ export async function getHostedPost(projectId: string, slug: string): Promise<Ho
   return post?.rendered_html ? post : null;
 }
 
+/** Whether an article at this slug was taken down by its owner
+ *  (article-owner.ts: status "removed"). The route answers 410 for it, so
+ *  Google drops the page quickly instead of retrying a 404 for weeks. */
+export async function hostedPostRemoved(projectId: string, slug: string): Promise<boolean> {
+  const { data } = await db().from("article_drafts").select("id").eq("project_id", projectId).eq("slug", slug).eq("status", "removed").limit(1);
+  return Boolean(data?.length);
+}
+
 // --- Reading the stored article ------------------------------------------------
 
 export type Heading = { id: string; text: string };

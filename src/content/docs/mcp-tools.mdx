@@ -459,6 +459,8 @@ The statuses, in the order an article moves through them:
 | `finished` | Posted to WordPress, or a pull request opened in the repo - not yet confirmed live |
 | `published` | Confirmed live |
 | `discarded` | The owner threw it away |
+| `removing` | Still live; a repo article whose deleting pull request is open (`remove_article`) |
+| `removed` | Was live; the owner took it down (`remove_article`) |
 
 <Fields>
   <Field name="status" type="string">
@@ -506,6 +508,94 @@ it and resubmit instead.
 <Fields>
   <Field name="id" type="string" required="true">
     The draft id from `get_drafts` or `submit_article`.
+  </Field>
+</Fields>
+
+### `get_article`
+
+A live article's own text, to edit it with `edit_article`: `title`,
+`meta_description` and `body` - markdown **without** the leading H1 (the
+title is its own field) - plus its FAQ pairs, `url`, `status` and `route`
+(`hosted` | `repo` | `wordpress`: which way it was published, and so which
+way a change goes). On a repo site the body is **the file as it is in the
+repository today**, read from GitHub, and `fileSha` identifies that version.
+`canEdit` and `canRemove` say whether the two tools below will take it, and
+`reason` says why not. Works for any draft id; only a live one can be changed.
+
+<Fields>
+  <Field name="id" type="string" required="true">
+    The draft id from `get_drafts`, `get_overview` or `submit_article`.
+  </Field>
+</Fields>
+
+### `edit_article`
+
+Change a live article's title, meta description and/or body, and republish
+it the way it went out. Owner-gated: use it for an edit the owner asked for -
+fix wording, drop a section, correct a fact. The same control as Edit on the
+article's dashboard page.
+
+- **Hosted blog**: the page re-renders from the new text; the edge shows it
+  within minutes.
+- **Repo**: a pull request with the change (`pr_url`, and `pending: true`).
+  The file in the repository is the source - the save writes the body you
+  read back, so nothing that reached the file since we published it is
+  undone - and `expected_file_sha` (the `fileSha` you read) refuses the save
+  if the file changed on GitHub in between. On Auto we merge once the site's
+  checks pass - never at open time; otherwise the owner merges it. One edit
+  is open at a time; if the PR is closed instead, the old text comes back on
+  our side. A body that would break the build (MDX safety) is refused with
+  the reason.
+- **WordPress**: the post is updated in place.
+
+`body` is a **replace, not a patch**: read it with `get_article`, edit, send
+the whole thing back. Pass only the fields that change, and pass
+`expected_updated_at` (the `updatedAt` you read) so a save is refused when the
+article changed in between. The URL never changes.
+
+<Fields>
+  <Field name="id" type="string" required="true">
+    The draft id.
+  </Field>
+  <Field name="title" type="string">
+    The new title (3-200 characters).
+  </Field>
+  <Field name="meta_description" type="string">
+    The new meta description (up to 320 characters). An empty string derives
+    it from the first paragraph.
+  </Field>
+  <Field name="body" type="string">
+    The whole new body as markdown, without the H1.
+  </Field>
+  <Field name="expected_updated_at" type="string">
+    `get_article`'s `updatedAt`. Strongly recommended: the save is refused
+    when the article changed since you read it.
+  </Field>
+  <Field name="expected_file_sha" type="string">
+    Repo sites: `get_article`'s `fileSha`. The save is refused when the file
+    changed on GitHub since you read it.
+  </Field>
+</Fields>
+
+### `remove_article`
+
+Take a live article off the site. Owner-gated; destructive. The same control
+as "Remove from site" on the article's dashboard page.
+
+- **Hosted blog**: the page answers 410 Gone and leaves the blog's index,
+  sitemap and feed within minutes.
+- **Repo**: a pull request that deletes the file (`pr_url`, `pending: true`).
+  The article stays live with status `removing` until it merges - by us once
+  the checks pass on Auto, otherwise by the owner. Closing the PR puts it
+  back to `published`; calling `remove_article` again on a `removing`
+  article checks the PR now and settles it.
+- **WordPress**: the post moves to the trash, where the owner can restore it.
+
+The row is kept as history with status `removed`, never deleted.
+
+<Fields>
+  <Field name="id" type="string" required="true">
+    The draft id of a live article.
   </Field>
 </Fields>
 

@@ -502,7 +502,9 @@ async function setupComplete(p: Project): Promise<boolean> {
   const manual = publishTarget(p) === "manual";
   const [live, published, accepted] = await Promise.all([
     headCount("pages", p.id, (q) => q.not("live_at", "is", null)),
-    headCount("article_drafts", p.id, (q) => q.eq("status", "published")),
+    // A removed article WAS live: taking down the first article must not
+    // send the site back into setup (article-owner.ts).
+    headCount("article_drafts", p.id, (q) => q.in("status", ["published", "removing", "removed"])),
     manual
       ? headCount("article_drafts", p.id, (q) => q.in("status", ["accepted", "finished", "published"]))
       : Promise.resolve(0),

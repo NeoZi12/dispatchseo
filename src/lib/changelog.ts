@@ -73,6 +73,10 @@ export type ChangelogEntry = {
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
+    kind: "new",
+    text: "You can now edit a live article - its title, description and text - from its page, and take an article off your site. Both work the way the article went out: a hosted page changes at once, a GitHub site gets a pull request. The same two controls exist for your agent as the edit_article and remove_article tools.",
+  },
+  {
     kind: "improved",
     text: "Every article DispatchSEO writes now ends with a hidden, empty signature element (a span with a data-dispatchseo attribute carrying the article's id). It renders nothing, loads nothing and links nowhere; it lets us recognise our own articles on the live site later, whether or not the credit is shown.",
   },

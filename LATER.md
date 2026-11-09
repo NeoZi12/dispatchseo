@@ -221,10 +221,16 @@ running without any of them.)*
   v1 ships pure autopilot on purpose: an article that passes the gate publishes,
   and the owner's only levers are pause, brand, tone, blocked topics and suggested
   topics. Post-launch, in this order:
-  - **Take down a live article.** No dashboard or MCP path removes a published
-    hosted article today (repo sites can revert the PR on GitHub). Smallest of the
-    three and the one a bad article needs most.
-  - **Edit an article** - fix wording, delete a section - then republish it.
+  - ~~**Take down a live article.**~~ SHIPPED 2026-11-09: "Remove from site" on
+    the article page + `remove_article` (src/lib/article-owner.ts). Hosted = 410
+    Gone, repo = a deleting PR (merged on Auto), WordPress = trash.
+  - ~~**Edit an article**~~ SHIPPED 2026-11-09: /articles/[id]/edit (title,
+    description, body, Preview) + `get_article` / `edit_article`. Repo edits
+    use the file in the repo as the source (sha-guarded), one open edit PR at
+    a time, watched by the `owner-pr` job. Left open: other articles' internal
+    links to a removed one are not rewritten; a removed repo article's
+    committed cover stays in the repo; `article_drafts.markdown` of a repo
+    article is the last text WE wrote, not the file.
   - **Review-before-publish mode** - an opt-in toggle; articles wait as drafts for
     approve/edit/discard. Default stays auto-publish. `approve_draft` and
     `discard_draft` already exist as MCP tools and are the natural base. This is a

@@ -71,12 +71,14 @@ export async function firstArticleProgress(
   const [drafts, guides, launchRes, crawlRes, autopilotRes] = await Promise.all([
     db()
       .from("article_drafts")
-      .select("published_url")
+      // A removed article was live too (article-owner.ts): the site is not
+      // new again because its owner took the first one down.
+      .select("published_url, status")
       .eq("project_id", project.id)
-      .eq("status", "published")
+      .in("status", ["published", "removing", "removed"])
       .not("published_url", "is", null)
       .order("published_at", { ascending: true })
-      .limit(1),
+      .limit(5),
     // A site that published guides before the switch to autopilot is not new.
     db().from("pages").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("type", "guide"),
     latestJob("launch"),
@@ -86,7 +88,9 @@ export async function firstArticleProgress(
   if (drafts.error || guides.error || launchRes.error || crawlRes.error || autopilotRes.error) {
     return { live: true, launched: false, progress: ALL_DONE };
   }
-  const first = (drafts.data ?? [])[0] as { published_url: string } | undefined;
+  const everLive = (drafts.data ?? []) as { published_url: string; status: string }[];
+  // The link is the first article that is STILL up; a removed one answers 410.
+  const first = everLive.find((d) => d.status !== "removed") ?? (everLive.length ? { published_url: null as string | null } : undefined);
   if (first || (guides.count ?? 0) > 0) {
     seenLive.add(project.id);
     return { live: true, launched: true, progress: { ...ALL_DONE, liveUrl: first?.published_url ?? null } };

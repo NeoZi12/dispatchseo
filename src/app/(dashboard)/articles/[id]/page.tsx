@@ -26,6 +26,8 @@ import { previewSrc, storedShotAt, warmScreenshots } from "@/lib/page-screenshot
 import { isOperator } from "@/lib/autopilot/operator";
 import { friendlyError } from "@/lib/autopilot/friendly";
 import { UpgradePanel, fmtCount } from "@/components/upgrade-panel";
+import { loadArticleSource } from "@/lib/article-owner";
+import { RemoveArticle } from "./remove-article";
 
 export const dynamic = "force-dynamic";
 
@@ -85,10 +87,12 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
   const live = a.status === "published";
   // Only database reads hold the page: the Search Console numbers stream in
   // below (AnalyticsSection), and the preview is a stored picture.
-  const [ledger, shotAt] = await Promise.all([
+  const [ledger, shotAt, source] = await Promise.all([
     // An old link by run id whose run has a draft now: read that draft's.
     hasDraft ? (a.draftId === id ? Promise.resolve(ledgerByRoute) : loadLedger(project.id, a.draftId)) : Promise.resolve(null),
     live && a.url ? storedShotAt(project.id, a.url).catch(() => undefined) : Promise.resolve(undefined),
+    // The owner's levers (Edit / Remove): only a live writer article has them.
+    live && hasDraft && !asOperator ? loadArticleSource(project, a.draftId).catch(() => null) : Promise.resolve(null),
   ]);
   // Known not to load any more: say so, and don't send anyone to it.
   const gone = a.url ? goneUrls.has(normalizePageUrl(a.url)) : false;
@@ -147,6 +151,16 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
           {!gone && !asOperator ? (
             <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
               <PrimaryAction a={a} slug={project.slug} paused={paused} />
+              {source?.canEdit ? (
+                <Link href={`/articles/${encodeURIComponent(a.draftId)}/edit`} className={buttonClass("secondary", "lg")}>
+                  Edit
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
+          {source?.canRemove ? (
+            <div className="mt-6">
+              <RemoveArticle id={a.draftId} slug={project.slug} route={source.route} autoMerge={source.autoMerge} />
             </div>
           ) : null}
         </div>
@@ -226,6 +240,39 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
             </a>
           ) : null}
         </section>
+      ) : null}
+
+      {source && live && !source.canEdit && source.reason && source.status !== "removing" ? (
+        <Callout tone="info" title={source.prUrl ? "Waiting on a pull request" : "Can't be changed from here"}>
+          {source.reason}
+          {source.prUrl ? (
+            <>
+              {" "}
+              <a href={source.prUrl} target="_blank" rel="noopener noreferrer" className="font-medium text-accent underline decoration-accent/40 underline-offset-[3px] hover:decoration-accent">
+                Open the pull request
+              </a>
+            </>
+          ) : null}
+        </Callout>
+      ) : null}
+
+      {source?.status === "removing" ? (
+        <Callout tone="info" title="Removal waiting on a pull request">
+          {source.autoMerge
+            ? "We opened a pull request that deletes this article. It merges on its own once your site's checks pass, and the page is gone after the next deploy."
+            : "We opened a pull request that deletes this article. Merge it on GitHub and the page is gone; close it and the article stays."}
+          {source.prUrl ? (
+            <>
+              {" "}
+              <a href={source.prUrl} target="_blank" rel="noopener noreferrer" className="font-medium text-accent underline decoration-accent/40 underline-offset-[3px] hover:decoration-accent">
+                Open the pull request
+              </a>
+            </>
+          ) : null}
+          {/* Looks at the pull request now: merged settles it, closed puts
+              the article back, open re-arms the watcher. */}
+          {!asOperator ? <RemoveArticle id={a.draftId} slug={project.slug} route={source.route} autoMerge={source.autoMerge} recheck /> : null}
+        </Callout>
       ) : null}
 
       {gone ? (

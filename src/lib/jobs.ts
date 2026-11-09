@@ -27,7 +27,8 @@ import { db } from "./db";
 
 // "launch" = a new hosted site's first minutes after setup (job-handlers/launch.ts).
 // "batch-poll" = a batch-lane writer run waiting on Anthropic's Message Batches API (job-handlers/batch-poll.ts).
-export type JobKind = "autopilot" | "batch-poll" | "crawl" | "finish" | "hosted-live" | "launch" | "publish" | "verify" | "write";
+// "owner-pr" = a pull request the owner's Edit / Remove opened on a repo article, watched until it merges or closes (job-handlers/owner-pr.ts).
+export type JobKind = "autopilot" | "batch-poll" | "crawl" | "finish" | "hosted-live" | "launch" | "owner-pr" | "publish" | "verify" | "write";
 
 export type Job = {
   id: string;

@@ -39,7 +39,7 @@ function withQuery(parts: string[]): string {
   return q ? `/articles?${q}` : "/articles";
 }
 
-export default async function ArticlesPage({ searchParams }: { searchParams: Promise<{ status?: string; sort?: string }> }) {
+export default async function ArticlesPage({ searchParams }: { searchParams: Promise<{ status?: string; sort?: string; removed?: string }> }) {
   await requireDashboard();
   await redirectIfAgent("/drafts");
   const project = await getActiveProject();
@@ -47,7 +47,7 @@ export default async function ArticlesPage({ searchParams }: { searchParams: Pro
   // Any live article without a stored preview gets one after this response,
   // a few per visit, so opening it later never waits on a browser.
   if (report) warmScreenshotsLater(project.id, report.articles.filter((a) => a.status === "published" && a.url).map((a) => a.url!), 4, { onView: true });
-  const { status, sort: sortParam } = await searchParams;
+  const { status, sort: sortParam, removed } = await searchParams;
   const filter = FILTERS.find((f) => f.key === status) ?? FILTERS[0];
   const sort = parseSort(sortParam);
   const sortQs = sort === "newest" ? "" : `sort=${sort}`;
@@ -67,6 +67,14 @@ export default async function ArticlesPage({ searchParams }: { searchParams: Pro
           </Link>
         }
       />
+
+      {removed === "1" ? (
+        // Landed here from "Remove from site" (autopilot-actions.ts): the
+        // article is out of the list, so this is the one place that says so.
+        <Callout tone="info" title="Removed from your site" role="status">
+          The page leaves your site within a few minutes. Google is told it&apos;s gone and drops it over the next days.
+        </Callout>
+      ) : null}
 
       {!report ? (
         <Callout tone="warn" title="Articles didn't load" role="status">
