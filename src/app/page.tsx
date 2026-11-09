@@ -61,6 +61,10 @@ const DOCS_URL = "/docs";
 // out) and capped at 2 s so a slow GitHub never holds the landing page.
 // Falls back to the last count we saw - it only ever under-states.
 const STARS_FALLBACK = 97;
+// People who love it beyond GitHub: paying and free-plan customers who never
+// starred the repo. Added on top of the live star count, so the badge keeps
+// climbing with the stars. 2 on 2026-11-09: one paid, one free (owner's count).
+const LOVED_BEYOND_GITHUB = 2;
 // Six real stargazers' avatars (picked 2026-11-08 from the repo's stargazer
 // list). Owner's rule: no photos of real faces - two cartoon avatars and four
 // picture avatars (scenery, a cat, a keyboard). GitHub user ids, so a rename
@@ -229,7 +233,7 @@ export default async function LandingPage({
   // The yearly plan is offered only once all three yearly Polar products are
   // configured; until then the cards show the monthly price alone.
   const annual = annualBillingAvailable();
-  const stars = await githubStars();
+  const stars = (await githubStars()) + LOVED_BEYOND_GITHUB;
 
   return (
     <div className={`ld ${jakarta.variable} ${dmSans.variable} ${caveat.variable}`}>
