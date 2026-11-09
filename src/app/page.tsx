@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { DispatchMark } from "@/components/logo";
 import { DISCORD_URL, DiscordMark } from "@/components/discord-mark";
 import { FeatureShowcase } from "./feature-showcase";
+import { ChecksLine } from "./checks-line";
 import { DomainCta } from "./domain-cta";
 import { LandingNav } from "./landing-nav";
 import { PixelDispatcher } from "@/components/pixel-dispatcher";
@@ -310,6 +311,20 @@ export default async function LandingPage({
         </div>
       </section>
 
+      {/* ==================== THE FIVE CHECKS ==================== */}
+      {/* The carousel above shows the outcome (visitors); this answers the
+          buyer's real fear - "AI content will hurt my site" - as five flat
+          icons on one line, scannable in seconds. Sits on the plain
+          background so the page alternates band / plain / band. */}
+      <section id="checks">
+        <div className="wrap">
+          <div className="sec-h">
+            <h2>Not another slop factory</h2>
+          </div>
+          <ChecksLine />
+        </div>
+      </section>
+
 
       {/* ==================== WHO FOR ==================== */}
       <section className="band-alt">
@@ -360,7 +375,6 @@ export default async function LandingPage({
         <div className="wrap">
           <div className="sec-h">
             <h2>Pick your plan</h2>
-            <p>Every site starts free. Upgrade when you want more articles.</p>
           </div>
           {/* Prices come from TIER_LIMITS (billing.ts); the ticks follow the
               free/paid split decided 2026-11-06/08: free keeps the result

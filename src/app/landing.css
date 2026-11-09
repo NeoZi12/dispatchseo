@@ -276,6 +276,104 @@ html:has(.ld) { scroll-behavior: smooth; }
 .ld .who-card h3 { font-size: 25px; font-weight: 800; margin-bottom: 14px; letter-spacing: -0.015em; }
 .ld .who-card p { font-size: 16.5px; color: var(--mut); line-height: 1.65; }
 
+/* ---------- checks line (checks-line.tsx) ----------
+   Five flat icons in plain discs on one rail, one small ball running it end
+   to end, the outcome as a sixth circle. The section gets a wider measure
+   than the rest of the page (1280px) so six circles can stay big. Deliberately no glow, gradient or shadow
+   anywhere in this block - that look was rejected (2026-11-09). The balls run
+   at z-index 1 beneath the discs (z-index 2), so each one visibly enters a
+   circle and comes out of the next. */
+.ld #checks .wrap { max-width: 1280px; }
+.ld #checks .sec-h { margin-bottom: 88px; }
+.ld .ck-line { --ck-disc: clamp(110px, 11vw, 156px); position: relative; display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; align-items: start; }
+.ld .ck-track { position: absolute; left: 8.333%; right: 8.333%; top: calc(var(--ck-disc) / 2); height: 0; border-top: 1px solid var(--line3); z-index: 0; }
+.ld .ck-ball { position: absolute; top: 0; left: 0; width: 9px; height: 9px; margin: -5px 0 0 -5px; border-radius: 50%; background: var(--vio2); animation: ck-run 6s linear infinite; z-index: 1; }
+.ld .ck-ball i { position: absolute; inset: 2px; border-radius: 50%; background: #fff; }
+.ld .ck-ball.t1 { width: 6px; height: 6px; margin: -3px 0 0 -3px; opacity: 0.55; animation-delay: -0.08s; }
+.ld .ck-ball.t2 { width: 4px; height: 4px; margin: -2px 0 0 -2px; opacity: 0.3; animation-delay: -0.16s; }
+@keyframes ck-run { from { left: 0; } to { left: 100%; } }
+@keyframes ck-runv { from { top: 0; } to { top: 100%; } }
+@media (prefers-reduced-motion: reduce) { .ld .ck-ball { display: none; } }
+.ld .ck-st { position: relative; z-index: 2; text-align: center; }
+.ld .ck-disc { width: var(--ck-disc); height: var(--ck-disc); margin: 0 auto 28px; border-radius: 50%; background: var(--card); border: 1px solid var(--line2); display: grid; place-items: center; }
+.ld .ck-disc svg { width: 56%; height: 56%; display: block; }
+.ld .ck-st:nth-child(even) .ck-disc svg { transform: rotate(-6deg); }
+.ld .ck-st:nth-child(odd) .ck-disc svg { transform: rotate(5deg); }
+/* Titles never wrap: a two-line title drops its station below the others. Keep every title short. */
+.ld .ck-st h3 { font-size: clamp(18px, 1.5vw, 21px); font-weight: 700; letter-spacing: -0.01em; white-space: nowrap; }
+.ld .ck-st p { color: var(--mut); font-size: 15px; line-height: 1.4; margin-top: 6px; max-width: 180px; margin-left: auto; margin-right: auto; }
+
+/* ---------- features: screenshot slideshow ---------- */
+/* No section header any more - the slide titles carry the section, so this
+   band gets a touch more top air than the default 96px to keep the first
+   title from reading as glued to the band edge. */
+.ld section#features { padding-top: 128px; }
+/* One big title + a one-line caption above the frame, changing together with
+   the screenshot. Title/caption crossfade in via a key-remount animation;
+   the image crossfade below uses an absolute-stacked opacity swap instead
+   since it needs a fixed box to avoid layout shift. */
+.ld .show-head { text-align: center; margin: 0 auto 36px; animation: show-text-in 0.5s ease both; }
+/* nowrap keeps every title on one row; the vw-scaled font shrinks in step
+   with the container so the longest title still fits. Phones (<600px) drop
+   the nowrap and wrap naturally instead of overflowing. */
+.ld .show-title { font-size: clamp(30px, 4.6vw, 50px); font-weight: 800; letter-spacing: -0.015em; margin-bottom: 10px; white-space: nowrap; }
+.ld .show-cap { font-family: var(--body); font-size: 15.5px; color: var(--mut); }
+@keyframes show-text-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .ld .show-head { animation: none; } }
+
+.ld .show-frame-wrap { position: relative; }
+.ld .show-frame-wrap::before { content: ""; position: absolute; inset: -10% -6%; background: radial-gradient(ellipse at center, rgba(139, 92, 246, 0.18), transparent 68%); filter: blur(20px); z-index: 0; pointer-events: none; }
+.ld .show-frame { position: relative; z-index: 1; border: 1px solid var(--line2); border-radius: 16px; overflow: hidden; background: var(--card); box-shadow: 0 32px 72px -28px rgba(0, 0, 0, 0.75); }
+.ld .show-chrome { display: flex; gap: 6px; padding: 13px 16px; background: var(--card2); border-bottom: 1px solid var(--line); }
+.ld .show-chrome i { width: 10px; height: 10px; border-radius: 50%; background: #2a2a30; display: block; }
+.ld .show-media { position: relative; }
+/* 3020:1370 is also the exact shape the screenshots are captured at, so each
+   one fills the window edge to edge. Re-shoots must keep this shape. */
+.ld .show-stack { position: relative; width: 100%; aspect-ratio: 3020 / 1370; background: #000; }
+.ld .show-slide { position: absolute; inset: 0; opacity: 0; transition: opacity 0.6s ease; }
+.ld .show-slide.active { opacity: 1; z-index: 1; }
+.ld .show-slide img { object-fit: cover; }
+.ld .show-slide-contain img { object-fit: contain; }
+@media (prefers-reduced-motion: reduce) { .ld .show-slide { transition: none; } }
+
+/* ---------- nav: arrows flanking the frame + dot indicators below ---------- */
+.ld .show-stage { display: flex; align-items: center; gap: 20px; }
+.ld .show-stage .show-frame-wrap { flex: 1; min-width: 0; }
+.ld .show-dots { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 26px; }
+.ld .show-dot { width: 8px; height: 8px; padding: 0; border-radius: 50%; border: 0; background: var(--line3); cursor: pointer; transition: background 0.15s, transform 0.15s; }
+.ld .show-dot:hover { background: var(--mut); }
+.ld .show-dot.active { background: var(--vio); transform: scale(1.25); }
+.ld .show-dot:focus-visible { outline: 2px solid var(--vio2); outline-offset: 3px; }
+/* Arrows only surface while the slideshow is hovered (which is also when
+   autoplay pauses) - untouched, it reads as a clean self-advancing slideshow.
+   Touch devices (no hover) keep them visible; keyboard focus reveals them. */
+.ld .show-arrow { display: grid; place-items: center; flex: 0 0 auto; width: 52px; height: 52px; border-radius: 50%; background: transparent; border: 1px solid var(--line3); color: var(--mut); cursor: pointer; opacity: 0; transition: opacity 0.2s, border-color 0.15s, color 0.15s, background 0.15s; }
+.ld .showcase:hover .show-arrow, .ld .show-arrow:focus-visible { opacity: 1; }
+@media (hover: none) { .ld .show-arrow { opacity: 1; } }
+.ld .show-arrow svg { width: 24px; height: 24px; }
+.ld .show-arrow:hover { border-color: var(--line3); background: var(--card2); color: #fff; }
+.ld .show-arrow:focus-visible { outline: 2px solid var(--vio2); outline-offset: 3px; }
+@media (max-width: 600px) {
+  .ld .show-stage { gap: 10px; }
+  .ld .show-arrow { width: 38px; height: 38px; }
+  .ld .show-arrow svg { width: 18px; height: 18px; }
+  .ld .show-title { white-space: normal; }
+}
+
+/* ---------- open source ---------- */
+.ld .oss-in { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; }
+.ld .oss-copy h2 { font-size: clamp(28px, 3.8vw, 40px); font-weight: 800; margin-bottom: 20px; }
+.ld .oss-copy p { color: var(--mut); margin-bottom: 16px; font-size: 16.5px; }
+.ld .oss-badges { display: flex; gap: 10px; margin: 22px 0 28px; flex-wrap: wrap; }
+.ld .oss-badge { font-size: 12.5px; font-weight: 600; border: 1px solid var(--line2); border-radius: 8px; padding: 6px 12px; background: var(--card); color: var(--mut); }
+.ld .oss-btns { display: flex; gap: 12px; flex-wrap: wrap; }
+.ld .term { background: #000; border: 1px solid var(--line); border-radius: 14px; padding: 22px 24px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13.5px; line-height: 1.85; color: #d4d4d8; box-shadow: 0 24px 56px -20px rgba(0, 0, 0, 0.8); overflow-x: auto; }
+.ld .term .t-dots { display: flex; gap: 6px; margin-bottom: 16px; }
+.ld .term .t-dots i { width: 10px; height: 10px; border-radius: 50%; background: #2a2a30; display: block; }
+.ld .term .cmd { color: #fff; }
+.ld .term .dim { color: var(--dim); }
+.ld .term .out { color: #86efac; }
+
 /* ---------- features: screenshot slideshow ---------- */
 /* No section header any more - the slide titles carry the section, so this
    band gets a touch more top air than the default 96px to keep the first
@@ -516,6 +614,17 @@ html:has(.ld) { scroll-behavior: smooth; }
   .ld section { padding: 76px 0; scroll-margin-top: calc(var(--nav-h) + 12px); }
   .ld section#features { padding-top: 88px; }
   .ld .steps { grid-template-columns: repeat(2, 1fr); }
+  /* checks line goes vertical: rail down the left edge, balls run downward,
+     each station becomes icon-left / text-right. The disc spans both text rows. */
+  .ld #checks .sec-h { margin-bottom: 56px; }
+  .ld .ck-line { grid-template-columns: 1fr; gap: 32px; padding-left: 40px; }
+  .ld .ck-track { left: 19px; right: auto; top: 30px; bottom: 30px; height: auto; width: 0; border-top: 0; border-left: 1px solid var(--line3); }
+  .ld .ck-ball { animation-name: ck-runv; }
+  .ld .ck-st { display: grid; grid-template-columns: 96px 1fr; grid-template-rows: auto auto; column-gap: 20px; align-items: center; text-align: left; }
+  .ld .ck-st .ck-disc { grid-row: 1 / 3; width: 96px; height: 96px; margin: 0; }
+  .ld .ck-st h3 { font-size: 19px; }
+  .ld .ck-st h3 { grid-column: 2; align-self: end; }
+  .ld .ck-st p { grid-column: 2; align-self: start; margin-left: 0; max-width: none; }
   .ld .who, .ld .who-5 { grid-template-columns: 1fr; }
   .ld .who-5 .who-card, .ld .who-5 .who-card:nth-child(4) { grid-column: auto; }
   .ld .oss-in { grid-template-columns: 1fr; gap: 44px; }

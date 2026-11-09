@@ -73,6 +73,10 @@ export type ChangelogEntry = {
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
+    kind: "new",
+    text: "The home page now shows the five checks every article passes before it goes live: real search demand, fact-checking, no AI slop, built to rank, and cited by AI.",
+  },
+  {
     kind: "fixed",
     text: "On the free plan, an article that fails because of a problem on our side no longer counts as one of your two for the month.",
   },
