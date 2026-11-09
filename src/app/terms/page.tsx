@@ -30,7 +30,7 @@ export const metadata: Metadata = {
   description: "The terms for using the hosted DispatchSEO service at dispatchseo.com.",
 };
 
-const EFFECTIVE = "August 2, 2026";
+const EFFECTIVE = "November 9, 2026";
 const CONTACT = "support@dispatchseo.com";
 
 // Must be the operator's full legal name, matching /privacy. A contract with
@@ -132,6 +132,16 @@ export default function TermsPage() {
           close free accounts we believe were made to get around its limits.
         </p>
         <p>
+          <Term>The free plan carries a credit.</Term> Every article published on the free plan
+          ends with a small visible line reading &quot;Made with DispatchSEO&quot; that links to
+          our site. The link is marked sponsored and nofollow, so it passes no ranking signal and
+          is never a link scheme in Google&apos;s eyes. That credit is the free plan&apos;s price:
+          you get the articles, we get the mention. You agree not to hide, alter or remove it
+          while the site is on the free plan; if you do, we may pause publishing on that site.
+          The moment the site is on any paid plan the credit is gone from every article,
+          including the ones published while it was free.
+        </p>
+        <p>
           <Term>Cancelling.</Term> You can cancel at any time from the billing page in your
           dashboard - the same place and the same few clicks it took to subscribe. Cancellation
           takes effect at the end of the current billing period and you keep full access until
@@ -216,6 +226,16 @@ export default function TermsPage() {
           of any of it. You grant us only the limited licence needed to operate the service for
           you - to store, process and transmit that material so the product can do the job you
           asked it to do - and that licence ends when you delete the material or your account.
+        </p>
+        <p>
+          <Term>Articles carry an invisible marker.</Term> Every article we write includes one
+          empty, hidden HTML element with a DispatchSEO attribute holding that article&apos;s id.
+          It renders nothing, loads nothing, links nowhere, tracks nobody and contains no personal
+          data. It exists so we can recognise our own articles on your live site - to count
+          what is published, to confirm the free-plan credit is in place, and to find an article
+          you have asked us to edit or remove. It is on every plan and is not a cookie, a pixel
+          or a script. Removing it does not break your site, but a free-plan site without it may
+          be treated as one without the credit.
         </p>
         <p>
           <Term>We own the service.</Term> DispatchSEO&apos;s hosted platform, its interfaces,

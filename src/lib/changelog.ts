@@ -78,6 +78,10 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   },
   {
     kind: "improved",
+    text: "The terms of service now spell out the free plan's \"Made with DispatchSEO\" credit (what it is, that it is sponsored and nofollow, and that it goes away on a paid plan) and the hidden marker every article carries.",
+  },
+  {
+    kind: "improved",
     text: "Every article DispatchSEO writes now ends with a hidden, empty signature element (a span with a data-dispatchseo attribute carrying the article's id). It renders nothing, loads nothing and links nowhere; it lets us recognise our own articles on the live site later, whether or not the credit is shown.",
   },
   {
