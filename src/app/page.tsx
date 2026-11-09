@@ -136,10 +136,22 @@ function PlanLink({ tier, annual, children }: { tier: Tier; annual: boolean; chi
 
 // The mobile pricing cards' paid plans. Articles a month come from billing.ts
 // (1 / 3 / 5 a week x 4), so a pace change can't leave these behind.
-const PM_PAID: { tier: Tier; perMonth: number; note: string; pick: boolean }[] = [
-  { tier: "starter", perMonth: articlesPerMonthFor("starter"), note: "Email support", pick: false },
-  { tier: "growth", perMonth: articlesPerMonthFor("growth"), note: "Email support", pick: true },
-  { tier: "scale", perMonth: articlesPerMonthFor("scale"), note: "Priority support", pick: false },
+const PM_PAID: { tier: Tier; perMonth: number; tagline: string; lead: string; ticks: string[]; pick: boolean }[] = [
+  {
+    tier: "starter", perMonth: articlesPerMonthFor("starter"), pick: false,
+    tagline: "Steady start, weekly articles", lead: "Everything in Free, plus",
+    ticks: ["Weekly keyword research", "Keyword rankings", "Advanced analytics", "No DispatchSEO badge", "Email support"],
+  },
+  {
+    tier: "growth", perMonth: articlesPerMonthFor("growth"), pick: true,
+    tagline: "Serious about traffic", lead: "Everything in Starter, plus",
+    ticks: ["8 more articles a month"],
+  },
+  {
+    tier: "scale", perMonth: articlesPerMonthFor("scale"), pick: false,
+    tagline: "All in on content", lead: "Everything in Growth, plus",
+    ticks: ["8 more articles a month", "Priority support"],
+  },
 ];
 
 // The same price, sized for a phone card.
@@ -460,47 +472,44 @@ export default async function LandingPage({
               <PlanLink tier="scale" annual={annual}>Choose Scale</PlanLink>
             </div>
           </div>
-          {/* Mobile pricing (<=980px): one stacked card per plan, led by the
-              articles a month (the thing the plans differ by), then one
-              shared list for what every paid plan has. Nothing is dropped:
-              every tick above appears on a card or in the list. */}
+          {/* Mobile pricing (<=980px): one stacked card per plan in the desktop
+              cards' language - name, tagline, the articles a month as the
+              headline, price, button, then a short "everything in X, plus"
+              list so four cards don't repeat the same ticks four times. */}
           <div className="plans-m">
             <div className="pm-list">
-              <div className="pm-card pm-free">
-                <div className="pm-head">
-                  <span className="pm-name">Free</span>
-                </div>
-                <div className="pm-row">
-                  <div className="pm-count"><b>2</b><span>articles a month</span></div>
-                  <span className="pm-price">$0<small>/forever</small></span>
-                </div>
-                <p className="pm-note">Fact-checked, published for you, with your Google stats. No card.</p>
+              <div className="pm-card">
+                <span className="pm-name">Free</span>
+                <span className="pm-tag">Try it on a side project</span>
+                <div className="pm-stat"><b>2</b><span>articles a month</span></div>
+                <span className="pm-price">$0<small>/forever</small></span>
                 <a className="btn btn-solid" href="/onboarding">Get free traffic</a>
+                <ul className="pm-ticks">
+                  <li>Topics people search for</li>
+                  <li>Fact-checked articles</li>
+                  <li>Published for you</li>
+                  <li>Your Google stats</li>
+                </ul>
               </div>
               {PM_PAID.map((plan) => (
                 <div key={plan.tier} className={`pm-card${plan.pick ? " pm-pick" : ""}`}>
-                  {plan.pick ? <span className="pm-flag">Most popular</span> : null}
-                  <div className="pm-head">
-                    <span className="pm-name">{TIER_NAMES[plan.tier]}</span>
-                  </div>
-                  <div className="pm-row">
-                    <div className="pm-count"><b>{plan.perMonth}</b><span>articles a month</span></div>
-                    <div className="pm-cost"><PmPrice tier={plan.tier} annual={annual} /></div>
-                  </div>
-                  <p className="pm-note">{plan.note}</p>
+                  {plan.pick ? (
+                    <>
+                      <span className="pm-flag">Most popular</span>
+                      <CardMascot className="pm-mascot" />
+                    </>
+                  ) : null}
+                  <span className="pm-name">{TIER_NAMES[plan.tier]}</span>
+                  <span className="pm-tag">{plan.tagline}</span>
+                  <div className="pm-stat"><b>{plan.perMonth}</b><span>articles a month</span></div>
+                  <PmPrice tier={plan.tier} annual={annual} />
                   <PlanLink tier={plan.tier} annual={annual}>Choose {TIER_NAMES[plan.tier]}</PlanLink>
+                  <p className="pm-lead">{plan.lead}</p>
+                  <ul className="pm-ticks">
+                    {plan.ticks.map((t) => <li key={t}>{t}</li>)}
+                  </ul>
                 </div>
               ))}
-            </div>
-            <div className="pm-all">
-              <h3>On every paid plan</h3>
-              <ul>
-                <li>Weekly keyword research</li>
-                <li>Fact-checked articles</li>
-                <li>Keyword rankings</li>
-                <li>Advanced analytics</li>
-                <li>No DispatchSEO badge</li>
-              </ul>
             </div>
           </div>
           </PricingSwitch>
