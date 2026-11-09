@@ -362,9 +362,18 @@ function MobileCustomer({ x, now }: { x: Customer; now: number; range: number })
 
 export function CustomersPanel({ c, range, now }: { c: CustomersReport; range: number; now: number }) {
   // Accounts that never added a site or picked a plan cost nothing and say
-  // little each; they fold into one list under the table.
-  const engaged = c.customers.filter((x) => x.operator || x.plan.status !== "none" || x.sites.length > 0 || x.costUsd > 0);
-  const idle = c.customers.filter((x) => !engaged.includes(x));
+  // little each; they fold into one list under the table. People who
+  // cancelled fold into another (owner, 2026-11-09: "I don't want to see
+  // them"). What is left is sorted by when they were last seen, newest
+  // first, the operator's own account last.
+  const cancelled = c.customers.filter((x) => !x.operator && x.plan.cancelled);
+  const engaged = c.customers
+    .filter((x) => !cancelled.includes(x) && (x.operator || x.plan.status !== "none" || x.sites.length > 0 || x.costUsd > 0))
+    .sort((a, b) => {
+      if (a.operator !== b.operator) return a.operator ? 1 : -1;
+      return (b.lastSeen ?? b.createdAt).localeCompare(a.lastSeen ?? a.createdAt);
+    });
+  const idle = c.customers.filter((x) => !engaged.includes(x) && !cancelled.includes(x));
   return (
     <Panel id="customers" label="Customers">
       <SectionHead
@@ -452,6 +461,34 @@ export function CustomersPanel({ c, range, now }: { c: CustomersReport; range: n
           </tbody>
         </table>
       </div>
+      {cancelled.length ? (
+        <details className="group/gone border-t border-line-soft">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-3.5 text-[13px] text-ink-muted hover:text-ink sm:px-6">
+            <span>
+              {cancelled.length} {cancelled.length === 1 ? "person" : "people"} cancelled
+            </span>
+            <span className="font-mono text-[12px] text-ink-faint group-open/gone:hidden">Show</span>
+            <span className="hidden font-mono text-[12px] text-ink-faint group-open/gone:inline">Hide</span>
+          </summary>
+          <ul className="px-5 pb-4 sm:px-6">
+            {cancelled
+              .slice()
+              .sort((a, b) => (b.plan.canceledAt ?? b.createdAt).localeCompare(a.plan.canceledAt ?? a.createdAt))
+              .map((x) => (
+                <li key={x.userId} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-line-soft py-2.5 text-[12.5px]">
+                  <span className="min-w-0 flex-1">
+                    <a href={`/owner/customers/${x.userId}`} className="block truncate text-ink hover:underline" title={x.email}>
+                      {x.email}
+                    </a>
+                    <SiteList x={x} />
+                  </span>
+                  <span className="text-danger/90">{cancelNote(x.plan) ?? "Cancelled"}</span>
+                  <span className="w-24 text-right font-mono text-[11.5px] tabular-nums text-ink-faint">{x.revenueAllUsd ? `${money(x.revenueAllUsd)} paid` : "nothing paid"}</span>
+                </li>
+              ))}
+          </ul>
+        </details>
+      ) : null}
       {idle.length ? (
         <details className="group/idle border-t border-line-soft">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-3.5 text-[13px] text-ink-muted hover:text-ink sm:px-6">
