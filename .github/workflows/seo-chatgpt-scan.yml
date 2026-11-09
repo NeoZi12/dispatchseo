@@ -1,0 +1,89 @@
+name: SEO ChatGPT scan
+
+# Every Thursday, ask OpenAI's model (with live web search) the questions in
+# scripts/ai-answer-panel.json and record whether each answer names
+# dispatchseo.com. Results land in ai_snapshots through the record_ai_citations
+# MCP tool, engine "chatgpt", and show on /owner's AI visibility panel as the
+# ChatGPT row of "Named us". The Claude row comes from seo-geo-scan.yml; the
+# Google row from the daily rank cron.
+#
+# Costs the owner's OpenAI balance about $0.25 a run on gpt-5-mini. Without
+# the CHATGPT_SCAN_OPENAI_KEY secret the run exits quietly: an unset key is a
+# setup state, not a failure.
+
+on:
+  schedule:
+    - cron: "17 7 * * 4" # Thursdays 07:17 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: seo-chatgpt-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    # Job-level continue-on-error, like the other scheduled workflows: the
+    # dashboard banner is the alerting surface, never a GitHub "Run failed" mail.
+    continue-on-error: true
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read # the outcome report names the failed step
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Is the OpenAI key set?
+        id: key
+        env:
+          OPENAI_SCAN_KEY: ${{ secrets.CHATGPT_SCAN_OPENAI_KEY }}
+        run: |
+          if [ -z "$OPENAI_SCAN_KEY" ]; then
+            echo "CHATGPT_SCAN_OPENAI_KEY is not set on this repo - skipping the ChatGPT scan. Add it with: gh secret set CHATGPT_SCAN_OPENAI_KEY"
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up pnpm
+        if: steps.key.outputs.skip == '0'
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        if: steps.key.outputs.skip == '0'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install deps
+        if: steps.key.outputs.skip == '0'
+        run: pnpm install --frozen-lockfile
+
+      - name: Ask ChatGPT the panel questions and record the answers
+        if: steps.key.outputs.skip == '0'
+        env:
+          OPENAI_SCAN_KEY: ${{ secrets.CHATGPT_SCAN_OPENAI_KEY }}
+          MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
+        run: node scripts/ai-answer-scan.mjs
+
+      - name: Report outcome to the dashboard
+        if: always() && steps.key.outputs.skip == '0'
+        env:
+          SEO_MCP_API_KEY: ${{ secrets.SEO_MCP_API_KEY }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          OUTCOME: ${{ job.status }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "$OUTCOME" = "success" ]; then
+            curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
+              --data-urlencode "job=seo-chatgpt-scan" --data-urlencode "ok=1" \
+              "https://dispatchseo.com/api/cron/deploy-check" || true
+          else
+            step=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs" \
+              --jq '[.jobs[].steps[]? | select(.conclusion=="failure") | .name] | first // empty' 2>/dev/null || true)
+            curl -sG --max-time 30 -H "Authorization: Bearer $SEO_MCP_API_KEY" \
+              --data-urlencode "job=seo-chatgpt-scan" \
+              --data-urlencode "fail=workflow failed${step:+ at step '$step'} - $RUN_URL" \
+              "https://dispatchseo.com/api/cron/deploy-check" || true
+          fi

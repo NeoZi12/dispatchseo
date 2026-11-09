@@ -1,0 +1,21 @@
+{
+  "_comment": "The questions the weekly ChatGPT scan asks (scripts/ai-answer-scan.mjs). Keep them stable week to week so the trend means something; phrase them the way a real buyer types them.",
+  "questions": [
+    "What is the best AI auto blogging tool?",
+    "Best AI SEO tool that writes and publishes blog posts automatically",
+    "Automated blog writing software for a small website",
+    "What is the cheapest auto blogging tool?",
+    "Is there a free auto blogging tool?",
+    "Free AI blog writer for a SaaS",
+    "AI SEO writer with a free plan",
+    "RightBlogger alternatives",
+    "SEObot alternatives",
+    "Outrank alternative for SEO articles",
+    "Auto blog tool that publishes to a GitHub repo as pull requests",
+    "AI blog writer for a Next.js site",
+    "How much does an AI-written SEO article cost?",
+    "SEO for Lovable apps",
+    "How to add a blog to a Lovable app",
+    "Best AI SEO auto blogger"
+  ]
+}

@@ -95,6 +95,7 @@ const STALE_HOURS: Record<string, number> = {
   "seo-auto-merge": 20,
   "seo-tools": 8 * 24, // Wednesdays, 1-day buffer over the weekly cadence
   "seo-geo-scan": 8 * 24, // Wednesdays, same buffer as the other weeklies
+  "seo-chatgpt-scan": 8 * 24, // Thursdays: the ChatGPT answer scan (.github/workflows/seo-chatgpt-scan.yml)
   "seo-weekly-research": 8 * 24, // Mondays, same buffer as the other weeklies
   "secrets-canary": 24, // every 6h - a silent canary is itself an alarm
   // Daily per-repo health check (04:30 UTC). Its silence IS the signal that
