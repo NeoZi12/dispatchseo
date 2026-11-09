@@ -232,11 +232,11 @@ export function AiGhost() {
 /** One customer (customers/[id]): the back link, the header with its
  *  avatar and chips, six figures, the ledger beside the cost bars, Google,
  *  the articles table, plan beside sites, the activity strip. */
-export function CustomerGhost() {
+export function CustomerGhost({ inModal = false }: { inModal?: boolean }) {
   return (
     <PageLoading label="Loading the customer">
       <div className="mx-auto max-w-[1280px] space-y-4 sm:space-y-5">
-        <Line className="h-3.5 w-24" />
+        {inModal ? null : <Line className="h-3.5 w-24" />}
         <div className="flex items-start gap-4 pb-1">
           <Line className="h-12 w-12 shrink-0 rounded-xl" />
           <div className="min-w-0 flex-1">

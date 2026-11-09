@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 import { cx, FOCUS_RING } from "@/components/ui/styles";
@@ -150,7 +151,18 @@ export function VisitTable({ visits, now }: { visits: VisitRow[]; now: number })
             <p className="mt-1 text-[12px] text-ink-faint">
               <Guess v={v} /> · {flag(v.country)} {countryName(v.country)}
               {deviceOf(v) ? ` · ${deviceOf(v)}` : ""} · {v.views} {v.views === 1 ? "page" : "pages"}
-              {v.who ? <span className="text-info"> · {v.who}</span> : null}
+              {v.who ? (
+                <span className="text-info">
+                  {" · "}
+                  {v.userId ? (
+                    <Link href={`/owner/customers/${v.userId}`} scroll={false} className="hover:underline">
+                      {v.who}
+                    </Link>
+                  ) : (
+                    v.who
+                  )}
+                </span>
+              ) : null}
             </p>
           </li>
         ))}
@@ -192,7 +204,18 @@ export function VisitTable({ visits, now }: { visits: VisitRow[]; now: number })
                   <span className="mt-0.5 block truncate text-[11.5px] text-ink-faint">
                     <Guess v={v} />
                     {deviceOf(v) ? <span className="capitalize"> · {deviceOf(v)}</span> : null}
-                    {v.who ? <span className="normal-case text-info"> · {v.who}</span> : null}
+                    {v.who ? (
+                <span className="normal-case text-info">
+                  {" · "}
+                  {v.userId ? (
+                    <Link href={`/owner/customers/${v.userId}`} scroll={false} className="hover:underline">
+                      {v.who}
+                    </Link>
+                  ) : (
+                    v.who
+                  )}
+                </span>
+              ) : null}
                   </span>
                 </td>
                 <td className="min-w-0 px-3 py-3">

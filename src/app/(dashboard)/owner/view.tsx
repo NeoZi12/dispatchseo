@@ -1,9 +1,11 @@
+import Link from "next/link";
+
 import { cx } from "@/components/ui/styles";
 import type { Customer, CustomersReport } from "@/lib/owner-analytics";
 import { TIER_LIMITS, TIER_NAMES, type Tier } from "@/lib/billing";
-import { setupShort } from "@/lib/owner-setup";
 import { Panel, StatCells } from "./bits";
-import { ago, cancelNote, compact, fmt, money, rangeShort, shortDate } from "./format";
+import { ClickRow } from "./row-link";
+import { ago, cancelNote, fmt, money, rangeShort, shortDate } from "./format";
 
 // The sections of /owner, Polar-style: hairline panels, large light figures,
 // one accent per chart, numbers in mono so columns line up.
@@ -36,17 +38,6 @@ function StatusChip({ c }: { c: Customer }) {
             ? "border-danger/30 bg-danger/10 text-danger"
             : "border-line bg-surface-2 text-ink-faint";
   return <span className={cx("inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-[11.5px] font-medium", cls)}>{word}</span>;
-}
-
-/** Where a customer still setting up stands: "Connecting · 3/6 · Connect Google Search Console". */
-function SetupLine({ c, className = "" }: { c: Customer; className?: string }) {
-  if (!c.setup) return null;
-  return (
-    <span className={cx("block truncate text-[11.5px]", c.setup.slow || c.setup.error ? "text-warn" : "text-ink-faint", className)} title={c.setup.why}>
-      {setupShort(c.setup)} · {c.setup.title}
-      {c.setup.error ? " · stuck" : c.setup.slow ? " · slow" : ""}
-    </span>
-  );
 }
 
 // ---------- one subject per section ----------
@@ -155,36 +146,22 @@ function PlanTile({ g, range }: { g: PlanGroup; range: number }) {
 function PlanRow({ x, now }: { x: Customer; now: number }) {
   const note = cancelNote(x.plan);
   return (
-    <tr className="group border-t border-line-soft transition-colors hover:bg-surface-2/40">
+    <ClickRow href={`/owner/customers/${x.userId}`} className="group border-t border-line-soft transition-colors hover:bg-surface-2/40">
       <td className="max-w-[17rem] px-6 py-3">
-        <a href={`/owner/customers/${x.userId}`} className="block truncate text-[13.5px] font-medium text-ink group-hover:underline" title={x.email}>
+        <span className="block truncate text-[13.5px] font-medium text-ink" title={x.email}>
           {x.email}
-        </a>
+        </span>
         <SiteList x={x} />
       </td>
       <td className="px-3 py-3">
-        <div className="flex items-center gap-2">
-          <StatusChip c={x} />
-          {x.plan.monthlyUsd ? (
-            <span className="font-mono text-[11px] tabular-nums text-ink-faint">
-              {money(x.plan.monthlyUsd)}/mo{x.plan.interval === "year" ? " · yearly" : ""}
-            </span>
-          ) : null}
-        </div>
-        {note ? <span className="mt-0.5 block whitespace-nowrap text-[11.5px] text-danger/90">{note}</span> : null}
-        <SetupLine c={x} className="mt-0.5 max-w-[16rem]" />
+        <StatusChip c={x} />
+        {note ? <span className="mt-1 block whitespace-nowrap text-[11.5px] text-danger/90">{note}</span> : null}
       </td>
       <td className="px-3 py-3 text-right font-mono tabular-nums text-ink">{money(x.revenueRecentUsd)}</td>
-      <td className="px-3 py-3 text-right font-mono tabular-nums">
-        <span className="text-ink">{money(x.totalCostRecentUsd, { precise: true })}</span>
-        <CostSplit x={x} />
-      </td>
+      <td className="px-3 py-3 text-right font-mono tabular-nums text-ink">{money(x.totalCostRecentUsd, { precise: true })}</td>
       <td className={cx("px-3 py-3 text-right font-mono tabular-nums", marginClass(x.marginRecentUsd))}>{money(x.marginRecentUsd)}</td>
-      <td className="hidden px-6 py-3 text-right font-mono tabular-nums sm:table-cell">
-        <span className="text-ink">{ago(x.lastSeen, now)}</span>
-        {x.daysActiveRecent ? <span className="block text-[11px] text-ink-faint">{x.daysActiveRecent}d active</span> : null}
-      </td>
-    </tr>
+      <td className="hidden px-6 py-3 text-right font-mono tabular-nums text-ink sm:table-cell">{ago(x.lastSeen, now)}</td>
+    </ClickRow>
   );
 }
 
@@ -192,7 +169,7 @@ function PlanCard({ x, now }: { x: Customer; now: number }) {
   const note = cancelNote(x.plan);
   return (
     <li>
-      <a href={`/owner/customers/${x.userId}`} className="block px-5 py-3.5 transition-colors active:bg-surface-2/60">
+      <Link href={`/owner/customers/${x.userId}`} scroll={false} className="block px-5 py-3.5 transition-colors active:bg-surface-2/60">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="truncate text-[14px] font-medium text-ink">{x.email}</p>
@@ -201,7 +178,6 @@ function PlanCard({ x, now }: { x: Customer; now: number }) {
           <StatusChip c={x} />
         </div>
         {note ? <p className="mt-1.5 text-[12px] text-danger/90">{note}</p> : null}
-        <SetupLine c={x} className="mt-1.5" />
         <dl className="mt-3 grid grid-cols-4 gap-2 font-mono tabular-nums">
           {[
             ["Revenue", money(x.revenueRecentUsd), "text-ink"],
@@ -215,7 +191,7 @@ function PlanCard({ x, now }: { x: Customer; now: number }) {
             </div>
           ))}
         </dl>
-      </a>
+      </Link>
     </li>
   );
 }
@@ -305,29 +281,18 @@ export function PlansPanel({ c, range, now }: { c: CustomersReport; range: numbe
 // ---------- every customer ----------
 
 function SiteList({ x }: { x: Customer }) {
-  if (!x.sites.length) return <span className="text-[12px] text-ink-faint">No site · joined {shortDate(x.createdAt)}</span>;
-  return <span className="block truncate text-[12px] text-ink-faint">{x.sites.map((s) => s.domain + (s.hosted ? "" : " (agent)")).join(", ")}</span>;
+  if (!x.sites.length) return <span className="text-[12px] text-ink-faint">No site yet</span>;
+  return <span className="block truncate text-[12px] text-ink-faint">{x.sites.map((s) => s.domain).join(", ")}</span>;
 }
 
 function marginClass(v: number | null): string {
   return v == null ? "text-ink-faint" : v < 0 ? "text-danger" : v > 0 ? "text-ok" : "text-ink";
 }
 
-function CostSplit({ x }: { x: Customer }) {
-  const fee = x.feesRecentUsd;
-  const parts = [
-    ["AI", x.llmRecentUsd],
-    ["data", x.dfsRecentUsd],
-    ["fees", fee],
-  ].filter(([, v]) => (v as number) > 0) as Array<[string, number]>;
-  if (!parts.length) return null;
-  return <span className="block whitespace-nowrap text-[11px] text-ink-faint">{parts.map(([k, v]) => `${k} ${money(v, { precise: true })}`).join(" · ")}</span>;
-}
-
 function MobileCustomer({ x, now }: { x: Customer; now: number; range: number }) {
   return (
     <li className={cx(x.operator && "opacity-70")}>
-      <a href={`/owner/customers/${x.userId}`} className="block px-5 py-4 transition-colors active:bg-surface-2/60">
+      <Link href={`/owner/customers/${x.userId}`} scroll={false} className="block px-5 py-4 transition-colors active:bg-surface-2/60">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="truncate text-[14px] font-medium text-ink">
@@ -339,23 +304,20 @@ function MobileCustomer({ x, now }: { x: Customer; now: number; range: number })
           <StatusChip c={x} />
         </div>
         {cancelNote(x.plan) ? <p className="mt-1.5 text-[12px] text-danger/90">{cancelNote(x.plan)}</p> : null}
-        <SetupLine c={x} className="mt-1.5" />
-        <dl className="mt-3 grid grid-cols-3 gap-2 font-mono tabular-nums">
+        <dl className="mt-3 grid grid-cols-4 gap-2 font-mono tabular-nums">
           {[
             ["Revenue", money(x.revenueRecentUsd), "text-ink"],
             ["Cost", money(x.totalCostRecentUsd, { precise: true }), "text-ink"],
             ["Margin", money(x.marginRecentUsd), marginClass(x.marginRecentUsd)],
+            ["Seen", ago(x.lastSeen, now), "text-ink"],
           ].map(([k, v, cls]) => (
             <div key={k} className="min-w-0">
               <dt className="font-sans text-[11px] text-ink-faint">{k}</dt>
-              <dd className={cx("mt-0.5 truncate text-[14px]", cls)}>{v}</dd>
+              <dd className={cx("mt-0.5 truncate text-[13px]", cls)}>{v}</dd>
             </div>
           ))}
         </dl>
-        <p className="mt-2 text-[11.5px] text-ink-faint">
-          {fmt(x.articles)} articles · {compact(x.clicks28d)} clicks · seen {ago(x.lastSeen, now)}
-        </p>
-      </a>
+      </Link>
     </li>
   );
 }
@@ -416,47 +378,32 @@ export function CustomersPanel({ c, range, now }: { c: CustomersReport; range: n
           </thead>
           <tbody>
             {engaged.map((x) => (
-              <tr key={x.userId} className={cx("group border-t border-line-soft transition-colors hover:bg-surface-2/40", x.operator && "opacity-70")}>
+              <ClickRow
+                key={x.userId}
+                href={`/owner/customers/${x.userId}`}
+                className={cx("group border-t border-line-soft transition-colors hover:bg-surface-2/40", x.operator && "opacity-70")}
+              >
                 <td className="max-w-[17rem] px-6 py-3">
-                  <a href={`/owner/customers/${x.userId}`} className="block truncate text-[13.5px] font-medium text-ink group-hover:underline" title={x.email}>
+                  <span className="block truncate text-[13.5px] font-medium text-ink" title={x.email}>
                     {x.email}
                     {x.operator ? <span className="ml-2 text-[11px] font-normal text-ink-faint">you</span> : null}
-                  </a>
+                  </span>
                   <SiteList x={x} />
                 </td>
                 <td className="px-3 py-3">
                   <div className="flex items-center gap-2">
                     <StatusChip c={x} />
-                    <span className="text-[12px] capitalize text-ink-faint">{x.plan.tier ?? ""}</span>
+                    <span className="text-[12.5px] capitalize text-ink-muted">{x.plan.tier ?? ""}</span>
                   </div>
-                  <span className="mt-1 block font-mono text-[11px] tabular-nums text-ink-faint">
-                    {x.plan.monthlyUsd ? `${money(x.plan.monthlyUsd)}/mo${x.plan.interval === "year" ? " · yearly" : ""}` : ""}
-                  </span>
-                  {cancelNote(x.plan) ? <span className="mt-0.5 block whitespace-nowrap text-[11.5px] text-danger/90">{cancelNote(x.plan)}</span> : null}
-                  <SetupLine c={x} className="mt-0.5 max-w-[16rem]" />
+                  {cancelNote(x.plan) ? <span className="mt-1 block whitespace-nowrap text-[11.5px] text-danger/90">{cancelNote(x.plan)}</span> : null}
                 </td>
-                <td className="px-3 py-3 text-right font-mono tabular-nums">
-                  <span className="text-ink">{money(x.revenueRecentUsd)}</span>
-                  {x.revenueAllUsd ? <span className="block whitespace-nowrap text-[11px] text-ink-faint">{money(x.revenueAllUsd)} total</span> : null}
-                </td>
-                <td className="px-3 py-3 text-right font-mono tabular-nums">
-                  <span className="text-ink">{money(x.totalCostRecentUsd, { precise: true })}</span>
-                  <CostSplit x={x} />
-                </td>
-                <td className="px-3 py-3 text-right font-mono tabular-nums">
-                  <span className={marginClass(x.marginRecentUsd)}>{money(x.marginRecentUsd)}</span>
-                  {x.marginAllUsd != null && x.revenueAllUsd ? <span className="block whitespace-nowrap text-[11px] text-ink-faint">{money(x.marginAllUsd)} total</span> : null}
-                </td>
-                <td className="hidden px-3 py-3 text-right font-mono tabular-nums xl:table-cell">
-                  <span className="text-ink">{fmt(x.articles)}</span>
-                  {x.articlesRecent ? <span className="block text-[11px] text-ink-faint">+{x.articlesRecent}</span> : null}
-                </td>
+                <td className="px-3 py-3 text-right font-mono tabular-nums text-ink">{money(x.revenueRecentUsd)}</td>
+                <td className="px-3 py-3 text-right font-mono tabular-nums text-ink">{money(x.totalCostRecentUsd, { precise: true })}</td>
+                <td className={cx("px-3 py-3 text-right font-mono tabular-nums", marginClass(x.marginRecentUsd))}>{money(x.marginRecentUsd)}</td>
+                <td className="hidden px-3 py-3 text-right font-mono tabular-nums text-ink xl:table-cell">{fmt(x.articles)}</td>
                 <td className="hidden px-3 py-3 text-right font-mono tabular-nums text-ink xl:table-cell">{fmt(x.clicks28d)}</td>
-                <td className="hidden px-6 py-3 text-right font-mono tabular-nums lg:table-cell">
-                  <span className="text-ink">{ago(x.lastSeen, now)}</span>
-                  {x.daysActiveRecent ? <span className="block text-[11px] text-ink-faint">{x.daysActiveRecent}d active</span> : null}
-                </td>
-              </tr>
+                <td className="hidden px-6 py-3 text-right font-mono tabular-nums text-ink lg:table-cell">{ago(x.lastSeen, now)}</td>
+              </ClickRow>
             ))}
           </tbody>
         </table>
@@ -477,9 +424,9 @@ export function CustomersPanel({ c, range, now }: { c: CustomersReport; range: n
               .map((x) => (
                 <li key={x.userId} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-line-soft py-2.5 text-[12.5px]">
                   <span className="min-w-0 flex-1">
-                    <a href={`/owner/customers/${x.userId}`} className="block truncate text-ink hover:underline" title={x.email}>
+                    <Link href={`/owner/customers/${x.userId}`} scroll={false} className="block truncate text-ink hover:underline" title={x.email}>
                       {x.email}
-                    </a>
+                    </Link>
                     <SiteList x={x} />
                   </span>
                   <span className="text-danger/90">{cancelNote(x.plan) ?? "Cancelled"}</span>
@@ -501,9 +448,9 @@ export function CustomersPanel({ c, range, now }: { c: CustomersReport; range: n
           <ul className="grid gap-x-6 px-5 pb-4 sm:grid-cols-2 sm:px-6 lg:grid-cols-3">
             {idle.map((x) => (
               <li key={x.userId} className="flex items-baseline justify-between gap-3 border-t border-line-soft py-2 text-[12.5px]">
-                <a href={`/owner/customers/${x.userId}`} className="min-w-0 truncate text-ink hover:underline" title={x.email}>
+                <Link href={`/owner/customers/${x.userId}`} scroll={false} className="min-w-0 truncate text-ink hover:underline" title={x.email}>
                   {x.email}
-                </a>
+                </Link>
                 <span className="shrink-0 font-mono text-[11.5px] tabular-nums text-ink-faint">joined {shortDate(x.createdAt)}</span>
               </li>
             ))}

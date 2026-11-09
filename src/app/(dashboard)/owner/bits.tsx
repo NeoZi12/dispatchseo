@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { cx } from "@/components/ui/styles";
 import { monotonePath, niceMax, TONE_VAR, type Tone } from "./curve";
 import { fmt, fullDate, money, pct } from "./format";
@@ -101,9 +103,9 @@ export function BarList({
         <li key={r.key} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 sm:grid-cols-[minmax(0,11rem)_1fr_auto]">
           <span className="min-w-0 truncate text-[13.5px] text-ink" title={typeof r.label === "string" ? r.label : r.key}>
             {hrefs?.[r.key] ? (
-              <a href={hrefs[r.key]} className="underline decoration-line underline-offset-4 hover:decoration-ink-faint">
+              <Link href={hrefs[r.key]} scroll={false} className="underline decoration-line underline-offset-4 hover:decoration-ink-faint">
                 {r.label}
-              </a>
+              </Link>
             ) : (
               r.label
             )}
