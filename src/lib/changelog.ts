@@ -74,6 +74,10 @@ export type ChangelogEntry = {
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "improved",
+    text: "Plans now state their articles per month instead of per week: Starter 4 a month, Growth 12, Scale 20. Same pace as before, counted the way the price is.",
+  },
+  {
+    kind: "improved",
     text: "The project menu no longer offers \"Add project\" or \"Upgrade to add more sites\". Every plan covers one site, so the row only ever led to a refusal.",
   },
   {

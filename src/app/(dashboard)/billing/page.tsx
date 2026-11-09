@@ -6,7 +6,7 @@ import { isCloudMode } from "@/lib/cloud";
 import {
   annualBillingAvailable,
   annualCharge,
-  articlesPerWeekFor,
+  articlesPerMonthFor,
   getSubscription,
   isActive,
   polarConfigured,
@@ -88,7 +88,7 @@ export default async function BillingPage({
           ? { word: "Free trial", tone: "ok", line: periodEndLabel ? `Trial ends ${periodEndLabel}, then it renews.` : "Your trial renews into the plan when it ends." }
           : { word: "Active", tone: "ok", line: periodEndLabel ? `Renews ${periodEndLabel}.` : "Renews each period." };
 
-  const perWeek = sub ? articlesPerWeekFor(sub.tier) : 0;
+  const perMonth = sub ? articlesPerMonthFor(sub.tier) : 0;
 
   return (
     <div className="mx-auto max-w-3xl space-y-12">
@@ -138,7 +138,7 @@ export default async function BillingPage({
             </div>
             <p className="mt-3 text-[15px] text-ink">
               {hostedMode
-                ? `${perWeek === 1 ? "One article" : `Up to ${perWeek} articles`} a week${sub.sites_limit > 1 ? `, up to ${sub.sites_limit} sites` : ", one site"}`
+                ? `${perMonth} ${perMonth === 1 ? "article" : "articles"} a month${sub.sites_limit > 1 ? `, up to ${sub.sites_limit} sites` : ", one site"}`
                 : `Up to ${sub.sites_limit} ${sub.sites_limit === 1 ? "site" : "sites"}`}
             </p>
             <p className="mt-1 text-[14px] text-ink-muted">{state.line}</p>
@@ -179,7 +179,7 @@ export default async function BillingPage({
           {(Object.keys(TIER_COPY) as Tier[]).map((tier, i) => {
             const limits = TIER_LIMITS[tier];
             const isCurrent = active && sub?.tier === tier;
-            const weekly = articlesPerWeekFor(tier);
+            const monthly = articlesPerMonthFor(tier);
             return (
               <div
                 key={tier}
@@ -205,7 +205,7 @@ export default async function BillingPage({
                 <p className="mt-4 text-[14px] text-ink">
                   {hostedMode ? (
                     <>
-                      <span className="font-semibold tabular-nums">{weekly}</span> {weekly === 1 ? "article" : "articles"} a week
+                      <span className="font-semibold tabular-nums">{monthly}</span> {monthly === 1 ? "article" : "articles"} a month
                     </>
                   ) : (
                     <>

@@ -42,8 +42,8 @@ site starts on the free plan; paid plans publish weekly.
   Google Search Console stats. No card, no end date. Free articles carry a
   small DispatchSEO badge.
 - Paid plans, per site, billed monthly: Starter ${priceLabel(TIER_LIMITS.starter.price)}
-  (1 article a week), Growth ${priceLabel(TIER_LIMITS.growth.price)} (3 a week),
-  Scale ${priceLabel(TIER_LIMITS.scale.price)} (5 a week). Paid plans add weekly
+  (4 articles a month), Growth ${priceLabel(TIER_LIMITS.growth.price)} (12 a month),
+  Scale ${priceLabel(TIER_LIMITS.scale.price)} (20 a month). Paid plans add weekly
   keyword research, keyword rank tracking and advanced analytics, and remove
   the badge. Yearly billing is cheaper where offered.
 - Articles are only written about topics with real, measured search demand.

@@ -382,7 +382,8 @@ export default async function LandingPage({
               free/paid split decided 2026-11-06/08: free keeps the result
               (articles + its Google numbers), paid adds the pace, weekly
               research, rankings, advanced analytics and drops the badge.
-              Paid counts are stated flat (3 a week, 5 a week), never "up to"
+              Paid counts are stated flat and per month (4 / 12 / 20 a month =
+              1 / 3 / 5 a week x 4, owner 2026-11-09), never "up to"
               (owner, 2026-11-08: people get what they pay for). Same perks as the dashboard's upgrade panel - keep the
               two in step. Yearly is the default once the yearly Polar
               products exist; the tag says "up to" because the saving differs
@@ -407,7 +408,7 @@ export default async function LandingPage({
               <PlanPrice tier="starter" annual={annual} />
               <div className="p-sub">Small site, steady articles</div>
               <ul>
-                <li>1 article a week</li>
+                <li>4 articles a month</li>
                 <li>Weekly keyword research</li>
                 <li>Fact-checked articles</li>
                 <li>Keyword rankings</li>
@@ -424,7 +425,7 @@ export default async function LandingPage({
               <PlanPrice tier="growth" annual={annual} />
               <div className="p-sub">More traffic, faster</div>
               <ul>
-                <li>3 articles a week</li>
+                <li>12 articles a month</li>
                 <li>Weekly keyword research</li>
                 <li>Fact-checked articles</li>
                 <li>Keyword rankings</li>
@@ -438,7 +439,7 @@ export default async function LandingPage({
               <PlanPrice tier="scale" annual={annual} />
               <div className="p-sub">All in on content</div>
               <ul>
-                <li>5 articles a week</li>
+                <li>20 articles a month</li>
                 <li>Weekly keyword research</li>
                 <li>Fact-checked articles</li>
                 <li>Keyword rankings</li>
@@ -483,9 +484,9 @@ export default async function LandingPage({
               </thead>
               <tbody>
                 <tr>
-                  <td><b>1</b> a week</td>
-                  <td className="pm-pick"><b>3</b> a week</td>
-                  <td><b>5</b> a week</td>
+                  <td><b>4</b> a month</td>
+                  <td className="pm-pick"><b>12</b> a month</td>
+                  <td><b>20</b> a month</td>
                 </tr>
                 <tr>
                   <td>Email support</td>
@@ -537,7 +538,7 @@ export default async function LandingPage({
             </details>
             <details>
               <summary>How many articles will I get?</summary>
-              <div className="a">2 a month on Free, 1 a week on Starter, 3 a week on Growth and 5 a week on Scale. Every one is about a topic with real search demand behind it.</div>
+              <div className="a">2 a month on Free, 4 a month on Starter, 12 a month on Growth and 20 a month on Scale. Every one is about a topic with real search demand behind it.</div>
             </details>
             <details>
               <summary>Is this another AI content spammer?</summary>

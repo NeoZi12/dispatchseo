@@ -120,6 +120,13 @@ export function articlesPerWeekFor(tier: Tier | null | undefined): number {
   return ARTICLES_PER_WEEK[tier] ?? UNBILLED_ARTICLES_PER_WEEK;
 }
 
+/** The plan's pace as pricing copy states it: articles a month, counted as
+ *  four weeks (Starter 1 a week = 4 a month). A calendar month holds a bit
+ *  more than four weeks, so the stated number never over-promises. */
+export function articlesPerMonthFor(tier: Tier | null | undefined): number {
+  return articlesPerWeekFor(tier) * 4;
+}
+
 /** What Polar charges once a year for the annual plan, in whole dollars. */
 export function annualCharge(tier: Tier): number {
   return TIER_LIMITS[tier].annual * 12;

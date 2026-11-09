@@ -13,7 +13,7 @@ import {
   polarConfigured,
   priceLabel,
   TIER_LIMITS,
-  articlesPerWeekFor,
+  articlesPerMonthFor,
   type BillingInterval,
   type Tier,
 } from "@/lib/billing";
@@ -289,8 +289,8 @@ export default async function PlansPage({
                     <li className="flex items-center gap-2.5 whitespace-nowrap text-neutral-300">
                       <Check className="h-4 w-4 shrink-0 text-violet-400" />
                       <span>
-                        <span className="font-medium text-white tabular-nums">{articlesPerWeekFor(tier)}</span>{" "}
-                        article{articlesPerWeekFor(tier) === 1 ? "" : "s"} a week
+                        <span className="font-medium text-white tabular-nums">{articlesPerMonthFor(tier)}</span>{" "}
+                        article{articlesPerMonthFor(tier) === 1 ? "" : "s"} a month
                       </span>
                     </li>
                     {CAPABILITIES.map((cap) => (
