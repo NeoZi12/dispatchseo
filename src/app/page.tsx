@@ -5,6 +5,7 @@ import { DispatchMark } from "@/components/logo";
 import { DISCORD_URL, DiscordMark } from "@/components/discord-mark";
 import { FeatureShowcase } from "./feature-showcase";
 import { ChecksLine } from "./checks-line";
+import { ScrollReveal } from "./scroll-reveal";
 import { DomainCta } from "./domain-cta";
 import { LandingNav } from "./landing-nav";
 import { PixelDispatcher } from "@/components/pixel-dispatcher";
@@ -213,6 +214,7 @@ export default async function LandingPage({
       {/* Organization + SoftwareApplication with the live plan prices
           (lib/brand.ts) - the same facts the plan cards show, as data. */}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: brandJsonLdHtml() }} />
+      <ScrollReveal />
       {/* ==================== NAV ==================== */}
       <nav>
         <div className="nav-wrap nav-in">

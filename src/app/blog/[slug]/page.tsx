@@ -7,6 +7,7 @@ import { getAllPosts, getPost, getPostHeadings } from "@/lib/blog";
 import { mdxComponents } from "@/components/blog/registry";
 import { TableOfContents } from "@/components/blog/TableOfContents";
 import { SideAd } from "@/components/blog/SideAd";
+import { SiteNav } from "@/app/site-nav";
 
 // Public post page. Static at build time (generateStaticParams) - no auth,
 // no DB, renders MDX from src/content/blog with the registry's components.
@@ -81,11 +82,13 @@ export default async function BlogPost({ params }: { params: Promise<{ slug: str
     // can't blow the layout out) beside a fixed 240px rail. The grid must
     // NOT be items-start: the aside has to stretch to the article's full
     // height or its sticky child has no room to travel and never pins.
+    <>
+      <SiteNav />
     <main
       className={
         showRail
-          ? "mx-auto max-w-3xl px-6 py-16 lg:max-w-6xl lg:grid lg:grid-cols-[minmax(0,1fr)_240px] lg:gap-16"
-          : "mx-auto max-w-3xl px-6 py-16"
+          ? "mx-auto max-w-3xl px-6 py-12 lg:max-w-6xl lg:grid lg:grid-cols-[minmax(0,1fr)_240px] lg:gap-16"
+          : "mx-auto max-w-3xl px-6 py-12"
       }
     >
       <article className="max-w-3xl">
@@ -163,5 +166,6 @@ export default async function BlogPost({ params }: { params: Promise<{ slug: str
         </aside>
       )}
     </main>
+    </>
   );
 }

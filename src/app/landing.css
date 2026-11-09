@@ -75,6 +75,12 @@ html:has(.ld) { scroll-behavior: smooth; }
 .ld .btn-ghost { background: transparent; color: var(--txt); border-color: var(--line3); }
 .ld .btn-ghost:hover { background: var(--card2); }
 .ld .btn-sm { padding: 8px 16px; font-size: 14px; border-radius: 8px; }
+/* Non-landing pages (blog) mount only the bar, via site-nav.tsx. There the
+   .ld wrapper is nav-high, so IT must be the sticky box and stay transparent
+   (the opaque .ld background would defeat the bar's blur). */
+.ld.site-nav { position: sticky; top: 0; z-index: 50; background: transparent; }
+.ld.site-nav nav { position: static; }
+
 
 /* ---------- mobile nav: burger + slide-down sheet ---------- */
 /* Hidden entirely on desktop; the sheet itself is portalled to the .ld root
@@ -106,6 +112,24 @@ html:has(.ld) { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) {
   .ld .nav-scrim, .ld .nav-panel { animation: none; }
   .ld .burger-box i { transition: none; }
+}
+
+/* ---------- scroll reveal (scroll-reveal.tsx) ----------
+   Armed by .rv on the root (set from JS on mount - server HTML stays fully
+   visible), each section rises 18px and fades in the first time it is seen;
+   the cards inside it follow a beat apart. The hero is a <header> and is
+   not touched. Reduced motion: no transition, everything visible. */
+.ld.rv section, .ld.rv footer { opacity: 0; transform: translateY(18px); transition: opacity 0.7s ease, transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1); }
+.ld.rv section.rv-in, .ld.rv footer.rv-in { opacity: 1; transform: none; }
+.ld.rv section .who-card, .ld.rv section .plan, .ld.rv section .ck-st { opacity: 0; transform: translateY(14px); transition: opacity 0.55s ease, transform 0.55s cubic-bezier(0.2, 0.7, 0.2, 1); }
+.ld.rv section.rv-in .who-card, .ld.rv section.rv-in .plan, .ld.rv section.rv-in .ck-st { opacity: 1; transform: none; }
+.ld.rv section.rv-in .who-card:nth-child(2), .ld.rv section.rv-in .plan:nth-child(2), .ld.rv section.rv-in .ck-st:nth-child(3) { transition-delay: 0.08s; }
+.ld.rv section.rv-in .who-card:nth-child(3), .ld.rv section.rv-in .plan:nth-child(3), .ld.rv section.rv-in .ck-st:nth-child(4) { transition-delay: 0.16s; }
+.ld.rv section.rv-in .who-card:nth-child(4), .ld.rv section.rv-in .plan:nth-child(4), .ld.rv section.rv-in .ck-st:nth-child(5) { transition-delay: 0.24s; }
+.ld.rv section.rv-in .who-card:nth-child(5), .ld.rv section.rv-in .ck-st:nth-child(6) { transition-delay: 0.32s; }
+.ld.rv section.rv-in .ck-st:nth-child(7) { transition-delay: 0.4s; }
+@media (prefers-reduced-motion: reduce) {
+  .ld.rv section, .ld.rv footer, .ld.rv section .who-card, .ld.rv section .plan, .ld.rv section .ck-st { opacity: 1; transform: none; transition: none; }
 }
 
 /* ---------- hero ---------- */

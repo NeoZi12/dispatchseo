@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { DispatchMark } from "@/components/logo";
+import { SiteNav } from "@/app/site-nav";
 import { PostCard } from "@/components/blog/PostCard";
 import { getAllPosts } from "@/lib/blog";
 import { coversForPosts } from "@/lib/blog-covers";
@@ -32,14 +32,18 @@ export default function BlogIndex() {
   const covers = coversForPosts(posts);
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-16 sm:py-20">
+    <>
+      <SiteNav />
+    <main className="mx-auto max-w-4xl px-6 py-12 sm:py-16">
       <header className="mb-12">
+        {/* The nav above carries the logo; this is the explicit way back for
+            a reader who arrived from a search result and only wants out. */}
         <Link
           href="/"
-          className="inline-flex items-center gap-2 rounded-md text-sm font-medium text-neutral-400 outline-none transition-colors hover:text-neutral-200 focus-visible:ring-2 focus-visible:ring-violet-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950"
+          className="inline-flex items-center gap-1.5 rounded-md text-sm font-medium text-neutral-400 outline-none transition-colors hover:text-neutral-200 focus-visible:ring-2 focus-visible:ring-violet-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950"
         >
-          <DispatchMark className="h-5 w-5" />
-          DispatchSEO
+          <span aria-hidden="true">←</span>
+          Home
         </Link>
         <h1 className="mt-5 text-3xl font-semibold tracking-tight sm:text-4xl">Blog</h1>
         <p className="mt-2 max-w-lg text-neutral-400">
@@ -64,5 +68,6 @@ export default function BlogIndex() {
         </div>
       )}
     </main>
+    </>
   );
 }

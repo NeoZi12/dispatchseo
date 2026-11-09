@@ -74,6 +74,10 @@ export type ChangelogEntry = {
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "improved",
+    text: "The blog carries the same top bar as the home page, so Pricing, FAQ and the way home are one click from any post. Home page sections fade in as you scroll.",
+  },
+  {
+    kind: "improved",
     text: "While your first article is being written, the sidebar is Overview only - the other screens wait, and say so when you hover them. Settings is down to Site, Google, Plan and Advanced; Publishing shows only when it needs you.",
   },
   {
