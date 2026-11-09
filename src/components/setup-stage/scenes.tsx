@@ -574,65 +574,29 @@ export type PlanMenu = {
 // here): whole dollars plain, half-dollars with cents, never rounded.
 const money = (n: number) => (Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`);
 
-const TIMES: Record<number, string> = { 2: "Twice the articles", 3: "Three times the articles", 4: "Four times the articles", 5: "Five times the articles" };
-
-/** The card's one-line promise, worded as on the landing's pricing. */
-function promiseFor(o: PlanOffer, menu: PlanMenu): string {
-  if (o.tier === "starter") return o.perWeek === 1 ? "A new article every week" : `${o.perWeek} new articles every week`;
-  if (o.tier === "growth") {
-    const base = menu.paid.find((x) => x.tier === "starter")?.perWeek ?? 0;
-    return (base > 0 && o.perWeek % base === 0 && TIMES[o.perWeek / base]) || "More articles every week";
-  }
-  return "As fast as quality allows";
-}
+/** Who each plan is for, in one sentence (owner, 2026-11-09): the same
+ *  lines as the landing's pricing cards and /plans. */
+const WHO: Record<PlanTier, string> = {
+  free: "For a side project, or a first look before you pay anything.",
+  starter: "For a new or small site that wants steady articles without the work.",
+  growth: "For a site with some traffic already that wants to grow it faster.",
+  scale: "For a site where content is the main growth channel and speed matters.",
+};
 
 const perWeekLine = (n: number) => (n === 1 ? "1 article a week" : `${n} articles a week`);
 const PAID_ROWS = ["Weekly keyword research", "Fact-checked articles", "Keyword rankings", "Advanced analytics", "No DispatchSEO badge"];
 const FREE_ROWS = ["Topics people search for", "Fact-checked articles", "Published for you", "Your Google stats"];
-
-/** Four weeks as a dot calendar, the publishing days lit: the pace of a
- *  plan at a glance. Up to three a week sit two days apart, more is one a
- *  day (the scheduler's spacing); a monthly count is spread evenly. */
-function PaceMonth({ perWeek, perMonth, on }: { perWeek?: number; perMonth?: number; on: boolean }) {
-  const lit = new Set<number>();
-  if (perMonth) {
-    const m = Math.min(perMonth, 28);
-    for (let i = 0; i < m; i++) lit.add(Math.floor((i * 28) / m));
-  } else if (perWeek) {
-    const n = Math.min(Math.max(Math.floor(perWeek), 0), 7);
-    const step = n > 3 ? 1 : 2;
-    for (let w = 0; w < 4; w++) for (let k = 0; k < n; k++) lit.add(w * 7 + k * step);
-  }
-  return (
-    <span aria-hidden="true" className="flex shrink-0 flex-col items-end gap-1">
-      <span className="grid grid-cols-7 gap-[3px]">
-        {Array.from({ length: 28 }, (_, i) => (
-          <span
-            key={i}
-            className={cx(
-              "h-[6px] w-[6px] rounded-[2px] transition-colors duration-300 motion-reduce:transition-none",
-              lit.has(i) ? (on ? "bg-accent" : "bg-ink-faint") : "bg-surface-3",
-            )}
-            style={{ transitionDelay: on && lit.has(i) ? `${i * 12}ms` : "0ms" }}
-          />
-        ))}
-      </span>
-      <span className="text-[10.5px] leading-none text-ink-faint">4 weeks</span>
-    </span>
-  );
-}
 
 function PlanCard({
   tier,
   name,
   price,
   billing,
-  promise,
+  who,
   lead,
   rows,
   note,
   popular,
-  pace,
   on,
   busy,
   onPick,
@@ -641,12 +605,11 @@ function PlanCard({
   name: string;
   price: string;
   billing: string;
-  promise: string;
+  who: string;
   lead: string;
   rows: string[];
   note?: string;
   popular?: boolean;
-  pace: { perWeek?: number; perMonth?: number };
   on: boolean;
   busy?: boolean;
   onPick: (tier: PlanTier) => void;
@@ -674,18 +637,15 @@ function PlanCard({
         {popular ? <span className="rounded-md bg-accent-soft px-1.5 py-0.5 text-[11.5px] font-medium text-accent">Most popular</span> : null}
       </span>
 
-      <span className="mt-4 flex items-end justify-between gap-3">
-        <span className="flex flex-col">
-          <span className="flex items-baseline gap-1">
-            <span className="text-[30px] font-semibold leading-none tracking-tight text-ink tabular-nums">{price}</span>
-            <span className="text-[13.5px] text-ink-muted">/month</span>
-          </span>
-          <span className="mt-1.5 text-[12.5px] text-ink-faint">{billing}</span>
+      <span className="mt-4 flex flex-col">
+        <span className="flex items-baseline gap-1">
+          <span className="text-[30px] font-semibold leading-none tracking-tight text-ink tabular-nums">{price}</span>
+          <span className="text-[13.5px] text-ink-muted">/month</span>
         </span>
-        <PaceMonth {...pace} on={on} />
+        <span className="mt-1.5 text-[12.5px] text-ink-faint">{billing}</span>
       </span>
 
-      <span className="mt-3 text-[14px] text-ink-muted">{promise}</span>
+      <span className="mt-3 text-[14px] leading-snug text-ink-muted">{who}</span>
 
       {/* Phones: only the selected card lists its features, so four plans
           fit on a screen; from sm up every card shows its list. */}
@@ -786,11 +746,10 @@ export function PlanScene({
                 name="Free"
                 price="$0"
                 billing="Free forever"
-                promise="See it work, no card"
+                who={WHO.free}
                 lead={menu.free.perMonth === 1 ? "1 article a month" : `${menu.free.perMonth} articles a month`}
                 rows={FREE_ROWS}
                 note="Articles carry a small Made with DispatchSEO badge"
-                pace={{ perMonth: menu.free.perMonth }}
                 on={choice.tier === "free"}
                 busy={busy}
                 onPick={pick}
@@ -805,11 +764,10 @@ export function PlanScene({
                   name={o.name}
                   price={money(y ? y.perMonth : o.monthly)}
                   billing={y ? `Billed ${money(y.charge)} a year, save ${y.savePct}%` : "Billed monthly"}
-                  promise={promiseFor(o, menu)}
+                  who={WHO[o.tier]}
                   lead={perWeekLine(o.perWeek)}
                   rows={o.tier === "scale" ? [...PAID_ROWS, "Priority support"] : PAID_ROWS}
                   popular={o.tier === "growth"}
-                  pace={{ perWeek: o.perWeek }}
                   on={choice.tier === o.tier}
                   busy={busy}
                   onPick={pick}

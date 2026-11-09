@@ -376,7 +376,7 @@ export default async function LandingPage({
             <div className="plan">
               <h3>Free</h3>
               <div className="p-price">$0<small>/forever</small></div>
-              <div className="p-sub">See it work, no card</div>
+              <div className="p-sub">For a side project, or a first look before you pay anything.</div>
               <ul>
                 <li>2 articles a month</li>
                 <li>Topics people search for</li>
@@ -389,7 +389,7 @@ export default async function LandingPage({
             <div className="plan">
               <h3>Starter</h3>
               <PlanPrice tier="starter" annual={annual} />
-              <div className="p-sub">A new article every week</div>
+              <div className="p-sub">For a new or small site that wants steady articles without the work.</div>
               <ul>
                 <li>1 article a week</li>
                 <li>Weekly keyword research</li>
@@ -406,7 +406,7 @@ export default async function LandingPage({
               <CardMascot className="plan-mascot" />
               <h3>Growth</h3>
               <PlanPrice tier="growth" annual={annual} />
-              <div className="p-sub">Three times the articles</div>
+              <div className="p-sub">For a site with some traffic already that wants to grow it faster.</div>
               <ul>
                 <li>3 articles a week</li>
                 <li>Weekly keyword research</li>
@@ -420,7 +420,7 @@ export default async function LandingPage({
             <div className="plan">
               <h3>Scale</h3>
               <PlanPrice tier="scale" annual={annual} />
-              <div className="p-sub">As fast as quality allows</div>
+              <div className="p-sub">For a site where content is the main growth channel and speed matters.</div>
               <ul>
                 <li>5 articles a week</li>
                 <li>Weekly keyword research</li>

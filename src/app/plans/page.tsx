@@ -33,19 +33,19 @@ const TIER_COPY: Record<
 > = {
   starter: {
     name: "Starter",
-    tagline: "One article a week, one site",
+    tagline: "For a new or small site that wants steady articles without the work.",
     cta: "Choose Starter",
     recommended: false,
   },
   growth: {
     name: "Growth",
-    tagline: "Three articles a week, one site",
+    tagline: "For a site with some traffic already that wants to grow it faster.",
     cta: "Choose Growth",
     recommended: true,
   },
   scale: {
     name: "Scale",
-    tagline: "Five articles a week, one site",
+    tagline: "For a site where content is the main growth channel and speed matters.",
     cta: "Choose Scale",
     recommended: false,
   },
