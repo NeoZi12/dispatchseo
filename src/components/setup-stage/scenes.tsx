@@ -9,8 +9,8 @@ import s from "./stage.module.css";
 
 // The scenes of the setup stage. Each is pure: it renders the state it
 // is given and reports clicks; the stage (or the preview) owns the state.
-// The things only the customer can do - the address, an account, GitHub,
-// Google, and the card for a paid plan -
+// The things only the customer can do - the address, an account, a plan
+// (and the card for a paid one), GitHub, Google -
 // and everything between them is ours and shows itself happening.
 
 // ---------------------------------------------------------------- address
@@ -485,7 +485,7 @@ export function AccountScene({
     );
   }
   return (
-    <SceneCard id="account" title="Make your account" lead={`${domain} fits. Next, an account so your articles have a home.`}>
+    <SceneCard id="account" title="Create your account" lead={`${domain} fits. Next, an account so your articles have a home.`}>
       <label className="flex cursor-pointer items-start gap-3 text-[14px] text-ink-muted">
         <input type="checkbox" checked={accept} onChange={(e) => onAccept(e.target.checked)} className="mt-0.5 h-4 w-4 accent-accent" />
         <span>
@@ -543,87 +543,298 @@ export function AccountScene({
   );
 }
 
-// --------------------------------------------------------------- checkout
+// ------------------------------------------------------------------- plan
 
-export type PlanSummary = {
+export type PaidTier = "starter" | "growth" | "scale";
+export type PlanTier = "free" | PaidTier;
+export type PlanInterval = "month" | "year";
+export type PlanChoice = { tier: PlanTier; interval: PlanInterval };
+
+/** One paid plan as the plan step shows it. Every number comes from
+ *  billing.ts on the server (TIER_LIMITS, annualCharge, annualSavingsPct,
+ *  ARTICLES_PER_WEEK) - none is typed here. */
+export type PlanOffer = {
+  tier: PaidTier;
   name: string;
-  /** What Polar charges: per month, or per year for a yearly plan. */
-  price: number;
-  interval: "month" | "year";
-  articlesPerWeek: number;
+  perWeek: number;
+  /** Per month, billed monthly. */
+  monthly: number;
+  /** Null = no yearly product on this deployment. */
+  yearly: { perMonth: number; charge: number; savePct: number } | null;
+};
+export type PlanMenu = {
+  /** Null = the free plan is closed: no Free card. */
+  free: { perMonth: number } | null;
+  paid: PlanOffer[];
+  /** Every paid plan can be bought yearly, so the toggle shows. */
+  yearly: boolean;
 };
 
-/** Step 3, only for a paid plan picked on the pricing page. */
-export function CheckoutScene({ plan, domain, onPay, onFree, freePerMonth, busy, error }: { plan: PlanSummary; domain: string; onPay: () => void; onFree?: () => void; freePerMonth?: number; busy?: boolean; error?: string | null }) {
-  const a = plan.articlesPerWeek;
-  const per = plan.interval === "year" ? "year" : "month";
+// The same rule as billing.ts priceLabel (server-only, so not importable
+// here): whole dollars plain, half-dollars with cents, never rounded.
+const money = (n: number) => (Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`);
+
+const TIMES: Record<number, string> = { 2: "Twice the articles", 3: "Three times the articles", 4: "Four times the articles", 5: "Five times the articles" };
+
+/** The card's one-line promise, worded as on the landing's pricing. */
+function promiseFor(o: PlanOffer, menu: PlanMenu): string {
+  if (o.tier === "starter") return o.perWeek === 1 ? "A new article every week" : `${o.perWeek} new articles every week`;
+  if (o.tier === "growth") {
+    const base = menu.paid.find((x) => x.tier === "starter")?.perWeek ?? 0;
+    return (base > 0 && o.perWeek % base === 0 && TIMES[o.perWeek / base]) || "More articles every week";
+  }
+  return "As fast as quality allows";
+}
+
+const perWeekLine = (n: number) => (n === 1 ? "1 article a week" : `${n} articles a week`);
+const PAID_ROWS = ["Weekly keyword research", "Fact-checked articles", "Keyword rankings", "Advanced analytics", "No DispatchSEO badge"];
+const FREE_ROWS = ["Topics people search for", "Fact-checked articles", "Published for you", "Your Google stats"];
+
+/** Four weeks as a dot calendar, the publishing days lit: the pace of a
+ *  plan at a glance. Up to three a week sit two days apart, more is one a
+ *  day (the scheduler's spacing); a monthly count is spread evenly. */
+function PaceMonth({ perWeek, perMonth, on }: { perWeek?: number; perMonth?: number; on: boolean }) {
+  const lit = new Set<number>();
+  if (perMonth) {
+    const m = Math.min(perMonth, 28);
+    for (let i = 0; i < m; i++) lit.add(Math.floor((i * 28) / m));
+  } else if (perWeek) {
+    const n = Math.min(Math.max(Math.floor(perWeek), 0), 7);
+    const step = n > 3 ? 1 : 2;
+    for (let w = 0; w < 4; w++) for (let k = 0; k < n; k++) lit.add(w * 7 + k * step);
+  }
   return (
-    <SceneCard
-      id="checkout"
-      title={`Your ${plan.name} plan`}
-      lead={`Pay once here, then connect GitHub and Google for ${domain}.`}
-      action={
-        <>
-          <button type="button" className={BTN_PRIMARY} onClick={onPay} disabled={busy}>
-            Continue to payment · ${plan.price}/{per}
-            <Arrow />
-          </button>
-          <span className="text-[13px] text-ink-faint">Cancel any time.</span>
-        </>
-      }
-    >
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="rounded-2xl border border-line-soft bg-surface-2 p-5">
-          <p className="text-[12.5px] font-medium uppercase tracking-wide text-ink-faint">Your plan</p>
-          <p className="mt-1 text-[22px] font-semibold text-ink">
-            {plan.name}{" "}
-            <span className="text-[15px] font-normal text-ink-muted">
-              ${plan.price}/{per}
-            </span>
-          </p>
-          <p className="mt-1 text-[14px] text-ink-muted">
-            {a === 1 ? "1 article a week" : `${a} articles a week`}, researched, written and published for you.
-          </p>
-        </div>
-        <div className="rounded-2xl border border-line-soft bg-surface-2 p-5">
-          <p className="text-[12.5px] font-medium uppercase tracking-wide text-ink-faint">What happens next</p>
-          <ul className="mt-2 space-y-2 text-[14px] text-ink">
-            <Ready>Connect GitHub and Google (a few clicks each)</Ready>
-            <Ready>Your first article is written and published</Ready>
-            <Ready>Then {a === 1 ? "a new one every week" : `${a} new ones every week`}</Ready>
-          </ul>
-        </div>
-      </div>
-      {error ? <p className="mt-5 rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-[14px] text-ink">{error}</p> : null}
-      {/* The point of purchase, so the express-consent line /plans carries
-          (EU/UK 14-day withdrawal waiver - see app/plans/page.tsx). */}
-      <p className="mt-5 text-[12.5px] leading-relaxed text-ink-faint">
-        Your subscription renews automatically until you cancel. By subscribing you agree to the{" "}
-        <a className="underline underline-offset-2 hover:text-ink-muted" href="/terms" target="_blank">
-          terms of service
-        </a>
-        , and you ask us to start the service straight away - which means that once it has been fully performed you lose the 14-day right of
-        withdrawal you would otherwise have as a consumer. Cancel any time from your billing page.
-      </p>
-      {onFree ? (
-        <p className="mt-5 text-center">
-          <button type="button" onClick={onFree} disabled={busy} className="rounded text-[14px] text-ink-muted underline decoration-line underline-offset-4 hover:text-ink">
-            Start on the free plan instead{freePerMonth ? ` (${freePerMonth} articles a month)` : ""}
-          </button>
-        </p>
-      ) : null}
-    </SceneCard>
+    <span aria-hidden="true" className="flex shrink-0 flex-col items-end gap-1">
+      <span className="grid grid-cols-7 gap-[3px]">
+        {Array.from({ length: 28 }, (_, i) => (
+          <span
+            key={i}
+            className={cx(
+              "h-[6px] w-[6px] rounded-[2px] transition-colors duration-300 motion-reduce:transition-none",
+              lit.has(i) ? (on ? "bg-accent" : "bg-ink-faint") : "bg-surface-3",
+            )}
+            style={{ transitionDelay: on && lit.has(i) ? `${i * 12}ms` : "0ms" }}
+          />
+        ))}
+      </span>
+      <span className="text-[10.5px] leading-none text-ink-faint">4 weeks</span>
+    </span>
   );
 }
 
-function Ready({ children }: { children: React.ReactNode }) {
+function PlanCard({
+  tier,
+  name,
+  price,
+  billing,
+  promise,
+  lead,
+  rows,
+  note,
+  popular,
+  pace,
+  on,
+  busy,
+  onPick,
+}: {
+  tier: PlanTier;
+  name: string;
+  price: string;
+  billing: string;
+  promise: string;
+  lead: string;
+  rows: string[];
+  note?: string;
+  popular?: boolean;
+  pace: { perWeek?: number; perMonth?: number };
+  on: boolean;
+  busy?: boolean;
+  onPick: (tier: PlanTier) => void;
+}) {
   return (
-    <li className="flex items-center gap-2">
-      <span className="grid h-5 w-5 place-items-center rounded-full bg-ok-soft text-ok">
-        <Check className="h-3.5 w-3.5" />
+    <label
+      className={cx(
+        "relative flex cursor-pointer flex-col rounded-2xl border p-4 transition duration-200 motion-reduce:transition-none sm:p-5",
+        on
+          ? "-translate-y-0.5 border-accent/70 bg-surface-2 shadow-lg shadow-accent/10 ring-1 ring-accent/40 motion-reduce:translate-y-0"
+          : "border-line-soft bg-surface-2/50 hover:border-line hover:bg-surface-2",
+        "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent/70 has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-surface",
+        busy ? "pointer-events-none opacity-60" : "",
+      )}
+    >
+      <input type="radio" name="plan" value={tier} checked={on} onChange={() => onPick(tier)} disabled={busy} className="sr-only" />
+      <span className="flex items-center gap-2.5">
+        <span
+          aria-hidden="true"
+          className={cx("grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full border-2 transition-colors", on ? "border-accent bg-accent" : "border-line")}
+        >
+          {on ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
+        </span>
+        <span className="text-[16px] font-semibold text-ink">{name}</span>
+        {popular ? <span className="rounded-md bg-accent-soft px-1.5 py-0.5 text-[11.5px] font-medium text-accent">Most popular</span> : null}
       </span>
-      <span>{children}</span>
-    </li>
+
+      <span className="mt-4 flex items-end justify-between gap-3">
+        <span className="flex flex-col">
+          <span className="flex items-baseline gap-1">
+            <span className="text-[30px] font-semibold leading-none tracking-tight text-ink tabular-nums">{price}</span>
+            <span className="text-[13.5px] text-ink-muted">/month</span>
+          </span>
+          <span className="mt-1.5 text-[12.5px] text-ink-faint">{billing}</span>
+        </span>
+        <PaceMonth {...pace} on={on} />
+      </span>
+
+      <span className="mt-3 text-[14px] text-ink-muted">{promise}</span>
+
+      {/* Phones: only the selected card lists its features, so four plans
+          fit on a screen; from sm up every card shows its list. */}
+      <ul className={cx("mt-4 space-y-2 border-t border-line-soft pt-4 text-[13.5px]", on ? "block" : "hidden sm:block")}>
+        {[lead, ...rows].map((r, i) => (
+          <li key={r} className={cx("flex items-start gap-2", i === 0 ? "font-medium text-ink" : "text-ink-muted")}>
+            <Check className={cx("mt-px h-4 w-4 shrink-0", on ? "text-accent" : "text-ink-faint")} delay={i * 40} />
+            <span>{r}</span>
+          </li>
+        ))}
+        {note ? (
+          <li className="flex items-start gap-2 text-ink-faint">
+            <span aria-hidden="true" className="mt-[7px] ml-[5px] mr-[3px] h-1.5 w-1.5 shrink-0 rounded-full bg-line" />
+            <span>{note}</span>
+          </li>
+        ) : null}
+      </ul>
+    </label>
+  );
+}
+
+/** Step 3: every new site picks a plan here. Free goes straight on to
+ *  GitHub; a paid plan goes through Polar first. */
+export function PlanScene({
+  menu,
+  choice,
+  onChoice,
+  onContinue,
+  domain,
+  busy,
+  error,
+}: {
+  menu: PlanMenu;
+  choice: PlanChoice;
+  onChoice: (c: PlanChoice) => void;
+  onContinue: () => void;
+  domain: string;
+  busy?: boolean;
+  error?: string | null;
+}) {
+  const yearly = menu.yearly && choice.interval === "year";
+  const picked = choice.tier === "free" ? null : (menu.paid.find((o) => o.tier === choice.tier) ?? null);
+  const pick = (tier: PlanTier) => onChoice({ ...choice, tier });
+  const bestSave = Math.max(0, ...menu.paid.map((o) => o.yearly?.savePct ?? 0));
+  const cards = (menu.free ? 1 : 0) + menu.paid.length;
+
+  const cta = picked
+    ? yearly && picked.yearly
+      ? `Continue to payment · ${money(picked.yearly.charge)}/year`
+      : `Continue to payment · ${money(picked.monthly)}/month`
+    : "Start free";
+
+  return (
+    // The plan cards need more room than one column of text: from lg up
+    // this scene reaches past the stage's column, still centred under it.
+    <div className="lg:-mx-28 xl:-mx-36">
+      <SceneCard
+        id="checkout"
+        title="Pick your plan"
+        lead={`How often should we publish on ${domain}? You can switch plans any time.`}
+        action={
+          <>
+            <button type="button" className={BTN_PRIMARY} onClick={onContinue} disabled={busy}>
+              {cta}
+              <Arrow />
+            </button>
+            <span className="text-[13px] text-ink-faint">{picked ? "Cancel any time." : "No card needed."}</span>
+          </>
+        }
+      >
+        {menu.yearly ? (
+          <div role="radiogroup" aria-label="Billing period" className="mx-auto mb-6 flex w-fit items-center gap-1 rounded-xl border border-line-soft bg-surface-2 p-1">
+            {(["month", "year"] as const).map((iv) => {
+              const on = choice.interval === iv;
+              return (
+                <label
+                  key={iv}
+                  className={cx(
+                    "cursor-pointer rounded-lg px-4 py-2 text-[13.5px] font-medium transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent/70",
+                    on ? "bg-surface-3 text-ink shadow-sm" : "text-ink-muted hover:text-ink",
+                  )}
+                >
+                  <input type="radio" name="interval" value={iv} checked={on} onChange={() => onChoice({ ...choice, interval: iv })} disabled={busy} className="sr-only" />
+                  {iv === "month" ? "Monthly" : "Yearly"}
+                  {iv === "year" && bestSave > 0 ? <span className="ml-1.5 text-ok">save up to {bestSave}%</span> : null}
+                </label>
+              );
+            })}
+          </div>
+        ) : null}
+
+        <fieldset className="min-w-0">
+          <legend className="sr-only">Plan</legend>
+          <div className={cx("grid gap-3", cards >= 4 ? "sm:grid-cols-2 lg:grid-cols-4" : cards === 3 ? "md:grid-cols-3" : "sm:grid-cols-2")}>
+            {menu.free ? (
+              <PlanCard
+                tier="free"
+                name="Free"
+                price="$0"
+                billing="Free forever"
+                promise="See it work, no card"
+                lead={menu.free.perMonth === 1 ? "1 article a month" : `${menu.free.perMonth} articles a month`}
+                rows={FREE_ROWS}
+                note="Articles carry a small Made with DispatchSEO badge"
+                pace={{ perMonth: menu.free.perMonth }}
+                on={choice.tier === "free"}
+                busy={busy}
+                onPick={pick}
+              />
+            ) : null}
+            {menu.paid.map((o) => {
+              const y = yearly && o.yearly ? o.yearly : null;
+              return (
+                <PlanCard
+                  key={o.tier}
+                  tier={o.tier}
+                  name={o.name}
+                  price={money(y ? y.perMonth : o.monthly)}
+                  billing={y ? `Billed ${money(y.charge)} a year, save ${y.savePct}%` : "Billed monthly"}
+                  promise={promiseFor(o, menu)}
+                  lead={perWeekLine(o.perWeek)}
+                  rows={o.tier === "scale" ? [...PAID_ROWS, "Priority support"] : PAID_ROWS}
+                  popular={o.tier === "growth"}
+                  pace={{ perWeek: o.perWeek }}
+                  on={choice.tier === o.tier}
+                  busy={busy}
+                  onPick={pick}
+                />
+              );
+            })}
+          </div>
+        </fieldset>
+
+        {error ? <p className="mt-5 rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-[14px] text-ink">{error}</p> : null}
+        {/* The point of purchase, so the express-consent line /plans carries
+            (EU/UK 14-day withdrawal waiver - see app/plans/page.tsx). Shown
+            whenever a paid plan is selected; the free plan buys nothing. */}
+        {picked ? (
+          <p className="mx-auto mt-6 max-w-[44rem] text-center text-[12.5px] leading-relaxed text-ink-faint">
+            Your subscription renews automatically until you cancel. By subscribing you agree to the{" "}
+            <a className="underline underline-offset-2 hover:text-ink-muted" href="/terms" target="_blank">
+              terms of service
+            </a>
+            , and you ask us to start the service straight away - which means that once it has been fully performed you lose the 14-day right of
+            withdrawal you would otherwise have as a consumer. Cancel any time from your billing page.
+          </p>
+        ) : null}
+      </SceneCard>
+    </div>
   );
 }
 

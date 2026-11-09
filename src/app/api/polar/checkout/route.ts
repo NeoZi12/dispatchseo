@@ -19,7 +19,7 @@ import { pendingSetupProject, readSetupSite } from "@/lib/setup-flow";
 // older link keeps working). externalCustomerId ties the Polar customer to the
 // Supabase user id, which is what the webhook maps back on.
 //
-// &flow=setup is the cloud setup's checkout step (a paid plan picked on the
+// &flow=setup is the cloud setup's plan step (a paid plan picked there, or on the
 // pricing page). The account always exists first (owner, 2026-11-08: no
 // trial, a free plan), so every checkout carries externalCustomerId and the
 // return route (/api/polar/return) only has to check it is the same user.

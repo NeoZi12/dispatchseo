@@ -74,6 +74,10 @@ export type ChangelogEntry = {
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "improved",
+    text: "Setup asks you to pick a plan up front, free included, instead of only showing a payment step to people who came from the pricing page.",
+  },
+  {
+    kind: "improved",
     text: "Your first article arrives faster: it is written right away instead of waiting in line for an hour or so. Later articles keep the usual pace.",
   },
   {

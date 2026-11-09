@@ -6,7 +6,12 @@ import { db } from "./db";
 import { currentUser, type CloudUser } from "./cloud-auth";
 import { authSecret } from "./dashboard-auth";
 import {
+  annualBillingAvailable,
+  annualCharge,
+  annualSavingsPct,
   applyUnlessSecondPlan,
+  ARTICLES_PER_WEEK,
+  FREE_ARTICLES_PER_MONTH,
   freeSignupsOpen,
   getSubscription,
   getSubscriptionOrThrow,
@@ -15,6 +20,8 @@ import {
   polar,
   polarConfigured,
   sitesRemaining,
+  TIER_LIMITS,
+  TIER_NAMES,
   tierForProductId,
   type BillingInterval,
   type Subscription,
@@ -28,6 +35,7 @@ import { scopedProjects } from "./active-project";
 import { cleanDomain, isValidDomain } from "./domain";
 import { detectPlatform, labelFor, type Platform } from "./site-platform";
 import { verdictFor } from "./qualifier";
+import type { PlanMenu } from "@/components/setup-stage/scenes";
 import { isPrivateHost } from "./url-guard";
 import { fetchDomainRegistrationDate } from "./domain-age";
 import { captureServer } from "./posthog-server";
@@ -40,13 +48,14 @@ import type { SiteVerdict } from "@/components/setup-stage/scenes";
 //
 // Which step someone is on is never a saved screen number. It is read off
 // evidence every time: is there a session, a project, a live subscription, a
-// paid-plan pick, a repo, a Google grant. So a closed tab, a second device or
+// plan pick, a repo, a Google grant. So a closed tab, a second device or
 // a callback that lands late all resolve to the same answer, and nothing has
 // to be kept in step with anything else.
 //
 // The address lives in a signed cookie until there is an account; the
 // sign-in callback (auth/callback) turns it into the site. A paid pick from
-// the pricing page lives in the setup_plan cookie until checkout succeeds.
+// the pricing page lives in the setup_plan cookie until checkout succeeds;
+// choosing the free plan on the plan step is recorded there too ("free").
 // The account always exists BEFORE checkout, so every payment has an owner.
 
 export type SetupStage = "address" | "checkout" | "github" | "google" | "done";
@@ -164,29 +173,59 @@ export async function readSentCookie(): Promise<{ to: string; existing: boolean 
   return m ? { to: m[2], existing: m[1] === "e" } : null;
 }
 
-// ---- the paid-plan pick -----------------------------------------------------
+// ---- the plan pick ----------------------------------------------------------
 
-export type PlanPick = { tier: Tier; interval: BillingInterval };
+/** A paid plan, picked on the pricing page or on the plan step. */
+export type PaidPlanPick = { tier: Tier; interval: BillingInterval };
+/** What this browser chose on the plan step: a paid plan, or the free plan
+ *  ({ tier: "free" }, recorded by chooseFreePlan so the step is not asked
+ *  twice). A free pick never reaches Polar - see paidPick. */
+export type PlanPick = PaidPlanPick | { tier: "free" };
 
-/** "growth" + "year" -> a pick; anything else (a hand-edited URL) -> null. */
-export function parsePlanPick(tier: unknown, interval: unknown): PlanPick | null {
+/** "growth" + "year" -> a pick; anything else (a hand-edited URL, "free")
+ *  -> null. Paid plans only: this is what URLs and the sign-in carry, and
+ *  what a checkout link is built from. */
+export function parsePlanPick(tier: unknown, interval: unknown): PaidPlanPick | null {
   if (tier !== "starter" && tier !== "growth" && tier !== "scale") return null;
   return { tier, interval: isBillingInterval(interval) ? interval : "month" };
 }
 
-/** The pick this browser carried in from the pricing page, or null. Not
- *  signed: it only chooses which checkout to show, and checkout prices
- *  come from Polar. */
+/** The paid half of a pick; a free pick (or none) is null. */
+export function paidPick(pick: PlanPick | null): PaidPlanPick | null {
+  return pick && pick.tier !== "free" ? pick : null;
+}
+
+/** The pick this browser carried in from the pricing page or made on the
+ *  plan step, or null. Not signed: it only chooses which card is selected
+ *  (or that the free plan was chosen), and checkout prices come from Polar. */
 export async function readPlanPick(): Promise<PlanPick | null> {
   const [tier, interval] = ((await cookies()).get(SETUP_PLAN_COOKIE)?.value ?? "").split(":");
+  if (tier === "free") return { tier: "free" };
   return parsePlanPick(tier, interval);
 }
 
 /** Server actions and route handlers only. */
 export async function writePlanPick(pick: PlanPick | null): Promise<void> {
   const jar = await cookies();
-  if (pick) jar.set(SETUP_PLAN_COOKIE, `${pick.tier}:${pick.interval}`, setupCookieOptions(SITE_TTL_S));
-  else jar.delete(SETUP_PLAN_COOKIE);
+  if (!pick) jar.delete(SETUP_PLAN_COOKIE);
+  else jar.set(SETUP_PLAN_COOKIE, pick.tier === "free" ? "free" : `${pick.tier}:${pick.interval}`, setupCookieOptions(SITE_TTL_S));
+}
+
+/** The plan step's cards, priced exactly as Polar charges them: every
+ *  number from billing.ts. `yearly` = every tier has its yearly product
+ *  (annualBillingAvailable), so the step never shows a price nobody can pay. */
+export function buildPlanMenu(freeOpen: boolean, yearly: boolean = annualBillingAvailable()): PlanMenu {
+  return {
+    free: freeOpen ? { perMonth: FREE_ARTICLES_PER_MONTH } : null,
+    yearly,
+    paid: (["starter", "growth", "scale"] as const satisfies readonly Tier[]).map((tier) => ({
+      tier,
+      name: TIER_NAMES[tier],
+      perWeek: ARTICLES_PER_WEEK[tier],
+      monthly: TIER_LIMITS[tier].price,
+      yearly: yearly ? { perMonth: TIER_LIMITS[tier].annual, charge: annualCharge(tier), savePct: annualSavingsPct(tier) } : null,
+    })),
+  };
 }
 
 // ---- the probe --------------------------------------------------------------
@@ -421,8 +460,8 @@ export type CreatedProject = { ok: true; project: Project; created: boolean } | 
  *  user id explicitly - the caller has just proven who it is and the session
  *  cookie it set may not be readable yet in the same request.
  *
- *  An account's FIRST site needs no plan: it starts on the free plan, or
- *  waits at checkout for a paid one (resolveSetupStage decides which). Every
+ *  An account's FIRST site needs no plan yet: the plan step comes after
+ *  this (free, or checkout for a paid one; resolveSetupStage decides). Every
  *  site after that needs room on a paid plan. */
 export async function createHostedProjectForUser(userId: string, rawDomain: string, freshSub?: Subscription | null): Promise<CreatedProject> {
   const domain = normalizeProjectDomain(rawDomain);
@@ -636,10 +675,15 @@ export type SetupState = {
   project: Project | null;
   sub: Subscription | null;
   site: SetupSite | null;
-  /** The plan the checkout step sells: the pricing-page pick, or Starter
-   *  while the free plan is closed. Null = no checkout in this setup. */
-  checkoutPlan: PlanPick | null;
-  /** The free plan is open, so the checkout step can offer "start free". */
+  /** The paid plan the plan step preselects: the pricing-page pick, or
+   *  Starter while the free plan is closed. Null on the plan step = no paid
+   *  pick (the step preselects its default); never a free pick. */
+  checkoutPlan: PaidPlanPick | null;
+  /** The plan step belongs in this setup's rail: billing is on here. True
+   *  even once the step is behind them (a plan chosen or already live), so
+   *  the rail does not lose a node the person just completed. */
+  planStep: boolean;
+  /** The free plan is open, so the plan step shows the Free card. */
   freeOpen: boolean;
   /** A project from the older setup (agent writer) - the caller keeps it on
    *  the old setup path rather than this flow. */
@@ -648,18 +692,26 @@ export type SetupState = {
 
 /** Which step this visitor is on, from evidence. `urlPick` is a plan named
  *  in this request's URL (/onboarding?plan=growth&interval=year) - a pick the
- *  cookie may not hold yet, because a page render can't write cookies. */
-export async function resolveSetupStage(urlPick: PlanPick | null = null): Promise<SetupState> {
+ *  cookie may not hold yet, because a page render can't write cookies.
+ *
+ *  The plan step (stage "checkout") is asked of every new site on a
+ *  deployment with billing, until one of these is true: a plan is live, or
+ *  this browser chose the free plan there (a "free" pick, only honoured
+ *  while the free plan is open). A paid pick only preselects its card. */
+export async function resolveSetupStage(urlPick: PaidPlanPick | null = null): Promise<SetupState> {
   const user = await currentUser();
   const site = await readSetupSite();
   const freeOpen = freeSignupsOpen();
-  const pick = urlPick ?? (await readPlanPick());
-  // While the free plan is closed, Starter is what checkout sells.
+  const pick: PlanPick | null = urlPick ?? (await readPlanPick());
   // No billing on this deployment (self-host, a preview without Polar): no
-  // checkout step at all - there would be nothing to pay.
+  // plan step at all - there would be nothing to pick or pay.
   const billing = isCloudMode() && polarConfigured();
-  const fallback: PlanPick | null = freeOpen ? null : { tier: "starter", interval: "month" };
-  const base = { user, site, project: null, sub: null, checkoutPlan: billing ? (pick ?? fallback) : null, freeOpen, legacy: false };
+  // While the free plan is closed, Starter is the card preselected (and a
+  // stale "free" pick from before it closed counts for nothing).
+  const fallback: PaidPlanPick | null = freeOpen ? null : { tier: "starter", interval: "month" };
+  const chosenFree = pick?.tier === "free" && freeOpen;
+  const preselect = paidPick(pick) ?? fallback;
+  const base = { user, site, project: null, sub: null, checkoutPlan: billing && !chosenFree ? preselect : null, planStep: billing, freeOpen, legacy: false };
   if (!user) return { ...base, stage: "address" };
 
   const [sub, mine] = await Promise.all([getSubscription(user.id), scopedProjects()]);
@@ -667,9 +719,10 @@ export async function resolveSetupStage(urlPick: PlanPick | null = null): Promis
   const sorted = [...mine].filter((p) => p.id !== DEFAULT_PROJECT_ID).sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
   const project = sorted.find((p) => !p.setup_connected_at) ?? sorted[0] ?? null;
   const active = isActive(sub);
-  // Checkout belongs in this setup when they picked a paid plan, or when the
-  // free plan is closed - and never once a plan is live.
-  const checkoutPlan = active || !billing ? null : (pick ?? fallback);
+  // The plan step is still to do: billing is on, no plan is live, and the
+  // free plan was not chosen on it.
+  const planDue = billing && !active && !chosenFree;
+  const checkoutPlan = planDue ? preselect : null;
 
   // Signed in with no site (the sign-in callback had no checked address):
   // the address step, whose Continue makes the site (createSite). Nothing is
@@ -677,7 +730,7 @@ export async function resolveSetupStage(urlPick: PlanPick | null = null): Promis
   if (!project) return { ...base, sub, checkoutPlan, stage: "address" };
   const state = { ...base, sub, project, checkoutPlan, legacy: writerMode(project) !== "hosted" };
   if (project.setup_connected_at) return { ...state, stage: "done" };
-  if (checkoutPlan) return { ...state, stage: "checkout" };
+  if (planDue) return { ...state, stage: "checkout" };
   if (!project.github_repo) return { ...state, stage: "github" };
   if (!project.gsc_oauth_refresh_token) return { ...state, stage: "google" };
   return { ...state, stage: "done" };

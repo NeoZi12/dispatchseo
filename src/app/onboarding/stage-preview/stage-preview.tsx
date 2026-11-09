@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SetupStageShell } from "@/components/setup-stage/stage";
-import { AccountScene, AddressScene, GithubScene, GoogleScene, type GoogleProgress, type SiteVerdict } from "@/components/setup-stage/scenes";
+import { AccountScene, AddressScene, GithubScene, GoogleScene, PlanScene, type GoogleProgress, type PlanChoice, type PlanMenu, type SiteVerdict } from "@/components/setup-stage/scenes";
 import { FirstArticleWait, type FirstArticleProgress } from "@/components/setup-stage/wait";
 import { railFor, type SceneId } from "@/components/setup-stage/primitives";
 import { cx, FOCUS_RING } from "@/components/ui/styles";
@@ -12,23 +12,25 @@ import { cx, FOCUS_RING } from "@/components/ui/styles";
 // without a database, GitHub or Polar. Autoplay types the address, "signs
 // in", "goes to GitHub", switches the blog on, and lands on Home's first
 // state while the first article is "written". Click any scene to jump.
-// The free plan's path - no checkout step.
+// The plan step is shown with the Free card (free plan open) or without it
+// (the "plans: free closed" variant).
 
-type Variant = "ok" | "refused" | "unreadable" | "gsc-missing" | "gsc-stuck";
+type Variant = "ok" | "refused" | "unreadable" | "gsc-missing" | "gsc-stuck" | "free-closed";
 type View = SceneId | "wait";
 const DOMAIN = "leatherandco.com";
 const VIEWS: { id: View; label: string }[] = [
   { id: "address", label: "1 · Address" },
   { id: "account", label: "2 · Account" },
-  { id: "github", label: "3 · GitHub" },
-  { id: "google", label: "4 · Google" },
+  { id: "checkout", label: "3 · Plan" },
+  { id: "github", label: "4 · GitHub" },
+  { id: "google", label: "5 · Google" },
   { id: "wait", label: "Home · first article" },
 ];
 
 const WAIT_START: FirstArticleProgress = { blog: "doing", google: null, reading: "todo", topics: "todo", writing: "todo", publishing: "todo" };
 const GOOGLE_ASK: GoogleProgress = { kind: "ask" };
 
-export function StagePreview() {
+export function StagePreview({ plans }: { plans: { open: PlanMenu; closed: PlanMenu } }) {
   const [view, setView] = useState<View>("address");
   const [variant, setVariant] = useState<Variant>("ok");
   const [auto, setAuto] = useState(true);
@@ -39,6 +41,7 @@ export function StagePreview() {
   const [google, setGoogle] = useState<GoogleProgress>(GOOGLE_ASK);
   const [say, setSay] = useState<string>("Hi. What's your site's address?");
   const [hop, setHop] = useState(false);
+  const [plan, setPlan] = useState<PlanChoice>({ tier: "growth", interval: "year" });
   const run = useRef(0);
 
   // Every timer belongs to a run; a jump or a replay bumps the run and the
@@ -147,9 +150,18 @@ export function StagePreview() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auto]);
 
+  const playPlan = useCallback(() => {
+    run.current += 1;
+    setView("checkout");
+    setBusy(false);
+    setPlan({ tier: "growth", interval: "year" });
+    setSay(variant === "free-closed" ? "Pick a plan, then I take it from there." : "Pick a plan. Free is a real plan.");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [variant]);
+
   const goStart = useCallback(() => {
     setBusy(true);
-    after(1100, () => playGithub());
+    after(1100, () => playPlan());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -177,9 +189,10 @@ export function StagePreview() {
       if (v === "github") return playGithub();
       if (v === "google") return playGoogle();
       if (v === "account") return playStart();
+      if (v === "checkout") return playPlan();
       return playWait();
     },
-    [playAddress, playGithub, playGoogle, playStart, playWait],
+    [playAddress, playGithub, playGoogle, playStart, playPlan, playWait],
   );
 
   useEffect(() => {
@@ -190,7 +203,7 @@ export function StagePreview() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const steps = railFor(false);
+  const steps = railFor(true);
   const done = Math.max(0, steps.findIndex((x) => x.id === view));
 
   return (
@@ -212,6 +225,20 @@ export function StagePreview() {
               onSubmit={playStart}
               verdict={verdict}
               busy={busy}
+            />
+          ) : null}
+          {view === "checkout" ? (
+            <PlanScene
+              menu={variant === "free-closed" ? plans.closed : plans.open}
+              choice={variant === "free-closed" && plan.tier === "free" ? { ...plan, tier: "starter" } : plan}
+              onChoice={setPlan}
+              domain={DOMAIN}
+              busy={busy}
+              onContinue={() => {
+                setBusy(true);
+                setSay(plan.tier === "free" ? "Free it is. On to GitHub." : "Off to payment… and back.");
+                after(1300, () => playGithub());
+              }}
             />
           ) : null}
           {view === "github" ? <GithubScene onContinue={goGithub} busy={busy} handoffHref="#handoff" /> : null}
@@ -241,6 +268,7 @@ export function StagePreview() {
             <option value="unreadable">site: unreadable</option>
             <option value="gsc-missing">Google: site not in Search Console</option>
             <option value="gsc-stuck">Google: won&apos;t confirm</option>
+            <option value="free-closed">plans: free closed</option>
           </select>
           <button type="button" onClick={() => jump("address")} className={cx("ml-auto rounded-md border border-line px-2.5 py-1 text-ink-muted hover:text-ink", FOCUS_RING)}>
             Replay

@@ -152,11 +152,12 @@ export async function createSite(): Promise<{ ok: true } | { error: string }> {
   return { ok: true };
 }
 
-/** "Start free instead" on the checkout step: forget the paid pick. Only
- *  while the free plan is open - otherwise checkout is the way in. */
+/** "Start free" on the plan step: records the free plan as this setup's
+ *  choice, so the step is not asked again and nothing goes to Polar. Only
+ *  while the free plan is open - otherwise a paid plan is the way in. */
 export async function chooseFreePlan(): Promise<{ ok: true } | { error: string }> {
   if (!freeSignupsOpen()) return { error: "The free plan isn't open yet." };
-  await writePlanPick(null);
+  await writePlanPick({ tier: "free" });
   revalidatePath("/onboarding");
   return { ok: true };
 }

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SetupStageShell } from "@/components/setup-stage/stage";
-import { AccountScene, AddressScene, CheckoutScene, GithubScene, GoogleScene, type PlanSummary, type SiteVerdict } from "@/components/setup-stage/scenes";
+import { AccountScene, AddressScene, GithubScene, GoogleScene, PlanScene, type PaidTier, type PlanChoice, type PlanMenu, type SiteVerdict } from "@/components/setup-stage/scenes";
 import { railFor, type SceneId } from "@/components/setup-stage/primitives";
 import { cleanDomain, isValidDomain } from "@/lib/domain";
 import { cx, FOCUS_RING } from "@/components/ui/styles";
@@ -17,8 +17,9 @@ import { checkSite, chooseFreePlan, createSite, overrideSiteCheck, pickSetupRepo
 
 export type SetupClientStage = "address" | "checkout" | "github" | "google";
 
-/** The plan the checkout step sells, with what its URL needs. */
-export type CheckoutPlan = PlanSummary & { tier: string };
+/** A paid plan already picked (pricing page, or Starter while the free plan
+ *  is closed): carried across sign-in and preselected on the plan step. */
+export type CheckoutPlan = { tier: PaidTier; interval: "month" | "year" };
 
 function okLine(v: Extract<SiteVerdict, { kind: "ok" }>): string {
   if (v.framework && v.host) return `${v.framework} on ${v.host}. I can work with this.`;
@@ -47,11 +48,12 @@ export function SetupClient(props: {
   prefill: string;
   initialVerdict: SiteVerdict;
   signedIn: boolean;
-  /** Null = no checkout in this setup (the free plan). */
+  /** The paid plan to preselect on the plan step; null = none picked. */
   checkoutPlan: CheckoutPlan | null;
-  /** Offer "start free instead" on the checkout step. */
-  freeOpen: boolean;
-  freePerMonth: number;
+  /** The plan step is in this setup's rail (billing is on here). */
+  planStep: boolean;
+  /** The plan step's cards; null when the step is not shown this visit. */
+  planMenu: PlanMenu | null;
   sentTo: string | null;
   repos: string[] | null;
   ghError: string | null;
@@ -63,7 +65,17 @@ export function SetupClient(props: {
   const [accept, setAccept] = useState(false);
   const [email, setEmail] = useState("");
   const [sentTo, setSentTo] = useState<string | null>(props.sentTo);
-  const steps = railFor(Boolean(props.checkoutPlan));
+  const steps = railFor(props.planStep);
+  // The plan step's selection. The pricing-page pick wins; otherwise Growth
+  // (the most popular plan), yearly where yearly can be bought.
+  const [plan, setPlan] = useState<PlanChoice>(() => {
+    const m = props.planMenu;
+    const yearOk = Boolean(m?.yearly);
+    const p = props.checkoutPlan;
+    const paidTiers = m?.paid.map((o) => o.tier) ?? [];
+    const tier = p && paidTiers.includes(p.tier) ? p.tier : paidTiers.includes("growth") ? "growth" : (paidTiers[0] ?? "free");
+    return { tier, interval: yearOk && (p ? p.interval === "year" : true) ? "year" : "month" };
+  });
   const [address, setAddress] = useState(props.prefill);
   const [verdict, setVerdict] = useState<SiteVerdict>(props.initialVerdict);
   const [busy, setBusy] = useState(false);
@@ -159,7 +171,7 @@ export function SetupClient(props: {
   useEffect(() => {
     const notice = scene === props.stage ? props.notice : null;
     if (scene === "account") setSay(notice ?? (sentTo ? "Open the link and I'll take it from there." : "One click and you're in."));
-    if (scene === "checkout") setSay(notice ?? "Pay here, then I take it from there.");
+    if (scene === "checkout") setSay(notice ?? (props.planMenu?.free ? "Pick a plan. Free is a real plan." : "Pick a plan, then I take it from there."));
     if (scene === "github") setSay(notice ?? (props.ghError ? "GitHub didn't finish. Let's try that again." : props.repos && props.repos.length > 1 ? "Which of these is your site?" : "Three clicks. I'll show you each one."));
     if (scene === "google") setSay(notice ?? (props.googleError ? "Google didn't finish. One more try?" : "Last step. Two clicks."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -306,17 +318,29 @@ export function SetupClient(props: {
         />
       ) : null}
 
-      {scene === "checkout" && props.checkoutPlan ? (
-        <CheckoutScene
-          plan={props.checkoutPlan}
+      {scene === "checkout" && props.planMenu ? (
+        <PlanScene
+          menu={props.planMenu}
+          choice={plan}
+          onChoice={(c) => {
+            setError(null);
+            setPlan(c);
+          }}
           domain={domain}
           busy={busy}
           error={error}
-          freePerMonth={props.freePerMonth}
-          onFree={props.freeOpen ? () => void startFree() : undefined}
-          onPay={() => {
+          onContinue={() => {
+            if (plan.tier === "free") {
+              void startFree();
+              return;
+            }
             setBusy(true);
-            const q = new URLSearchParams({ tier: props.checkoutPlan!.tier, interval: props.checkoutPlan!.interval, flow: "setup" });
+            // Yearly only where this plan has a yearly product (the menu
+            // knows); a free choice never gets here, so Polar only ever
+            // sees a paid tier.
+            const offer = props.planMenu!.paid.find((o) => o.tier === plan.tier);
+            const interval = plan.interval === "year" && offer?.yearly ? "year" : "month";
+            const q = new URLSearchParams({ tier: plan.tier, interval, flow: "setup" });
             window.location.href = `/api/polar/checkout?${q.toString()}`;
           }}
         />
@@ -332,9 +356,20 @@ export function SetupClient(props: {
             // look back at (owner, 2026-11-08). When the person comes back
             // here, the page re-asks the server which step it is on; GitHub's
             // own tab lands on the next step too.
+            //
+            // "noopener" must NOT be passed as a window.open feature: with it
+            // the spec makes window.open return null even when the tab
+            // opened, so this would read as "blocked" and also navigate this
+            // tab away from the guide. Open normally, then cut the opener
+            // link by hand.
             const url = `/api/github/install/start?slug=${encodeURIComponent(props.slug)}`;
-            const tab = window.open(url, "_blank", "noopener");
+            const tab = window.open(url, "_blank");
             if (tab) {
+              try {
+                tab.opener = null;
+              } catch {
+                // Cross-origin already: nothing to cut.
+              }
               setGithubTabOpen(true);
               return;
             }

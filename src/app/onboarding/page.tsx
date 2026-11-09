@@ -26,11 +26,11 @@ import type { SetupStep } from "@/lib/setup-path-core";
 import { buildCloudResume } from "./legacy-resume";
 import { cleanFlagText, cleanGscFlag, GENERIC_GITHUB_FLAG } from "@/lib/flag-text";
 import { cleanDomain } from "@/lib/domain";
-import { isCodeHost, parsePlanPick, readSentCookie, resolveSetupStage } from "@/lib/setup-flow";
+import { buildPlanMenu, isCodeHost, parsePlanPick, readSentCookie, resolveSetupStage } from "@/lib/setup-flow";
 import { labelFor } from "@/lib/site-platform";
 import { enqueueLaunch } from "@/lib/job-handlers/launch";
 import { listInstallationRepos } from "@/lib/github-app";
-import { annualCharge, ARTICLES_PER_WEEK, FREE_ARTICLES_PER_MONTH, isActive, polarConfigured, priceLabel, productIdForTier, TIER_LIMITS, TIER_NAMES } from "@/lib/billing";
+import { isActive, polarConfigured, priceLabel, productIdForTier, TIER_LIMITS } from "@/lib/billing";
 import { claimFreeLaunch, type FreeLaunchResult } from "@/lib/free-gate";
 import { clientIp } from "@/lib/login-lockout";
 import { DEVICE_COOKIE } from "@/lib/setup-flow";
@@ -300,21 +300,13 @@ async function cloudSetupFlow(params: OnboardingParams) {
   // checkout yet): wait for it here.
   const waitingForPlan = params.checkout === "success" && Boolean(s.user) && !isActive(s.sub) && (stage === "address" || stage === "checkout");
 
-  // The checkout step's plan, priced exactly as Polar will charge it. A
-  // yearly pick on a deployment without the yearly products is shown (and
-  // sold) monthly rather than advertising a price nobody can pay.
-  let checkoutPlan: CheckoutPlan | null = null;
-  if (s.checkoutPlan) {
-    const { tier } = s.checkoutPlan;
-    const interval = s.checkoutPlan.interval === "year" && productIdForTier(tier, "year") ? "year" : "month";
-    checkoutPlan = {
-      tier,
-      name: TIER_NAMES[tier],
-      interval,
-      price: interval === "year" ? annualCharge(tier) : TIER_LIMITS[tier].price,
-      articlesPerWeek: ARTICLES_PER_WEEK[tier],
-    };
-  }
+  // The paid pick to preselect. A yearly pick on a deployment without that
+  // yearly product is preselected (and sold) monthly rather than
+  // advertising a price nobody can pay.
+  const checkoutPlan: CheckoutPlan | null = s.checkoutPlan
+    ? { tier: s.checkoutPlan.tier, interval: s.checkoutPlan.interval === "year" && productIdForTier(s.checkoutPlan.tier, "year") ? "year" : "month" }
+    : null;
+  const planMenu = stage === "checkout" ? buildPlanMenu(s.freeOpen) : null;
 
   return (
     <main className="min-h-screen bg-canvas text-ink">
@@ -353,8 +345,8 @@ async function cloudSetupFlow(params: OnboardingParams) {
         initialVerdict={initialVerdict}
         signedIn={Boolean(s.user)}
         checkoutPlan={checkoutPlan}
-        freeOpen={s.freeOpen}
-        freePerMonth={FREE_ARTICLES_PER_MONTH}
+        planStep={s.planStep}
+        planMenu={planMenu}
         sentTo={sent?.to ?? null}
         repos={repos}
         ghError={params.gh === "error" ? (cleanFlagText(params.msg) ?? GENERIC_GITHUB_FLAG) : null}

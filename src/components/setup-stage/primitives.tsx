@@ -10,17 +10,18 @@ import s from "./stage.module.css";
 
 export type SceneId = "address" | "account" | "checkout" | "github" | "google";
 export type SceneStep = { id: SceneId; label: string };
-/** The full rail. The Payment step shows only for a paid-plan pick
- *  (railFor); the free plan's rail is four steps. */
+/** The full rail. The Plan step (scene id "checkout": pick a plan, and pay
+ *  for a paid one) is in every setup on a deployment with billing; without
+ *  billing (self-host) the rail is four steps (railFor). */
 export const SCENES: SceneStep[] = [
   { id: "address", label: "Your site" },
   { id: "account", label: "Account" },
-  { id: "checkout", label: "Payment" },
+  { id: "checkout", label: "Plan" },
   { id: "github", label: "GitHub" },
   { id: "google", label: "Google" },
 ];
-export function railFor(withCheckout: boolean): SceneStep[] {
-  return withCheckout ? SCENES : SCENES.filter((x) => x.id !== "checkout");
+export function railFor(withPlan: boolean): SceneStep[] {
+  return withPlan ? SCENES : SCENES.filter((x) => x.id !== "checkout");
 }
 
 export const BTN_PRIMARY =
