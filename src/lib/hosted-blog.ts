@@ -280,7 +280,7 @@ h1{font-size:clamp(28px,4.2vw,36px);line-height:1.15;letter-spacing:-.02em;font-
 .toc ul{border-inline-start:1px solid var(--line)}
 .toc .k{font:500 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 12px}
 aside.rail{display:none}
-@media(min-width:1024px){main.rail .toc-inline{display:none}aside.rail{display:block}aside.rail>div{position:sticky;top:88px;display:flex;flex-direction:column;gap:32px;max-height:calc(100vh - 7rem)}.toc{min-height:0;overflow-y:auto}.promo.below{display:none}}
+@media(min-width:1024px){main.rail .toc-inline{display:none}aside.rail{display:block}aside.rail>div{position:sticky;top:88px;display:flex;flex-direction:column;gap:32px;max-height:calc(100vh - 7rem)}.toc{min-height:0;overflow-y:auto}.promo.below,.credit.below{display:none}}
 .promo{border-radius:14px;background:var(--card);padding:20px}
 .promo img{width:28px;height:28px;border-radius:7px;object-fit:cover;display:block}
 .promo .name{margin:12px 0 0;font-weight:600;font-size:15px;color:var(--ink)}
@@ -291,6 +291,7 @@ aside.rail{display:none}
 .promo .cta{display:block;margin-top:20px;background:var(--accent);color:var(--accent-ink);text-decoration:none;text-align:center;font-weight:600;font-size:13px;padding:9px 14px;border-radius:10px}
 .promo .cta:hover{filter:brightness(1.08)}
 .promo.below{margin-top:40px}
+.credit.rail{margin-top:-18px}
 .credit{margin:12px 0 0;font-size:12px;line-height:1.5;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:6px}
 .credit a{display:inline-flex;align-items:center;gap:5px;color:var(--ink2);font-weight:600;text-decoration:none}
 .credit a:hover{color:var(--ink)}.credit a:hover span{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}.credit a:hover img{transform:translateY(-1px)}.credit img{transition:transform .15s ease}
@@ -490,7 +491,7 @@ ${rail ? promo(site, "below") : ""}
 ${bio}
 <div class="endnav">${back}</div>
 </article>
-${rail ? `<aside class="rail"><div>${tocHtml(headings, "rail", t.onThisPage)}${promo(site, "", false)}</div></aside>` : ""}`;
+${rail ? `<aside class="rail"><div>${tocHtml(headings, "rail", t.onThisPage)}${promo(site, "rail")}</div></aside>` : ""}`;
   const head = cover ? `<meta property="og:image" content="${esc(cover)}">` : "";
   return shell(site, { title: post.title, description: post.meta_description ?? "", canonical, body, head, rail, spy: rail });
 }
