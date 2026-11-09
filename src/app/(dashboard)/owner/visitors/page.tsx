@@ -1,21 +1,7 @@
-import { visitorsReport } from "@/lib/owner-visitors";
-import { EmptyState } from "@/components/ui/empty-state";
-import { loadCustomers, loadTraffic, ownerGate, settle, visitorsError, whoResolver } from "../data";
-import { OwnerShell } from "../shell";
-import { VisitorsSection } from "../visitors-view";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
+// Visitors moved to Home (owner, 2026-11-09); keep the old address alive.
 export default async function OwnerVisitorsPage({ searchParams }: { searchParams: Promise<{ range?: string }> }) {
-  const { range, now } = await ownerGate(searchParams);
-  const [t, v, c] = await Promise.all([loadTraffic(range, now), settle(visitorsReport(range, now)), loadCustomers(range, now)]);
-  return (
-    <OwnerShell section="visitors" range={range} now={now}>
-      {t.value ? (
-        <VisitorsSection t={t.value} v={v.value} who={whoResolver(c.value)} now={now} />
-      ) : (
-        <EmptyState title="No visitor data yet">{visitorsError(t.error)}</EmptyState>
-      )}
-    </OwnerShell>
-  );
+  const { range } = await searchParams;
+  redirect(range ? `/owner?range=${encodeURIComponent(range)}` : "/owner");
 }

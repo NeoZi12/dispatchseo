@@ -6,15 +6,14 @@ import { shortDate } from "./format";
 
 // The frame around every /owner page: the title, the range picker, and one
 // row of section tabs so each subject is a page of its own instead of a
-// scroll. Links carry ?range= so the window follows you between sections.
+// scroll. Home is the visitors (owner, 2026-11-09). Links carry ?range= so the window follows you between sections.
 
-export type OwnerSection = "home" | "customers" | "plans" | "visitors" | "google" | "ai";
+export type OwnerSection = "home" | "customers" | "plans" | "google" | "ai";
 
 export const OWNER_SECTIONS: Array<{ key: OwnerSection; href: string; label: string; says: string }> = [
-  { key: "home", href: "/owner", label: "Home", says: "The numbers that matter today: signups, revenue, cost, articles." },
+  { key: "home", href: "/owner", label: "Visitors", says: "Who reaches dispatchseo.com and how they found it." },
   { key: "customers", href: "/owner/customers", label: "Customers", says: "Every account: what they pay you, what they cost, what is left." },
   { key: "plans", href: "/owner/plans", label: "Plans", says: "Who is on the free plan and on each paid plan." },
-  { key: "visitors", href: "/owner/visitors", label: "Visitors", says: "Who reaches dispatchseo.com and how they found it." },
   { key: "google", href: "/owner/google", label: "Google", says: "How your sites and your customers' sites do in Search." },
   { key: "ai", href: "/owner/ai", label: "AI visibility", says: "Whether ChatGPT, Claude and Perplexity read you, send people, and name you." },
 ];

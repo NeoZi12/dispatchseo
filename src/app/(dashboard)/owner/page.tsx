@@ -1,13 +1,12 @@
-import Link from "next/link";
-
+import { visitorsReport } from "@/lib/owner-visitors";
 import { EmptyState } from "@/components/ui/empty-state";
-import { loadCustomers, loadTraffic, ownerGate, visitorsError, whoResolver } from "./data";
-import { OwnerShell, OWNER_SECTIONS } from "./shell";
-import { KpiStrip, PublishPanel, SignupsSection } from "./view";
-import { FOCUS_RING, cx } from "@/components/ui/styles";
+import { loadCustomers, loadTraffic, ownerGate, settle, visitorsError, whoResolver } from "./data";
+import { OwnerShell } from "./shell";
+import { VisitorsSection } from "./visitors-view";
 
 // The operator's analytics, split into pages (see shell.tsx). Home is the
-// day's numbers: signups, revenue, cost, and the articles that went live.
+// visitors: who reached dispatchseo.com and how they found it. Nothing else
+// on it, on purpose (owner, 2026-11-09: the rest of the old home was noise).
 //
 // Operator-only telemetry with no MCP counterpart, on purpose: an MCP token
 // is one tenant, and nothing here is one tenant's to read.
@@ -15,31 +14,14 @@ export const dynamic = "force-dynamic";
 
 export default async function OwnerHomePage({ searchParams }: { searchParams: Promise<{ range?: string }> }) {
   const { range, now } = await ownerGate(searchParams);
-  const [t, c] = await Promise.all([loadTraffic(range, now), loadCustomers(range, now)]);
-  const traffic = t.value;
-  const customers = c.value;
-  const who = whoResolver(customers);
-  const q = range === 30 ? "" : `?range=${range}`;
+  const [t, v, c] = await Promise.all([loadTraffic(range, now), settle(visitorsReport(range, now)), loadCustomers(range, now)]);
   return (
     <OwnerShell section="home" range={range} now={now}>
-      <KpiStrip t={traffic} c={customers} />
-
-      {traffic ? <SignupsSection t={traffic} c={customers} who={who} now={now} /> : <EmptyState title="No visitor data yet">{visitorsError(t.error)}</EmptyState>}
-
-      {traffic && customers ? <PublishPanel t={traffic} c={customers} /> : null}
-
-      <nav aria-label="More" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        {OWNER_SECTIONS.filter((s) => s.key !== "home").map((s) => (
-          <Link
-            key={s.key}
-            href={`${s.href}${q}`}
-            className={cx("rounded-2xl border border-line-soft bg-surface px-5 py-4 transition-colors hover:bg-surface-2/60", FOCUS_RING)}
-          >
-            <span className="block text-[14px] font-medium text-ink">{s.label}</span>
-            <span className="mt-1 block text-[12.5px] leading-snug text-ink-faint">{s.says}</span>
-          </Link>
-        ))}
-      </nav>
+      {t.value ? (
+        <VisitorsSection t={t.value} v={v.value} who={whoResolver(c.value)} now={now} />
+      ) : (
+        <EmptyState title="No visitor data yet">{visitorsError(t.error)}</EmptyState>
+      )}
     </OwnerShell>
   );
 }

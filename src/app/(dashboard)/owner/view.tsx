@@ -1,94 +1,11 @@
 import { cx } from "@/components/ui/styles";
-import type { Customer, CustomersReport, TopRow, TrafficReport } from "@/lib/owner-analytics";
+import type { Customer, CustomersReport } from "@/lib/owner-analytics";
 import { TIER_LIMITS, TIER_NAMES, type Tier } from "@/lib/billing";
-import { AreaChart, MetricChart } from "./area";
-import { BarList, DeltaPill, Panel, PublishStrip, Sparkline, StatCells, type BarRow } from "./bits";
-import { ago, cancelNote, compact, delta, fmt, fullDate, money, rangeShort, shortDate } from "./format";
+import { Panel, StatCells } from "./bits";
+import { ago, cancelNote, compact, fmt, money, rangeShort, shortDate } from "./format";
 
 // The sections of /owner, Polar-style: hairline panels, large light figures,
 // one accent per chart, numbers in mono so columns line up.
-
-const rows = (list: TopRow[], label?: (k: string) => string): BarRow[] =>
-  list.map((r) => ({ key: r.key || "none", label: label ? label(r.key) : r.key || "Unknown", value: r.views }));
-
-
-// ---------- KPI strip ----------
-
-function Kpi({
-  label,
-  value,
-  deltaValue,
-  sub,
-  spark,
-  children,
-}: {
-  label: string;
-  value: string;
-  deltaValue?: number | null;
-  sub?: React.ReactNode;
-  spark?: { values: number[]; tone: "blue" | "green" | "violet" | "gray"; bars?: boolean };
-  children?: React.ReactNode;
-}) {
-  return (
-    <div className="flex min-w-0 flex-col bg-surface px-4 pb-4 pt-4 sm:px-6 sm:pt-5">
-      <p className="text-[12.5px] text-ink-muted sm:text-[13px]">{label}</p>
-      <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 sm:mt-2.5">
-        <span className="text-[1.5rem] font-light leading-none tracking-tight tabular-nums text-ink sm:text-[2.1rem]">{value}</span>
-        {deltaValue !== undefined ? <DeltaPill value={deltaValue} /> : null}
-      </p>
-      {sub ? <p className="mt-2 line-clamp-2 text-[12px] leading-snug text-ink-faint sm:text-[12.5px]">{sub}</p> : null}
-      <div className="mt-auto pt-4">{spark ? <Sparkline values={spark.values} tone={spark.tone} bars={spark.bars} className="h-10" /> : children}</div>
-    </div>
-  );
-}
-
-const TIER_COLOR: Record<Tier, string> = { starter: "var(--color-info)", growth: "var(--color-accent)", scale: "var(--color-ok)" };
-
-function PlanMix({ c }: { c: CustomersReport }) {
-  const paying = c.customers.filter((x) => !x.operator && x.plan.monthlyUsd > 0 && x.plan.tier);
-  const by = (["starter", "growth", "scale"] as Tier[]).map((t) => ({ t, usd: paying.filter((x) => x.plan.tier === t).reduce((a, x) => a + x.plan.monthlyUsd, 0) }));
-  const total = by.reduce((a, b) => a + b.usd, 0);
-  return (
-    <div>
-      <div className="flex h-2 gap-0.5 overflow-hidden rounded-full bg-surface-2">
-        {total ? by.map((b) => (b.usd ? <div key={b.t} style={{ width: `${(b.usd / total) * 100}%`, background: TIER_COLOR[b.t] }} /> : null)) : null}
-      </div>
-      <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11.5px] text-ink-faint">
-        {by.map((b) => (
-          <span key={b.t} className="flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full" style={{ background: TIER_COLOR[b.t] }} aria-hidden="true" />
-            <span className="capitalize">{b.t}</span>
-            <span className="font-mono tabular-nums text-ink-muted">{money(b.usd)}</span>
-          </span>
-        ))}
-      </p>
-    </div>
-  );
-}
-
-export function KpiStrip({ t, c }: { t: TrafficReport | null; c: CustomersReport | null }) {
-  const signups = c ? c.signupsByDay.reduce((a, d) => a + d.count, 0) : t?.totals.signups ?? 0;
-  const margin = c ? c.totals.revenueRecent - c.totals.costRecent : 0;
-  return (
-    <Panel label="Key numbers" className="grid grid-cols-2 gap-px bg-line-soft md:grid-cols-3 [&>*:last-child]:col-span-2 md:[&>*:last-child]:col-span-1">
-      <Kpi
-        label="Signups"
-        value={fmt(signups)}
-        sub={t ? `${fmt(t.totals.checkouts)} checkouts · ${fmt(t.totals.trials)} trials` : undefined}
-        spark={c ? { values: c.signupsByDay.map((d) => d.count), tone: "violet", bars: true } : undefined}
-      />
-      <Kpi label="Monthly revenue" value={c ? money(c.totals.mrr) : "–"} sub={c ? `${c.totals.paying} paying · ${c.totals.trialing} on trial · ${c.totals.cancelled} cancelled` : "cloud only"}>
-        {c ? <PlanMix c={c} /> : null}
-      </Kpi>
-      <Kpi
-        label="Cost"
-        value={c ? money(c.totals.costRecent) : "–"}
-        sub={c ? `revenue ${money(c.totals.revenueRecent)} · margin ${money(margin)}` : undefined}
-        spark={c && c.costByDay.length ? { values: c.costByDay.map((d) => d.usd), tone: "gray", bars: true } : undefined}
-      />
-    </Panel>
-  );
-}
 
 // ---------- money ----------
 
@@ -118,97 +35,6 @@ function StatusChip({ c }: { c: Customer }) {
   return <span className={cx("inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-[11.5px] font-medium", cls)}>{word}</span>;
 }
 
-
-// ---------- content + activity ----------
-
-export function PublishPanel({ t, c }: { t: TrafficReport; c: CustomersReport }) {
-  const n = t.published.reduce((a, d) => a + d.count, 0);
-  const busiest = t.published.reduce((a, d) => (d.count > a.count ? d : a), { day: "", count: 0 });
-  const sites = [...c.customers.flatMap((x) => x.sites), ...c.orphanSites].filter((s) => s.articlesRecent > 0);
-  return (
-    <Panel label="Articles">
-      <SectionHead title="Articles" says="Articles that went live on every site, yours and your customers'." note={`${fmt(c.totals.articles)} live in total`} />
-      <div className="grid lg:grid-cols-2">
-      <div className="min-w-0">
-        <div className="px-5 pb-6 pt-5 sm:px-6">
-          <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <span className="text-[2.1rem] font-light leading-none tracking-tight tabular-nums text-ink">{fmt(n)}</span>
-            <span className="text-[12.5px] text-ink-faint">in {t.range} days{busiest.count ? ` · busiest ${shortDate(busiest.day)}` : ""}</span>
-          </p>
-          <div className="mt-5">
-            <PublishStrip days={t.published} />
-          </div>
-          <p className="mt-2 flex justify-between font-mono text-[10.5px] tabular-nums text-ink-faint" aria-hidden="true">
-            <span>{t.published[0] ? shortDate(t.published[0].day) : ""}</span>
-            <span>{t.published.at(-1) ? shortDate(t.published.at(-1)!.day) : ""}</span>
-          </p>
-        </div>
-        <StatCells
-          className="border-b-0"
-          items={[
-            { label: "Per day", value: (n / Math.max(1, t.range)).toFixed(1) },
-            { label: "Sites publishing", value: fmt(sites.length) },
-            { label: "Cost / article", value: n ? money(c.totals.costRecent / n) : "–" },
-          ]}
-        />
-      </div>
-      <div className="min-w-0 border-t border-line-soft px-5 pb-6 pt-5 sm:px-6 lg:border-l lg:border-t-0">
-        <h3 className="text-[13px] font-medium text-ink">Most published</h3>
-        <div className="mt-3.5">
-          <BarList
-            rows={sites
-              .sort((a, b) => b.articlesRecent - a.articlesRecent)
-              .slice(0, 7)
-              .map((s) => ({ key: s.id, label: s.domain, value: s.articlesRecent }))}
-            tone="violet"
-            empty="No article went live in this range."
-          />
-        </div>
-      </div>
-      </div>
-    </Panel>
-  );
-}
-
-const EVENT_WORDS: Record<string, string> = {
-  user_signed_up: "Signed up",
-  user_logged_in: "Logged in",
-  user_confirmed_email: "Confirmed email",
-  checkout_started: "Opened checkout",
-  setup_trial_started: "Started trial",
-  setup_plan_started: "Paid in setup",
-  subscription_activated: "Subscription active",
-  subscription_cancel_scheduled: "Cancellation scheduled",
-  subscription_canceled: "Subscription ended",
-  subscription_updated: "Subscription changed",
-  subscription_resumed: "Subscription resumed",
-  project_created: "Added a site",
-  project_deleted: "Deleted a site",
-  github_connected: "Connected GitHub",
-  pipeline_installed: "Pipeline installed",
-  gsc_connected: "Connected Search Console",
-  pr_merged: "Merged a PR",
-  account_deleted: "Deleted account",
-  billing_portal_opened: "Opened billing",
-  setup_step_viewed: "Viewed setup step",
-  setup_step_deferred: "Skipped setup step",
-  setup_connect_complete: "Finished connecting",
-  github_cost_acknowledged: "Acknowledged GitHub cost",
-  self_host_heartbeat: "Self-host check-in",
-};
-
-const DOT: Record<string, string> = {
-  user_signed_up: "bg-accent",
-  checkout_started: "bg-info",
-  setup_trial_started: "bg-info",
-  setup_plan_started: "bg-info",
-  subscription_activated: "bg-ok",
-  subscription_resumed: "bg-ok",
-  subscription_canceled: "bg-danger",
-  subscription_cancel_scheduled: "bg-warn",
-  account_deleted: "bg-danger",
-};
-
 // ---------- one subject per section ----------
 
 /** A section's frame: a title, one plain sentence saying what it shows, an
@@ -225,41 +51,9 @@ export function SectionHead({ title, says, note }: { title: string; says: string
   );
 }
 
-export function SignupsSection({ t, c, who, now }: { t: TrafficReport; c: CustomersReport | null; who: (id: string) => string; now: number }) {
-  const series = c?.signupsByDay ?? t.days.map((d, i) => ({ day: d.day, count: t.signupEventsByDay[i] ?? 0 }));
-  const n = series.reduce((a, d) => a + d.count, 0);
-  const list = t.recent.slice(0, 8);
-  return (
-    <Panel label="Signups">
-      <SectionHead title="Signups" says="New accounts, and what people did in the product." note={`${fmt(n)} new in ${rangeShort(t.range)}`} />
-      <div className="grid gap-px bg-line-soft lg:grid-cols-5">
-        <div className="bg-surface px-4 pb-5 pt-7 sm:px-6 lg:col-span-3">
-          <AreaChart days={series.map((d) => d.day)} values={series.map((d) => d.count)} tone="violet" kind="bars" height={190} label="Signups" legend="New accounts per day" />
-        </div>
-        <div className="bg-surface px-2 pb-3 pt-4 sm:px-3 lg:col-span-2">
-          <h3 className="px-3 text-[13px] font-medium text-ink">Latest</h3>
-          {list.length === 0 ? (
-            <p className="mx-3 mt-3 rounded-xl border border-dashed border-line px-4 py-6 text-center text-[13px] text-ink-faint">Nothing yet in this range.</p>
-          ) : (
-            <ol className="mt-1">
-              {list.map((e, i) => (
-                <li key={`${e.at}-${i}`} className="flex items-center gap-3 rounded-lg px-3 py-2">
-                  <span className={cx("h-1.5 w-1.5 shrink-0 rounded-full", DOT[e.event] ?? "bg-ink-faint/50")} aria-hidden="true" />
-                  <span className="min-w-0 flex-1 truncate text-[13px] text-ink">
-                    {EVENT_WORDS[e.event] ?? e.event.replace(/_/g, " ")} <span className="text-ink-faint">{who(e.who)}</span>
-                  </span>
-                  <span className="shrink-0 font-mono text-[11.5px] tabular-nums text-ink-faint">{ago(e.at, now)}</span>
-                </li>
-              ))}
-            </ol>
-          )}
-        </div>
-      </div>
-    </Panel>
-  );
-}
-
 // ---------- who is on which plan ----------
+
+const TIER_COLOR: Record<Tier, string> = { starter: "var(--color-info)", growth: "var(--color-accent)", scale: "var(--color-ok)" };
 
 type PlanKey = "free" | Tier;
 const PLAN_KEYS: PlanKey[] = ["free", "starter", "growth", "scale"];
