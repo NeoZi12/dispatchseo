@@ -588,8 +588,8 @@ const money = (n: number) => (Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`
  *  words as the landing's pricing cards and /plans. */
 const WHO: Record<PlanTier, string> = {
   free: "Try it on a side project",
-  starter: "Small site, steady articles",
-  growth: "More traffic, faster",
+  starter: "Steady start, weekly articles",
+  growth: "Serious about traffic",
   scale: "All in on content",
 };
 

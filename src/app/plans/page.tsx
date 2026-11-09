@@ -33,13 +33,13 @@ const TIER_COPY: Record<
 > = {
   starter: {
     name: "Starter",
-    tagline: "Small site, steady articles",
+    tagline: "Steady start, weekly articles",
     cta: "Choose Starter",
     recommended: false,
   },
   growth: {
     name: "Growth",
-    tagline: "More traffic, faster",
+    tagline: "Serious about traffic",
     cta: "Choose Growth",
     recommended: true,
   },

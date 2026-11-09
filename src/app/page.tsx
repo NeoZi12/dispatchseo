@@ -416,7 +416,7 @@ export default async function LandingPage({
             <div className="plan">
               <h3>Starter</h3>
               <PlanPrice tier="starter" annual={annual} />
-              <div className="p-sub">Small site, steady articles</div>
+              <div className="p-sub">Steady start, weekly articles</div>
               <ul>
                 <li>4 articles a month</li>
                 <li>Weekly keyword research</li>
@@ -433,7 +433,7 @@ export default async function LandingPage({
               <CardMascot className="plan-mascot" />
               <h3>Growth</h3>
               <PlanPrice tier="growth" annual={annual} />
-              <div className="p-sub">More traffic, faster</div>
+              <div className="p-sub">Serious about traffic</div>
               <ul>
                 <li>12 articles a month</li>
                 <li>Weekly keyword research</li>
