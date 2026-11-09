@@ -47,6 +47,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: base, changeFrequency: "weekly", priority: 1 },
     // The agent hubs (/claude-code, /codex, /cursor) are noindex since
     // 2026-11-08 and stay out of here; so do the free tools marked noindex.
+    // Plain-language "what this is" page. Public by design (it is also the
+    // Google OAuth consent home page), and the one page that states the
+    // product and its pricing as prose a crawler can quote.
+    { url: `${base}/about`, changeFrequency: "monthly" },
     { url: `${base}/blog`, changeFrequency: "daily" },
     ...getAllPosts().map((post) => ({
       url: `${base}/blog/${post.slug}`,

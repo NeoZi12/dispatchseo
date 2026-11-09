@@ -4,6 +4,7 @@ import { Analytics } from "@vercel/analytics/next";
 import { AnalyticsConsentBanner } from "@/components/analytics-consent-banner";
 import { VisitBeacon } from "@/components/visit-beacon";
 import "./globals.css";
+import { BRAND_TAGLINE } from "@/lib/brand";
 
 // Hanken Grotesk: the closest free match to PostHog's proprietary UI font
 // (RoundHog, ex-MatterSQ) - a warm geometric-grotesque with a generous
@@ -23,7 +24,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://dispatchseo.com"),
   title: "DispatchSEO",
-  description: "Make your coding agent your SEO manager - keyword research, one article a day as a pull request, rankings and Search Console tracked daily. For sites built in code.",
+  description: BRAND_TAGLINE + " Two articles a month are free, no card.",
   twitter: {
     card: "summary_large_image",
   },

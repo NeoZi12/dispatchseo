@@ -1,5 +1,7 @@
 import { getAllDocs } from "@/lib/docs";
 import { getAllPosts } from "@/lib/blog";
+import { BRAND_DESCRIPTION } from "@/lib/brand";
+import { TIER_LIMITS, priceLabel } from "@/lib/billing";
 
 // The agent-facing index (llmstxt.org). Generated, not hand-written: the page
 // list comes from DOCS_NAV, so a new doc page appears here the moment it is
@@ -20,56 +22,47 @@ const BASE = "https://dispatchseo.com";
 
 const SUMMARY = `# DispatchSEO
 
-> Open-source SEO manager driven by the AI you already pay for: the ordinary
-> Claude app at claude.ai, a coding agent (Claude Code, Codex, Cursor), or any
-> other MCP client. Your AI already knows your product, so DispatchSEO gives
-> it the missing half: keyword research it can act on, articles that ship as
-> pull requests to your own repo or straight into self-hosted WordPress, rank
-> tracking, and a human approval dashboard. Self-hosted with one Docker
-> command, AGPL-3.0. A hosted version exists at dispatchseo.com, but
-> self-hosting has zero feature limitations.
+> ${BRAND_DESCRIPTION}
 
 ## What it is, in one paragraph
 
-DispatchSEO is a backend, not a writer. It stores state (a suggestions queue,
-keywords, published pages, rankings, Search Console stats, backlink
-prospects), runs schedules (daily rank checks, hourly GSC snapshots, a nightly
-content builder), and gates everything behind a human approval step. The
-thinking - research, judgement, writing - happens in your own AI: the Claude
-app at claude.ai, or a coding agent (Claude Code, Codex, Cursor), which talks
-to DispatchSEO over MCP. That split is deliberate: your AI already has your
-product knowledge, so it does not need to crawl your homepage to guess at it.
+DispatchSEO is an SEO autopilot for small websites, run as a hosted service at
+dispatchseo.com and also available as open-source software (AGPL-3.0) to
+self-host. The hosted service does the whole job for you: it finds keywords
+with measured search demand, writes an article on each one, fact-checks it,
+publishes it to your site, and reports the Google clicks and impressions it
+earns. Articles reach your site as pull requests to your GitHub repository
+(Next.js, Astro and other code-built sites), through the API of a self-hosted
+WordPress site, or on a hosted blog when your site has no repository. Every
+site starts on the free plan; paid plans publish weekly.
 
 ## Key facts
 
-- The MCP server is at /api/mcp (streamable HTTP, bearer token per project).
-  The bearer token IS the tenant selector - one deployment manages many sites.
-- The MCP exposes state only: reads and writes against the queue, keywords,
-  pages, rankings, GSC stats, prospects, plus a get_instructions tool that
-  serves the agent playbook. Keyword research and content generation happen in
-  the agent, not on the server.
-- Anything the dashboard can do, the agent can do over MCP. Parity between the
-  two is a hard rule in the codebase.
-- Two ways to connect an AI. A coding agent (Claude Code, Codex, Cursor)
-  connects over MCP from a terminal, or the ordinary Claude app at claude.ai
-  is pointed at the same server as a custom connector on any paid Claude plan,
-  writes on the owner's own subscription, and hands the finished article back.
-  ChatGPT is not supported yet; the Gemini app cannot connect outside tools at
-  all.
-- Content reaches your site one of two ways. For a self-hosted WordPress site,
-  articles are posted through its own API, with cover image, internal links and
-  schema already in place. For a code-built site, they arrive as pull requests
-  to your GitHub repo, opened by the coding agent or by DispatchSEO itself when
-  the article came from the Claude app; human approval is the default and
-  automatic merge is opt-in.
-- So you need either a self-hosted WordPress site or a site whose source lives
-  in a Git repo. Hosted site builders (Wix, Squarespace, Shopify, Webflow) have
-  neither, and are not supported. A coding agent is not required for either
-  one.
-- Data tiers stack: Google Search Console only (free), + a free SerpApi key
-  (live SERP checks), + DataForSEO (volume and difficulty, pay per call).
-- You bring your own AI subscription or key. DispatchSEO never bills for AI
-  usage.
+- Free plan: 2 fact-checked articles a month, published for you, with your
+  Google Search Console stats. No card, no end date. Free articles carry a
+  small DispatchSEO badge.
+- Paid plans, per site, billed monthly: Starter ${priceLabel(TIER_LIMITS.starter.price)}
+  (1 article a week), Growth ${priceLabel(TIER_LIMITS.growth.price)} (3 a week),
+  Scale ${priceLabel(TIER_LIMITS.scale.price)} (5 a week). Paid plans add weekly
+  keyword research, keyword rank tracking and advanced analytics, and remove
+  the badge. Yearly billing is cheaper where offered.
+- Articles are only written about topics with real, measured search demand.
+  A thin niche may not fill its weekly quota, and the product says so rather
+  than padding.
+- Supported sites: anything whose source lives in a GitHub repository, and
+  self-hosted WordPress. Hosted site builders (Wix, Squarespace, Shopify,
+  Webflow) are not supported yet.
+- Publishing is a pull request by default, so every article is reviewable in
+  your repo's history; automatic merge is opt-in.
+- Self-hosting: one Docker command, zero feature limits, your own accounts and
+  keys. A self-hosted install exposes an MCP server at /api/mcp (streamable
+  HTTP, bearer token per project) so a coding agent (Claude Code, Codex,
+  Cursor) or the Claude app at claude.ai can drive research, the queue,
+  approvals and publishing. Anything the dashboard can do, the agent can do
+  over MCP.
+- Comparable tools: SEObot, Outrank, RightBlogger, Autoblogging.ai. The
+  differences: a free plan that publishes real articles, publishing into your
+  own repository as pull requests, and an open-source codebase.
 `;
 
 function line(url: string, title: string, description: string) {

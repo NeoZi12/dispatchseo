@@ -20,6 +20,7 @@ import {
   type Tier,
 } from "@/lib/billing";
 import { PricingSwitch } from "./pricing-switch";
+import { brandJsonLdHtml } from "@/lib/brand";
 import "./landing.css";
 
 // Public landing page - cloud deployment only. Self-hosted installs never set
@@ -208,6 +209,9 @@ export default async function LandingPage({
 
   return (
     <div className={`ld ${jakarta.variable} ${dmSans.variable} ${caveat.variable}`}>
+      {/* Organization + SoftwareApplication with the live plan prices
+          (lib/brand.ts) - the same facts the plan cards show, as data. */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: brandJsonLdHtml() }} />
       {/* ==================== NAV ==================== */}
       <nav>
         <div className="nav-wrap nav-in">

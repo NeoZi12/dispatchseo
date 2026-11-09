@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { BRAND_DESCRIPTION, brandJsonLdHtml } from "@/lib/brand";
+import { TIER_LIMITS, priceLabel } from "@/lib/billing";
 
 // Plain-language app description page. This URL is set as the "Application
 // home page" in the Google OAuth consent screen: Google's automated branding
@@ -12,12 +14,13 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "About DispatchSEO",
   description:
-    "What DispatchSEO is, what it does, and how it uses Google Search Console data.",
+    "What DispatchSEO is, what it costs, and how it uses Google Search Console data. A free SEO autopilot: researched, fact-checked articles published to your site for you.",
 };
 
 export default function AboutPage() {
   return (
     <main className="mx-auto max-w-2xl space-y-8 px-6 py-16 text-neutral-300">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: brandJsonLdHtml() }} />
       <div className="space-y-2">
         <h1 className="text-3xl font-semibold tracking-tight text-white">DispatchSEO</h1>
         <p className="text-sm text-neutral-500">
@@ -35,25 +38,43 @@ export default function AboutPage() {
 
       <section className="space-y-3 text-sm leading-relaxed">
         <h2 className="text-lg font-medium text-white">What DispatchSEO does</h2>
-        <p>
-          DispatchSEO is an SEO automation tool for websites that live in a git repository.
-          It researches keywords your site can rank for, drafts articles and interactive
-          tools as pull requests to your repository, tracks how your pages rank in search
-          over time, and shows all of it on one dashboard. You review each idea and each
-          draft, and you decide what gets published; an optional automatic mode publishes on
-          a schedule with pull requests as the audit trail.
-        </p>
-        <p>Its main features:</p>
+        <p>{BRAND_DESCRIPTION}</p>
+        <p>How it works, step by step:</p>
         <ul className="list-disc space-y-1 pl-5">
-          <li>Keyword research based on your product and your search performance data</li>
-          <li>Article and tool drafts delivered as pull requests to your site&apos;s repository</li>
-          <li>Rank tracking for the keywords you care about</li>
-          <li>A review queue where you approve or reject every suggestion</li>
-          <li>Scheduled automation with failure alerts</li>
+          <li>
+            Keyword research from real search demand, and from your Google Search Console
+            data once you connect it, so every article targets a topic people actually look for
+          </li>
+          <li>
+            Articles written and fact-checked for you, then published to your site: as a pull
+            request to your GitHub repository, or on a hosted blog if your site has no repo
+          </li>
+          <li>Google clicks and impressions per article, so you can see what each one brought</li>
+          <li>Keyword rank tracking and weekly research on the paid plans</li>
+          <li>Scheduled automation with failure alerts, and a dashboard that shows all of it</li>
         </ul>
+        <h3 className="pt-2 text-base font-medium text-white">What it costs</h3>
         <p>
-          The software is open source (AGPL-3.0) and can be self-hosted. The hosted service
-          lives at{" "}
+          Free: 2 articles a month, no card, no end date; free articles carry a small
+          DispatchSEO badge. Starter: {priceLabel(TIER_LIMITS.starter.price)} a month for 1
+          article a week. Growth: {priceLabel(TIER_LIMITS.growth.price)} a month for 3 a week.
+          Scale: {priceLabel(TIER_LIMITS.scale.price)} a month for 5 a week. Paid plans add
+          weekly keyword research, keyword rankings and advanced analytics, and drop the badge.
+          Yearly billing is cheaper where offered; the exact figures are on the{" "}
+          <Link className="underline text-white" href="/?home=1#pricing">
+            pricing section
+          </Link>
+          .
+        </p>
+        <p>
+          Sites that live in a GitHub repository, including Next.js, Astro and other code-built
+          sites, and sites on self-hosted WordPress are supported today. Hosted site builders
+          (Wix, Squarespace, Shopify, Webflow) are not yet.
+        </p>
+        <p>
+          The software is open source (AGPL-3.0) and can be self-hosted, where it also exposes an
+          MCP server so a coding agent such as Claude Code, Codex or Cursor can drive it. The
+          hosted service lives at{" "}
           <Link className="underline text-white" href="/">
             dispatchseo.com
           </Link>
