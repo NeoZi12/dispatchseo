@@ -54,11 +54,9 @@ const TIER_COPY: Record<
 // Truthful to what the SEO autopilot actually does - no invented numbers.
 // Since 2026-10-23 cloud sites are written and published by our server (the
 // hosted writer), so there is no PR for the owner to merge any more.
-const CAPABILITIES = [
-  "Keyword research done for you, every week",
-  "Daily rank + Search Console tracking",
-  "Pauses itself if Google stops showing your site",
-];
+// Tick rows are always ONE row (owner rule, 2026-11-09): keep each short
+// enough for a card at the lg three-column width, and never let one wrap.
+const CAPABILITIES = ["Written and published for you", "Weekly keyword research", "Rank and Search Console tracking", "Pauses if Google drops your site"];
 
 function Check({ className }: { className?: string }) {
   return (
@@ -196,7 +194,7 @@ export default async function PlansPage({
 
         {/* Plans. Decision-first order inside each card (price -> CTA -> the
             comparison list) keeps the buttons aligned across tiers. */}
-        <div className="mt-12 grid items-start gap-5 sm:grid-cols-3">
+        <div className="mt-12 grid items-start gap-5 lg:grid-cols-3">
           {tiers.map((tier) => {
             const limits = TIER_LIMITS[tier];
             const copy = TIER_COPY[tier];
@@ -219,7 +217,7 @@ export default async function PlansPage({
                     </span>
                   ) : null}
                 </div>
-                <p className="mt-1 text-sm text-neutral-400">{copy.tagline}</p>
+                <p className="mt-1 text-sm font-medium text-violet-300">{copy.tagline}</p>
 
                 <div className="mt-5 flex flex-wrap items-baseline gap-x-1">
                   <span className="text-4xl font-semibold tracking-tight tabular-nums text-white">
@@ -281,23 +279,23 @@ export default async function PlansPage({
 
                 <div className="mt-6 border-t border-neutral-800 pt-6">
                   <ul className="space-y-3 text-sm">
-                    <li className="flex items-start gap-2.5 text-neutral-300">
-                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-violet-400" />
+                    <li className="flex items-center gap-2.5 whitespace-nowrap text-neutral-300">
+                      <Check className="h-4 w-4 shrink-0 text-violet-400" />
                       <span>
                         <span className="font-medium text-white tabular-nums">{limits.sites}</span>{" "}
                         site{limits.sites === 1 ? "" : "s"}
                       </span>
                     </li>
-                    <li className="flex items-start gap-2.5 text-neutral-300">
-                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-violet-400" />
+                    <li className="flex items-center gap-2.5 whitespace-nowrap text-neutral-300">
+                      <Check className="h-4 w-4 shrink-0 text-violet-400" />
                       <span>
                         <span className="font-medium text-white tabular-nums">{articlesPerWeekFor(tier)}</span>{" "}
-                        article{articlesPerWeekFor(tier) === 1 ? "" : "s"} a week, written and published for you
+                        article{articlesPerWeekFor(tier) === 1 ? "" : "s"} a week
                       </span>
                     </li>
                     {CAPABILITIES.map((cap) => (
-                      <li key={cap} className="flex items-start gap-2.5 text-neutral-300">
-                        <Check className="mt-0.5 h-4 w-4 shrink-0 text-violet-400" />
+                      <li key={cap} className="flex items-center gap-2.5 whitespace-nowrap text-neutral-300">
+                        <Check className="h-4 w-4 shrink-0 text-violet-400" />
                         <span>{cap}</span>
                       </li>
                     ))}

@@ -352,8 +352,15 @@ html:has(.ld) { scroll-behavior: smooth; }
 /* Free + three paid plans side by side. The lists are short (6-7 ticks), so
    four columns still read at the 1120px measure. */
 .ld .plans.plans-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
-.ld .plans.plans-4 .plan li { white-space: normal; font-size: 15px; }
+.ld .plans.plans-4 .plan li { font-size: 15px; }
 .ld .plans.plans-4 .plan { padding: 28px 22px; }
+/* A tick row is always ONE row (owner rule, 2026-11-09). Four cards between
+   981px and 1160px are too narrow for 15px rows, so they tighten instead of
+   wrapping. */
+@media (min-width: 981px) and (max-width: 1160px) {
+  .ld .plans.plans-4 .plan { padding: 26px 16px; }
+  .ld .plans.plans-4 .plan li { font-size: 13px; }
+}
 .ld .plan { border: 1px solid var(--line); border-radius: 16px; padding: 30px 26px; background: var(--card); display: flex; flex-direction: column; position: relative; }
 .ld .plan.hero-plan { border: 2px solid var(--vio); }
 /* The mascot sitting on the Growth card (card-mascot.tsx): 5px pixels, body
@@ -385,7 +392,7 @@ html:has(.ld) { scroll-behavior: smooth; }
 .ld .pt-opt.on .pt-tag { background: var(--vio); color: #fff; }
 .ld .plan .p-annual b { font-weight: 700; color: var(--txt); }
 .ld .plan .p-price small { font-size: 14px; font-weight: 600; color: var(--dim); font-family: var(--body); }
-.ld .plan .p-sub { font-size: 13.5px; color: var(--dim); margin-bottom: 20px; }
+.ld .plan .p-sub { font-size: 13.5px; font-weight: 500; color: var(--vio2); margin-bottom: 20px; }
 .ld .plan ul { list-style: none; margin-bottom: 26px; flex: 1; }
 .ld .plan li { font-size: 15.5px; color: var(--txt); padding: 7px 0 7px 28px; position: relative; white-space: nowrap; }
 .ld .plan li::before { content: "✓"; position: absolute; left: 2px; font-size: 17px; font-weight: 700; color: var(--vio2); }
@@ -591,7 +598,6 @@ html:has(.ld) { scroll-behavior: smooth; }
   /* pricing: swap the three-column desktop grid for the compare scoreboard */
   .ld .plans { display: none; }
   .ld .plans-m { display: block; }
-  .ld .plan li { white-space: normal; }
   /* the three pills repeat rows that live in "On every plan" below */
 
   /* faq */

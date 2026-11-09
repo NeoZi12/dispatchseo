@@ -648,14 +648,16 @@ function PlanCard({
         <span className="text-[14px] font-semibold text-ink-faint">/mo</span>
       </span>
       <span className="mt-1.5 text-[13px] font-medium text-ink-muted">{billing}</span>
-      <span className="mt-1 text-[13.5px] text-ink-faint">{who}</span>
+      <span className="mt-1 text-[13.5px] font-medium text-accent">{who}</span>
 
       {/* Phones: only the picked card lists its rows, so four plans fit on
-          a screen; from sm up every card shows them. */}
-      <ul className={cx("mt-5 space-y-1 text-[15px] text-ink", on ? "block" : "hidden sm:block")}>
+          a screen; from sm up every card shows them. A tick row is always ONE
+          row (owner rule, 2026-11-09): nowrap here, and the grid only goes to
+          four columns at xl, where a card is wide enough for the longest row. */}
+      <ul className={cx("mt-5 space-y-1 text-[14px] text-ink", on ? "block" : "hidden sm:block")}>
         {[pace, ...rows].map((r, i) => (
-          <li key={r} className={cx("flex items-start gap-2.5 py-1", i === 0 ? "font-semibold" : "")}>
-            <Check className="mt-[3px] h-4 w-4 shrink-0 text-accent" delay={i * 40} />
+          <li key={r} className={cx("flex items-center gap-2.5 py-1 whitespace-nowrap", i === 0 ? "font-semibold" : "")}>
+            <Check className="h-4 w-4 shrink-0 text-accent" delay={i * 40} />
             <span>{r}</span>
           </li>
         ))}
@@ -698,7 +700,7 @@ export function PlanScene({
   return (
     // The plan cards need more room than one column of text: from lg up
     // this scene reaches past the stage's column, still centred under it.
-    <div className="lg:-mx-28 xl:-mx-36">
+    <div className="lg:-mx-28 xl:-mx-44">
       <SceneCard
         id="checkout"
         title="Pick your plan"
@@ -736,7 +738,7 @@ export function PlanScene({
 
         <fieldset className="min-w-0">
           <legend className="sr-only">Plan</legend>
-          <div className={cx("grid gap-3.5 pt-3", cards >= 4 ? "sm:grid-cols-2 lg:grid-cols-4" : cards === 3 ? "md:grid-cols-3" : "sm:grid-cols-2")}>
+          <div className={cx("grid gap-3.5 pt-3", cards >= 4 ? "sm:grid-cols-2 xl:grid-cols-4" : cards === 3 ? "md:grid-cols-3" : "sm:grid-cols-2")}>
             {menu.free ? (
               <PlanCard
                 tier="free"
