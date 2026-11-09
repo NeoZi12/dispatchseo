@@ -1,50 +1,60 @@
 ---
-title: "What our AI-written SEO articles cost: 21 runs, 10 published, $2.28"
-description: "Production numbers from DispatchSEO's writer, 2026-11-01 to 11-07: a median of 6 cents of model spend per published article, 23 cents once stopped runs are counted."
+title: "What an AI-written SEO article costs in 2026: per-article prices from six tools"
+description: "Six auto-blogging tools' own pricing pages, read on 2026-11-09, worked out per article: from about 60 cents to about $4.40, and what the difference buys."
 date: 2026-11-09
 keyword: ai seo article cost
 cover: /blog/covers/what-an-ai-seo-article-costs.webp
 ---
 
-A published article cost us a median of 6 cents in model spend, 10 cents on average, and 23 cents all-in once the runs that stopped before publishing are counted. Those are DispatchSEO's own production numbers for the week of 2026-11-01 to 2026-11-07: 21 attempts on two sites billed through the API, 10 articles published, $2.28 spent in total. It is a small sample from a young pipeline and is presented as ours, not as the cost of AI articles in general. The interesting part is not the model bill, which is a rounding error, but where the other half of the runs went.
+An AI-written SEO article costs between about 60 cents and $4.40 on the auto-blogging tools we checked, depending on how many articles the plan includes and what happens to each one before it is published. The model that writes it costs cents on every tool; the price is the keyword research, the checking and the publishing around it. We make one of the six, and every figure below is the vendor's plan price divided by what that plan includes, read from its own pricing page on 2026-11-09.
 
-> **TL;DR** - Model spend per published article: 6 cents median, 10 cents average, 24 cents at most, for a fact-checked article with a cover image and internal links. Of $2.28 spent, $1.27 went to the 11 runs that stopped before publishing. The research data that picks topics is a separate metered bill and is not in these numbers. Vendors charging $1 to $3 an article are paying for the pipeline, the failed runs and their margin, not the model.
+> **TL;DR** - Arvow is the cheapest per article at about 59 cents, on a price its page shows as a yearly rate. RightBlogger Solo works out to about $1.63 and Outrank to $3.30, both at about 30 articles a month, and Autoblogging.ai to about $1.90 for a full article. DispatchSEO is about $1.90 to $4.40 per article on paid plans and $0 for two a month on the free plan, with a fact check on every one.
 
-## What are the numbers?
+## What does one article cost on each tool?
 
-| Measure | Value |
-|---|---|
-| Period | 2026-11-01 to 2026-11-07 |
-| Sites | 2, both billed through the API |
-| Article attempts | 21 |
-| Published | 10 |
-| Stopped before publishing | 11 |
-| Total model spend | $2.28 |
-| Spent on runs that did not publish | $1.27 |
-| Median model cost, published article | $0.064 |
-| Average model cost, published article | $0.10 |
-| Most expensive published article | $0.24 |
-| All-in per published article (total divided by 10) | $0.23 |
-| Published articles that needed a second rewrite pass | 3 of 10 |
+| Tool and plan | Price | Articles a month | Per article |
+|---|---|---|---|
+| Arvow Solo | $39, shown as a yearly rate | about 66 (1,000 credits at 15 each) | about $0.59 |
+| RightBlogger Solo | $49/mo yearly, $59 monthly | up to 30 (1 a day) | $1.63 to $1.97 |
+| Autoblogging.ai | $19/mo, $12 yearly | about 10 full articles (40 credits, about 4 each) | $1.20 to $1.90 |
+| Outrank | $99/mo, or $999 a year | 30 | $2.78 to $3.30 |
+| SEObot | from $49/mo | not published | cannot be worked out |
+| DispatchSEO Free | $0 | 2, with a small badge | $0 |
+| DispatchSEO Starter | $19/mo, $13 yearly | about 4 (1 a week) | $3.00 to $4.40 |
+| DispatchSEO Growth | $39/mo, $25 yearly | about 13 (3 a week) | $1.92 to $3.00 |
+| DispatchSEO Scale | $69/mo, $59 yearly | about 22 (5 a week) | $2.72 to $3.18 |
 
-Two more sites ran the same pipeline in the period on the owner's own AI subscription, where model usage is not billed per run; they are left out because their recorded cost is not comparable. The search-volume and difficulty data that decides what to write about is a separate, metered bill and is not in the table. Later articles ran through a batch API that charges half the standard rate, which is part of why the median sits below the average.
+Where a vendor shows a yearly and a monthly price, both are in the range. Autoblogging.ai charges one credit for a plain article and one more each for SERP analysis, images and internal links, so a finished article is about four credits. Arvow's page shows one price per plan next to a "saves you $360 with yearly" line, which reads as the yearly rate. SEObot does not publish its tiers, so its per-article price cannot be computed from the page.
 
-## Why did half the runs stop?
+## Why does the price per article vary seven times over?
 
-A stopped run is not always a failure of the tool. The 11 here split into two kinds. The first is the fact gate doing its job: the research step found a topic, the writer drafted, and the citation check could not ground the article in more than one source, so the pipeline parked it rather than publish something thin. The second is pipeline bugs in a pipeline that was weeks old; most were fixed within a day of appearing. We are not going to pretend the split was all gate refusals. The point is that a stopped run still costs money, 12 cents on average here, and that a pipeline that never stops is one that publishes everything it drafts.
+Because the tools sell different amounts of work per article. The writing model is a few cents of compute on every one of them, so the spread comes from what else runs. Arvow and RightBlogger publish a post a day with no fact check described on their pages. Outrank publishes 30 a month and mentions fact-checking only on its $1,399 human-edited tier. Autoblogging.ai lists a fact checker on paid plans and prices images and SERP analysis as separate credits. DispatchSEO publishes fewer articles per dollar because each one starts from a keyword with measured search demand, is checked claim by claim against the source it cites, gets a cover image and internal links, and is published for you as a pull request or on a hosted blog. You are paying for the articles that were not published as much as for the ones that were.
 
-## Where does the money go inside a run?
+## What is included in the price?
 
-The draft and its rewrite passes are the money. Research is cheap because it is mostly calls to search-data providers, which bill separately. Fact filtering, section planning and the citation check are short prompts over text that already exists. The draft is the one long generation, and each rewrite pass is another one. Seven of the ten published articles went through once; three needed a second pass. The gate bounds that: an article that fails twice on the same problem is parked, not rewritten a third time.
+Not the same things. RightBlogger's plan is also a writing suite and a post-publish agent that audits older posts, so some of the $49 buys tools you use by hand. Autoblogging.ai's base credit buys plain text; images, SERP analysis and links cost extra credits. Outrank and SEObot include publishing to WordPress and most website builders. DispatchSEO includes the keyword research, the fact check, the cover image, publishing to a GitHub repo or hosted blog, and the Google clicks and impressions each article brought, shown per article. Search-volume data is the one cost that is metered separately almost everywhere; on DispatchSEO it is inside the plan.
 
-## What does this mean when you price or buy a tool?
+## Is cheaper per article better?
 
-A vendor charging $1 to $3 an article is unlikely to be spending that on the model. They are paying for the orchestration, the search data, the publishing integrations, the failed runs, the support, and their margin, and that is a reasonable thing to charge for. It does mean that "unlimited AI words" is cheap to offer, because words are the cheap part.
+Only if every article is one you would have published anyway. Google's spam policy targets pages produced in bulk to manipulate rankings, however they were made, and thirty unchecked articles a month on guessed topics is exactly that shape. Two checked articles a month on topics with measured demand carry much less of that risk. Volume is the risk, not the AI. If you will read and fix every post yourself, the cheap-per-article tools are fine. If you will not, pay for the checking.
 
-For a buyer, the better question is not "how much per article" but "how many of your runs publish, and what stops the rest". A tool whose runs never stop has no gate. A tool that stops half its runs and tells you why is spending your money on not publishing, which is the part you are paying for. [Best AI auto-blogging tools in 2026](/blog/best-ai-auto-blogging-tools) notes which vendors describe a check at all.
+## How much should you budget?
 
-## How will this page stay honest?
+| If you want... | Budget | Tools |
+|---|---|---|
+| To see finished articles before paying | $0 | DispatchSEO free, or Autoblogging.ai's free credits for drafts |
+| A few checked articles a month on one site | $13 to $19 a month | DispatchSEO Starter, Autoblogging.ai |
+| About 30 articles a month on WordPress | $49 to $99 a month | RightBlogger, SEObot, Outrank |
+| Human editors on every piece | $1,399 a month | Outrank Human Curated |
 
-It will be updated quarterly with the same table from the same query. If the published count rises and the stopped count does not fall, the gate is working; if the stopped count climbs, something is broken and the page will say so.
+## FAQ
 
-*Figures are from DispatchSEO's writer run table, queried on 2026-11-09, for the two sites billed through the API. Model spend is the provider's billed cost per run; it excludes search-data calls, hosting, and the time spent reading the output.*
+**What does the AI model itself cost per article?** Cents. At current API prices a researched, checked article costs well under a dollar of model time, and a plain draft far less. The rest of the price is the pipeline, the search data, the publishing integrations, the runs that stop before publishing, and margin.
+
+**Why is SEObot missing a per-article figure?** Its pricing page gives a starting price of $49 but does not publish how many articles each tier includes, so the division cannot be done honestly. If the page changes, this table will.
+
+**Do yearly rates change the order?** Slightly. Autoblogging.ai drops to $1.20 and DispatchSEO Growth to $1.92 on yearly billing, which puts both close to RightBlogger. Arvow stays cheapest and the volume tools stay in the middle.
+
+**Does the free plan have a catch?** DispatchSEO's free articles carry a small badge linking back, and the plan pauses only after 60 days without a sign-in, with a warning email first. Autoblogging.ai's free credits buy plain drafts that you publish through your own WordPress connection. Neither asks for a card.
+
+*Prices checked 2026-11-09 on [rightblogger.com/pricing](https://rightblogger.com/pricing), [seobotai.com](https://seobotai.com/), [outrank.so/pricing](https://outrank.so/pricing), [autoblogging.ai/pricing](https://autoblogging.ai/pricing) and [arvow.com/pricing](https://arvow.com/pricing). Per-article figures are plan price divided by the plan's monthly article count; where a plan gives credits, the vendor's own credit-per-article note is used. Tell us if a price has changed and we will fix the table.*
