@@ -215,6 +215,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
                   cloud={billing}
                   sitesRemaining={sitesLeft}
                   githubCostRequired={githubCost.required}
+                  // One site per account on every hosted plan, so only the
+                  // operator (and self-host) gets the add row at all.
+                  canAddSite={!billing || owner}
                 />
               )}
             </div>

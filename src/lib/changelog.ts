@@ -74,6 +74,10 @@ export type ChangelogEntry = {
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "improved",
+    text: "The project menu no longer offers \"Add project\" or \"Upgrade to add more sites\". Every plan covers one site, so the row only ever led to a refusal.",
+  },
+  {
+    kind: "improved",
     text: "The blog carries the same top bar as the home page, so Pricing, FAQ and the way home are one click from any post. Home page sections fade in as you scroll.",
   },
   {

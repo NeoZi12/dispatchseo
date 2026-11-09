@@ -63,6 +63,7 @@ export function ProjectSwitcher({
   cloud,
   sitesRemaining = null,
   githubCostRequired = false,
+  canAddSite = true,
 }: {
   projects: SwitcherProject[];
   activeSlug: string;
@@ -79,6 +80,13 @@ export function ProjectSwitcher({
   // that costs on GitHub. Passed through to the dialog, which puts the step in
   // front of the form. See github-cost-gate.ts for why the step exists.
   githubCostRequired?: boolean;
+  // Whether this account can add a site at all. Every hosted plan covers
+  // exactly one site (TIER_LIMITS), so for a customer the add row has nothing
+  // to offer: "+ Add project" led to a refusal, and "Upgrade to add more
+  // sites" promised something no plan sells. False hides the row, the
+  // dialog and the ?add=1 entry point together; the operator (whose own
+  // row covers several sites) and self-host (uncapped) keep all three.
+  canAddSite?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -93,10 +101,11 @@ export function ProjectSwitcher({
   // the add-site dialog - that keeps "add a site" reachable from anywhere
   // without a navigation, which was the whole problem with the old /new link.
   const openAdd = useCallback(() => {
+    if (!canAddSite) return;
     setOpen(false);
     setAddMounted(true);
     setAdding(true);
-  }, []);
+  }, [canAddSite]);
   useAddSiteParam(openAdd);
 
   // null means uncapped, so only an explicit zero closes the door.
@@ -224,7 +233,7 @@ export function ProjectSwitcher({
             );
           })}
           <div className="my-1 border-t border-neutral-800" />
-          {planFull ? (
+          {!canAddSite ? null : planFull ? (
             <Link
               href="/billing"
               role="menuitem"
@@ -265,7 +274,7 @@ export function ProjectSwitcher({
       </div>
       {/* Not mounted until the first open, so its chunk is fetched the first
           time it is needed; after that it stays, closed or open. */}
-      {addMounted ? (
+      {addMounted && canAddSite ? (
         <AddSiteDialog
           open={adding}
           onClose={() => setAdding(false)}
