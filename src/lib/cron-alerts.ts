@@ -333,7 +333,12 @@ export function collectErrors(value: unknown, path = ""): string[] {
     const at = path ? `${path}.${key}` : key;
     if (key === "error" && typeof val === "string") {
       out.push(path ? `${path}: ${val}` : val);
-    } else if (key === "failed" && Array.isArray(val)) {
+    } else if ((key === "failed" || key === "errors") && Array.isArray(val)) {
+      // seo-dispatch nests each project's refused dispatches under `errors`
+      // (route.ts: `out.errors = failed`). Until 2026-11-09 only `failed` was
+      // unwrapped, so the banner read "seo-dispatch failed" with an empty
+      // list while the real message ("No GitHub token connected") sat in the
+      // response body nobody saw except the Actions run log.
       for (const item of val) {
         if (typeof item === "string") out.push(path ? `${path}: ${item}` : item);
       }
