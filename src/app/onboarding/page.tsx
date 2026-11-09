@@ -1,5 +1,6 @@
 import { requireDashboard } from "@/lib/auth-gate";
 import { cookies, headers } from "next/headers";
+import { after } from "next/server";
 import { isValidDomain } from "@/lib/domain";
 import { serviceAccountEmail } from "@/lib/gsc";
 import { db } from "@/lib/db";
@@ -32,6 +33,7 @@ import { enqueueLaunch } from "@/lib/job-handlers/launch";
 import { listInstallationRepos } from "@/lib/github-app";
 import { isActive, polarConfigured, priceLabel, productIdForTier, TIER_LIMITS } from "@/lib/billing";
 import { claimFreeLaunch, type FreeLaunchResult } from "@/lib/free-gate";
+import { notifyOwnerOfFreeSignup } from "@/lib/signup-alert";
 import { clientIp } from "@/lib/login-lockout";
 import { DEVICE_COOKIE } from "@/lib/setup-flow";
 import { SetupClient, type CheckoutPlan } from "./setup-client";
@@ -253,6 +255,13 @@ async function cloudSetupFlow(params: OnboardingParams) {
           await enqueueLaunch(s.project.id);
         } catch (e) {
           console.warn(`[onboarding] launch for ${s.project.slug} not queued: ${e instanceof Error ? e.message : String(e)}`);
+        }
+        // A free launch tells the owner (lib/signup-alert.ts) - after the
+        // response, so the person waits for nothing. Paid launches have
+        // Polar's own receipt.
+        if (!isActive(s.sub)) {
+          const signup = { ownerId: s.user!.id, email: s.user!.email ?? null, domain: s.project.domain, projectId: s.project.id };
+          after(() => notifyOwnerOfFreeSignup(signup));
         }
       }
       redirect("/dashboard");
