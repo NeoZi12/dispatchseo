@@ -58,7 +58,7 @@ const DOCS_URL = "/docs";
 // (GitHub allows 60 anonymous calls an hour per IP, so per-request would run
 // out) and capped at 2 s so a slow GitHub never holds the landing page.
 // Falls back to the last count we saw - it only ever under-states.
-const STARS_FALLBACK = 96;
+const STARS_FALLBACK = 97;
 // Six real stargazers' avatars (picked 2026-11-08 from the repo's stargazer
 // list). Owner's rule: no photos of real faces - two cartoon avatars and four
 // picture avatars (scenery, a cat, a keyboard). GitHub user ids, so a rename
