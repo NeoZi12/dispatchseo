@@ -375,6 +375,9 @@ export function GoogleScene({ p, domain, onContinueWithGoogle, onContinue, busy,
       id="google"
       title={title}
       lead={lead}
+      // The button sits above the walkthrough (owner, 2026-11-09): the two
+      // frames explain what Google will show, they are not the step.
+      actionFirst={p.kind === "ask"}
       action={
         p.kind === "ask" ? (
           <button type="button" className={BTN_PRIMARY} onClick={onContinueWithGoogle} disabled={busy}>
