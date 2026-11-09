@@ -4,6 +4,7 @@ import { isCloudMode } from "./cloud";
 import { AUTOMATED_BROWSER } from "./visits";
 import { aiReferrer } from "./owner-insights";
 import { windows, type Range } from "./owner-analytics";
+import { memoMinute } from "./owner-memo";
 
 // Every person who opened dispatchseo.com, one row per visit, for /owner.
 //
@@ -169,7 +170,10 @@ async function operatorKeys(visitors: string[], nets: string[]): Promise<{ visit
   return mine;
 }
 
-export async function visitorsReport(range: Range, now = Date.now()): Promise<VisitorsReport> {
+/** Every visit in the range. Memoised a minute per range (owner-memo.ts). */
+export const visitorsReport: (range: Range, now?: number) => Promise<VisitorsReport> = memoMinute((range) => `visitors:${range}`, visitorsReportFresh);
+
+async function visitorsReportFresh(range: Range, now = Date.now()): Promise<VisitorsReport> {
   const w = windows(range, now);
   // PostgREST hands back at most 1000 rows a request: page through, newest first.
   const rows: Row[] = [];

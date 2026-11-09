@@ -3,6 +3,7 @@ import { isCloudMode } from "./cloud";
 import { TIER_LIMITS, TIER_NAMES, polar, polarConfigured, type Tier } from "./billing";
 import { isOperator } from "./autopilot/operator";
 import { ordersByUser, polarOrders, polarOrdersError, summarize, revenueUsd, type MoneySummary, type PolarOrder } from "./owner-money";
+import { memoMinute } from "./owner-memo";
 
 // Everything /owner shows, in two reads: the site's traffic and funnel
 // (web_visits + app_events, migration 0073) and the customer ledger (auth
@@ -209,7 +210,10 @@ function fill(days: DayRow[], from: number, to: number): DayRow[] {
 
 const FUNNEL_PATHS = ["/plans", "/signup", "/onboarding", "/qualify"];
 
-export async function trafficReport(range: Range, now = Date.now()): Promise<TrafficReport> {
+/** The site's traffic and funnel. Memoised a minute per range (owner-memo.ts). */
+export const trafficReport: (range: Range, now?: number) => Promise<TrafficReport> = memoMinute((range) => `traffic:${range}`, trafficReportFresh);
+
+async function trafficReportFresh(range: Range, now = Date.now()): Promise<TrafficReport> {
   const w = windows(range, now);
   const [days, prevDays, appDays, ev, prevEv, pricing, pages, referrers, countries, devices, sources, crawlers, crawlerPages, fileReaders, published, dailyEvents] =
     await Promise.all([
@@ -433,27 +437,38 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 }
 
 // Polar is the only place the interval and the real charge live (the table
-// stores tier + status). One read per subscription with an id, all in
-// parallel, each capped: a slow Polar costs a column, never the page.
+// stores tier + status). ONE paginated list of the organisation's
+// subscriptions, capped: it used to be one read per subscription, which at
+// ten subscriptions was the slowest thing on every /owner page (up to two
+// seconds). A slow Polar costs a column, never the page.
 async function polarFacts(subs: SubRow[]): Promise<Map<string, PolarFacts>> {
   const out = new Map<string, PolarFacts>();
   if (!polarConfigured()) return out;
-  const ids = subs.filter((s) => s.provider_subscription_id).map((s) => s.provider_subscription_id as string);
-  if (!ids.length) return out;
-  const client = polar();
-  const results = await Promise.allSettled(ids.map((id) => withTimeout(client.subscriptions.get({ id }), 4000)));
-  results.forEach((r, i) => {
-    if (r.status !== "fulfilled") return;
-    const s = r.value;
-    const interval = s.recurringInterval === "year" ? "year" : "month";
-    out.set(ids[i], {
-      amountUsd: (s.amount ?? 0) / 100,
-      interval,
-      trialEnd: s.trialEnd ? new Date(s.trialEnd).toISOString() : null,
-      startedAt: s.startedAt ? new Date(s.startedAt).toISOString() : null,
-      canceledAt: s.canceledAt ? new Date(s.canceledAt).toISOString() : null,
-    });
-  });
+  const wanted = new Set(subs.filter((s) => s.provider_subscription_id).map((s) => s.provider_subscription_id as string));
+  if (!wanted.size) return out;
+  try {
+    await withTimeout(
+      (async () => {
+        const pages = await polar().subscriptions.list({ limit: 100 });
+        for await (const page of pages) {
+          for (const s of page.result.items) {
+            if (!wanted.has(s.id)) continue;
+            out.set(s.id, {
+              amountUsd: (s.amount ?? 0) / 100,
+              interval: s.recurringInterval === "year" ? "year" : "month",
+              trialEnd: s.trialEnd ? new Date(s.trialEnd).toISOString() : null,
+              startedAt: s.startedAt ? new Date(s.startedAt).toISOString() : null,
+              canceledAt: s.canceledAt ? new Date(s.canceledAt).toISOString() : null,
+            });
+          }
+          if (out.size === wanted.size) break;
+        }
+      })(),
+      4000,
+    );
+  } catch (e) {
+    console.warn(`[owner] Polar subscriptions not read: ${e instanceof Error ? e.message : String(e)}`);
+  }
   return out;
 }
 
@@ -545,7 +560,10 @@ function siteOf(p: ProjectRow, r: RollupRow | undefined): CustomerSite {
   };
 }
 
-export async function customersReport(range: Range, now = Date.now()): Promise<CustomersReport | null> {
+/** The customer ledger. Memoised a minute per range (owner-memo.ts). */
+export const customersReport: (range: Range, now?: number) => Promise<CustomersReport | null> = memoMinute((range) => `customers:${range}`, customersReportFresh);
+
+async function customersReportFresh(range: Range, now = Date.now()): Promise<CustomersReport | null> {
   if (!isCloudMode()) return null;
   const w = windows(range, now);
   const since = ISO(w.from);
