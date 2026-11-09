@@ -3,6 +3,7 @@ import type { AiReport, BotClass, EngineRow, GoogleReport } from "@/lib/owner-in
 import { MetricChart } from "./area";
 import { BarList, Panel } from "./bits";
 import { ago, compact, delta, fmt, fullDate, shortDate } from "./format";
+import { EngineLogo } from "./engine-logos";
 import { SectionHead } from "./view";
 
 // The AI and Google sections of /owner: one subject each, plain words.
@@ -128,6 +129,9 @@ function EngineBoard({ rows }: { rows: EngineRow[] }) {
       <ol className="-mx-3 mt-3">
         {rows.map((r) => (
           <li key={r.key} className="flex items-center gap-4 rounded-xl px-3 py-3 sm:gap-5">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-3/70 text-ink-muted" aria-hidden="true">
+              <EngineLogo engine={r.key} className="h-[18px] w-[18px]" />
+            </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[14.5px] font-medium text-ink">{r.name}</span>
               <span className="mt-0.5 block truncate text-[12px] text-ink-faint" title={r.bots.join(", ")}>
