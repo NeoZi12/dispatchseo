@@ -80,7 +80,7 @@ async function githubStars(): Promise<number> {
 export const metadata: Metadata = {
   title: "DispatchSEO - Free SEO automation for bootstrappers, solo devs and small shops",
   description:
-    "Get found on Google, ChatGPT and Claude, for free. Researched, fact-checked articles, published to your site on autopilot. Two a month are free, no card.",
+    "Free SEO automation: researched, fact-checked articles published to your site on autopilot. Get found on Google, ChatGPT and Claude. Two a month free.",
   // "/" is reachable as itself and as "?home=1" (the signed-in opt-out below),
   // so point both at the bare root rather than letting a crawler treat the
   // query string as a second copy of the landing page.

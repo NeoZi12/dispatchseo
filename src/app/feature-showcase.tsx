@@ -104,7 +104,7 @@ export function FeatureShowcase() {
               >
                 <Image
                   src={s.image}
-                  alt={active === i ? s.alt : ""}
+                  alt={s.alt}
                   fill
                   sizes="(max-width: 900px) 100vw, 1080px"
                   quality={90}

@@ -1,0 +1,49 @@
+---
+title: "What an AI-written SEO article actually costs: 43 runs, 22 published articles, $3.96"
+description: "Real numbers from DispatchSEO's hosted writer, 2026-10-24 to 2026-11-07: 43 article attempts across four sites, 22 published, a median model cost of 3 cents per published article, 18 cents all-in once the failed runs are counted, and the one cost that dwarfs the model bill."
+date: 2026-11-09
+keyword: ai seo article cost
+---
+
+Between 2026-10-24 and 2026-11-07, DispatchSEO's hosted writer made 43 attempts to produce an article across four sites and published 22 of them. The model bill for all 43 was $3.96. Per published article that is 18 cents all-in, 6 cents on average for the runs that succeeded, and a median of 3 cents. These are our own production numbers, pulled from the writer's run table on 2026-11-09, and they are small enough that the interesting question is not what the model costs but what the other half of the runs were doing.
+
+> **TL;DR** - Model spend is a rounding error: 3 cents median, 24 cents at the most expensive, for a fact-checked article with a cover and internal links. The real costs are the runs that stop before publishing (21 of 43 here, $2.67 of the $3.96), the research data you pay for separately, and the published article that was never worth writing. Vendors charging $1 to $3 per article are not paying the model that much; they are paying for the pipeline around it and for their margin.
+
+## The numbers
+
+| Measure | Value |
+|---|---|
+| Period | 2026-10-24 to 2026-11-07 |
+| Sites | 4 |
+| Article attempts | 43 |
+| Published | 22 |
+| Stopped before publishing | 21 |
+| Total model spend, all runs | $3.96 |
+| Spent on runs that did not publish | $2.67 |
+| Average model cost, published article | $0.06 |
+| Median model cost, published article | $0.03 |
+| Most expensive published article | $0.24 |
+| All-in cost per published article (total divided by 22) | $0.18 |
+| Average rewrite passes per published article | 1.2 |
+
+Two caveats. These are model costs only: the search-volume and difficulty data that decides what to write about is a separate, metered API bill. And the median fell during the period because later articles moved to a batch API that charges half the standard rate; the first article we ever published on this pipeline, on 2026-10-24, cost 43 cents.
+
+## Why half the runs stopped
+
+A run that stops is not always a failure of the tool, and here the 21 split into two kinds. The first kind is the fact gate doing its job: the research step found a topic, the writer drafted, and the citation check could not ground the article in more than one source, so the pipeline parked it rather than publish something thin. The second kind is pipeline bugs during a period when the pipeline was new; most of those were fixed within a day of appearing, which is why 38 of the 43 attempts fall in the last 14 days and the success rate in that window is 18 of 38. We are not going to pretend the split was all gate refusals. The point is that a stopped run costs money (an average of 13 cents here) and that a pipeline which never stops is one that publishes everything it drafts.
+
+## Where the cost in a run goes
+
+The draft and its rewrite passes are the money. Research is cheap because it is mostly API calls to search-data providers, which bill separately. Fact filtering, section planning and the citation check are short prompts over text that is already there. The draft is the one long generation, and every rewrite pass is another one; at 1.2 passes on average, most articles went through once and a third went through twice. The fact gate is what keeps rewrites bounded: an article that fails twice on the same problem is parked, not rewritten a third time.
+
+## What this means if you are pricing a tool, or buying one
+
+A vendor charging $1 to $3 an article is not spending that on the model. They are paying for the orchestration, the search data, the publishing integrations, the failed runs, the support, and their margin. That is a fair thing to charge for. It does mean that "unlimited AI words" is not a generous offer; words are the cheap part.
+
+For a buyer, the question to ask is not "how much per article" but "how many of your runs publish, and what stops the rest". A tool whose runs never stop has no gate. A tool that stops half its runs and tells you why is spending your money on not publishing, which is the service.
+
+## How we will keep this honest
+
+This page will be updated quarterly with the same table from the same query. If the published count goes up and the stopped count does not come down, the gate is doing its job; if the stopped count climbs, something is broken and the page will say so.
+
+*Figures are from DispatchSEO's writer run table, queried on 2026-11-09. Model spend is the provider's billed cost per run; it excludes search-data API calls, hosting, and the author's time reading the output.*
