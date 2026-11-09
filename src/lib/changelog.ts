@@ -114,6 +114,10 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   },
   {
     kind: "improved",
+    text: "A site whose repo has nowhere for articles now gets a hosted blog switched on by itself: the forwarding change is opened as a pull request that works even when the site already has a /blog page (Next.js proxy or beforeFiles rewrite), merged for you on Auto, and the 'first article is live' email waits until your domain actually answers. Parked articles retry on their own every hour, and if forwarding is still missing after a day you get one email with the exact rule for your stack.",
+  },
+  {
+    kind: "improved",
     text: "Setup asks you to pick a plan up front, free included, instead of only showing a payment step to people who came from the pricing page.",
   },
   {

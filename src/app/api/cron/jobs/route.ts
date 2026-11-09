@@ -75,6 +75,9 @@ const HANDLERS: Record<string, () => Promise<Handler>> = {
   // the first article).
   launch: async () => (await import("@/lib/job-handlers/launch")).runLaunchJob,
   finish: async () => (await import("@/lib/job-handlers/finish")).runFinishJob,
+  // A hosted site waiting for its own /blog to forward to us: the
+  // first-article email goes out when it does, the owner is asked after a day.
+  "hosted-live": async () => (await import("@/lib/job-handlers/hosted-live")).runHostedLiveJob,
   publish: async () => (await import("@/lib/job-handlers/publish")).runPublishJob,
   verify: async () => (await import("@/lib/job-handlers/verify")).runVerifyJob,
   // One stage of a hosted-writer run (src/lib/writer/) - the pivot of
@@ -110,6 +113,16 @@ export async function GET(req: Request): Promise<Response> {
     } catch (e) {
       console.warn("[jobs] inactivity warnings failed:", e instanceof Error ? e.message : e);
     }
+  }
+
+  // Articles parked for a setup gap try again on their own, so a fix on our
+  // side (or on the owner's) reaches them without anyone pressing anything
+  // (job-handlers/draft-status.ts). Best-effort.
+  try {
+    const retried = await (await import("@/lib/job-handlers/draft-status")).requeueParkedDrafts();
+    if (retried) result.parked_retried = retried;
+  } catch (e) {
+    console.warn("[jobs] parked-draft retry failed:", e instanceof Error ? e.message : e);
   }
 
   const jobs = await claimDue(5);

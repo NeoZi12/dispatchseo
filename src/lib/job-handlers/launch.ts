@@ -6,7 +6,7 @@ import { githubApi } from "@/lib/repo-publish";
 import { siteOrigin } from "@/lib/hosted-blog";
 import { fetchProjectUrl } from "@/lib/url-guard";
 import { isCloudMode } from "@/lib/cloud";
-import { checkRewriteLive, servesOwnBlog, siteAppRoot, switchToHostedBlog } from "@/lib/hosted-rewrite";
+import { checkRewriteLive, mergeRewritePr, servesOwnBlog, siteAppRoot, switchToHostedBlog } from "@/lib/hosted-rewrite";
 import {
   addSearchConsoleSite,
   confirmSiteVerification,
@@ -143,47 +143,14 @@ async function launchBlog(project: Project): Promise<Project> {
   if (pr === "manual") return project;
   if (!pr) throw new Error("the forwarding pull request did not open");
 
-  // The one place a forwarding pull request is merged by us. openRewritePr
-  // never merges (that routing change is the owner's call on an existing
-  // site), but a site the new setup launched on Auto was promised its blog
-  // switched on with nothing else to do. Not on Auto: the PR stays open and
-  // the card links it. A merge GitHub refuses (branch protection, a
-  // conflict) also leaves it open.
+  // Merged by us on Auto (hosted-rewrite.ts mergeRewritePr, shared with the
+  // switch a parked article triggers): a site the new setup launched on Auto
+  // was promised its blog switched on with nothing else to do. Not on Auto:
+  // the PR stays open and the card links it. A merge GitHub refuses (branch
+  // protection, a conflict) also leaves it open.
   if (project.auto_merge) await mergeRewritePr(project, pr);
   await checkRewriteLive(project).catch(() => false);
   return project;
-}
-
-/** hosted-rewrite.ts's branch. Only a PR from exactly this branch, in the
- *  project's own repo, is ever merged here. */
-const REWRITE_BRANCH = "dispatchseo/hosted-blog";
-
-async function mergeRewritePr(project: Project, prUrl: string): Promise<void> {
-  const repo = project.github_repo;
-  const number = prUrl.match(/\/pull\/(\d+)/)?.[1];
-  if (!repo || !number) throw new Error("the forwarding pull request has no number we can read");
-  const token = await tokenForRef(project);
-  if (!token) throw new Error("no GitHub access to merge the forwarding pull request");
-
-  const state = await githubApi(token, "GET", `/repos/${repo}/pulls/${number}`);
-  if (state.status !== 200 || !state.json) throw new Error(`could not read the forwarding pull request (HTTP ${state.status})`);
-  if (state.json.merged) return;
-  if (state.json.state !== "open") throw new Error("the forwarding pull request was closed without merging");
-
-  // The stored URL is a pointer, not proof: merge only our own branch into
-  // the project's own repo, at the exact commit we just looked at.
-  const same = (a: unknown) => typeof a === "string" && a.toLowerCase() === repo.toLowerCase();
-  const base = state.json.base as { repo?: { full_name?: string } } | undefined;
-  const head = state.json.head as { ref?: string; sha?: string; repo?: { full_name?: string } } | undefined;
-  if (!same(base?.repo?.full_name) || head?.ref !== REWRITE_BRANCH || !same(head?.repo?.full_name) || !head?.sha) {
-    throw new Error("the stored pull request is not our forwarding pull request; left alone");
-  }
-
-  const merged = await githubApi(token, "PUT", `/repos/${repo}/pulls/${number}/merge`, { merge_method: "squash", sha: head.sha });
-  if (merged.status !== 200) {
-    const why = typeof merged.json?.message === "string" ? merged.json.message : `HTTP ${merged.status}`;
-    throw new Error(`GitHub did not merge the forwarding pull request: ${why}`);
-  }
 }
 
 // ---------------------------------------------------------------- crawl

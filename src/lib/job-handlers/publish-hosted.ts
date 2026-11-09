@@ -10,6 +10,7 @@ import { ideaDone } from "@/lib/writer/runs";
 import { warmScreenshotsLater } from "@/lib/page-screenshot";
 import { linkOlderHostedArticles } from "@/lib/backlinks";
 import { notifyFirstArticleLive } from "@/lib/first-article-email";
+import { checkRewriteLive, startHostedLiveWatch } from "@/lib/hosted-rewrite";
 
 // The hosted half of the publish job: the article is served by us under the
 // site's own /blog (src/lib/hosted-blog.ts), so "publishing" is a render for
@@ -94,7 +95,15 @@ export async function runHostedPublish(project: Project, draftId: string): Promi
   // only if it IS live: a discard that won the race above leaves nothing to
   // link to. Best-effort: the article is published whatever happens here.
   // The owner's "your first article is up" email (first-article-email.ts).
-  if (flipped?.length) await notifyFirstArticleLive(project, { draftId: row.id, url, title: row.title });
+  // The email's link is on the owner's domain. Until their /blog forwards to
+  // us that link is dead, so the email waits for the forwarding: the
+  // hosted-live chain sends it the pass it sees the marker (and asks the
+  // owner for the rule after a day). Live already: send it now.
+  if (flipped?.length) {
+    const live = Boolean(project.hosted_rewrite_live_at) || (await checkRewriteLive(project).catch(() => false));
+    if (live) await notifyFirstArticleLive(project, { draftId: row.id, url, title: row.title });
+    else await startHostedLiveWatch(project.id).catch((e) => console.warn(`[publish-hosted] ${project.slug}: live watch not started: ${e instanceof Error ? e.message : String(e)}`));
+  }
   if (flipped?.length) await linkOlderHostedArticles(project, row, url).then(
     (done) => { if (done.length) console.log(`[publish-hosted] ${project.slug}: linked from ${done.map((d) => `${d.sourceUrl} ("${d.anchor}")`).join(", ")}`); },
     (e) => console.warn(`[publish-hosted] ${project.slug}: older-article links skipped: ${e instanceof Error ? e.message : String(e)}`),

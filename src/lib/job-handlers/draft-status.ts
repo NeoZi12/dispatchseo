@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { enqueue } from "@/lib/jobs";
-import { publishTarget, writerMode, type Project } from "@/lib/projects";
+import { getProjectById, publishTarget, writerMode, type Project } from "@/lib/projects";
 import { isCloudMode } from "@/lib/cloud";
 import { instanceTokenAllowedFor } from "@/lib/github";
 
@@ -43,6 +43,42 @@ export async function markBlockedSetup(draftId: string, extra: Record<string, un
     .from("article_drafts")
     .update({ status: "blocked_setup", updated_at: new Date().toISOString(), ...extra })
     .eq("id", draftId);
+}
+
+/** How long a parked draft rests before the drain tries it again, and how
+ *  old a draft may be and still be retried. Hourly for a week: enough that
+ *  a fix on our side (a planner that now handles their repo) or the owner's
+ *  (a folder named, a route switched) reaches the article the same hour,
+ *  bounded so a hopeless one does not probe GitHub forever. markBlockedSetup
+ *  bumps updated_at, so a retry that parks again rests a full hour. */
+const PARKED_RETRY_AFTER_MS = 60 * 60_000;
+const PARKED_RETRY_FOR_MS = 7 * 24 * 3_600_000;
+
+/** Re-queue publishing for hosted-writer drafts parked on setup. Called from
+ *  every jobs tick (best-effort there). Returns how many were queued. */
+export async function requeueParkedDrafts(): Promise<number> {
+  const now = Date.now();
+  const { data, error } = await db()
+    .from("article_drafts")
+    .select("id, project_id")
+    .eq("status", "blocked_setup")
+    .lt("updated_at", new Date(now - PARKED_RETRY_AFTER_MS).toISOString())
+    .gt("created_at", new Date(now - PARKED_RETRY_FOR_MS).toISOString())
+    .order("updated_at", { ascending: true })
+    .limit(5);
+  if (error) throw new Error(`could not read parked drafts: ${error.message}`);
+  let queued = 0;
+  for (const row of (data ?? []) as { id: string; project_id: string }[]) {
+    const project = await getProjectById(row.project_id);
+    // Agent-mode sites park on purpose (their own agent moves the article);
+    // only a hosted-writer site has nobody else to do it.
+    if (!project || writerMode(project) !== "hosted") continue;
+    const job = await enqueue({ projectId: row.project_id, kind: "publish", payload: { draftId: row.id }, idempotencyKey: `publish:${row.id}` });
+    // Rest the hour whether or not a job was already pending.
+    await db().from("article_drafts").update({ updated_at: new Date().toISOString() }).eq("id", row.id).eq("status", "blocked_setup");
+    if (job) queued++;
+  }
+  return queued;
 }
 
 /**
