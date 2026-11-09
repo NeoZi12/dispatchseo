@@ -193,7 +193,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       {/* Arrival pace: full on first load, quick on in-app navigation. */}
       <ArrivalMode />
       {user && <PostHogIdentify userId={user.id} email={user.email} />}
-      <Sidebar billing={billing} hasProject={active != null} plan={navPlan} free={free} mode={hosted ? "hosted" : "agent"} owner={owner} />
+      <Sidebar billing={billing} hasProject={active != null} plan={navPlan} free={free} waiting={showFirstArticle} mode={hosted ? "hosted" : "agent"} owner={owner} />
       <div className="flex min-w-0 flex-1 flex-col">
         {/* One row on every size. Desktop keeps the three-up grid (switcher /
             centered title / mode). Mobile can't: at 390px the centered title
@@ -204,7 +204,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <header className="sticky top-0 z-20 border-b border-line-soft bg-canvas/90 backdrop-blur">
           <div className="flex h-14 items-center gap-2 px-4 sm:px-6 md:grid md:grid-cols-[1fr_auto_1fr]">
             <div className="flex min-w-0 flex-1 items-center gap-1.5 md:flex-none md:gap-2">
-              <MobileNav billing={billing} hasProject={active != null} plan={navPlan} free={free} mode={hosted ? "hosted" : "agent"} owner={owner} />
+              <MobileNav billing={billing} hasProject={active != null} plan={navPlan} free={free} waiting={showFirstArticle} mode={hosted ? "hosted" : "agent"} owner={owner} />
               <Link href="/dashboard" className="shrink-0 md:hidden" aria-label="DispatchSEO home">
                 <DispatchMark className="h-7 w-auto" />
               </Link>

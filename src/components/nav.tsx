@@ -534,7 +534,34 @@ function LockMark() {
 // Hosted Tools is the operator's alone (owner, 2026-11-08): no plan has
 // tools, so a customer's sidebar doesn't offer a screen that only says "not
 // available". Self-host keeps it - there the one user is the operator.
-function NavGroups({ mode, pathname, free = false, tools = true }: { mode: NavMode; pathname: string; free?: boolean; tools?: boolean }) {
+// While a new hosted site's first article is being written (the layout's
+// first-article card is up), the sidebar is Overview only: the other screens
+// are greyed and say so on hover (owner, 2026-11-09). Billing and Settings
+// stay open below - cancelling, changing the plan, and the account are the
+// only things there are to do.
+const WAIT_NOTE = "We're setting up your dashboard. Nothing left for you to do but wait.";
+
+function WaitingLink({ link, big }: { link: NavLink; big: boolean }) {
+  return (
+    <span
+      role="link"
+      aria-disabled="true"
+      tabIndex={0}
+      className={`group relative flex cursor-not-allowed select-none items-center rounded-lg ${ROW[big ? "big" : "normal"]} text-ink-faint/60 ${FOCUS_RING}`}
+    >
+      <link.Icon className={`${ICON[big ? "big" : "normal"]} shrink-0 text-ink-faint/40`} />
+      {link.label}
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute inset-x-1 top-full z-10 mt-1 rounded-lg border border-line-soft bg-surface-2 px-3 py-2 text-[12.5px] font-normal leading-snug text-ink shadow-lg shadow-black/40 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
+      >
+        {WAIT_NOTE}
+      </span>
+    </span>
+  );
+}
+
+function NavGroups({ mode, pathname, free = false, tools = true, waiting = false }: { mode: NavMode; pathname: string; free?: boolean; tools?: boolean; waiting?: boolean }) {
   const groups = groupsFor(mode).map((g) => (mode === "hosted" && !tools ? { ...g, links: g.links.filter((l) => l.href !== "/tools") } : g));
   return (
     <>
@@ -543,15 +570,19 @@ function NavGroups({ mode, pathname, free = false, tools = true }: { mode: NavMo
           {group.label ? (
             <p className={`px-3 pb-1.5 text-[12px] font-medium text-ink-faint ${i > 0 ? "pt-6" : ""}`}>{group.label}</p>
           ) : null}
-          {group.links.map((l) => (
-            <SidebarLink
-              key={l.href}
-              link={l}
-              pathname={pathname}
-              big={mode === "hosted"}
-              trailing={free && mode === "hosted" && LOCKED_ON_FREE.has(l.href) ? <LockMark /> : undefined}
-            />
-          ))}
+          {group.links.map((l) =>
+            waiting && mode === "hosted" && l.href !== "/dashboard" ? (
+              <WaitingLink key={l.href} link={l} big />
+            ) : (
+              <SidebarLink
+                key={l.href}
+                link={l}
+                pathname={pathname}
+                big={mode === "hosted"}
+                trailing={free && mode === "hosted" && LOCKED_ON_FREE.has(l.href) ? <LockMark /> : undefined}
+              />
+            ),
+          )}
         </div>
       ))}
     </>
@@ -594,7 +625,10 @@ export function Sidebar({
   mode = "agent",
   owner = false,
   free = false,
+  waiting = false,
 }: {
+  /** The first article is still being written: only Overview is open (WaitingLink). */
+  waiting?: boolean;
   /** The active site is on the free tier: its locked screens carry a lock. */
   free?: boolean;
   /** Show the Owner row (cloud operators only; see OWNER). */
@@ -624,7 +658,7 @@ export function Sidebar({
           shrink this); Settings lives OUTSIDE the scroll area so it can
           never be clipped off the bottom of the screen. */}
       <nav className={`min-h-0 flex-1 overflow-y-auto px-3 pb-3 ${mode === "hosted" ? "pt-5" : "pt-3"}`}>
-        {hasProject ? <NavGroups mode={mode} pathname={pathname} free={free} tools={owner || !billing} /> : <NoSiteNote />}
+        {hasProject ? <NavGroups mode={mode} pathname={pathname} free={free} tools={owner || !billing} waiting={waiting} /> : <NoSiteNote />}
       </nav>
       <PinnedLinks mode={mode} pathname={pathname} billing={billing} plan={plan} owner={owner} />
     </aside>
@@ -644,7 +678,10 @@ export function MobileNav({
   mode = "agent",
   owner = false,
   free = false,
+  waiting = false,
 }: {
+  /** The first article is still being written: only Overview is open (WaitingLink). */
+  waiting?: boolean;
   free?: boolean;
   /** Show the Owner row (cloud operators only; see OWNER). */
   owner?: boolean;
@@ -728,7 +765,7 @@ export function MobileNav({
             {/* Same groups as the desktop sidebar, and Settings likewise pinned
                 outside the scroll area so it can't be clipped off the bottom. */}
             <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 pt-1">
-              {hasProject ? <NavGroups mode={mode} pathname={pathname} free={free} tools={owner || !billing} /> : <NoSiteNote />}
+              {hasProject ? <NavGroups mode={mode} pathname={pathname} free={free} tools={owner || !billing} waiting={waiting} /> : <NoSiteNote />}
             </nav>
             <PinnedLinks mode={mode} pathname={pathname} billing={billing} plan={plan} owner={owner} />
           </div>

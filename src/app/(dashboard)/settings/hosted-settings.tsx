@@ -16,7 +16,7 @@ import { DeleteAccountForm } from "@/components/delete-account";
 import { DEFAULT_PROJECT_ID } from "@/lib/projects";
 import type { AutopilotReport } from "@/lib/autopilot/report";
 import { BRAND_LIMITS } from "@/lib/autopilot/controls";
-import { HOUSE_RULES_MAX, ownerFactsOf, OWNER_FACT_CHARS, OWNER_FACTS_MAX } from "@/lib/content-prefs";
+import { ownerFactsOf, OWNER_FACT_CHARS, OWNER_FACTS_MAX } from "@/lib/content-prefs";
 import { ActionForm } from "@/components/ui/action-form";
 import { buttonClass } from "@/components/ui/button";
 import { ChipsInput } from "@/components/ui/chips-input";
@@ -38,19 +38,18 @@ import { authorOf, loadReport } from "../mode";
 // between. Long text and chip fields sit full width under their name.
 // Destructive actions live in their own card at the end of Advanced.
 //
-// Only what an owner must be able to change (owner, 2026-10-24). Gone from
-// this page, still reachable over MCP: the author byline (articles sign as
-// the site unless author_name is already set), the tagline / long
-// description (the one sentence here is the short description; the other
-// two ride along unchanged), and WordPress, which this product doesn't
-// support.
+// Only what an owner must be able to change (owner, 2026-10-24), cut again
+// on 2026-11-09: Site, Google, Plan, Advanced, and Publishing only while it
+// needs a hand. Gone from this page, still reachable over MCP: the writing
+// rules and blocked topics (set_tone, set_blocked_topics - writing is the
+// product's job now, not a setting; "Facts only you know" stays under Site),
+// the author byline, and the tagline / long description.
 
 type Controls = AutopilotReport["controls"];
 
 const SECTIONS = [
   { id: "site", title: "Site", description: "What your site is. The writer reads this before every article." },
-  { id: "writing", title: "Writing", description: "How articles sound, and what they never cover." },
-  { id: "publishing", title: "Publishing", description: "Where finished articles go." },
+  { id: "publishing", title: "Publishing", description: "Where finished articles go. Something here needs you." },
   { id: "google", title: "Google", description: "Where the clicks and searches in your report come from. Read-only." },
   { id: "plan", title: "Plan", description: "What you're on. Change or cancel it on Billing." },
   { id: "advanced", title: "Advanced", description: "Set when you added the site, plus disconnecting and deleting." },
@@ -91,7 +90,14 @@ export async function HostedSettings({
   /** ?section= - which pane is open. */
   section?: string;
 }) {
-  const sections = SECTIONS.filter((x) => x.id !== "plan" || isCloudMode());
+  // Publishing shows only while it needs the owner: no route picked yet, a
+  // route we can't serve, or a hosted blog whose forwarding isn't live. The
+  // stuck-state links (first-article-progress, hosted-report, mode.ts) all
+  // land here in exactly those states; once articles flow, the pane is gone.
+  const target = publishTarget(project);
+  const publishingOpen =
+    (target === "github" && !project.github_repo) || target === "manual" || target === "wordpress" || (target === "hosted" && !(await rewriteLiveCached(project)));
+  const sections = SECTIONS.filter((x) => (x.id !== "plan" || isCloudMode()) && (x.id !== "publishing" || publishingOpen));
   const active: SectionId = sections.find((x) => x.id === section)?.id ?? "site";
   const meta = SECTIONS.find((x) => x.id === active)!;
 
@@ -131,7 +137,6 @@ export async function HostedSettings({
           </div>
           <div className="arrive-up space-y-5" style={at(140)}>
             {active === "site" ? <SiteSection project={project} /> : null}
-            {active === "writing" ? <WritingSection project={project} /> : null}
             {active === "publishing" ? <PublishingSection project={project} /> : null}
             {active === "google" ? <GoogleSection project={project} /> : null}
             {active === "plan" ? <PlanSection project={project} /> : null}
@@ -199,46 +204,25 @@ async function SiteSection({ project }: { project: Project }) {
           </Row>
         </div>
       </ActionForm>
-    </Rows>
-  );
-}
-
-async function WritingSection({ project }: { project: Project }) {
-  const { c } = await controlsFor(project);
-  return (
-    <Rows>
-      <ActionForm action={saveVoice} slug={project.slug} submitLabel="Save writing rules" size="sm" className={SAVE_ROW}>
-        <div className="divide-y divide-line-soft">
-          <Row title="Rules every article follows" description="Voice, words to use or avoid, claims you never make. Empty means our house style." full>
-            <Textarea
-              id="tone-rules"
-              name="tone"
-              aria-label="Rules every article follows"
-              defaultValue={c.tone}
-              maxLength={HOUSE_RULES_MAX}
-              rows={4}
-              placeholder={"Plain and direct, second person.\nSay \"customers\", never \"users\".\nNever promise rankings or results."}
-            />
-          </Row>
-          <Row title="Topics to never write about" description="Research skips these and the writer refuses them." full>
-            <ChipsInput id="topics-avoid" name="topics" defaultValue={c.blockedTopics} max={50} maxLength={80} placeholder="e.g. competitor names" />
-          </Row>
-          <Row
-            title="Facts only you know"
-            description={`Prices, years, numbers, how you work - one per line, up to ${OWNER_FACTS_MAX}. Every article works one in; it's what sets your articles apart from everyone else's.`}
-            full
-          >
-            <Textarea
-              id="owner-facts"
-              name="facts"
-              aria-label="Facts only you know"
-              defaultValue={c.ownerFacts.join("\n")}
-              maxLength={OWNER_FACTS_MAX * (OWNER_FACT_CHARS + 1)}
-              rows={4}
-              placeholder={"Flat $95 call-out fee anywhere in the city.\nFamily-run since 1998, three licensed plumbers.\nMost disposal jams are fixed in under 30 minutes."}
-            />
-          </Row>
-        </div>
+      {/* The one writing input that changes what the articles say. The voice
+          rules and blocked topics (saveVoice saves all three) ride along
+          unchanged; both stay reachable over MCP. */}
+      <ActionForm action={saveVoice} slug={project.slug} submitLabel="Save facts" size="sm" className={SAVE_ROW} hidden={{ tone: c.tone, topics: JSON.stringify(c.blockedTopics) }}>
+        <Row
+          title="Facts only you know"
+          description={`Prices, years, numbers, how you work - one per line, up to ${OWNER_FACTS_MAX}. Every article works one in; it's what sets your articles apart from everyone else's.`}
+          full
+        >
+          <Textarea
+            id="owner-facts"
+            name="facts"
+            aria-label="Facts only you know"
+            defaultValue={c.ownerFacts.join("\n")}
+            maxLength={OWNER_FACTS_MAX * (OWNER_FACT_CHARS + 1)}
+            rows={4}
+            placeholder={"Flat $95 call-out fee anywhere in the city.\nFamily-run since 1998, three licensed plumbers.\nMost disposal jams are fixed in under 30 minutes."}
+          />
+        </Row>
       </ActionForm>
     </Rows>
   );

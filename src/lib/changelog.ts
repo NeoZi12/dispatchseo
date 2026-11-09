@@ -73,6 +73,10 @@ export type ChangelogEntry = {
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
+    kind: "improved",
+    text: "While your first article is being written, the sidebar is Overview only - the other screens wait, and say so when you hover them. Settings is down to Site, Google, Plan and Advanced; Publishing shows only when it needs you.",
+  },
+  {
     kind: "new",
     text: "The home page now shows the five checks every article passes before it goes live: real search demand, fact-checking, no AI slop, built to rank, and cited by AI.",
   },
