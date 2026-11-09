@@ -481,7 +481,7 @@ export default async function LandingPage({
               <div className="pm-card">
                 <span className="pm-name">Free</span>
                 <span className="pm-tag">Try it on a side project</span>
-                <div className="pm-stat"><b>2</b><span>articles a month</span></div>
+                <div className="pm-stat"><b>2</b><span>articles / month</span></div>
                 <span className="pm-price">$0<small>/forever</small></span>
                 <a className="btn btn-solid" href="/onboarding">Get free traffic</a>
                 <ul className="pm-ticks">
@@ -501,7 +501,7 @@ export default async function LandingPage({
                   ) : null}
                   <span className="pm-name">{TIER_NAMES[plan.tier]}</span>
                   <span className="pm-tag">{plan.tagline}</span>
-                  <div className="pm-stat"><b>{plan.perMonth}</b><span>articles a month</span></div>
+                  <div className="pm-stat"><b>{plan.perMonth}</b><span>articles / month</span></div>
                   <PmPrice tier={plan.tier} annual={annual} />
                   <PlanLink tier={plan.tier} annual={annual}>Choose {TIER_NAMES[plan.tier]}</PlanLink>
                   <p className="pm-lead">{plan.lead}</p>
