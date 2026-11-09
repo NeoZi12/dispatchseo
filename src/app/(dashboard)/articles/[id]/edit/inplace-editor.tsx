@@ -88,6 +88,7 @@ export function InplaceEditor({
   route,
   repo,
   autoMerge,
+  pendingEdit = false,
   styles,
   lang,
   dir,
@@ -103,6 +104,8 @@ export function InplaceEditor({
   route: ArticleRoute | null;
   repo: string | null;
   autoMerge: boolean;
+  /** An earlier edit's pull request is still open: saves join it. */
+  pendingEdit?: boolean;
   /** The blog's stylesheet with the site's palette (hosted-blog.ts editorStyles). */
   styles: string;
   lang: string;
@@ -619,7 +622,9 @@ export function InplaceEditor({
   }, [dirty]);
 
   const where =
-    route === "repo"
+    route === "repo" && pendingEdit
+      ? "An earlier edit is waiting on its pull request; saving adds to it."
+      : route === "repo"
       ? autoMerge
         ? `Saving opens a pull request in ${repo ?? "your repo"}; it merges on its own once your site's checks pass.`
         : `Saving opens a pull request in ${repo ?? "your repo"}. Merge it and your site shows the change.`
@@ -649,11 +654,8 @@ export function InplaceEditor({
                 Open the live article
               </a>
             ) : null}
-            <Button type="button" variant="ghost" size="sm" onClick={copyArticle} title="Copy the whole article as text, to hand to an AI">
-              {copied ? "Copied" : "Copy text"}
-            </Button>
-            <Button type="button" variant="ghost" size="sm" onClick={() => setPasteOpen((o) => !o)} aria-expanded={pasteOpen} title="Paste the article back and replace it">
-              Paste text
+            <Button type="button" variant="secondary" size="sm" onClick={() => setPasteOpen((o) => !o)} aria-expanded={pasteOpen}>
+              Edit with AI
             </Button>
             <Button type="button" variant="ghost" size="sm" onClick={undo} disabled={historyRef.current.length === 0}>
               Undo
@@ -666,27 +668,56 @@ export function InplaceEditor({
       </div>
 
       {pasteOpen ? (
-        <div className="mx-auto mt-5 max-w-[48rem] rounded-2xl border border-line-soft bg-surface p-4">
-          <p className="text-[13.5px] text-ink">Paste the article back and it replaces everything below, title included if the first line is one.</p>
-          <p className="mt-0.5 text-[12.5px] text-ink-faint">Copy text, hand it to ChatGPT or Claude with what you want changed, paste the answer here. Markdown or HTML both work.</p>
-          <textarea
-            value={pasteText}
-            onChange={(e) => setPasteText(e.target.value)}
-            rows={10}
-            spellCheck={false}
-            placeholder="# Title&#10;&#10;The article…"
-            className={cx("mt-3 w-full resize-y rounded-lg border border-line bg-surface-2 px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-ink outline-none placeholder:text-ink-faint focus-visible:border-accent/60", FOCUS_RING)}
-          />
-          <div className="mt-3 flex items-center gap-3">
-            <Button type="button" variant="primary" size="sm" onClick={replaceArticle} disabled={!pasteText.trim()}>
-              Replace article
-            </Button>
+        <section aria-label="Edit with AI" className="mx-auto mt-5 max-w-[48rem] rounded-2xl border border-line-soft bg-surface p-5 sm:p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-[17px] font-semibold text-ink">Edit with AI</h2>
+              <p className="mt-1 text-[13.5px] leading-relaxed text-ink-muted">Let ChatGPT or Claude rewrite the article for you, in three steps.</p>
+            </div>
             <Button type="button" variant="ghost" size="sm" onClick={() => setPasteOpen(false)}>
-              Cancel
+              Close
             </Button>
-            <span className="text-[12px] text-ink-faint">Undo brings the old version back.</span>
           </div>
-        </div>
+          <ol className="mt-5 space-y-5">
+            <li className="flex gap-4">
+              <Step n={1} />
+              <div className="min-w-0 flex-1">
+                <p className="text-[14px] font-medium text-ink">Copy the article</p>
+                <p className="mt-0.5 text-[13px] text-ink-muted">The whole article goes to your clipboard as text.</p>
+                <Button type="button" variant="secondary" size="sm" className="mt-2" onClick={copyArticle}>
+                  {copied ? "Copied ✓" : "Copy the article"}
+                </Button>
+              </div>
+            </li>
+            <li className="flex gap-4">
+              <Step n={2} />
+              <div className="min-w-0 flex-1">
+                <p className="text-[14px] font-medium text-ink">Paste it into ChatGPT or Claude and ask for your changes</p>
+                <p className="mt-0.5 text-[13px] text-ink-muted">
+                  For example: <span className="text-ink">&ldquo;Make the intro shorter and add a section about pricing. Give me the whole article back.&rdquo;</span>
+                </p>
+              </div>
+            </li>
+            <li className="flex gap-4">
+              <Step n={3} />
+              <div className="min-w-0 flex-1">
+                <p className="text-[14px] font-medium text-ink">Paste the answer here</p>
+                <p className="mt-0.5 text-[13px] text-ink-muted">It replaces the article below. Undo brings the old version back.</p>
+                <textarea
+                  value={pasteText}
+                  onChange={(e) => setPasteText(e.target.value)}
+                  rows={7}
+                  spellCheck={false}
+                  placeholder="Paste the whole article here"
+                  className={cx("mt-2 w-full resize-y rounded-lg border border-line bg-surface-2 px-3 py-2.5 text-[13.5px] leading-relaxed text-ink outline-none placeholder:text-ink-faint focus-visible:border-accent/60", FOCUS_RING)}
+                />
+                <Button type="button" variant="primary" size="sm" className="mt-2" onClick={replaceArticle} disabled={!pasteText.trim()}>
+                  Use this version
+                </Button>
+              </div>
+            </li>
+          </ol>
+        </section>
       ) : null}
 
       {/* The description Google shows under the title: not on the page, so
@@ -712,11 +743,15 @@ export function InplaceEditor({
       </div>
 
       <p className="mx-auto mt-4 max-w-[48rem] px-6 text-center text-[12.5px] text-ink-faint">
-        Click any text to change it, table cells too. Hover a block for Delete and more. Copy text hands the whole article to an AI; Paste text takes it back. {route !== "hosted" ? "Shown in DispatchSEO's blog layout; your site's own design may differ. " : ""}
+        Click any text to change it, table cells too. Hover a block for Delete and more. Edit with AI rewrites the whole article for you. {route !== "hosted" ? "Shown in DispatchSEO's blog layout; your site's own design may differ. " : ""}
         <kbd className="rounded bg-surface-2 px-1">⌘S</kbd> saves, <kbd className="rounded bg-surface-2 px-1">⌘⇧Z</kbd> undoes.
       </p>
     </div>
   );
+}
+
+function Step({ n }: { n: number }) {
+  return <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-[13px] font-semibold text-accent">{n}</span>;
 }
 
 // ---- caret helpers --------------------------------------------------------------

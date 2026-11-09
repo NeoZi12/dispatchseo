@@ -47,6 +47,7 @@ export default async function EditArticlePage({ params }: { params: Promise<{ id
         route={source.route}
         repo={source.repo}
         autoMerge={source.autoMerge}
+        pendingEdit={source.pendingEdit}
         styles={editorStyles(project)}
         lang={lang}
         dir={RTL.has(lang) ? "rtl" : "ltr"}

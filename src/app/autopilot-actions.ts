@@ -18,7 +18,7 @@ import {
   type ControlResult,
 } from "@/lib/autopilot/controls";
 import { removeQueuedIdea, restoreQueuedIdea } from "@/lib/autopilot/queue";
-import { editArticle, removeArticle } from "@/lib/article-owner";
+import { adoptPage, editArticle, removeArticle } from "@/lib/article-owner";
 import { redirect } from "next/navigation";
 import type { ActionState } from "@/components/ui/action-state";
 
@@ -384,12 +384,32 @@ export async function saveArticleEdit(_prev: ActionState, fd: FormData): Promise
   return state(true, r.message);
 }
 
+/** An article from before the writer (a `pages` row): find its file in the
+ *  repo, record it as an article, and open the editor on it. */
+export async function adoptAndEditAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  const o = await ownedProject(fd);
+  if ("refused" in o) return o.refused;
+  const pageId = text(fd, "page_id");
+  if (!pageId) return state(false, "That article can't be edited from here.");
+  const r = await adoptPage(o.project, pageId).catch(() => ({ ok: false as const, error: "We couldn't read this article's file just now. Try again in a moment." }));
+  if (!r.ok) return state(false, r.error);
+  refresh();
+  redirect(`/articles/${encodeURIComponent(r.draftId)}/edit`);
+}
+
 /** Take a live article off the site. Lands on the list: the article's own
  *  page has nothing left to show. */
 export async function removeArticleAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
   const o = await ownedProject(fd);
   if ("refused" in o) return o.refused;
-  const id = text(fd, "id");
+  let id = text(fd, "id");
+  // An article from before the writer: becomes a draft first (article-owner.ts adoptPage).
+  const pageId = text(fd, "page_id");
+  if (pageId) {
+    const adopted = await adoptPage(o.project, pageId).catch(() => ({ ok: false as const, error: "We couldn't read this article's file just now. Try again in a moment." }));
+    if (!adopted.ok) return state(false, adopted.error);
+    id = adopted.draftId;
+  }
   if (!id) return state(false, "That article can't be removed from here.");
   const r = await removeArticle(o.project, id).catch(() => ({ ok: false as const, error: "We couldn't remove it just now. Try again in a moment." }));
   if (!r.ok) return state(false, r.error);

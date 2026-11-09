@@ -542,10 +542,10 @@ article's dashboard page.
   read back, so nothing that reached the file since we published it is
   undone - and `expected_file_sha` (the `fileSha` you read) refuses the save
   if the file changed on GitHub in between. On Auto we merge once the site's
-  checks pass - never at open time; otherwise the owner merges it. One edit
-  is open at a time; if the PR is closed instead, the old text comes back on
-  our side. A body that would break the build (MDX safety) is refused with
-  the reason.
+  checks pass - never at open time; otherwise the owner merges it. While that
+  PR is open, `get_article` shows its version and a further edit joins the
+  same PR; if the PR is closed instead, the old text comes back on our side.
+  A body that would break the build (MDX safety) is refused with the reason.
 - **WordPress**: the post is updated in place.
 
 `body` is a **replace, not a patch**: read it with `get_article`, edit, send
@@ -574,6 +574,21 @@ article changed in between. The URL never changes.
   <Field name="expected_file_sha" type="string">
     Repo sites: `get_article`'s `fileSha`. The save is refused when the file
     changed on GitHub since you read it.
+  </Field>
+</Fields>
+
+### `adopt_page`
+
+An article from before the hosted writer (a page `get_pages` lists with no
+draft behind it: the site's own coding agent published it) has no source on
+our side, so `edit_article` and `remove_article` can't take it. This finds
+its file in the connected repo by the URL's last segment, records it as a
+published article, and returns the draft id to use with the three tools
+above. Repo sites only. Calling it again returns the same id.
+
+<Fields>
+  <Field name="page_id" type="string" required="true">
+    The page id from `get_pages`.
   </Field>
 </Fields>
 

@@ -28,6 +28,7 @@ import { friendlyError } from "@/lib/autopilot/friendly";
 import { UpgradePanel, fmtCount } from "@/components/upgrade-panel";
 import { loadArticleSource } from "@/lib/article-owner";
 import { RemoveArticle } from "./remove-article";
+import { adoptAndEditAction } from "@/app/autopilot-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -96,6 +97,9 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
   ]);
   // Known not to load any more: say so, and don't send anyone to it.
   const gone = a.url ? goneUrls.has(normalizePageUrl(a.url)) : false;
+  // An article from before the writer, on a repo site: Edit and Delete adopt
+  // it first (article-owner.ts adoptPage).
+  const agentPage = live && a.source === "agent" && a.draftId.startsWith("page:") && project.github_repo && !asOperator ? a.draftId.slice("page:".length) : null;
   const publishedAt = a.publishedAt ?? a.createdAt;
   // A month-old screenshot shows now and is re-taken after the response.
   if (live && a.url && !gone && shotAt && Date.now() - Date.parse(shotAt) > 30 * 86_400_000) {
@@ -155,12 +159,16 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
                 <Link href={`/articles/${encodeURIComponent(a.draftId)}/edit`} className={buttonClass("secondary", "lg")}>
                   Edit
                 </Link>
+              ) : agentPage ? (
+                // Written by the site's own agent before the writer: the file
+                // is found in the repo and recorded on first edit.
+                <ActionForm action={adoptAndEditAction} slug={project.slug} submitLabel="Edit" variant="secondary" size="lg" hidden={{ page_id: agentPage }} className="[&_p:empty]:hidden" />
               ) : null}
             </div>
           ) : null}
-          {source?.canRemove ? (
+          {source?.canRemove || (agentPage && !gone) ? (
             <div className="mt-6">
-              <RemoveArticle id={a.draftId} slug={project.slug} route={source.route} autoMerge={source.autoMerge} />
+              <RemoveArticle id={a.draftId} pageId={agentPage ?? undefined} slug={project.slug} route={source?.route ?? "repo"} autoMerge={source?.autoMerge ?? false} />
             </div>
           ) : null}
         </div>
@@ -240,6 +248,16 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
             </a>
           ) : null}
         </section>
+      ) : null}
+
+      {source?.pendingEdit && source.prUrl ? (
+        <Callout tone="info" title="An edit is waiting on a pull request">
+          {source.autoMerge ? "It merges on its own once your site's checks pass. " : "Merge it on GitHub and your site shows the change. "}
+          You can keep editing; further changes join the same pull request.{" "}
+          <a href={source.prUrl} target="_blank" rel="noopener noreferrer" className="font-medium text-accent underline decoration-accent/40 underline-offset-[3px] hover:decoration-accent">
+            Open the pull request
+          </a>
+        </Callout>
       ) : null}
 
       {source && live && !source.canEdit && source.reason && source.status !== "removing" ? (

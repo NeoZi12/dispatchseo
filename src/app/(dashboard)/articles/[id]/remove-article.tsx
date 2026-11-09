@@ -5,13 +5,12 @@ import { removeArticleAction } from "@/app/autopilot-actions";
 import type { ArticleRoute } from "@/lib/article-owner-shared";
 import { Button } from "@/components/ui/button";
 import { Toast } from "@/components/ui/toast";
-import { cx, FOCUS_RING } from "@/components/ui/styles";
 
 /** "Remove from site": a quiet text link that opens into one plain question
  *  with the consequence spelled out for this article's route, then the
  *  button that does it. The action lands on the list; this component only
  *  ever shows the refusal. */
-export function RemoveArticle({ id, slug, route, autoMerge, recheck = false }: { id: string; slug: string; route: ArticleRoute | null; autoMerge: boolean; /** A removal already waiting on its pull request: one button that looks at the PR now. */ recheck?: boolean }) {
+export function RemoveArticle({ id, pageId, slug, route, autoMerge, recheck = false }: { id: string; /** An article from before the writer (a page row): adopted into a draft first. */ pageId?: string; slug: string; route: ArticleRoute | null; autoMerge: boolean; /** A removal already waiting on its pull request: one button that looks at the PR now. */ recheck?: boolean }) {
   const [open, setOpen] = useState(false);
   const [state, formAction, pending] = useActionState(removeArticleAction, null);
 
@@ -46,9 +45,9 @@ export function RemoveArticle({ id, slug, route, autoMerge, recheck = false }: {
 
   if (!open) {
     return (
-      <button type="button" onClick={() => setOpen(true)} className={cx("rounded text-[13px] font-medium text-ink-muted underline decoration-line underline-offset-[3px] hover:text-danger hover:decoration-danger/50", FOCUS_RING)}>
-        Remove from site…
-      </button>
+      <Button type="button" variant="danger" size="lg" onClick={() => setOpen(true)}>
+        Delete article
+      </Button>
     );
   }
 
@@ -62,12 +61,13 @@ export function RemoveArticle({ id, slug, route, autoMerge, recheck = false }: {
       className="max-w-md rounded-2xl border border-danger/30 bg-danger/5 p-4"
     >
       <input type="hidden" name="id" value={id} />
+      {pageId ? <input type="hidden" name="page_id" value={pageId} /> : null}
       <input type="hidden" name="slug" value={slug} />
-      <p className="text-[14px] font-medium text-ink">Take this article off your site?</p>
+      <p className="text-[14px] font-medium text-ink">Delete this article from your site?</p>
       <p className="mt-1 text-[13px] leading-relaxed text-ink-muted">{consequence}</p>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <Button type="submit" variant="danger" size="sm" pending={pending}>
-          Remove it
+          Yes, delete it
         </Button>
         <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)} disabled={pending}>
           Keep it

@@ -34,7 +34,7 @@ import {
 import { browserCommand, resolveField } from "@/lib/playbook";
 import { FREE_BACKLINKS, PAID_BACKLINKS, PLAYBOOK_RESEARCHED } from "@/lib/playbook-data";
 import { loadConventions, saveConventions } from "@/lib/conventions";
-import { editArticle, loadArticleSource, removeArticle } from "@/lib/article-owner";
+import { adoptPage, editArticle, loadArticleSource, removeArticle } from "@/lib/article-owner";
 import {
   GUIDE_ARCHETYPES,
   GUIDE_BLOCKS,
@@ -290,6 +290,7 @@ const CHAT_TOOLS = new Set([
   "get_article",
   "edit_article",
   "remove_article",
+  "adopt_page",
   // The setup path: a chat app is often the owner's ONLY agent, and "what
   // should I do next" is the first thing they ask it.
   "get_setup_step",
@@ -1629,7 +1630,8 @@ const mcpHandler = createMcpHandler(
           "body that would break a repo's build (MDX safety) is refused with the reason. On a " +
           "repo site the file in the repository is the source: pass `expected_file_sha` " +
           "(get_article's `fileSha`) and the save is refused if the file changed on GitHub " +
-          "since; one edit is open at a time - a second waits for the first's PR.",
+          "since. While an edit's pull request is open, get_article shows that version and " +
+          "a further edit joins the same pull request.",
         inputSchema: {
           id: z.string().uuid().describe("The draft id."),
           title: z.string().min(3).max(200).optional().describe("The new title."),
@@ -1645,6 +1647,28 @@ const mcpHandler = createMcpHandler(
         const r = await editArticle(p, id, { title, metaDescription: meta_description, body, expectedUpdatedAt: expected_updated_at, expectedFileSha: expected_file_sha }).catch(() => ({ ok: false as const, error: "The save failed on our side. Try again in a moment." }));
         if (!r.ok) return fail(r.error);
         return ok({ saved: true, pending: Boolean(r.pending), message: r.message, ...(r.prUrl ? { pr_url: r.prUrl } : {}) });
+      },
+    );
+
+    server.registerTool(
+      "adopt_page",
+      {
+        title: "Make an older page editable",
+        description:
+          "Owner-gated. An article from before the hosted writer (a page in get_pages with no " +
+          "draft behind it - the site's own coding agent published it) has no source on our " +
+          "side. This finds its file in the connected repo by the URL's last segment, records " +
+          "it as a published article, and returns the draft id to use with get_article, " +
+          "edit_article and remove_article. Repo sites only. Calling it twice returns the same id.",
+        inputSchema: {
+          page_id: z.string().uuid().describe("The page id from get_pages (or the `page:<id>` article id on the dashboard, without the prefix)."),
+        },
+      },
+      async ({ page_id }) => {
+        const p = currentProject();
+        const r = await adoptPage(p, page_id).catch(() => ({ ok: false as const, error: "We couldn't read this article's file just now. Try again in a moment." }));
+        if (!r.ok) return fail(r.error);
+        return ok({ draft_id: r.draftId });
       },
     );
 

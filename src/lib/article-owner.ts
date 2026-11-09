@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { effectiveAutomations, publishTarget, type Project } from "@/lib/projects";
 import { renderDraftForRoute } from "@/lib/job-handlers/finish";
 import { buildExcerpt, buildSchema, schemaScript, yamlDoubleQuote } from "@/lib/article-render";
-import { DESCRIPTION_KEYS, fetchPullRequest, githubApi, parseFrontmatter, relativizeOwnLinks } from "@/lib/repo-publish";
+import { DESCRIPTION_KEYS, fetchPullRequest, fileStem, githubApi, parseFrontmatter, relativizeOwnLinks, scoreContentDirs } from "@/lib/repo-publish";
 import { articleSignature } from "@/lib/article-signature";
 import { tokenForRef } from "@/lib/github";
 import { siteOrigin } from "@/lib/hosted-blog";
@@ -102,6 +102,9 @@ export type ArticleSource = {
   /** The pull request on this article while one is pending: a removal's,
    *  or an edit's that has not merged yet. */
   prUrl: string | null;
+  /** An edit's pull request is open: the body shown is that pull request's
+   *  version, and the next save joins the same pull request. */
+  pendingEdit: boolean;
   /** Repo route, with `repoBody`: the sha of the file the body came from.
    *  Hand it back as `expectedFileSha` on save. */
   fileSha: string | null;
@@ -167,6 +170,7 @@ export async function loadArticleSource(project: Project, draftId: string, opts:
   let body = row.markdown.replace(LEADING_H1, "");
   let fileSha: string | null = null;
   let prUrl = row.status === "removing" ? row.pr_url : null;
+  let pendingEdit = false;
   let reason: string | null = null;
   let changeable = live && route !== null;
   if (live && route === "repo") {
@@ -176,15 +180,16 @@ export async function loadArticleSource(project: Project, draftId: string, opts:
       changeable = false;
       reason = "We don't know where this article's file is in your repo, so it can't be changed from here.";
     } else {
-      // One change at a time: an edit waiting on its pull request holds the
-      // text the default branch does not have yet.
-      const pending = await pendingEditPr(project, row.id);
+      // An edit waiting on its pull request holds text the default branch
+      // does not have yet: that version is the one to show and build on,
+      // and the next save joins the same pull request.
+      const pending = await pendingEditPr(project, row);
       if (pending) {
-        changeable = false;
+        pendingEdit = true;
         prUrl = pending.url;
-        reason = "An edit is waiting on its pull request. Merge or close it first.";
-      } else if (opts.repoBody) {
-        const file = await readRepoFile(project, row.repo_path);
+      }
+      if (opts.repoBody) {
+        const file = await readRepoFile(project, row.repo_path, pending?.branch);
         if (!file.ok) {
           changeable = false;
           reason = file.error;
@@ -210,6 +215,7 @@ export async function loadArticleSource(project: Project, draftId: string, opts:
     repo: route === "repo" ? (project.github_repo ?? null) : null,
     autoMerge: route === "repo" && effectiveAutomations(project).auto_merge,
     prUrl,
+    pendingEdit,
     fileSha,
     canEdit: changeable,
     canRemove: changeable,
@@ -217,11 +223,13 @@ export async function loadArticleSource(project: Project, draftId: string, opts:
   };
 }
 
-type PendingPr = { prNumber: number; url: string; previous: Previous | null; previousPrUrl: string | null };
+type PendingPr = { prNumber: number; url: string; previous: Previous | null; previousPrUrl: string | null; branch: string; /** Open on GitHub with no watcher left: a chain that died. */ orphan: boolean };
+
+const editBranch = (row: Pick<Row, "slug" | "id">) => `dispatchseo/edit-${row.slug}-${row.id.replace(/-/g, "").slice(0, 8)}`;
 
 /** The pull request still being watched for this article (the owner-pr
  *  job's pending round) of the given kind, if any. */
-async function pendingPr(project: Project, draftId: string, kind: "edit" | "remove"): Promise<PendingPr | null> {
+async function pendingPr(project: Project, draftId: string, kind: "edit" | "remove", branch = ""): Promise<PendingPr | null> {
   const { data } = await db()
     .from("jobs")
     .select("payload")
@@ -232,23 +240,24 @@ async function pendingPr(project: Project, draftId: string, kind: "edit" | "remo
     .limit(1);
   const payload = (data?.[0] as { payload?: { prNumber?: number; previous?: Previous; previousPrUrl?: string | null } } | undefined)?.payload;
   if (!payload?.prNumber) return null;
-  return { prNumber: Number(payload.prNumber), url: `https://github.com/${project.github_repo}/pull/${payload.prNumber}`, previous: payload.previous ?? null, previousPrUrl: payload.previousPrUrl ?? null };
+  return { prNumber: Number(payload.prNumber), url: `https://github.com/${project.github_repo}/pull/${payload.prNumber}`, previous: payload.previous ?? null, previousPrUrl: payload.previousPrUrl ?? null, branch, orphan: false };
 }
 
-const pendingEditPr = (project: Project, draftId: string) => pendingPr(project, draftId, "edit");
-
-/** An edit pull request that is open on GitHub but has no watcher (the
- *  chain died: GitHub unreachable for a day, the queue's give-up). Adopted
- *  rather than ignored: a fresh edit would force-reset its branch and start
- *  a second chain whose "previous" text never went live. */
-async function orphanEditPr(project: Project, row: Row): Promise<{ prNumber: number; url: string } | null> {
+/** The edit pull request open for this article: the one a watcher is on,
+ *  or one open on GitHub with no watcher left (the chain died: GitHub
+ *  unreachable for a day, the queue's give-up) - adopted rather than
+ *  ignored, so the next edit joins it instead of starting a second chain
+ *  whose "previous" text never went live. */
+async function pendingEditPr(project: Project, row: Pick<Row, "id" | "slug">): Promise<PendingPr | null> {
+  const branch = editBranch(row);
+  const watched = await pendingPr(project, row.id, "edit", branch);
+  if (watched) return watched;
   const token = await tokenForRef(project);
   if (!token || !project.github_repo) return null;
   const owner = project.github_repo.split("/")[0];
-  const branch = `dispatchseo/edit-${row.slug}-${row.id.replace(/-/g, "").slice(0, 8)}`;
   const open = await githubApi(token, "GET", `/repos/${project.github_repo}/pulls?head=${encodeURIComponent(`${owner}:${branch}`)}&state=open`);
   const first = (Array.isArray(open.json) ? (open.json as unknown as { number?: number; html_url?: string }[]) : [])[0];
-  return first?.number ? { prNumber: Number(first.number), url: String(first.html_url ?? "") } : null;
+  return first?.number ? { prNumber: Number(first.number), url: String(first.html_url ?? ""), previous: null, previousPrUrl: null, branch, orphan: true } : null;
 }
 
 type Previous = { title: string; meta_description: string | null; markdown: string };
@@ -257,13 +266,14 @@ type RepoFile = { ok: true; sha: string; text: string; frontmatter: string; body
 
 const ON_GITHUB = "Edit it on GitHub instead.";
 
-/** The article's file from the default branch, split into the frontmatter
- *  block and the body (signature removed). */
-async function readRepoFile(project: Project, path: string): Promise<RepoFile> {
+/** The article's file from the default branch (or from `ref`, an edit's
+ *  open branch), split into the frontmatter block and the body (signature
+ *  removed). */
+async function readRepoFile(project: Project, path: string, ref?: string): Promise<RepoFile> {
   const token = await tokenForRef(project);
   if (!token) return { ok: false, error: "Your GitHub connection isn't available right now. Check it in Settings, then try again." };
   const repo = project.github_repo!;
-  const file = await githubApi(token, "GET", `/repos/${repo}/contents/${encodeURI(path)}`);
+  const file = await githubApi(token, "GET", `/repos/${repo}/contents/${encodeURI(path)}${ref ? `?ref=${encodeURIComponent(ref)}` : ""}`);
   if (file.status === 404) return { ok: false, error: "The article's file isn't in your repo any more - was it moved or deleted on GitHub?" };
   if (file.status !== 200 || typeof file.json?.content !== "string" || typeof file.json?.sha !== "string") {
     return { ok: false, error: `GitHub didn't answer (HTTP ${file.status}). Try again in a minute.` };
@@ -298,19 +308,16 @@ export async function editArticle(project: Project, draftId: string, input: Edit
   if (!route) return { ok: false, error: "This article was published outside DispatchSEO, so it can't be changed from here." };
 
   // The base the edit is measured against: the row, or on the repo route
-  // the file itself (header: THE FILE IS THE SOURCE).
+  // the file itself (header: THE FILE IS THE SOURCE) - from the open edit
+  // pull request's branch when there is one, so edits stack.
   let file: Extract<RepoFile, { ok: true }> | null = null;
+  let pending: PendingPr | null = null;
   if (route === "repo") {
     if (!project.github_repo || !row.repo_path) {
       return { ok: false, error: `We don't know where this article's file is in your repo, so it can't be edited from here. ${ON_GITHUB}` };
     }
-    if (await pendingEditPr(project, row.id)) return { ok: false, error: "An edit is already waiting on its pull request. Merge or close it first." };
-    const orphan = await orphanEditPr(project, row);
-    if (orphan) {
-      await watchPr(project, row.id, orphan.prNumber, { kind: "edit", previous: { title: row.title, meta_description: row.meta_description, markdown: row.markdown } satisfies Previous, rearmed: Date.now() });
-      return { ok: false, error: "An edit is already waiting on its pull request. Merge or close it first." };
-    }
-    const read = await readRepoFile(project, row.repo_path);
+    pending = await pendingEditPr(project, row);
+    const read = await readRepoFile(project, row.repo_path, pending?.branch);
     if (!read.ok) return read;
     if (input.expectedFileSha && input.expectedFileSha !== read.sha) {
       return { ok: false, error: "The article's file changed on GitHub since you opened it. Reload the page and try again." };
@@ -399,15 +406,23 @@ export async function editArticle(project: Project, draftId: string, input: Edit
   await pageTitle();
   // The watcher: merges on Auto once the checks pass, and puts the old text
   // back if the pull request is closed instead (job-handlers/owner-pr.ts).
-  await watchPr(project, row.id, change.prNumber, { kind: "edit", previous: { title: row.title, meta_description: row.meta_description, markdown: row.markdown } satisfies Previous });
+  // An edit joining an already-watched pull request keeps that watcher (its
+  // "previous" is the text that is live); an orphaned one gets a new watcher.
+  if (!pending || pending.orphan) {
+    const previous: Previous = pending?.orphan ? { title: row.title, meta_description: row.meta_description, markdown: row.markdown } : { title: row.title, meta_description: row.meta_description, markdown: row.markdown };
+    await watchPr(project, row.id, change.prNumber, { kind: "edit", previous, ...(pending?.orphan ? { rearmed: Date.now() } : {}) });
+  }
   const auto = effectiveAutomations(project).auto_merge;
+  const joined = Boolean(pending);
   return {
     ok: true,
     pending: true,
     prUrl: change.prUrl,
-    message: auto
-      ? "Saved. We opened a pull request with the change; it merges on its own once your site's checks pass, and the page updates on the next deploy."
-      : "Saved. We opened a pull request with the change - merge it and your site shows the new version.",
+    message: joined
+      ? "Saved into the open pull request."
+      : auto
+        ? "Saved. We opened a pull request with the change; it merges on its own once your site's checks pass, and the page updates on the next deploy."
+        : "Saved. We opened a pull request with the change - merge it and your site shows the new version.",
   };
 }
 
@@ -502,7 +517,7 @@ export async function removeArticle(project: Project, draftId: string): Promise<
   if (!project.github_repo || !row.repo_path) {
     return { ok: false, error: "We don't know where this article's file is in your repo, so it can't be removed from here. Delete the file on GitHub instead." };
   }
-  const pendingEdit = await pendingEditPr(project, row.id);
+  const pendingEdit = await pendingEditPr(project, row);
   if (!(await claim(row, now))) return STALE;
   const change = await guarded(row, now, () => repoChange(project, row, { kind: "remove", title: row.title, closeEditPr: pendingEdit?.prNumber ?? null }));
   if (!change.ok) return change;
@@ -522,6 +537,85 @@ export async function removeArticle(project: Project, draftId: string): Promise<
       ? "We opened a pull request that deletes it; it merges on its own once your site's checks pass, and the page is gone after the next deploy."
       : "We opened a pull request that deletes it - merge it on GitHub and the page is gone.",
   };
+}
+
+// --- Adopting a page the old pipeline wrote -----------------------------------
+
+/**
+ * An article from before the hosted writer (a `pages` row the site's own
+ * coding agent published; no draft behind it) becomes an article_drafts row
+ * so Edit and Remove work on it: its file is found in the repo by the URL's
+ * last segment (the stem every generator builds the URL from), read, and
+ * recorded as a published draft with that path. Only repo sites have such
+ * pages. Returns the draft id, or why not.
+ */
+export async function adoptPage(project: Project, pageId: string): Promise<{ ok: true; draftId: string } | { ok: false; error: string }> {
+  if (!/^[0-9a-f-]{36}$/i.test(pageId)) return { ok: false, error: "That page is no longer on this site." };
+  const { data } = await db().from("pages").select("id, url, title, primary_keyword, published_at, live_at, created_at").eq("id", pageId).eq("project_id", project.id).maybeSingle();
+  const page = data as { id: string; url: string; title: string | null; primary_keyword: string | null; published_at: string | null; live_at: string | null; created_at: string } | null;
+  if (!page) return { ok: false, error: "That page is no longer on this site." };
+  // Already adopted (or a writer article at the same address): use that.
+  const { data: existing } = await db().from("article_drafts").select("id").eq("project_id", project.id).eq("published_url", page.url).in("status", ["published", "removing"]).limit(1);
+  if (existing?.length) return { ok: true, draftId: (existing[0] as { id: string }).id };
+  if (!project.github_repo) return { ok: false, error: "This article was published outside DispatchSEO, so it can't be changed from here." };
+  const token = await tokenForRef(project);
+  if (!token) return { ok: false, error: "Your GitHub connection isn't available right now. Check it in Settings, then try again." };
+
+  let stem = "";
+  try {
+    stem = decodeURIComponent(new URL(page.url).pathname.replace(/\/+$/, "").split("/").pop() ?? "");
+  } catch {
+    return { ok: false, error: "This page's address can't be read." };
+  }
+  if (!stem) return { ok: false, error: "This page's address has no article name in it." };
+  const repo = project.github_repo;
+  const info = await githubApi(token, "GET", `/repos/${repo}`);
+  if (info.status !== 200) return { ok: false, error: `GitHub didn't answer (HTTP ${info.status}). Try again in a minute.` };
+  const base = String(info.json?.default_branch ?? "main");
+  const ref = await githubApi(token, "GET", `/repos/${repo}/git/ref/${encodeURIComponent(`heads/${base}`)}`);
+  const sha = (ref.json?.object as { sha?: string } | undefined)?.sha;
+  if (!sha) return { ok: false, error: "GitHub didn't answer. Try again in a minute." };
+  const tree = await githubApi(token, "GET", `/repos/${repo}/git/trees/${sha}?recursive=1`);
+  const paths = ((tree.json?.tree as { path?: string; type?: string }[] | undefined) ?? []).filter((e) => e.type === "blob").map((e) => String(e.path ?? ""));
+  const matches = paths.filter((p) => /\.mdx?$/i.test(p) && fileStem(p.split("/").pop() ?? "").toLowerCase() === stem.toLowerCase());
+  if (!matches.length) return { ok: false, error: "We couldn't find this article's file in your repo, so it can't be changed from here." };
+  // Several files share the stem (a draft folder, a translation): the one in
+  // the folder that looks most like where the articles live.
+  let path = matches[0];
+  if (matches.length > 1) {
+    const dirs = scoreContentDirs(paths);
+    path = matches.map((m) => ({ m, score: dirs.find((d) => m.startsWith(`${d.dir}/`))?.score ?? 0 })).sort((a, b) => b.score - a.score)[0].m;
+  }
+  const file = await readRepoFile(project, path);
+  if (!file.ok) return { ok: false, error: file.error };
+  const fm = parseFrontmatter(file.text);
+  const title = fm.values.title?.trim() || page.title?.trim() || stem;
+  const descKey = DESCRIPTION_KEYS.find((k) => k in fm.values);
+  const now = new Date().toISOString();
+  const { data: inserted, error } = await db()
+    .from("article_drafts")
+    .insert({
+      project_id: project.id,
+      title,
+      slug: stem,
+      meta_description: descKey ? fm.values[descKey] : null,
+      primary_keyword: page.primary_keyword,
+      markdown: file.body,
+      faq: [],
+      sources: [],
+      status: "published",
+      published_url: page.url,
+      published_at: page.published_at ?? page.live_at ?? page.created_at,
+      repo_path: path,
+      client_kind: "adopted",
+      cost_usd: 0,
+      created_at: page.published_at ?? page.live_at ?? page.created_at,
+      updated_at: now,
+    })
+    .select("id")
+    .maybeSingle();
+  if (error || !inserted) return { ok: false, error: "We couldn't record this article just now. Try again in a moment." };
+  return { ok: true, draftId: (inserted as { id: string }).id };
 }
 
 /** Remove asked again while a removal is "removing": look at the pull
