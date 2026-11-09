@@ -19,9 +19,10 @@ import { cx, FOCUS_RING } from "@/components/ui/styles";
 // blog's own stylesheet and the site's palette (hosted-blog.ts editorStyles).
 // When a block loses focus its DOM is read back into markdown (the few
 // inline forms the renderer emits: strong, em, code, links) and re-rendered,
-// so what you see after an edit is what the page will show. Tables, code,
-// rules and images are edited as source - the renderer's grammar is the
-// contract, and a contenteditable table is not worth lying about.
+// so what you see after an edit is what the page will show. A table is
+// edited cell by cell (the cells are the editable parts, so the grid itself
+// cannot be broken), code as plain text inside its box; only an image falls
+// back to editing its one line of source.
 //
 // WHY NOT REACT INSIDE THE SHADOW ROOT. contenteditable and a virtual DOM
 // fight over the same nodes; the article is owned by the browser while you
@@ -36,7 +37,7 @@ import { cx, FOCUS_RING } from "@/components/ui/styles";
 type Block = MarkdownBlock & { key: string };
 type Snapshot = { title: string; blocks: Block[] };
 
-const TEXT_KINDS = new Set<MarkdownBlockKind>(["heading", "paragraph", "list", "quote"]);
+const TEXT_KINDS = new Set<MarkdownBlockKind>(["heading", "paragraph", "list", "quote", "table", "code"]);
 const MAX_HISTORY = 100;
 
 let keySeq = 0;
@@ -49,14 +50,21 @@ h1.title{outline:none;border-radius:8px;margin:0 -8px;padding:0 8px;cursor:text}
 h1.title:hover{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 35%,transparent)}
 h1.title:focus{box-shadow:inset 0 0 0 1px var(--accent)}
 h1.title:empty::before{content:"Title";color:var(--muted)}
-.blk{position:relative;border-radius:8px;margin:0 -12px;padding:0 12px}
-.blk:hover{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 35%,transparent)}
-.blk:focus-within{box-shadow:inset 0 0 0 1px var(--accent)}
+.blk{position:relative}
 .ed{outline:none;min-height:1.2em;cursor:text}
+.ed>*,.view>*{outline:1px solid transparent;outline-offset:7px;transition:outline-color .12s}
+.ed>:not(.tldr),.view>:not(.tbl){border-radius:4px}
+.blk:hover .ed>*,.blk:hover .view>*{outline-color:color-mix(in srgb,var(--accent) 45%,transparent)}
+.blk:focus-within .ed>*{outline-color:var(--accent)}
+.ed:empty{outline:1px solid transparent;outline-offset:7px;border-radius:4px}
+.ed td[contenteditable],.ed th[contenteditable]{outline:none;cursor:text}
+.ed td[contenteditable]:focus,.ed th[contenteditable]:focus{box-shadow:inset 0 0 0 1px var(--accent);border-radius:4px}
+.ed pre[contenteditable]{outline:none;white-space:pre-wrap;cursor:text}
+.blk:hover .ed:empty,.blk:focus-within .ed:empty{outline-color:var(--accent)}
 .ed:empty::before{content:"Write here, or delete this block";color:var(--muted)}
 .view{cursor:pointer}
 .body>.blk:first-child .ed>p{font-size:18px;color:var(--ink2)}
-.tools{position:absolute;top:-13px;right:10px;display:none;gap:4px;z-index:2}
+.tools{position:absolute;top:-13px;right:-4px;display:none;gap:4px;z-index:2}
 .blk:hover .tools,.blk:focus-within .tools{display:flex}
 .tools button,.rawbar button{font:500 12px/1 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink2);background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:6px 10px;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.08)}
 .tools button:hover,.rawbar button:hover{color:var(--ink);border-color:var(--accent)}
@@ -110,6 +118,9 @@ export function InplaceEditor({
   const historyRef = useRef<Snapshot[]>([]);
   const savedRef = useRef<Snapshot>({ title: initial.title, blocks: blocksRef.current });
   const [meta, setMeta] = useState(initial.metaDescription);
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState("");
+  const [copied, setCopied] = useState(false);
   const [tick, setTick] = useState(0);
   const bump = useCallback(() => setTick((t) => t + 1), []);
   const [state, formAction, pending] = useActionState(saveArticleEdit, null);
@@ -147,13 +158,20 @@ export function InplaceEditor({
       tools.setAttribute("contenteditable", "false");
       const btn = (act: string, label: string, danger = false) => `<button type="button" data-act="${act}" class="${danger ? "danger" : ""}">${label}</button>`;
       tools.innerHTML =
-        (text ? btn("add", "+ Text") : btn("raw", "Edit")) +
+        (text ? btn("add", "+ Text") : b.kind === "image" ? btn("raw", "Edit") : "") +
         (b.kind === "heading" ? btn("section", "Delete section", true) : "") +
         btn("delete", "Delete", true);
       const content = document.createElement("div");
       content.className = text ? "ed" : "view";
-      if (text) content.setAttribute("contenteditable", "true");
       content.innerHTML = renderBlockHtml(b, index, all);
+      if (b.kind === "table") {
+        // The cells are what you type into; the grid stays ours.
+        for (const cell of content.querySelectorAll("th, td")) cell.setAttribute("contenteditable", "true");
+      } else if (b.kind === "code") {
+        content.querySelector("pre")?.setAttribute("contenteditable", "plaintext-only");
+      } else if (text) {
+        content.setAttribute("contenteditable", "true");
+      }
       el.append(tools, content);
       return el;
     },
@@ -179,7 +197,7 @@ export function InplaceEditor({
   };
 
   const focusBlock = useCallback((key: string, atEnd = true) => {
-    const ed = rootRef.current?.querySelector<HTMLElement>(`.blk[data-key="${key}"] .ed`);
+    const ed = rootRef.current?.querySelector<HTMLElement>(`.blk[data-key="${key}"] .ed [contenteditable], .blk[data-key="${key}"] .ed`);
     if (!ed) return;
     ed.focus();
     const sel = (rootRef.current as unknown as { getSelection?: () => Selection | null })?.getSelection?.() ?? window.getSelection();
@@ -344,8 +362,9 @@ export function InplaceEditor({
 
     const onFocusOut = (e: Event) => {
       const t = e.target as Element | null;
-      if (t?.classList.contains("ed")) {
-        const key = keyOf(t);
+      const ed = t?.closest?.(".ed");
+      if (ed) {
+        const key = keyOf(ed);
         // Let the click that took focus land first (a toolbar button on the
         // same block re-mounts the DOM under it otherwise).
         if (key) setTimeout(() => commitBlock(key), 0);
@@ -362,6 +381,16 @@ export function InplaceEditor({
 
     const onInput = () => bump();
 
+    // The hover tools sit on the content's top edge, not the block's: the
+    // page's own margins (44px above an h2) live inside the block.
+    const placeTools = (e: Event) => {
+      const blk = (e.target as Element | null)?.closest?.<HTMLElement>(".blk");
+      if (!blk) return;
+      const tools = blk.querySelector<HTMLElement>(".tools");
+      const content = blk.querySelector<HTMLElement>(".ed > *, .view > *, .ed:empty, textarea.raw");
+      if (tools) tools.style.top = `${(content ? content.offsetTop : 0) - 14}px`;
+    };
+
     const onKeyDown = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (!t) return;
@@ -372,10 +401,18 @@ export function InplaceEditor({
         }
         return;
       }
-      if (!t.classList.contains("ed")) return;
+      if (!t.closest(".ed")) return;
       const key = keyOf(t);
       const kind = t.closest<HTMLElement>(".blk")?.dataset.kind as MarkdownBlockKind | undefined;
       if (!key || !kind) return;
+      if (kind === "table" && e.key === "Enter") {
+        // Enter moves to the next cell (Shift: previous); a cell holds one line.
+        e.preventDefault();
+        const cells = [...(t.closest(".ed")?.querySelectorAll<HTMLElement>("th, td") ?? [])];
+        const i = cells.indexOf(t.closest("th, td") as HTMLElement);
+        cells[i + (e.shiftKey ? -1 : 1)]?.focus();
+        return;
+      }
       if (e.key === "Enter" && !e.shiftKey && (kind === "paragraph" || kind === "heading")) {
         // Enter splits here: what is after the caret becomes the next
         // paragraph. In a list Enter stays native (a new item).
@@ -409,18 +446,58 @@ export function InplaceEditor({
     };
 
     root.addEventListener("click", onClick);
+    root.addEventListener("mouseover", placeTools);
+    root.addEventListener("focusin", placeTools);
     root.addEventListener("focusout", onFocusOut);
     root.addEventListener("input", onInput);
     root.addEventListener("keydown", onKeyDown as EventListener);
     root.addEventListener("paste", onPaste as EventListener);
     return () => {
       root.removeEventListener("click", onClick);
+      root.removeEventListener("mouseover", placeTools);
+      root.removeEventListener("focusin", placeTools);
       root.removeEventListener("focusout", onFocusOut);
       root.removeEventListener("input", onInput);
       root.removeEventListener("keydown", onKeyDown as EventListener);
       root.removeEventListener("paste", onPaste as EventListener);
     };
   }, [styles, lang, dir, metaLine, mountBlocks, commitBlock, insertAfter, removeBlocks, openRaw, closeRaw, bump]);
+
+  // ---- the whole article as text: out to an AI, and back ---------------------
+  // Copied as Markdown with the title as its first line - the form every
+  // assistant reads and writes well. Pasting back takes Markdown or HTML
+  // (an assistant's answer is often HTML) and replaces everything.
+
+  const copyArticle = useCallback(async () => {
+    const text = `# ${titleRef.current}\n\n${bodyOf(blocksRef.current)}\n`;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setPasteText(text);
+      setPasteOpen(true);
+    }
+  }, []);
+
+  const replaceArticle = useCallback(() => {
+    let text = pasteText.replace(/\r\n/g, "\n").trim();
+    if (!text) return;
+    if (/^\s*<(!doctype|html|body|article|main|section|div|h[1-6]|p|ul|ol|table|pre|blockquote)\b/i.test(text)) text = htmlToMarkdown(text);
+    const h1 = text.match(/^\s*#\s+([^\n]+)\n+/);
+    remember();
+    if (h1) {
+      titleRef.current = h1[1].trim();
+      const el = rootRef.current?.querySelector<HTMLElement>("h1.title");
+      if (el) el.textContent = titleRef.current;
+      text = text.slice(h1[0].length);
+    }
+    blocksRef.current = withKeys(markdownBlocks(text));
+    mountBlocks();
+    setPasteOpen(false);
+    setPasteText("");
+    bump();
+  }, [pasteText, mountBlocks, bump]);
 
   // ---- saving ---------------------------------------------------------------
 
@@ -485,8 +562,8 @@ export function InplaceEditor({
       {/* The bar: what this is, where a save goes, and the save itself. */}
       {/* Sticks just under the dashboard header (h-14, z-20 in the layout). */}
       <div className="sticky top-14 z-10 -mx-4 border-b border-line-soft bg-canvas/90 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-x-6 gap-y-3">
-          <div className="flex min-w-0 items-center gap-4">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-6">
+          <div className="flex min-w-0 flex-1 items-center gap-4">
             <Link href={`/articles/${encodeURIComponent(id)}`} className="inline-flex shrink-0 items-center gap-1.5 text-[13px] font-medium text-ink-muted hover:text-ink">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
                 <path d="M15 18l-6-6 6-6" />
@@ -495,13 +572,19 @@ export function InplaceEditor({
             </Link>
             <p className="hidden min-w-0 truncate text-[13px] text-ink-muted md:block">{where}</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-3">
             <Toast state={state} />
             {state?.ok && !dirty && url ? (
               <a href={url} target="_blank" rel="noopener noreferrer" className="text-[13px] font-medium text-accent underline decoration-accent/40 underline-offset-[3px] hover:decoration-accent">
                 Open the live article
               </a>
             ) : null}
+            <Button type="button" variant="ghost" size="sm" onClick={copyArticle} title="Copy the whole article as text, to hand to an AI">
+              {copied ? "Copied" : "Copy text"}
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setPasteOpen((o) => !o)} aria-expanded={pasteOpen} title="Paste the article back and replace it">
+              Paste text
+            </Button>
             <Button type="button" variant="ghost" size="sm" onClick={undo} disabled={historyRef.current.length === 0}>
               Undo
             </Button>
@@ -511,6 +594,30 @@ export function InplaceEditor({
           </div>
         </div>
       </div>
+
+      {pasteOpen ? (
+        <div className="mx-auto mt-5 max-w-[48rem] rounded-2xl border border-line-soft bg-surface p-4">
+          <p className="text-[13.5px] text-ink">Paste the article back and it replaces everything below, title included if the first line is one.</p>
+          <p className="mt-0.5 text-[12.5px] text-ink-faint">Copy text, hand it to ChatGPT or Claude with what you want changed, paste the answer here. Markdown or HTML both work.</p>
+          <textarea
+            value={pasteText}
+            onChange={(e) => setPasteText(e.target.value)}
+            rows={10}
+            spellCheck={false}
+            placeholder="# Title&#10;&#10;The article…"
+            className={cx("mt-3 w-full resize-y rounded-lg border border-line bg-surface-2 px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-ink outline-none placeholder:text-ink-faint focus-visible:border-accent/60", FOCUS_RING)}
+          />
+          <div className="mt-3 flex items-center gap-3">
+            <Button type="button" variant="primary" size="sm" onClick={replaceArticle} disabled={!pasteText.trim()}>
+              Replace article
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setPasteOpen(false)}>
+              Cancel
+            </Button>
+            <span className="text-[12px] text-ink-faint">Undo brings the old version back.</span>
+          </div>
+        </div>
+      ) : null}
 
       {/* The description Google shows under the title: not on the page, so
           it gets a field of its own above the article. */}
@@ -535,7 +642,7 @@ export function InplaceEditor({
       </div>
 
       <p className="mx-auto mt-4 max-w-[48rem] px-6 text-center text-[12.5px] text-ink-faint">
-        Click any text to change it. Hover a block for more. {route !== "hosted" ? "Shown in DispatchSEO's blog layout; your site's own design may differ. " : ""}
+        Click any text to change it, table cells too. Hover a block for Delete and more. Copy text hands the whole article to an AI; Paste text takes it back. {route !== "hosted" ? "Shown in DispatchSEO's blog layout; your site's own design may differ. " : ""}
         <kbd className="rounded bg-surface-2 px-1">⌘S</kbd> saves, <kbd className="rounded bg-surface-2 px-1">⌘⇧Z</kbd> undoes.
       </p>
     </div>
@@ -647,11 +754,65 @@ function anyBlockMd(el: Element): string {
     const ps = parts(el).map((run) => run.map(inlineMd).join("").trim()).filter(Boolean);
     return ps.map((p) => `> ${p}`).join("\n>\n");
   }
-  if (tag === "PRE") return "```\n" + (el.textContent ?? "").replace(/\n$/, "") + "\n```";
+  if (tag === "PRE") return codeMd(el);
+  if (tag === "TABLE") return tableMd(el);
   return Array.from(el.childNodes).map(inlineMd).join("").trim();
 }
 
+/** A table back to its rows: header, the alignment row (kept from the
+ *  cells' own text-align), body. A pipe typed into a cell is escaped the way
+ *  the renderer reads it. */
+function tableMd(table: Element): string {
+  const rows = [...table.querySelectorAll("tr")].filter((r) => r.children.length);
+  if (!rows.length) return "";
+  const cellText = (c: Element) => Array.from(c.childNodes).map(inlineMd).join("").trim().replace(/\|/g, "\\|") || " ";
+  const cells = (r: Element) => [...r.children].map(cellText);
+  const head = cells(rows[0]);
+  const sep = [...rows[0].children].map((c) => {
+    const a = (c as HTMLElement).style.textAlign;
+    return a === "center" ? ":---:" : a === "right" ? "---:" : a === "left" ? ":---" : "---";
+  });
+  return [`| ${head.join(" | ")} |`, `| ${sep.join(" | ")} |`, ...rows.slice(1).map((r) => `| ${cells(r).join(" | ")} |`)].join("\n");
+}
+
+function codeMd(pre: Element): string {
+  const code = pre.querySelector("code") ?? pre;
+  const lang = (code.className.match(/language-([A-Za-z0-9+#.-]+)/) ?? [])[1] ?? "";
+  const text = ((pre as HTMLElement).innerText ?? pre.textContent ?? "").replace(/\n$/, "");
+  return "```" + lang + "\n" + text + "\n```";
+}
+
+const CONTAINERS = new Set(["HTML", "BODY", "ARTICLE", "MAIN", "SECTION", "HEADER", "FOOTER", "NAV", "FIGURE", "DETAILS"]);
+
+/** A pasted HTML document as Markdown: wrappers are walked into, blocks are
+ *  converted one by one, inline runs between them become paragraphs. Only
+ *  what the renderer can show survives (that is the point of the trip). */
+function htmlToMarkdown(html: string): string {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  doc.querySelectorAll("script, style, noscript, template, button, nav").forEach((n) => n.remove());
+  const out: string[] = [];
+  const walk = (container: Node) => {
+    for (const run of parts(container)) {
+      const only = run.length === 1 && run[0] instanceof Element ? (run[0] as Element) : null;
+      if (only && CONTAINERS.has(only.tagName)) walk(only);
+      else if (only && only.tagName === "DIV" && Array.from(only.children).some((c) => BLOCKISH.has(c.tagName) || CONTAINERS.has(c.tagName))) walk(only);
+      else if (only && BLOCKISH.has(only.tagName)) out.push(anyBlockMd(only));
+      else out.push(run.map(inlineMd).join("").trim());
+    }
+  };
+  walk(doc.body);
+  return out.filter(Boolean).join("\n\n");
+}
+
 function domToMarkdown(ed: HTMLElement, kind: MarkdownBlockKind): string {
+  if (kind === "table") {
+    const table = ed.querySelector("table");
+    if (table) return tableMd(table);
+  }
+  if (kind === "code") {
+    const pre = ed.querySelector("pre");
+    if (pre) return codeMd(pre);
+  }
   if (kind === "heading") {
     const h = ed.querySelector("h1,h2,h3,h4,h5,h6");
     const level = h ? Number(h.tagName[1]) : 2;
