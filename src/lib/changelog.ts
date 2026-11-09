@@ -126,6 +126,10 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   },
   {
     kind: "improved",
+    text: "Hosted blogs get a thin, quiet gray scrollbar on the page and the reading rail instead of the browser's default white one.",
+  },
+  {
+    kind: "improved",
     text: "Setup asks you to pick a plan up front, free included, instead of only showing a payment step to people who came from the pricing page.",
   },
   {

@@ -242,13 +242,17 @@ function dirFor(lang: string): "rtl" | "ltr" {
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 function palette(theme: HostedTheme): string {
-  const light = `--bg:#ffffff;--bg2:#f5f5f7;--ink:#171717;--ink2:#404040;--muted:#6b6b6b;--line:#e5e5e5;--card:#f7f7f8;--code:#f3f3f5`;
-  const dark = `--bg:#0a0a0a;--bg2:#141414;--ink:#f3f3f3;--ink2:#d4d4d4;--muted:#9a9a9a;--line:#262626;--card:#161616;--code:#1b1b1b`;
+  // --scroll: the scrollbar thumb, a quiet translucent gray on either mode.
+  // color-scheme tells the browser which UA scrollbar to paint where ours
+  // does not apply (Safari): without it a dark blog got the default WHITE
+  // bar down its reading rail (easyrender.app, 2026-11-09).
+  const light = `--bg:#ffffff;--bg2:#f5f5f7;--ink:#171717;--ink2:#404040;--muted:#6b6b6b;--line:#e5e5e5;--card:#f7f7f8;--code:#f3f3f5;--scroll:rgb(0 0 0 / .22);color-scheme:light`;
+  const dark = `--bg:#0a0a0a;--bg2:#141414;--ink:#f3f3f3;--ink2:#d4d4d4;--muted:#9a9a9a;--line:#262626;--card:#161616;--code:#1b1b1b;--scroll:rgb(255 255 255 / .22);color-scheme:dark`;
   return `:root{${theme.mode === "dark" ? dark : light};--accent:${theme.accent};--accent-ink:${theme.mode === "dark" ? "#0a0a0a" : "#ffffff"};--max:48rem;--rail:240px}`;
 }
 
 const CSS = `
-*{box-sizing:border-box}html{-webkit-text-size-adjust:100%;scroll-behavior:smooth;scroll-padding-top:88px}
+*{box-sizing:border-box;scrollbar-width:thin;scrollbar-color:var(--scroll) transparent}::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--scroll);border-radius:999px;border:2px solid transparent;background-clip:padding-box}::-webkit-scrollbar-thumb:hover{background-color:var(--muted)}html{-webkit-text-size-adjust:100%;scroll-behavior:smooth;scroll-padding-top:88px}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.7 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
 a{color:var(--accent);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}
 a:hover{text-decoration-thickness:2px}
