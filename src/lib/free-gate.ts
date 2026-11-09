@@ -225,34 +225,29 @@ export async function freeStartAllowed(ownerId: string): Promise<boolean> {
 
 /** The engine calls this the moment it starts a free article. The domain
  *  column holds the same keyed hash as free_claims, never the domain itself. */
-export async function recordFreeStart(ownerId: string, projectId: string, domain: string | null): Promise<void> {
+export async function recordFreeStart(ownerId: string, projectId: string, domain: string | null): Promise<string> {
   const reg = domain ? registrableDomain(domain) : null;
-  const { error } = await db()
+  const { data, error } = await db()
     .from("free_article_starts")
-    .insert({ owner_user_id: ownerId, project_id: projectId, domain: reg ? keyOf("domain", reg) : null });
-  if (error) throw new Error(`free start not recorded: ${error.message}`);
+    .insert({ owner_user_id: ownerId, project_id: projectId, domain: reg ? keyOf("domain", reg) : null })
+    .select("id")
+    .single();
+  if (error || !data) throw new Error(`free start not recorded: ${error?.message ?? "no row"}`);
+  return (data as { id: string }).id;
 }
 
 /** Hands a free article back when its run died on OUR side (a vendor fault,
  *  a refusal at pick before any work, page one unreadable): the start row
  *  goes, so freeStartAllowed counts two real articles a month, the way
- *  usage.ts and the scheduler already treat such runs for paid sites. The
- *  row is matched on the run's site AND a tight window around the run's
- *  start, never on the site alone - recordFreeStart writes seconds before
- *  the first stage, and two starts on one day must not take each other's
- *  row. Best effort: a missed refund costs the owner one article, never
- *  money, so a read error is logged and swallowed. */
-export async function refundFreeStart(projectId: string, runStartedAt: string): Promise<void> {
-  const t = Date.parse(runStartedAt);
-  if (!Number.isFinite(t)) return;
-  const windowMs = 2 * 60_000;
-  const { error } = await db()
-    .from("free_article_starts")
-    .delete()
-    .eq("project_id", projectId)
-    .gte("started_at", new Date(t - windowMs).toISOString())
-    .lte("started_at", new Date(t + windowMs).toISOString());
-  if (error) console.warn(`[free-gate] free start not refunded for ${projectId}: ${error.message}`);
+ *  usage.ts and the scheduler already treat such runs for paid sites. Only
+ *  the run's OWN row (its id is stamped on the run at start): a match on
+ *  site or time could take a successful start's row with it and hand out a
+ *  third article. Best effort: a missed refund costs the owner one article,
+ *  never money, so an error is logged and swallowed. */
+export async function refundFreeStart(startId: string, projectId: string): Promise<void> {
+  if (!startId) return;
+  const { error } = await db().from("free_article_starts").delete().eq("id", startId).eq("project_id", projectId);
+  if (error) console.warn(`[free-gate] free start ${startId} not refunded: ${error.message}`);
 }
 
 /** A free owner's platform DataForSEO spend this month, in micro-dollars.

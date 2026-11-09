@@ -150,7 +150,14 @@ async function recordIfFree(project: { id: string; domain: string | null }, run:
   const ownerId = await ownerUserIdForProject(project.id);
   if (!ownerId) return "the free plan needs an owner account";
   const { recordFreeStart } = await import("@/lib/free-gate");
-  await recordFreeStart(ownerId, run.project_id, project.domain);
+  const startId = await recordFreeStart(ownerId, run.project_id, project.domain);
+  // The run remembers its own ledger row, so a refund (failRun) can never
+  // touch another start's row. Nothing else has written to this run yet
+  // (pick is queued after this returns), so a plain write is safe.
+  const outputs = { ...run.stage_outputs, free_start_id: startId };
+  const { error: stampError } = await db().from("writer_runs").update({ stage_outputs: outputs }).eq("id", run.id);
+  if (stampError) return `could not record the free article: ${stampError.message}`;
+  run.stage_outputs = outputs;
   // Check-then-record is not atomic, so look again AFTER recording: two
   // starts racing through the gate both see the other here and both refuse
   // (fail closed - only a deliberate race ever gets here; the scheduler
@@ -447,14 +454,13 @@ export async function failRun(run: WriterRun, reason: string, costUsd = 0, kind?
   // for under a cent. Paid sites get their slot back through those two; a
   // free site's two-a-month live in free_article_starts, written at start,
   // so without this an outage on our side cost a free owner half their month.
+  // Only this run's own ledger row (stamped in recordIfFree) is ever removed.
+  const startId = run.stage_outputs.free_start_id;
   const ours = kind === "infra" || run.stage === "pick" || (run.stage === "research" && extra.unreadable_serp === true && Number(run.cost_usd) + costUsd < 0.01);
-  if (ours) {
+  if (ours && typeof startId === "string") {
     try {
-      const { isCloudMode } = await import("@/lib/cloud");
-      if (isCloudMode()) {
-        const { refundFreeStart } = await import("@/lib/free-gate");
-        await refundFreeStart(run.project_id, run.created_at);
-      }
+      const { refundFreeStart } = await import("@/lib/free-gate");
+      await refundFreeStart(startId, run.project_id);
     } catch (e) {
       console.warn(`[writer] free start refund skipped for run ${run.id}: ${e instanceof Error ? e.message : String(e)}`);
     }
