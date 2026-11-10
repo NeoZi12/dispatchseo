@@ -31,7 +31,7 @@ import { setupGaps } from "../mode";
 import { TOPIC_LIMITS } from "@/lib/autopilot/controls";
 import type { CronHealth } from "@/lib/cron-alerts";
 import { siteIssueLine } from "@/lib/autopilot/friendly";
-import { articlesPerWeekFor, FREE_ARTICLES_PER_MONTH } from "@/lib/billing";
+import { articlesPerMonthFor, FREE_ARTICLES_PER_MONTH } from "@/lib/billing";
 import type { OperatorSite } from "@/lib/autopilot/operator";
 import { OperatorIssue } from "./operator-issue";
 import { repoMismatchOf } from "@/lib/site-root";
@@ -62,7 +62,7 @@ const LINK = "font-medium text-accent underline decoration-accent/40 underline-o
 const DAY = 86_400_000;
 // Starter's cadence, read from the engine's own table (billing.ts), for the
 // free tier's upgrade line.
-const STARTER_PER_WEEK = articlesPerWeekFor("starter");
+const STARTER_PER_MONTH = articlesPerMonthFor("starter");
 const at = (ms: number, i = 0, step?: number) =>
   ({ "--at": `${ms}ms`, "--i": i, ...(step ? { "--step": `${step}ms` } : {}) }) as React.CSSProperties;
 
@@ -101,7 +101,7 @@ function messageOf(r: AutopilotReport, gaps: ReturnType<typeof setupGaps>, proje
     if (r.plan.free) {
       return {
         title: "You're on the free plan.",
-        sub: `Upgrade and ${STARTER_PER_WEEK === 1 ? "a new article goes" : `${STARTER_PER_WEEK} new articles go`} out every week, with the full queue and analytics.`,
+        sub: `Upgrade for ${STARTER_PER_MONTH} articles per month, with the full queue and analytics.`,
         link: { href: "/billing#plans", label: "See plans" },
       };
     }
@@ -126,8 +126,8 @@ function messageOf(r: AutopilotReport, gaps: ReturnType<typeof setupGaps>, proje
   // month, the number the engine's free cadence reads.
   if (r.plan.free && FREE_ARTICLES_PER_MONTH > 0) {
     return {
-      title: `You're on the free plan: ${FREE_ARTICLES_PER_MONTH} articles a month.`,
-      sub: `Upgrade and ${STARTER_PER_WEEK === 1 ? "a new article goes" : `${STARTER_PER_WEEK} new articles go`} out every week, with the full queue and analytics.`,
+      title: `You're on the free plan: ${FREE_ARTICLES_PER_MONTH} articles per month.`,
+      sub: `Upgrade for ${STARTER_PER_MONTH} articles per month, with the full queue and analytics.`,
       link: { href: "/billing#plans", label: "See plans" },
     };
   }
@@ -401,7 +401,7 @@ export async function HostedReport({
             </h2>
             {r.plan.articlesPerWeek > 0 ? (
               <p className="mt-1 text-[14px] text-ink-muted">
-                {r.plan.articlesPerWeek} {r.plan.articlesPerWeek === 1 ? "article" : "articles"} a week on your plan, researched, fact-checked and published for you.
+                {r.plan.articlesPerWeek * 4} articles per month on your plan, researched, fact-checked and published for you.
               </p>
             ) : null}
           </div>

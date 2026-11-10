@@ -595,7 +595,7 @@ const WHO: Record<PlanTier, string> = {
 
 // Plans are stated per month everywhere (owner, 2026-11-09): 1 / 3 / 5 a week
 // x 4 = 4 / 12 / 20, the same count the landing cards show.
-const perMonthLine = (n: number) => (n === 1 ? "1 article / month" : `${n} articles / month`);
+const perMonthLine = (n: number) => (n === 1 ? "1 article per month" : `${n} articles per month`);
 // Three rows at most: the pill already says the pace, the row says the rest.
 const PAID_ROWS = ["Topics people search for", "Rankings and analytics", "No badge"];
 const FREE_ROWS = ["Topics people search for", "Your Google stats", "Small DispatchSEO badge"];
@@ -617,7 +617,7 @@ function PlanCard({
   name: string;
   price: string;
   billing: string;
-  /** "4 articles / month": the first row, in bold. */
+  /** "4 articles per month": the first row, in bold. */
   pace: string;
   who: string;
   rows: string[];

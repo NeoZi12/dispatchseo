@@ -290,7 +290,7 @@ export default async function PlansPage({
                       <Check className="h-4 w-4 shrink-0 text-violet-400" />
                       <span>
                         <span className="font-medium text-white tabular-nums">{articlesPerMonthFor(tier)}</span>{" "}
-                        article{articlesPerMonthFor(tier) === 1 ? "" : "s"} / month
+                        article{articlesPerMonthFor(tier) === 1 ? "" : "s"} per month
                       </span>
                     </li>
                     {CAPABILITIES.map((cap) => (

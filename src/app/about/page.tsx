@@ -55,10 +55,10 @@ export default function AboutPage() {
         </ul>
         <h3 className="pt-2 text-base font-medium text-white">What it costs</h3>
         <p>
-          Free: 2 articles a month, no card, no end date; free articles carry a small
-          DispatchSEO badge. Starter: 4 articles a month for{" "}
-          {priceLabel(TIER_LIMITS.starter.price)}. Growth: 12 a month for {priceLabel(TIER_LIMITS.growth.price)}.
-          Scale: 20 a month for {priceLabel(TIER_LIMITS.scale.price)}. Paid plans add
+          Free: 2 articles per month, no card, no end date; free articles carry a small
+          DispatchSEO badge. Starter: 4 articles per month for{" "}
+          {priceLabel(TIER_LIMITS.starter.price)}. Growth: 12 articles per month for {priceLabel(TIER_LIMITS.growth.price)}.
+          Scale: 20 articles per month for {priceLabel(TIER_LIMITS.scale.price)}. Paid plans add
           weekly keyword research, keyword rankings and advanced analytics, and drop the badge.
           Yearly billing is cheaper where offered; the exact figures are on the{" "}
           <Link className="underline text-white" href="/?home=1#pricing">

@@ -27,7 +27,7 @@ const STARTER_PER_MONTH = Math.floor((STARTER_PER_WEEK * 52) / 12);
 // "2x the free plan" only once the engine gives free sites articles.
 const VS_FREE = FREE_ARTICLES_PER_MONTH > 0 ? Math.floor(STARTER_PER_MONTH / FREE_ARTICLES_PER_MONTH) : 0;
 const PERKS: { label: string; icon: keyof typeof ICONS }[] = [
-  { label: `${STARTER_PER_WEEK === 1 ? "Weekly articles" : `${STARTER_PER_WEEK} articles a week`}${VS_FREE >= 2 ? `, ${VS_FREE}× the free plan` : ""}`, icon: "pen" },
+  { label: `${STARTER_PER_MONTH} articles per month${VS_FREE >= 2 ? `, ${VS_FREE}× the free plan` : ""}`, icon: "pen" },
   // Research (research.ts) and rank tracking (daily-ranks) both sit behind
   // planGate, so neither runs for a free site.
   { label: "Fresh keyword research every week", icon: "search" },

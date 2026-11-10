@@ -1,4 +1,4 @@
-import { TIER_LIMITS, type Tier } from "./billing";
+import { TIER_LIMITS, articlesPerMonthFor, type Tier } from "./billing";
 
 // The one description of DispatchSEO that every public surface repeats
 // verbatim: the landing page's JSON-LD, /about, /llms.txt, the README header
@@ -16,7 +16,7 @@ export const BRAND_URL = "https://dispatchseo.com";
 export const BRAND_TAGLINE = "Free SEO automation: researched articles, published to your site on autopilot.";
 
 export const BRAND_DESCRIPTION =
-  "DispatchSEO is a free SEO autopilot for small websites. It researches keywords with real search demand, writes fact-checked articles and publishes them to your site for you, as pull requests to your GitHub repo or on a hosted blog, then shows the Google visitors they bring. Two articles a month are free, with no card. Paid plans publish one, three or five articles a week.";
+  "DispatchSEO is a free SEO autopilot for small websites. It researches keywords with real search demand, writes fact-checked articles and publishes them to your site for you, as pull requests to your GitHub repo or on a hosted blog, then shows the Google visitors they bring. Two articles per month are free, with no card. Paid plans publish 4, 12 or 20 articles per month.";
 
 export const BRAND_SAME_AS = [
   "https://github.com/NeoZi12/dispatchseo",
@@ -25,7 +25,6 @@ export const BRAND_SAME_AS = [
 ];
 
 const TIER_NAMES: Record<Tier, string> = { starter: "Starter", growth: "Growth", scale: "Scale" };
-const ARTICLES_PER_WEEK: Record<Tier, number> = { starter: 1, growth: 3, scale: 5 };
 
 // Organization + SoftwareApplication, one graph. Prices come from TIER_LIMITS
 // so the markup can never disagree with the plan cards. Google says
@@ -39,7 +38,7 @@ export function brandJsonLd(): Record<string, unknown> {
       name: "Free",
       price: "0",
       priceCurrency: "USD",
-      description: "2 fact-checked articles a month, published for you, with your Google stats. No card.",
+      description: "2 fact-checked articles per month, published for you, with your Google stats. No card.",
     },
     ...(Object.keys(TIER_LIMITS) as Tier[]).map((tier) => ({
       "@type": "Offer",
@@ -52,7 +51,7 @@ export function brandJsonLd(): Record<string, unknown> {
         priceCurrency: "USD",
         billingDuration: "P1M",
       },
-      description: `${ARTICLES_PER_WEEK[tier]} ${ARTICLES_PER_WEEK[tier] === 1 ? "article" : "articles"} a week, weekly keyword research, keyword rankings, no DispatchSEO badge.`,
+      description: `${articlesPerMonthFor(tier)} articles per month, weekly keyword research, keyword rankings, no DispatchSEO badge.`,
     })),
   ];
   return {

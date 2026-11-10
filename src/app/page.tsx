@@ -413,7 +413,7 @@ export default async function LandingPage({
               <div className="p-price">$0<small>/forever</small></div>
               <div className="p-sub">Try it on a side project</div>
               <ul>
-                <li>2 articles / month</li>
+                <li>2 articles per month</li>
                 <li>Topics people search for</li>
                 <li>Fact-checked articles</li>
                 <li>Published for you</li>
@@ -426,7 +426,7 @@ export default async function LandingPage({
               <PlanPrice tier="starter" annual={annual} />
               <div className="p-sub">Steady start, weekly articles</div>
               <ul>
-                <li>4 articles / month</li>
+                <li>4 articles per month</li>
                 <li>Weekly keyword research</li>
                 <li>Fact-checked articles</li>
                 <li>Keyword rankings</li>
@@ -443,7 +443,7 @@ export default async function LandingPage({
               <PlanPrice tier="growth" annual={annual} />
               <div className="p-sub">Serious about traffic</div>
               <ul>
-                <li>12 articles / month</li>
+                <li>12 articles per month</li>
                 <li>Weekly keyword research</li>
                 <li>Fact-checked articles</li>
                 <li>Keyword rankings</li>
@@ -457,7 +457,7 @@ export default async function LandingPage({
               <PlanPrice tier="scale" annual={annual} />
               <div className="p-sub">All in on content</div>
               <ul>
-                <li>20 articles / month</li>
+                <li>20 articles per month</li>
                 <li>Weekly keyword research</li>
                 <li>Fact-checked articles</li>
                 <li>Keyword rankings</li>
@@ -484,7 +484,7 @@ export default async function LandingPage({
                 <span className="pm-price">$0<small>/forever</small></span>
                 <span className="pm-tag">Try it on a side project</span>
                 <ul className="pm-ticks">
-                  <li><b>2 articles / month</b></li>
+                  <li><b>2 articles per month</b></li>
                   <li>Topics people search for</li>
                   <li>Fact-checked articles</li>
                   <li>Published for you</li>
@@ -502,7 +502,7 @@ export default async function LandingPage({
                   <PmPrice tier={plan.tier} annual={annual} />
                   <span className="pm-tag">{plan.tagline}</span>
                   <ul className="pm-ticks">
-                    <li><b>{plan.perMonth} articles / month</b></li>
+                    <li><b>{plan.perMonth} articles per month</b></li>
                     {plan.ticks.map((t) => <li key={t}>{t}</li>)}
                   </ul>
                   <PlanLink tier={plan.tier} annual={annual}>Choose {TIER_NAMES[plan.tier]}</PlanLink>
@@ -523,7 +523,7 @@ export default async function LandingPage({
           <div className="faq-list">
             <details open>
               <summary>Is it really free?</summary>
-              <div className="a">Yes. Every site gets 2 articles a month for free, with no card and no end date. Free articles carry a small DispatchSEO badge. The paid plans publish every week, without the badge.</div>
+              <div className="a">Yes. Every site gets 2 articles a month for free, with no card and no end date. Free articles carry a small DispatchSEO badge. The paid plans publish 4, 12 or 20 articles per month, without the badge.</div>
             </details>
             <details>
               <summary>What do I need to get started?</summary>
@@ -535,7 +535,7 @@ export default async function LandingPage({
             </details>
             <details>
               <summary>How many articles will I get?</summary>
-              <div className="a">2 a month on Free, 4 a month on Starter, 12 a month on Growth and 20 a month on Scale. Every one is about a topic with real search demand behind it.</div>
+              <div className="a">2 articles per month on Free, 4 on Starter, 12 on Growth and 20 on Scale. Every one is about a topic with real search demand behind it.</div>
             </details>
             <details>
               <summary>Is this another AI content spammer?</summary>
@@ -567,7 +567,7 @@ export default async function LandingPage({
         <svg className="doodle doodle-f2" viewBox="0 0 64 64" aria-hidden="true"><path d="M8 52 L24 38 L34 46 L56 20 M56 20 L45 22 M56 20 L55 32" /></svg>
         <div className="wrap">
           <h2>Start getting found today.<span className="caret" /></h2>
-          <p>2 articles a month, researched, fact-checked and published for you. No card.</p>
+          <p>2 articles per month, researched, fact-checked and published for you. No card.</p>
           <div className="cta-row">
             {/* The mascot again, sitting on the last button on the page. */}
             <span className="final-cta-wrap">
@@ -587,7 +587,7 @@ export default async function LandingPage({
                 <DispatchMark className="logo-mark" />
                 DispatchSEO
               </a>
-              <p>Researched, fact-checked SEO articles, published to your site on autopilot. Free for 2 articles a month.</p>
+              <p>Researched, fact-checked SEO articles, published to your site on autopilot. Free for 2 articles per month.</p>
             </div>
             <div className="foot-col">
               <h4>Product</h4>

@@ -19,7 +19,7 @@
   <a href="https://dispatchseo.com">DispatchSEO</a>: an open-source alternative to SEObot, Outrank and RightBlogger.<br /><br />
   </strong>
   DispatchSEO researches keywords with real search demand, writes fact-checked articles and publishes them for you,<br />as pull requests to your GitHub repo or on a hosted blog, then shows the Google visitors they bring.<br />
-  Two articles a month are free on <a href="https://dispatchseo.com">dispatchseo.com</a>, no card. Paid plans publish 1, 3 or 5 a week.<br /><br />
+  Two articles per month are free on <a href="https://dispatchseo.com">dispatchseo.com</a>, no card. Paid plans publish 4, 12 or 20 articles per month.<br /><br />
   Self-hosting it instead? The whole thing runs in your own accounts, driven by <b>Claude Code</b>, <b>Codex</b>, or <b>Cursor</b> over MCP, including the unattended overnight builder.
 </div>
 

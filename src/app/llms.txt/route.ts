@@ -38,12 +38,12 @@ site starts on the free plan; paid plans publish weekly.
 
 ## Key facts
 
-- Free plan: 2 fact-checked articles a month, published for you, with your
+- Free plan: 2 fact-checked articles per month, published for you, with your
   Google Search Console stats. No card, no end date. Free articles carry a
   small DispatchSEO badge.
 - Paid plans, per site, billed monthly: Starter ${priceLabel(TIER_LIMITS.starter.price)}
-  (4 articles a month), Growth ${priceLabel(TIER_LIMITS.growth.price)} (12 a month),
-  Scale ${priceLabel(TIER_LIMITS.scale.price)} (20 a month). Paid plans add weekly
+  (4 articles per month), Growth ${priceLabel(TIER_LIMITS.growth.price)} (12 articles per month),
+  Scale ${priceLabel(TIER_LIMITS.scale.price)} (20 articles per month). Paid plans add weekly
   keyword research, keyword rank tracking and advanced analytics, and remove
   the badge. Yearly billing is cheaper where offered.
 - Articles are only written about topics with real, measured search demand.
