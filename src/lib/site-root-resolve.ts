@@ -4,7 +4,9 @@ import type { Project } from "@/lib/projects";
 import { fetchProjectUrl } from "@/lib/url-guard";
 import { tokenForRef } from "@/lib/github";
 import { githubApi } from "@/lib/repo-publish";
-import { sitePath } from "@/lib/site-root";
+import { sitePath, siteRoot } from "@/lib/site-root";
+import { nameFromDomain } from "@/lib/setup-flow";
+import { profileLocked } from "@/lib/autopilot/profile";
 
 const INIT = { timeoutMs: 8_000, userAgent: "DispatchSEO-Check/1.0" };
 
@@ -82,5 +84,26 @@ export async function resolveSitePath(project: Project): Promise<Project> {
     return project;
   }
   console.log(`[site-root] ${project.slug}: the site lives at ${host}${found}`);
-  return { ...project, site_path: found };
+  const next: Project = { ...project, site_path: found };
+  // What was learned from the bare address goes with it. A name made from
+  // the domain ("Mohamadgarmabi.github") becomes the folder's own name, and
+  // a profile written before the folder was known points at the folder -
+  // both end up in every article's closing line. An owner's own name or a
+  // locked profile is never touched.
+  try {
+    const folderName = decodeURIComponent(found.split("/").filter(Boolean).pop() ?? "");
+    if (folderName && project.name === nameFromDomain(project.domain)) {
+      await db().from("projects").update({ name: folderName }).eq("id", project.id).eq("name", project.name);
+      next.name = folderName;
+    }
+    if (!profileLocked(project)) {
+      const oldRoot = siteRoot({ ...project, site_path: null });
+      const patch: Record<string, unknown> = { url: siteRoot(next), updated_at: new Date().toISOString() };
+      if (next.name !== project.name) patch.name = next.name;
+      await db().from("site_profile").update(patch).eq("project_id", project.id).eq("url", oldRoot);
+    }
+  } catch (e) {
+    console.warn(`[site-root] ${project.slug}: name/profile not moved to the folder: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  return next;
 }
