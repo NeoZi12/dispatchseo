@@ -11,6 +11,7 @@ import { hasConfiguredProject } from "@/lib/onboarding-gate";
 import { fetchProjectToken, getProjectById, publishTarget } from "@/lib/projects";
 import { sitePath } from "@/lib/site-root";
 import { resolveSitePath } from "@/lib/site-root-resolve";
+import { checkRepoBuildsSite } from "@/lib/repo-site-check";
 import { repoHasArticleFolder } from "@/lib/repo-publish";
 import { connectionSummary } from "@/lib/wordpress-connect";
 import { latestQualifier } from "@/lib/qualifier";
@@ -243,6 +244,35 @@ function SiteCantPublish({ address }: { address: string }) {
   );
 }
 
+/** The repo picked at the GitHub step doesn't build the site: none of the
+ *  files the live homepage serves are in it. The owner picks the right one
+ *  on GitHub; nothing has launched and nothing has been spent. */
+function WrongRepo({ repo, domain, slug }: { repo: string; domain: string; slug: string }) {
+  return (
+    <main className="min-h-screen bg-canvas text-ink">
+      <div className="mx-auto w-full max-w-lg px-4 py-16 sm:px-6">
+        <section className="rounded-3xl border border-line bg-surface p-6 sm:p-8">
+          <h1 className="text-[22px] font-semibold tracking-tight text-ink">That repository isn&apos;t {domain}</h1>
+          <p className="mt-2 text-[15px] leading-relaxed text-ink-muted">
+            {repo} doesn&apos;t hold the files {domain} serves, so articles added there would never reach your site. Pick the repository your site is built from.
+          </p>
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            <a
+              href={`/api/github/install/start?slug=${encodeURIComponent(slug)}`}
+              className="inline-flex items-center justify-center rounded-xl bg-accent px-6 py-3 text-[15px] font-semibold text-white hover:brightness-110"
+            >
+              Pick the right repository
+            </a>
+            <a href={DISCORD_URL} target="_blank" rel="noopener noreferrer" className="text-[14px] text-ink-faint underline underline-offset-4 hover:text-ink">
+              Think this is wrong? Ask on Discord
+            </a>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+
 /** "ok", or "cant" for a site in a folder whose repo has nothing to publish
  *  into. Stores the folder as a side effect (site-root-resolve.ts), so the
  *  launch that follows starts from it. A check that could not answer is
@@ -286,6 +316,18 @@ async function cloudSetupFlow(params: OnboardingParams) {
     if (!s.project.setup_connected_at && s.project.github_repo && /\.github\.io$/i.test(s.project.domain)) {
       const folder = await folderSiteFit(s.project.id);
       if (folder.fit === "cant") return <SiteCantPublish address={folder.address} />;
+    }
+    if (!s.project.setup_connected_at && s.project.github_repo) {
+      // The repo must be the site's own code, or every article becomes a pull
+      // request that never reaches the site (repo-site-check.ts; reverto.ai,
+      // 2026-11-10). A clear miss is said here, before anything is launched,
+      // and the repo is let go so the one picked next is the one used.
+      const full = await getProjectById(s.project.id);
+      const check = full ? await checkRepoBuildsSite(full, { fresh: true }).catch(() => null) : null;
+      if (check?.verdict === "mismatch") {
+        await db().from("projects").update({ github_repo: null }).eq("id", s.project.id).is("setup_connected_at", null);
+        return <WrongRepo repo={check.repo} domain={s.project.domain} slug={s.project.slug} />;
+      }
     }
     if (!s.project.setup_connected_at) {
       // One conditional write claims the moment, the same way

@@ -183,6 +183,7 @@ const PROBES: Probe[] = [
   { migration: "0083_hosted_rewrite_state", table: "projects", column: "hosted_rewrite_state" },
   { migration: "0084_hosted_path", table: "projects", column: "hosted_path" },
   { migration: "0085_site_path", table: "projects", column: "site_path" },
+  { migration: "0087_repo_site_check", table: "projects", column: "repo_site_check" },
 ];
 
 // Migrations that genuinely CANNOT be probed through this mechanism, with the

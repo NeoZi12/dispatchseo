@@ -1,3 +1,4 @@
+import { repoIsNotTheSite } from "@/lib/repo-site-check";
 import { db } from "@/lib/db";
 import { getAutopilotReport, type AutopilotArticle, type AutopilotReport } from "@/lib/autopilot/report";
 import { friendlyError } from "@/lib/autopilot/friendly";
@@ -213,7 +214,11 @@ export async function firstArticleProgress(
         // Nothing switches on by itself here - the owner names the folder or
         // lets us host the blog - so say that, not "the moment it's on".
         stuck.publishing =
-          target === "github" && project.github_repo
+          target === "github" && project.github_repo && repoIsNotTheSite(project)
+            ? // The connected repo doesn't build the site (repo-site-check.ts):
+              // the owner picks the right one and the parked article goes out.
+              { text: `The article is ready, but ${project.github_repo} doesn't hold ${project.domain}'s code, so it can't reach your site from there. Connect the repository your site is built from and it goes out on its own.`, href: "/settings?section=publishing", linkLabel: "Change repository" }
+            : target === "github" && project.github_repo
             ? // Reaching here at all means the hosted fallback found no free
               // address: /blog, /articles and /guides are all the site's own
               // (draft-status.ts blockedReason says the same).

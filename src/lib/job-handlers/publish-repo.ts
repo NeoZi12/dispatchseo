@@ -1,3 +1,4 @@
+import { checkRepoBuildsSite } from "@/lib/repo-site-check";
 import { db } from "@/lib/db";
 import { enqueue } from "@/lib/jobs";
 import { publishDraftToRepo, type RepoDraft } from "@/lib/repo-publish";
@@ -57,6 +58,19 @@ export async function runRepoPublish(project: Project, draftId: string): Promise
   // never turn into a pull request in someone's repo.
   if (!["accepted", "finished", "blocked_setup"].includes(row.status)) return;
   if (dryDraftBlocked(row.validation)) return parkDryDraft(row.id, row.validation);
+
+  // Never open an article's pull request in a repository that does not build
+  // this site: it would merge and never reach the site (repo-site-check.ts).
+  // Parked, not failed - the dashboard says which repo to connect instead,
+  // and the draft goes out on its own once the right one is (the hourly
+  // drain of parked drafts). An unsure check never blocks.
+  if (!row.pr_url) {
+    const check = await checkRepoBuildsSite(project);
+    if (check.verdict === "mismatch") {
+      await markBlockedSetup(draftId);
+      return;
+    }
+  }
 
   const result = await publishDraftToRepo(project, row);
 

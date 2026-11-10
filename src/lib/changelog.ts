@@ -74,6 +74,10 @@ export type ChangelogEntry = {
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "fixed",
+    text: "Setup now checks that the GitHub repository you connect is the one your site is actually built from. If it isn't, it says so right there and lets you pick the right one, instead of writing articles into a repo that never reaches your site.",
+  },
+  {
+    kind: "fixed",
     text: "An article's pull request no longer waits on a check that was already failing on your site before we opened it - if your own build was red first, the article still goes out.",
   },
   {
