@@ -812,6 +812,25 @@ export async function failuresArePreexisting(project: Project, pr: { head_sha: s
   return head.failing.every((f) => red.has(f.name));
 }
 
+/** How many times one of our pull requests is rebuilt before its red check
+ *  is taken as a verdict. */
+export const MAX_PR_REBUILDS = 2;
+
+/** Our pull request is red on a check that is green on the site's own
+ *  branch: build it again (an empty commit) before reading that as a "no".
+ *  tanstack-fetch, 2026-11-10: its Cloudflare copy failed on our branch and
+ *  on one of the owner's own commits, and passed on the identical tree once
+ *  merged - a check that fails by chance, not on the change. True when a
+ *  rebuild was started; the caller counts them and looks again later. Never
+ *  while checks are still running, and never on a repo whose checks cannot
+ *  be read. */
+export async function rebuildIfRed(project: Project, pr: { head_sha: string; head_ref: string }, rebuilds: number): Promise<boolean> {
+  if (rebuilds >= MAX_PR_REBUILDS) return false;
+  const checks = await pullRequestChecks(project, pr.head_sha);
+  if (!checks || checks.verdict !== "failed") return false;
+  return rebuildPullRequest(project, pr.head_ref, pr.head_sha);
+}
+
 export type PullRequestChecks = {
   /** failed = at least one check failed and none is still running. */
   verdict: "passed" | "pending" | "failed" | "none";

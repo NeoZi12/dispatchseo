@@ -1,7 +1,7 @@
 import { enqueue, type Job } from "@/lib/jobs";
 import { effectiveAutomations, getProjectById } from "@/lib/projects";
 import { mergePr, tokenForRef } from "@/lib/github";
-import { failuresArePreexisting, fetchPullRequest, githubApi } from "@/lib/repo-publish";
+import { failuresArePreexisting, fetchPullRequest, githubApi, rebuildIfRed } from "@/lib/repo-publish";
 import { repairRepoArticle } from "@/lib/article-repair";
 import { db } from "@/lib/db";
 import { warmScreenshotsLater } from "@/lib/page-screenshot";
@@ -15,7 +15,9 @@ import { warmScreenshotsLater } from "@/lib/page-screenshot";
 //   later     merged: done. Closed without merging: somebody said no, done.
 //             Open on Auto: merge once GitHub calls the branch clean, or
 //             "unstable" for checks that were already red before us
-//             (verify.ts's rule). Otherwise look again later.
+//             (verify.ts's rule). A check that is red on our branch only
+//             gets the branch rebuilt, twice at most, before it counts.
+//             Otherwise look again later.
 //
 // Giving up closes the pull request: one nobody is watching must not change
 // the site some day with nothing recording it. Nothing in our records
@@ -27,7 +29,7 @@ const EARLY_RETRY_MS = 10 * 60_000;
 const LATER_RETRY_MS = 2 * 60 * 60_000;
 const MAX_ROUNDS = 90;
 
-type Payload = { draftId: string; prNumber?: number; round?: number };
+type Payload = { draftId: string; prNumber?: number; round?: number; rebuilds?: number };
 
 export async function runArticleRepairJob(job: Job): Promise<void> {
   const p = job.payload as unknown as Payload;
@@ -55,6 +57,10 @@ export async function runArticleRepairJob(job: Job): Promise<void> {
     const state = String(pr.mergeable_state);
     const mergeable = MERGEABLE_STATES.has(state) || (state === "unstable" && (await failuresArePreexisting(project, pr).catch(() => null)) === true);
     if (mergeable) merged = (await mergePr(project, prNumber)).ok;
+    else if (state !== "dirty" && round < MAX_ROUNDS && (await rebuildIfRed(project, pr, Number(p.rebuilds ?? 0)).catch(() => false))) {
+      await rearm(job, draftId, prNumber, round, EARLY_RETRY_MS, Number(p.rebuilds ?? 0) + 1);
+      return;
+    }
   }
   if (merged) {
     const { data } = await db().from("article_drafts").select("published_url").eq("id", draftId).eq("project_id", project.id).maybeSingle();
@@ -63,18 +69,18 @@ export async function runArticleRepairJob(job: Job): Promise<void> {
     return;
   }
   if (round < MAX_ROUNDS) {
-    await rearm(job, draftId, prNumber, round, round < EARLY_ROUNDS ? EARLY_RETRY_MS : LATER_RETRY_MS);
+    await rearm(job, draftId, prNumber, round, round < EARLY_ROUNDS ? EARLY_RETRY_MS : LATER_RETRY_MS, Number(p.rebuilds ?? 0));
     return;
   }
   const token = await tokenForRef(project).catch(() => null);
   if (token && project.github_repo) await githubApi(token, "PATCH", `/repos/${project.github_repo}/pulls/${prNumber}`, { state: "closed" }).catch(() => undefined);
 }
 
-async function rearm(job: Job, draftId: string, prNumber: number, round: number, afterMs: number): Promise<void> {
+async function rearm(job: Job, draftId: string, prNumber: number, round: number, afterMs: number, rebuilds = 0): Promise<void> {
   await enqueue({
     projectId: job.project_id,
     kind: "article-repair",
-    payload: { draftId, prNumber, round: round + 1 },
+    payload: { draftId, prNumber, round: round + 1, rebuilds },
     runAfter: new Date(Date.now() + afterMs),
     idempotencyKey: `article-repair:${draftId}:${prNumber}:r${round + 1}`,
   });

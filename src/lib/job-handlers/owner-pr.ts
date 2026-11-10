@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 import { enqueue, type Job } from "@/lib/jobs";
 import { effectiveAutomations, getProjectById } from "@/lib/projects";
 import { mergePr, tokenForRef } from "@/lib/github";
-import { commentOnPullRequest, failuresArePreexisting, fetchPullRequest, githubApi } from "@/lib/repo-publish";
+import { commentOnPullRequest, failuresArePreexisting, fetchPullRequest, githubApi, rebuildIfRed } from "@/lib/repo-publish";
 import { afterRemoval } from "@/lib/article-owner";
 import { warmScreenshotsLater } from "@/lib/page-screenshot";
 
@@ -42,6 +42,7 @@ type Payload = {
   kind: "edit" | "remove";
   round?: number;
   deadline?: string;
+  rebuilds?: number;
   previous?: { title: string; meta_description: string | null; markdown: string };
   previousPrUrl?: string | null;
 };
@@ -88,6 +89,13 @@ export async function runOwnerPrJob(job: Job): Promise<void> {
     }
     if (!merged) {
       const before = !p.deadline || now.toISOString() < p.deadline;
+      // Red on our branch only (the base is green): build it again before
+      // that counts, twice at most - a check that failed by chance must not
+      // hold an owner's edit for a month.
+      if (auto && state !== "dirty" && before && round < MAX_ROUNDS && (await rebuildIfRed(project, pr, Number(p.rebuilds ?? 0)).catch(() => false))) {
+        await rearm(job, p, round, new Date(now.getTime() + AUTO_EARLY_RETRY_MS), { rebuilds: Number(p.rebuilds ?? 0) + 1 });
+        return;
+      }
       if (before && round < MAX_ROUNDS) {
         await rearm(job, p, round, new Date(now.getTime() + (auto && round < AUTO_EARLY_ROUNDS ? AUTO_EARLY_RETRY_MS : AWAITING_RETRY_MS)));
         return;
@@ -147,11 +155,11 @@ async function revert(projectId: string, row: { id: string; published_url: strin
     .eq("status", "removing");
 }
 
-async function rearm(job: Job, p: Payload, round: number, runAfter: Date): Promise<void> {
+async function rearm(job: Job, p: Payload, round: number, runAfter: Date, patch: Record<string, unknown> = {}): Promise<void> {
   await enqueue({
     projectId: job.project_id,
     kind: "owner-pr",
-    payload: { ...job.payload, round: round + 1 },
+    payload: { ...job.payload, ...patch, round: round + 1 },
     runAfter,
     idempotencyKey: `owner-pr:${p.draftId}:${p.prNumber}:r${round + 1}`,
   });
