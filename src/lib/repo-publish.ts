@@ -279,6 +279,12 @@ export type ParsedSample = {
    *  the frontmatter title themselves, so their posts carry no H1 and ours
    *  must not either (clockedcode.com showed the title twice, 2026-10-24). */
   bodyHasH1?: boolean;
+  /** Whether the sample's BODY shows its own cover as a picture. Some
+   *  layouts use the frontmatter cover for the blog list and the share
+   *  preview only, and every post repeats it under the title by hand: on
+   *  such a site an article without that line has no picture on its own page
+   *  (tanstack-fetch, 2026-11-10). */
+  bodyShowsCover?: boolean;
 };
 
 /**
@@ -328,7 +334,30 @@ export function parseFrontmatter(text: string): ParsedSample {
   while (j < lines.length && lines[j].trim() === "") j++;
   const bodyHasH1 = j < lines.length && /^#\s+\S/.test(lines[j].trim());
 
-  return { keys, values, raw, bodyHasH1 };
+  const coverKey = COVER_KEYS.find((k) => k in raw);
+  const coverValue = coverKey ? values[coverKey] : "";
+  const bodyShowsCover = Boolean(coverValue) && showsPicture(lines.slice(i + 1).join("\n"), coverValue);
+
+  return { keys, values, raw, bodyHasH1, bodyShowsCover };
+}
+
+/** Whether a markdown body already shows this picture, as markdown or as an
+ *  <img>. */
+export function showsPicture(body: string, ref: string): boolean {
+  if (!ref) return false;
+  return body.includes(`](${ref})`) || body.includes(`](${ref} `) || body.includes(`src="${ref}"`) || body.includes(`src='${ref}'`);
+}
+
+/** The cover as the first thing under the title (or the first line, when the
+ *  body opens without an H1), written the way a hand-written post does it.
+ *  A body that already shows the picture is returned untouched. */
+export function withBodyCover(body: string, title: string, ref: string): string {
+  if (!ref || showsPicture(body, ref)) return body;
+  const nl = body.includes("\r\n") ? "\r\n" : "\n";
+  const line = `![${title.replace(/[\[\]\r\n]/g, " ").replace(/\s+/g, " ").trim()}](${ref})`;
+  const h1 = body.match(/^\s*#\s+[^\n]*\r?\n/);
+  if (!h1) return `${line}${nl}${nl}${body.replace(/^\s+/, "")}`;
+  return `${h1[0].replace(/\s+$/, "")}${nl}${nl}${line}${nl}${nl}${body.slice(h1[0].length).replace(/^\s+/, "")}`;
 }
 
 function stripQuotes(value: string): string {
@@ -576,7 +605,9 @@ export function bodyWithFaq(article: ArticleFileInput, sample: ParsedSample | nu
   // The frontmatter carries the title; unless this site's own posts open with
   // an H1, the layout prints it and a body H1 would show it twice.
   const withTitle = sample?.bodyHasH1 ? article.markdown : article.markdown.replace(/^\s*#\s+[^\n]*\n+/, "");
-  const body = relativizeOwnLinks(withTitle, article.siteDomain).trim();
+  const linked = relativizeOwnLinks(withTitle, article.siteDomain).trim();
+  // The picture on the article's own page, where this site's posts put it.
+  const body = article.coverPath && sample?.bodyShowsCover ? withBodyCover(linked, article.title, article.coverPath) : linked;
   const faq = (article.faq ?? []).filter(
     (f) => f && typeof f.question === "string" && typeof f.answer === "string" && f.question.trim() && f.answer.trim(),
   );

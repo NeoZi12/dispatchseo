@@ -2,7 +2,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { effectiveAutomations, type Project } from "@/lib/projects";
 import { yamlDoubleQuote } from "@/lib/article-render";
-import { coverExt, coverTargetFor, creditLine, githubApi, parseFrontmatter, sampleCoverKey } from "@/lib/repo-publish";
+import { coverExt, coverTargetFor, creditLine, githubApi, parseFrontmatter, sampleCoverKey, showsPicture, withBodyCover } from "@/lib/repo-publish";
 import { articleSignature } from "@/lib/article-signature";
 import { tokenForRef } from "@/lib/github";
 import { creditParts } from "@/lib/hosted-blog";
@@ -20,7 +20,8 @@ import { fetchCover } from "@/lib/job-handlers/publish";
 // never a hand edit in a customer's repo and never a note asking them.
 //
 // It only ever ADDS: one frontmatter line (the key the neighbour posts use),
-// one picture file beside the neighbours' own, one line above our signature.
+// one picture file beside the neighbours' own, the picture under the title
+// when the neighbours show theirs there, one line above our signature.
 // Nothing the owner wrote is touched, and an article that already has both
 // is left alone (no pull request at all). Run by the article-repair job,
 // which also sees the pull request through its merge.
@@ -35,8 +36,12 @@ const CREDIT_PRESENT = /<a href="https:\/\/dispatchseo\.com\/\?ref=[^"]*"[^>]*>D
  *  when the file has no frontmatter block to add to or lacks nothing. Pure,
  *  so the one thing that rewrites a customer's file can be tested on its own.
  *  `cover` and `credit` are what the caller found the article is owed; each
- *  is still skipped when the file already carries one. */
-export function repairedFile(text: string, owed: { signature: string; cover: { key: string; ref: string } | null; credit: string | null }): { content: string; added: string[] } | null {
+ *  is still skipped when the file already carries one. `bodyCover` = this
+ *  site's posts show their cover under the title, so ours must too. */
+export function repairedFile(
+  text: string,
+  owed: { signature: string; cover: { key: string; ref: string } | null; credit: string | null; bodyCover?: { title: string } | null },
+): { content: string; added: string[] } | null {
   const fence = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
   if (!fence) return null;
   const nl = fence[0].includes("\r\n") ? "\r\n" : "\n";
@@ -46,6 +51,15 @@ export function repairedFile(text: string, owed: { signature: string; cover: { k
   if (owed.cover && !sampleCoverKey(parseFrontmatter(text))) {
     frontmatter += `${nl}${owed.cover.key}: ${yamlDoubleQuote(owed.cover.ref)}`;
     added.push("cover");
+  }
+  if (owed.bodyCover) {
+    const own = parseFrontmatter(text);
+    const ownKey = sampleCoverKey(own);
+    const ref = owed.cover?.ref ?? (ownKey ? own.values[ownKey] : "");
+    if (ref && !showsPicture(body, ref)) {
+      body = withBodyCover(body, owed.bodyCover.title, ref);
+      added.push("picture");
+    }
   }
   if (owed.credit && !CREDIT_PRESENT.test(body)) {
     // Above our signature, as the publish writes it; at the end when the
@@ -80,22 +94,32 @@ export async function repairRepoArticle(project: Project, draftId: string): Prom
   let cover: { key: string; ref: string } | null = null;
   const extra: Record<string, unknown>[] = [];
 
-  // THE COVER: only when ours has none and a neighbour shows how this site
-  // names one (the publish's own condition - no convention, no picture).
-  if (row.cover_url && !sampleCoverKey(parseFrontmatter(text))) {
+  // THE COVER: a neighbour shows how this site names one and where it shows
+  // it (the publish's own condition - no convention, no picture). The file
+  // is added only when ours has none; the picture under the title only when
+  // the neighbour's own body carries its cover there.
+  let bodyCover: { title: string } | null = null;
+  if (row.cover_url) {
     const treeRes = await gh("GET", `/repos/${repo}/git/trees/${encodeURIComponent(baseBranch)}?recursive=1`);
     const entries = Array.isArray(treeRes.json?.tree) ? (treeRes.json.tree as { type?: string; path?: string }[]) : [];
     const allPaths = entries.filter((e) => e.type === "blob").map((e) => String(e.path ?? ""));
     const dir = path.slice(0, path.lastIndexOf("/"));
     const siblings = allPaths.filter((p) => p !== path && /\.mdx?$/i.test(p) && p.slice(0, p.lastIndexOf("/")) === dir).sort();
+    const hasCover = Boolean(sampleCoverKey(parseFrontmatter(text)));
     // Newest first, as the publish picks its neighbour.
     for (const sibling of siblings.reverse().slice(0, MAX_SAMPLES)) {
       const sample = parseFrontmatter((await read(sibling)) ?? "");
       const key = sampleCoverKey(sample);
       if (!key) continue;
+      if (sample.bodyShowsCover) bodyCover = { title: row.title };
+      if (hasCover) break;
       const target = coverTargetFor(dir, allPaths, sample.values[key] ?? "", row.slug);
       const image = target ? await fetchCover(row.cover_url) : null;
-      if (!target || !image) break;
+      if (!target || !image) {
+        // No picture to point at: nothing to show under the title either.
+        bodyCover = null;
+        break;
+      }
       const ext = coverExt(image.mimeType);
       const repoPath = target.repoPath.replace(/\.png$/, ext);
       const blob = await gh("POST", `/repos/${repo}/git/blobs`, { content: Buffer.from(image.bytes).toString("base64"), encoding: "base64" });
@@ -108,7 +132,7 @@ export async function repairRepoArticle(project: Project, draftId: string): Prom
 
   // THE CREDIT: free plan only, as the publish writes it.
   const credit = (await isFreeProject(project.id)) ? creditLine(creditParts(project, row.id)) : null;
-  const fixed = repairedFile(text, { signature: articleSignature(row.id), cover, credit });
+  const fixed = repairedFile(text, { signature: articleSignature(row.id), cover, credit, bodyCover });
   if (!fixed) return { ok: true, nothing: true };
   const added = fixed.added;
   // The picture rides along only with the frontmatter line that names it.
@@ -125,7 +149,8 @@ export async function repairRepoArticle(project: Project, draftId: string): Prom
     tree: files,
   });
   if (tree.status !== 201 || !tree.json?.sha) return { ok: false, error: `tree create: HTTP ${tree.status}` };
-  const what = added.includes("cover") ? (added.includes("credit") ? "cover picture and credit line" : "cover picture") : "credit line";
+  const picture = added.includes("cover") ? "cover picture" : added.includes("picture") ? "cover picture under the title" : null;
+  const what = [picture, added.includes("credit") ? "credit line" : null].filter(Boolean).join(" and ");
   const commit = await gh("POST", `/repos/${repo}/git/commits`, {
     message: `Add the ${what}: ${row.title}\n\nThe article was published without it; committed by the DispatchSEO app.`,
     tree: String(tree.json.sha),
@@ -146,7 +171,7 @@ export async function repairRepoArticle(project: Project, draftId: string): Prom
     title: `Add the ${what}: ${row.title}`,
     head: branch,
     base: baseBranch,
-    body: `This article went live without its ${what}. This pull request adds ${added.length > 1 ? "them" : "it"} and changes nothing else in the article.${auto ? " It merges on its own once the checks pass." : ""}\n\nOpened by the DispatchSEO app.`,
+    body: `This article went live without its ${what}. This pull request adds ${picture && added.includes("credit") ? "them" : "it"} and changes nothing else in the article.${auto ? " It merges on its own once the checks pass." : ""}\n\nOpened by the DispatchSEO app.`,
   });
   if (pr.status === 201 && pr.json) return { ok: true, nothing: false, prNumber: Number(pr.json.number), prUrl: String(pr.json.html_url ?? ""), added };
   if (pr.status === 422) {
