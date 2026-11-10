@@ -76,10 +76,11 @@ export type LandResult =
 export type Redo = () => Promise<{ prNumber: number } | { gone: true } | null>;
 
 const CLEAN = new Set(["clean", "has_hooks"]);
-/** The jobs cron runs every five minutes, so these are "the next run" and
- *  "the one after a build had time to finish". */
+/** The jobs cron runs every five minutes. Both waits land on the NEXT run:
+ *  a wait of exactly five minutes falls due seconds after that run started
+ *  and is only picked up by the one after, ten minutes on. */
 const RELOOK_MS = 2 * 60_000;
-const SOON_MS = 5 * 60_000;
+const SOON_MS = 4 * 60_000;
 const MAX_UPDATES = 6;
 const MAX_REDOS = 2;
 const MAX_PROBES = 2;
