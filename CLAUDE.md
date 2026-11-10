@@ -117,11 +117,14 @@ touch them. **Never import `db.ts` into anything that ships to the browser.**
 
 ### Crons — split across two schedulers
 
-Vercel Hobby caps crons at once/day and 2 jobs total, so schedules are split:
+The split dates from Vercel Hobby (once/day, 2 jobs); the project is on Pro now:
 
-- `vercel.json` runs only **daily-ranks** (`0 4 * * *`).
-- Higher-frequency crons live in `.github/workflows/*.yml`, which `curl` the
-  backend cron endpoints with `CRON_SECRET` (e.g. `hourly-gsc.yml` at `:07`).
+- `vercel.json` runs daily-ranks, jobs, autopilot, hourly-gsc and serp-collect.
+  hourly-gsc and serp-collect moved there 2026-11-10 because GitHub fired their
+  schedules 8-13 h apart and painted "overdue" on Home with nothing broken.
+- Other frequent crons live in `.github/workflows/*.yml`, which `curl` the
+  backend cron endpoints with `CRON_SECRET`. `hourly-gsc.yml` and
+  `serp-collect.yml` keep their schedules as a backup (both routes are idempotent).
 - Routes: `src/app/api/cron/{daily-ranks,hourly-gsc,weekly-opportunities,seo-dispatch,serp-collect,jobs,heartbeat,deploy-check}/route.ts`
   (self-host schedules live in `docker/cron/crontab`, whose header documents
   which routes are deliberately excluded there and why).
