@@ -293,12 +293,21 @@ async function trafficReportFresh(range: Range, now = Date.now()): Promise<Traff
 
 export type PlanTone = "ok" | "active" | "warn" | "danger" | "neutral";
 
+/** How a site's articles go live. "agent" = the owner's own coding agent
+ *  builds (no hosted writer, so no autopilot to pause); otherwise a pause
+ *  (writer_paused_at) beats the publish mode; publish_mode "review" is manual
+ *  approval; anything else (auto, or not chosen yet) publishes by itself. */
+export type SiteMode = "autopilot" | "manual" | "paused" | "agent";
+
 export type CustomerSite = {
   id: string;
   slug: string;
   name: string;
   domain: string;
   hosted: boolean;
+  mode: SiteMode;
+  /** Why the Dispatcher is paused, when it is. */
+  pauseReason: string | null;
   articles: number;
   articlesRecent: number;
   lastArticleAt: string | null;
@@ -432,8 +441,27 @@ type ProjectRow = {
   domain: string;
   owner_user_id: string | null;
   writer_mode: string | null;
+  publish_mode?: string | null;
+  writer_paused_at?: string | null;
+  writer_pause_reason?: string | null;
   created_at: string;
 };
+
+function siteModeOf(p: ProjectRow): SiteMode {
+  if (p.writer_mode !== "hosted") return "agent";
+  if (p.writer_paused_at) return "paused";
+  return p.publish_mode === "review" ? "manual" : "autopilot";
+}
+
+const PROJECT_COLS = "id, slug, name, domain, owner_user_id, writer_mode, writer_paused_at, writer_pause_reason, publish_mode, created_at";
+
+/** The sites, with how each publishes. A DB without 0089 has no publish_mode:
+ *  read again without it, which reads as autopilot (what every site did). */
+async function ownerProjects() {
+  const res = await db().from("projects").select(PROJECT_COLS);
+  if (res.error && /publish_mode/.test(res.error.message)) return db().from("projects").select(PROJECT_COLS.replace(", publish_mode", ""));
+  return res;
+}
 
 type RollupRow = Record<string, unknown>;
 
@@ -565,6 +593,8 @@ function siteOf(p: ProjectRow, r: RollupRow | undefined, credit: ClaudeCredit | 
     name: p.name,
     domain: p.domain,
     hosted: p.writer_mode === "hosted",
+    mode: siteModeOf(p),
+    pauseReason: p.writer_paused_at ? (p.writer_pause_reason ?? "Paused.") : null,
     articles: Number(r?.articles ?? 0),
     articlesRecent: Number(r?.articles_recent ?? 0),
     lastArticleAt: r?.last_article_at ? String(r.last_article_at) : null,
@@ -592,7 +622,7 @@ async function customersReportFresh(range: Range, now = Date.now()): Promise<Cus
   const [usersRes, subsRes, projectsRes, rollupRes, activityRes, costRes, credit] = await Promise.all([
     db().auth.admin.listUsers({ page: 1, perPage: 1000 }),
     db().from("subscriptions").select("user_id, provider_customer_id, tier, status, provider_subscription_id, current_period_end, cancel_at_period_end, created_at"),
-    db().from("projects").select("id, slug, name, domain, owner_user_id, writer_mode, created_at"),
+    ownerProjects(),
     db().rpc("owner_project_rollup", { p_since: since }),
     db().rpc("owner_user_activity", { p_since: since }),
     db().rpc("owner_cost_daily", { p_from: since, p_to: ISO(w.to) }),

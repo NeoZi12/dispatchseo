@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { cx } from "@/components/ui/styles";
-import type { Customer, CustomersReport } from "@/lib/owner-analytics";
+import type { Customer, CustomersReport, SiteMode } from "@/lib/owner-analytics";
 import { TIER_LIMITS, TIER_NAMES, type Tier } from "@/lib/billing";
 import { Panel, StatCells } from "./bits";
 import { ClickRow } from "./row-link";
@@ -38,6 +38,53 @@ function StatusChip({ c }: { c: Customer }) {
             ? "border-danger/30 bg-danger/10 text-danger"
             : "border-line bg-surface-2 text-ink-faint";
   return <span className={cx("inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-[11.5px] font-medium", cls)}>{word}</span>;
+}
+
+const MODE_LABEL: Record<SiteMode, string> = { autopilot: "Autopilot", manual: "Manual", paused: "Paused", agent: "Own agent" };
+const MODE_CLS: Record<SiteMode, string> = {
+  autopilot: "text-ok",
+  manual: "text-info",
+  paused: "text-warn",
+  agent: "text-ink-faint",
+};
+const MODE_HINT: Record<SiteMode, string> = {
+  autopilot: "Articles go live by themselves",
+  manual: "Each article waits for the owner to press Publish",
+  paused: "The Dispatcher is paused: nothing is written or published",
+  agent: "The owner's own coding agent builds the articles",
+};
+
+/** How a customer's sites publish: Autopilot, Manual (review first), Paused,
+ *  or Own agent. One tag per distinct mode, so a two-site owner with one site
+ *  paused shows both. */
+function ModeTag({ x, className = "" }: { x: Customer; className?: string }) {
+  if (!x.sites.length) return <span className={cx("text-[12px] text-ink-faint", className)}>-</span>;
+  const order: SiteMode[] = ["paused", "manual", "autopilot", "agent"];
+  const modes = order.filter((m) => x.sites.some((s) => s.mode === m));
+  const many = x.sites.length > 1;
+  return (
+    <span className={cx("inline-flex flex-wrap items-center gap-x-2.5 gap-y-0.5", className)}>
+      {modes.map((m) => {
+        const sites = x.sites.filter((s) => s.mode === m);
+        const reason = m === "paused" ? sites.map((s) => s.pauseReason).find(Boolean) : null;
+        const title = [MODE_HINT[m], reason, many ? sites.map((s) => s.domain).join(", ") : null].filter(Boolean).join(" · ");
+        return (
+          <span key={m} className={cx("inline-flex items-center gap-1.5 whitespace-nowrap text-[12.5px] font-medium", MODE_CLS[m])} title={title}>
+            {m === "paused" ? (
+              <svg viewBox="0 0 10 10" className="h-2.5 w-2.5" aria-hidden="true">
+                <rect x="1.5" y="1" width="2.5" height="8" rx="0.6" fill="currentColor" />
+                <rect x="6" y="1" width="2.5" height="8" rx="0.6" fill="currentColor" />
+              </svg>
+            ) : (
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" />
+            )}
+            {MODE_LABEL[m]}
+            {many && modes.length > 1 ? <span className="font-mono text-[11px] font-normal text-ink-faint">{sites.length}</span> : null}
+          </span>
+        );
+      })}
+    </span>
+  );
 }
 
 // ---------- one subject per section ----------
@@ -163,6 +210,10 @@ function PlanRow({ x, now }: { x: Customer; now: number }) {
         <StatusChip c={x} />
         {note ? <span className="mt-1 block whitespace-nowrap text-[11.5px] text-danger/90">{note}</span> : null}
       </td>
+      <td className="px-3 py-3">
+        <ModeTag x={x} />
+      </td>
+      <td className="px-3 py-3 text-right font-mono tabular-nums text-ink">{fmt(x.articles)}</td>
       <td className="px-3 py-3 text-right font-mono tabular-nums text-ink">{money(x.revenueRecentUsd)}</td>
       <td className="px-3 py-3 text-right font-mono tabular-nums text-ink">{money(x.totalCostRecentUsd, { precise: true })}</td>
       <td className={cx("px-3 py-3 text-right font-mono tabular-nums", marginClass(x.marginRecentUsd))}>{money(x.marginRecentUsd)}</td>
@@ -184,6 +235,13 @@ function PlanCard({ x, now }: { x: Customer; now: number }) {
           <StatusChip c={x} />
         </div>
         {note ? <p className="mt-1.5 text-[12px] text-danger/90">{note}</p> : null}
+        <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-[12px] text-ink-faint">
+          <ModeTag x={x} />
+          <span aria-hidden="true">·</span>
+          <span className="font-mono tabular-nums">
+            {fmt(x.articles)} {x.articles === 1 ? "article" : "articles"}
+          </span>
+        </p>
         <dl className="mt-3 grid grid-cols-4 gap-2 font-mono tabular-nums">
           {[
             ["Revenue", money(x.revenueRecentUsd), "text-ink"],
@@ -231,6 +289,8 @@ export function PlansPanel({ c, range, now }: { c: CustomersReport; range: numbe
                 <tr className="text-[11px] uppercase tracking-wider text-ink-faint">
                   <th scope="col" className="px-6 pb-3 pt-4 font-medium">Customer</th>
                   <th scope="col" className="px-3 pb-3 pt-4 font-medium">Status</th>
+                  <th scope="col" className="px-3 pb-3 pt-4 font-medium">Mode</th>
+                  <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Articles</th>
                   <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Revenue, {rangeShort(range)}</th>
                   <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Cost</th>
                   <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Margin</th>
@@ -240,7 +300,7 @@ export function PlansPanel({ c, range, now }: { c: CustomersReport; range: numbe
               {filled.map((g) => (
                 <tbody key={g.key}>
                   <tr className="border-t border-line-soft bg-surface-2/50">
-                    <th scope="rowgroup" colSpan={6} className="px-6 py-2 text-left">
+                    <th scope="rowgroup" colSpan={8} className="px-6 py-2 text-left">
                       <span className="flex items-center gap-2 text-[12px] font-medium text-ink">
                         <span className="h-2 w-2 rounded-full" style={{ background: PLAN_COLOR[g.key] }} aria-hidden="true" />
                         {PLAN_NAME[g.key]}
@@ -311,6 +371,7 @@ function MobileCustomer({ x, now }: { x: Customer; now: number; range: number })
           <StatusChip c={x} />
         </div>
         {cancelNote(x.plan) ? <p className="mt-1.5 text-[12px] text-danger/90">{cancelNote(x.plan)}</p> : null}
+        <ModeTag x={x} className="mt-1.5" />
         <dl className="mt-3 grid grid-cols-4 gap-2 font-mono tabular-nums">
           {[
             ["Revenue", money(x.revenueRecentUsd), "text-ink"],
@@ -345,6 +406,7 @@ function CustomerRows({ rows, now, range }: { rows: Customer[]; now: number; ran
             <tr className="text-[11px] uppercase tracking-wider text-ink-faint">
               <th scope="col" className="px-6 pb-3 pt-4 font-medium">Customer</th>
               <th scope="col" className="px-3 pb-3 pt-4 font-medium">Status</th>
+              <th scope="col" className="px-3 pb-3 pt-4 font-medium">Mode</th>
               <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Revenue</th>
               <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Cost</th>
               <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Margin</th>
@@ -373,6 +435,9 @@ function CustomerRows({ rows, now, range }: { rows: Customer[]; now: number; ran
                     <span className="text-[12.5px] capitalize text-ink-muted">{x.plan.tier ?? ""}</span>
                   </div>
                   {cancelNote(x.plan) ? <span className="mt-1 block whitespace-nowrap text-[11.5px] text-danger/90">{cancelNote(x.plan)}</span> : null}
+                </td>
+                <td className="px-3 py-3">
+                  <ModeTag x={x} />
                 </td>
                 <td className="px-3 py-3 text-right font-mono tabular-nums text-ink">{money(x.revenueRecentUsd)}</td>
                 <td className="px-3 py-3 text-right font-mono tabular-nums text-ink">{money(x.totalCostRecentUsd, { precise: true })}</td>
