@@ -1,6 +1,10 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import type { Project } from "@/lib/projects";
-import type { AutopilotReport } from "@/lib/autopilot/report";
+import type { AutopilotArticle, AutopilotReport } from "@/lib/autopilot/report";
+import { ArticleList } from "@/components/ui/article-list";
+import { ArticleRowsSkeleton } from "@/components/ui/skeleton";
+import { loadGlances } from "../articles/article-data";
 import type { HostedQueue } from "@/lib/autopilot/queue";
 import type { OverviewData } from "./overview-data";
 import { pauseAutopilot, resumeAutopilot, suggestTopicAction } from "@/app/autopilot-actions";
@@ -18,12 +22,12 @@ import { JourneyBar } from "@/components/ui/journey-bar";
 import { OnAir } from "@/components/ui/on-air";
 import { packDays, type Landed } from "@/components/ui/overview-pack";
 import { pagePath } from "@/lib/metrics";
-import { OverviewChart, type OverviewDay } from "@/components/ui/overview-chart";
+import { OverviewChart, TopPosts, type OverviewDay } from "@/components/ui/overview-chart";
 import { PageHeading } from "@/components/ui/page-heading";
 import { SiteIcon } from "@/components/ui/site-icon";
 import { StatusPill } from "@/components/ui/status-pill";
 import { MonthBoard, type CalCard } from "@/components/ui/month-board";
-import { ARTICLE_STATUS, articleHref, articleStep, inProgress, shortDate, statusLabel, stepLine } from "../article-status";
+import { ARTICLE_STATUS, articleHref, articleStep, inProgress, shortDate, statusLabel, stepLine, toArticleRow } from "../article-status";
 import { setupGaps } from "../mode";
 import { TOPIC_LIMITS } from "@/lib/autopilot/controls";
 import type { CronHealth } from "@/lib/cron-alerts";
@@ -266,6 +270,12 @@ export async function HostedReport({
   const published = r.articles
     .filter((a) => a.status === "published" && a.publishedAt)
     .map((a) => ({ at: a.publishedAt!, title: a.title, href: articleHref(a) }));
+  // Home's "Latest articles": the three that went live most recently.
+  const latest = r.articles
+    .filter((a) => a.status === "published" && a.publishedAt)
+    .sort((a, b) => Date.parse(b.publishedAt!) - Date.parse(a.publishedAt!))
+    .slice(0, 3);
+  const liveCount = r.articles.filter((a) => a.status === "published").length;
   // The top-posts lists name our articles by their own titles and publish
   // dates, and open the article's own page; anything else keeps what the
   // pages table had, or its path, and links to the live post.
@@ -278,6 +288,7 @@ export async function HostedReport({
       return o ? { ...p, title: o.title, publishedAt: o.publishedAt ?? p.publishedAt, href: o.href } : p;
     });
   }
+  const chartDays = packDays(google.daily.length ? google.daily : r.traffic.days);
   const tally = {
     live: month.liveThisMonth,
     writing: inProgress(r.articles).length,
@@ -347,10 +358,10 @@ export async function HostedReport({
 
       {/* ---- the main event ---- */}
       <OverviewChart
-        daily={packDays(google.daily.length ? google.daily : r.traffic.days)}
+        daily={chartDays}
         published={published}
         publishedCapped={r.articlesTruncated}
-        landed={landed}
+        periodHref="/dashboard/period"
         connectAction={
           r.setup.google ? undefined : (
             <Link href="/google" className={buttonClass("primary", "md")}>
@@ -361,6 +372,22 @@ export async function HostedReport({
       />
 
       {missing.length ? <SetupChecklist gaps={gaps} /> : null}
+
+      {/* ---- latest articles: the three newest live ones, with how
+          Google is treating each - the Articles page's own rows. ---- */}
+      {latest.length ? (
+        <section aria-labelledby="latest-title" className="space-y-4">
+          <h2 id="latest-title" className="arrive-up text-xl font-semibold tracking-tight text-ink" style={at(860)}>
+            Latest articles
+          </h2>
+          <Suspense fallback={<ArticleRowsSkeleton rows={latest.length} />}>
+            <LatestRows projectId={project.id} articles={latest} liveCount={liveCount} />
+          </Suspense>
+        </section>
+      ) : null}
+
+      {/* ---- your top posts: its own section, its own range ---- */}
+      {r.setup.google ? <TopPosts landed={landed} daily={chartDays} at={940} /> : null}
 
       {/* ---- this month ---- */}
       <section aria-labelledby="week-title" className="space-y-5">
@@ -439,6 +466,21 @@ export async function HostedReport({
         </div>
       </section>
     </div>
+  );
+}
+
+/** The latest rows, streamed: their keyword numbers and liveness are one
+ *  small read (loadGlances), and the chart below never waits on it. */
+async function LatestRows({ projectId, articles, liveCount }: { projectId: string; articles: AutopilotArticle[]; liveCount: number }) {
+  const glances = await loadGlances(projectId, articles);
+  return (
+    <ArticleList
+      articles={articles.map(toArticleRow)}
+      glances={glances}
+      at={900}
+      hideStatus
+      more={{ href: "/articles?status=live", label: liveCount > articles.length ? `See all ${liveCount} live articles` : "Open your articles" }}
+    />
   );
 }
 

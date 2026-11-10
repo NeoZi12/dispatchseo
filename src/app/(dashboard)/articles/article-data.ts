@@ -5,6 +5,7 @@ import { normalizePageUrl, type GscPageStat } from "@/lib/metrics";
 import { isKnownGone } from "@/lib/page-liveness";
 import { credsForProject, keywordOverview } from "@/lib/dataforseo";
 import { cachedBulkKeywordDifficulty } from "@/lib/keyword-research-cache";
+import { keywordKey, keywordStatsBulk, type KeywordStats } from "@/lib/article-keyword-stats";
 import type { Project } from "@/lib/projects";
 import type { AutopilotArticle } from "@/lib/autopilot/report";
 
@@ -31,6 +32,10 @@ export type Source = { url: string; host: string; title: string | null };
  *  the list stopped reading them - so they are no longer computed or sent. */
 export type ArticleGlance = {
   gone: boolean;
+  /** The target keyword's monthly searches and difficulty (0-100), as
+   *  research measured them (article-keyword-stats.ts); null = unmeasured. */
+  volume: number | null;
+  difficulty: number | null;
 };
 
 export type PageDay = { date: string; clicks: number; impressions: number; position: number | null };
@@ -139,11 +144,18 @@ function goneUrlsCached(projectId: string): Promise<string[]> {
 }
 
 /** The list's glance facts for every article on screen: one cached read
- *  (the project's dead pages), nothing per article. */
-export async function loadGlances(projectId: string, articles: Pick<AutopilotArticle, "draftId" | "runId" | "createdAt" | "url">[]): Promise<Record<ArticleKey, ArticleGlance>> {
-  const gone = articles.some((a) => a.url) ? await loadGoneUrls(projectId) : new Set<string>();
+ *  (the project's dead pages) and one bulk keyword read, nothing per
+ *  article. A failed keyword read just leaves the numbers off. */
+export async function loadGlances(projectId: string, articles: Pick<AutopilotArticle, "draftId" | "runId" | "createdAt" | "url" | "keyword">[]): Promise<Record<ArticleKey, ArticleGlance>> {
+  const [gone, stats] = await Promise.all([
+    articles.some((a) => a.url) ? loadGoneUrls(projectId) : Promise.resolve(new Set<string>()),
+    keywordStatsBulk(projectId, articles.map((a) => a.keyword)).catch(() => new Map<string, KeywordStats>()),
+  ]);
   const out: Record<ArticleKey, ArticleGlance> = {};
-  for (const a of articles) out[keyOf(a)] = { gone: a.url ? gone.has(normalizePageUrl(a.url)) : false };
+  for (const a of articles) {
+    const s = a.keyword ? stats.get(keywordKey(a.keyword)) : undefined;
+    out[keyOf(a)] = { gone: a.url ? gone.has(normalizePageUrl(a.url)) : false, volume: s?.volume ?? null, difficulty: s?.difficulty ?? null };
+  }
   return out;
 }
 

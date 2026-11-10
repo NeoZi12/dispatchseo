@@ -10,6 +10,7 @@ import { reportCronRun } from "@/lib/cron-alerts";
 import { recoverStuckBuilds } from "@/lib/build-recovery";
 import { refillEmptyGuideQueues } from "@/lib/queue-refill";
 import { listProjectsChecked, type Project } from "@/lib/projects";
+import { syncHourly } from "@/lib/gsc-hourly";
 
 // Hourly GSC refresh, triggered by the hourly-gsc GitHub Action (Vercel Hobby
 // crons cap at once/day, so the hourly schedule lives outside Vercel). This is
@@ -156,11 +157,20 @@ async function runProject(project: Project): Promise<Record<string, unknown>> {
       /* detection is a bonus, the snapshot is the job */
     }
   }
+  // Google's hour-by-hour numbers for the last ten days, saved for the day
+  // page's chart (gsc-hourly.ts) - Google drops them after ten days, and the
+  // page must never wait on Google. Best-effort and beside the snapshot: a
+  // failure is noted in the run log, never fails the run (the chart is a
+  // view; the next hour's run fills any gap).
+  const hourly = syncHourly(project.id, project.gsc_site_url!, sc).then(
+    (days) => ({ saved: days.length }),
+    (e: unknown) => ({ skipped: e instanceof Error ? e.message : String(e) }),
+  );
   const snaps = await getFreshSnapshots(project.gsc_site_url!, 3, sc);
   // No snapshot data is no reason to skip index verification - a brand-new
   // site with zero impressions is exactly where it matters most.
   if (snaps.length === 0) {
-    return { skipped: "no GSC data in window", indexing: await verifyIndexing(project, sc) };
+    return { skipped: "no GSC data in window", indexing: await verifyIndexing(project, sc), hourly: await hourly };
   }
 
   // One upsert for the whole window, not one per date. Row-at-a-time with a
@@ -197,7 +207,7 @@ async function runProject(project: Project): Promise<Record<string, unknown>> {
     /* self-host without a cache handler, or no request scope */
   }
   const indexing = await verifyIndexing(project, sc);
-  return { upserted: snaps.map((s) => s.date), indexing };
+  return { upserted: snaps.map((s) => s.date), indexing, hourly: await hourly };
 }
 
 export async function GET(req: Request): Promise<Response> {

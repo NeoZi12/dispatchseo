@@ -59,6 +59,8 @@ import { credentialWarnings, isDryRun, missingCredentials } from "@/lib/writer/m
 import { getWriterRun, listWriterRuns, startWriterRun } from "@/lib/writer/runs";
 import { startHostedRunClaimed } from "@/lib/autopilot/scheduler";
 import { getHostedQueue, removeQueuedIdea, restoreQueuedIdea } from "@/lib/autopilot/queue";
+import { keywordKey, keywordStatsBulk, type KeywordStats } from "@/lib/article-keyword-stats";
+import { getDayHourly, getPeriodStats, parsePeriod } from "@/lib/period-stats";
 import { writerMode as projectWriterMode, writerProvider as projectWriterProvider } from "@/lib/projects";
 import { listAgentTasks, submitAgentTask } from "@/lib/writer/agent-tasks";
 import {
@@ -2442,6 +2444,50 @@ const mcpHandler = createMcpHandler(
           }
         }
         return ok({ summary, snapshots: rows.slice().reverse(), ...(note ? { note } : {}) });
+      },
+    );
+
+    // The overview chart's drill-down (dashboard/period/page.tsx): click a
+    // day, a week or a month on Home and see how it did. Same function.
+    server.registerTool(
+      "get_period_stats",
+      {
+        title: "Get one day / week / month on Google",
+        description:
+          "How a stretch of days did on Google, the way the dashboard shows it when the owner " +
+          "clicks a day or week on the overview chart: clicks, impressions, CTR and average " +
+          "position; the same number of days just before (`previous`, null when too little of it " +
+          "was reported); every day inside it; for a single day its rank among all reported days " +
+          "(`dayRank.rank` 1 = best day so far); the top pages people landed on (our articles " +
+          "carry title, draftId and keyword) and the top searches, summed from each day's stored " +
+          "top-100 pages / top-20 queries (`unattributed` = clicks below those cutoffs); and the " +
+          "articles that went live in it. Google reports 2-3 days behind: `reportedDays` says how " +
+          "many days have data. For a single day, `hourly` is that day hour by hour from " +
+          "Google, saved hourly ({state:'ok', hours:[{at, clicks, impressions}]}, `at` an ISO hour " +
+          "on Google's Pacific clock); 'pending' = not saved yet (fills on its own shortly), 'tooOld' = " +
+          "older than Google kept when saving began, 'noGoogle' = Search Console not connected. " +
+          "Max 800 days.",
+        inputSchema: {
+          from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("First day, yyyy-mm-dd (UTC)."),
+          to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Last day, inclusive. Omit for a single day."),
+          pages: z.number().int().min(1).max(100).optional().describe("How many top pages to return (default 10)."),
+          queries: z.number().int().min(1).max(100).optional().describe("How many top searches to return (default 10)."),
+        },
+      },
+      async ({ from, to, pages, queries }) => {
+        const p = currentProject();
+        const period = parsePeriod(from, to);
+        if (!period) return fail("from/to must be real yyyy-mm-dd days, at most 800 days apart.");
+        try {
+          const single = period.from === period.to;
+          const [stats, hourly] = await Promise.all([
+            getPeriodStats(p.id, period.from, period.to, { pages, queries }),
+            single ? getDayHourly(p, period.from) : Promise.resolve(undefined),
+          ]);
+          return ok(hourly ? { ...stats, hourly } : stats);
+        } catch (e) {
+          return fail(e instanceof Error ? e.message : String(e));
+        }
       },
     );
 
@@ -5090,8 +5136,9 @@ const mcpHandler = createMcpHandler(
           "Everything the hosted dashboard shows for this site in one read: writer mode, pause " +
           "state (with the reason when it paused itself), plan and articles per week, when the next " +
           "article starts, this week's count against the quota, the last 50 articles with status " +
-          "(writing / verifying / scheduled / published / failed / needs_setup), cost and " +
-          "28-day clicks (a repo " +
+          "(writing / verifying / scheduled / published / failed / needs_setup), cost, " +
+          "28-day clicks and impressions, and keywordVolume / keywordDifficulty (the target keyword's " +
+          "monthly searches and KD 0-100 as research measured them; null = unmeasured) (a repo " +
           "article carries prUrl/prMerged - open and unmerged means it waits for a merge on GitHub), " +
           "Search Console traffic, the next queued ideas, what setup is missing (setup.rewritePrUrl = " +
           "the forwarding PR to merge; setup.siteUnreadable = describe the site with set_brand), the " +
@@ -5108,7 +5155,17 @@ const mcpHandler = createMcpHandler(
           // writer will write next, in order, with expected start days, and
           // the ideas it set aside with the reason.
           // A failed queue read drops `upcoming`/`parked`; the report stands.
-          const [report, queue] = await Promise.all([getAutopilotReport(p.id), getHostedQueue(p).catch(() => null)]);
+          const [rawReport, queue] = await Promise.all([getAutopilotReport(p.id), getHostedQueue(p).catch(() => null)]);
+          // Each article's keyword volume + KD, as the Articles list and
+          // Home's latest articles show them (article-keyword-stats.ts).
+          const stats = await keywordStatsBulk(p.id, rawReport.articles.map((a) => a.keyword)).catch(() => new Map<string, KeywordStats>());
+          const report = {
+            ...rawReport,
+            articles: rawReport.articles.map((a) => {
+              const s = a.keyword ? stats.get(keywordKey(a.keyword)) : undefined;
+              return { ...a, keywordVolume: s?.volume ?? null, keywordDifficulty: s?.difficulty ?? null };
+            }),
+          };
           return ok(queue ? { ...report, upcoming: queue.upcoming, parked: queue.parked } : report);
         } catch (e) {
           return fail(`Could not build the autopilot report: ${e instanceof Error ? e.message : String(e)}`);

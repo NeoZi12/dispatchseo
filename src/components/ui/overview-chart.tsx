@@ -21,11 +21,12 @@ import { cx, FOCUS_RING } from "./styles";
 // that must not stretch (dates, dots, gridlines, the hover readout) is HTML
 // laid over it by percentage. Hand-rolled: the repo bans chart libraries.
 //
-// Under the halves, when the caller has the lists: "Your top posts" -
-// the pages those people opened, ranked by clicks for the range that's
-// switched on (clicks first, then times seen, so a site with no clicks yet
-// still gets a ranked list), each with its spot, impressions and clicks. The range is named again there, and under the big chart, so a
-// reader scrolling past the switch still knows what period they're seeing.
+// "Your top posts" (TopPosts below) - the pages those people opened, ranked
+// by clicks (then times seen, so a site with no clicks yet still gets a
+// ranked list) - is its own section on Home with its own range switch, so
+// the card ends at the two halves and Home opens on the numbers (owner,
+// 2026-11-10). The range is named under the big chart, so a reader
+// scrolling past the switch still knows what period they're seeing.
 //
 // It builds itself on first load (globals.css "Arrival"): gridlines fade
 // in, the lines wipe in left to right with the fill settling in behind
@@ -61,6 +62,7 @@ const H = 200;
 const TOP = 14;
 
 const ms = (iso: string) => Date.parse(iso.slice(0, 10) + "T00:00:00Z");
+const isoDay = (t: number) => new Date(t).toISOString().slice(0, 10);
 function short(t: number): string {
   const d = new Date(t);
   return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
@@ -133,8 +135,8 @@ export function OverviewChart({
   published = [],
   publishedCapped = false,
   page = false,
-  landed,
   connectAction,
+  periodHref,
   className = "",
 }: {
   /** Google's daily numbers, any order, any length, packed (overview-pack.ts). */
@@ -146,13 +148,17 @@ export function OverviewChart({
   page?: boolean;
   /** The list is a recent slice: say "50+" rather than a wrong total. */
   publishedCapped?: boolean;
-  /** The pages the clicks landed on, one ranked list per range (overview-pack.ts).
-   *  Given: the card grows a third section under the halves. */
-  landed?: Landed;
   /** Set when Google isn't connected: shown where the big chart would be. */
   connectAction?: React.ReactNode;
+  /** Clicking a day / week / month on the two Google charts opens
+   *  `${periodHref}?from=yyyy-mm-dd&to=yyyy-mm-dd` (Home's drill-down). */
+  periodHref?: string;
   className?: string;
 }) {
+  const router = useRouter();
+  const pickPeriod = periodHref
+    ? (b: Bucket) => router.push(`${periodHref}?from=${isoDay(b.start)}&to=${isoDay(b.end)}`)
+    : undefined;
   const [range, setRange] = useState<RangeKey>("30d");
   const [switched, setSwitched] = useState(false);
   const r = RANGES.find((x) => x.key === range) ?? RANGES[1];
@@ -242,24 +248,7 @@ export function OverviewChart({
               )
             }
           />
-          <div role="group" aria-label="Date range" className="flex max-w-full flex-wrap rounded-lg bg-canvas/70 p-0.5 ring-1 ring-line-soft">
-            {RANGES.map((x) => (
-              <button
-                key={x.key}
-                type="button"
-                aria-pressed={x.key === range}
-                onClick={() => pick(x.key)}
-                className={cx(
-                  "shrink-0 whitespace-nowrap rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-colors sm:px-3",
-                  x.key === range ? "bg-surface-3 text-ink shadow-sm shadow-black/30" : "text-ink-faint hover:text-ink",
-                  FOCUS_RING,
-                )}
-              >
-                <span className="sm:hidden">{x.short}</span>
-                <span className="hidden sm:inline">{x.label}</span>
-              </button>
-            ))}
-          </div>
+          <RangeSwitch value={range} onPick={pick} />
         </div>
         <div className="mt-7">
           {connectAction ? (
@@ -285,6 +274,7 @@ export function OverviewChart({
               at={420}
               redraw={switched ? range : null}
               hover
+              onPick={pickPeriod}
             />
           )}
         </div>
@@ -314,6 +304,7 @@ export function OverviewChart({
                   at={720}
                   redraw={switched ? range : null}
                   hover
+                  onPick={pickPeriod}
                 />
               </div>
             ) : null}
@@ -379,9 +370,63 @@ export function OverviewChart({
         )}
       </div>
 
-      {landed && !connectAction && !page ? (
-        <LandedList rows={landed[range] ?? []} rangeName={rangeName} when={when} redraw={switched ? range : null} />
-      ) : null}
+    </section>
+  );
+}
+
+/** The 7 days ... All time switch: the chart's, and Top posts' own. */
+function RangeSwitch({ value, onPick }: { value: RangeKey; onPick: (k: RangeKey) => void }) {
+  return (
+    <div role="group" aria-label="Date range" className="flex max-w-full flex-wrap rounded-lg bg-canvas/70 p-0.5 ring-1 ring-line-soft">
+      {RANGES.map((x) => (
+        <button
+          key={x.key}
+          type="button"
+          aria-pressed={x.key === value}
+          onClick={() => onPick(x.key)}
+          className={cx(
+            "shrink-0 whitespace-nowrap rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-colors sm:px-3",
+            x.key === value ? "bg-surface-3 text-ink shadow-sm shadow-black/30" : "text-ink-faint hover:text-ink",
+            FOCUS_RING,
+          )}
+        >
+          <span className="sm:hidden">{x.short}</span>
+          <span className="hidden sm:inline">{x.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** "Your top posts" as a section of its own (Home, under the latest
+ *  articles): its own range switch, the same window the chart would use
+ *  for that range (ending on Google's newest reported day). */
+export function TopPosts({ landed, daily: packed, at = 0 }: { landed: Landed; daily: string; at?: number }) {
+  const [range, setRange] = useState<RangeKey>("30d");
+  const [switched, setSwitched] = useState(false);
+  const r = RANGES.find((x) => x.key === range) ?? RANGES[1];
+  const rows = unpackDays(packed).sort((a, b) => a.date.localeCompare(b.date));
+  const to = rows.length ? ms(rows[rows.length - 1].date) : ms(new Date().toISOString());
+  const from = r.days == null ? (rows.length ? ms(rows[0].date) : to) : to - (r.days - 1) * DAY;
+  const rangeName = r.days == null ? "All time" : `Last ${r.label}`;
+  return (
+    <section aria-labelledby="landed-title" className="arrive-up space-y-4" style={css({ "--at": `${at}ms` })}>
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <h2 id="landed-title" className="text-xl font-semibold tracking-tight text-ink">
+          Your top posts
+        </h2>
+        <RangeSwitch
+          value={range}
+          onPick={(k) => {
+            if (k === range) return;
+            setRange(k);
+            setSwitched(true);
+          }}
+        />
+      </div>
+      <div className="overflow-hidden rounded-2xl border border-line-soft bg-surface">
+        <LandedList rows={landed[range] ?? []} rangeName={rangeName} when={period(from, to)} redraw={switched ? range : null} at={at + 80} />
+      </div>
     </section>
   );
 }
@@ -439,18 +484,16 @@ export function RowArrow({ external }: { external: boolean }) {
  *  for a page that isn't one of ours). The top three ranks
  *  carry the green, the rest stay quiet. Rows arrive one after another and
  *  re-arrive quickly when the range switches, like the lines above. */
-function LandedList({ rows, rangeName, when, redraw }: { rows: LandedPage[]; rangeName: string; when: string; redraw: string | null }) {
+function LandedList({ rows, rangeName, when, redraw, at }: { rows: LandedPage[]; rangeName: string; when: string; redraw: string | null; at: number }) {
   const [all, setAll] = useState(false);
   const shown = all ? rows : rows.slice(0, LANDED_SHOWN);
   const hidden = rows.length - shown.length;
   const quick = redraw != null;
   return (
-    <div className="border-t border-line-soft px-5 py-6 sm:px-8" aria-labelledby="landed-title">
+    <div className="px-5 py-5 sm:px-8 sm:py-6">
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
-        <h3 id="landed-title" className="text-[14px] font-medium text-ink-muted">
-          Your top posts
-        </h3>
-        <p className="flex items-center gap-2 text-[12.5px] text-ink-faint">
+        <p className="text-[14px] text-ink-muted">The pages people opened from Google</p>
+        <p className="flex items-center gap-2 text-[12.5px] text-ink-faint" aria-live="polite">
           <span aria-hidden="true" className={cx("h-2 w-2 shrink-0 rounded-full border-[1.5px]", TONE.ok.border)} />
           <span className="font-medium text-ink-muted">{rangeName}</span>
           <span aria-hidden="true">·</span>
@@ -465,7 +508,7 @@ function LandedList({ rows, rangeName, when, redraw }: { rows: LandedPage[]; ran
             const name = p.title ?? p.path;
             const podium = i < 3;
             return (
-              <li key={p.path} className="arrive-up" style={css({ "--at": quick ? "0ms" : "960ms", "--i": i, "--step": quick ? "30ms" : "55ms" })}>
+              <li key={p.path} className="arrive-up" style={css({ "--at": quick ? "0ms" : `${at}ms`, "--i": i, "--step": quick ? "30ms" : "55ms" })}>
                 <RowLink
                   href={p.href ?? p.url}
                   external={!p.href}
@@ -593,6 +636,7 @@ function Area({
   redraw,
   hover: hoverable = false,
   detail,
+  onPick,
 }: {
   buckets: Bucket[];
   /** null = no reading that period (a gap, not a zero). */
@@ -612,6 +656,9 @@ function Area({
   hover?: boolean;
   /** Extra lines under the readout's figure, e.g. what went live that day. */
   detail?: (b: Bucket) => React.ReactNode;
+  /** Click opens this period. A mouse goes straight there; a finger's
+   *  first tap shows the readout and a second tap on the same point opens it. */
+  onPick?: (b: Bucket) => void;
 }) {
   const gradient = useId();
   // The hover readout stays mounted once used: `hover` is where it points,
@@ -622,6 +669,9 @@ function Area({
   const [hover, setHover] = useState<number | null>(null);
   const [shown, setShown] = useState(false);
   const [glide, setGlide] = useState(false);
+  // Touch: the point the last tap showed, so a second tap there opens it.
+  const [armed, setArmed] = useState<number | null>(null);
+  const [pointer, setPointer] = useState<string>("mouse");
   const n = buckets.length;
   const vals = buckets.map(value);
   // Only periods with a reading are drawn; the line bridges the gaps.
@@ -650,6 +700,12 @@ function Area({
     setHover(i);
     setGlide(shown);
     setShown(true);
+    setPointer(e.pointerType);
+  }
+  function onClick() {
+    if (!onPick || hover == null || hover >= n) return;
+    if (pointer === "mouse" || armed === hover) onPick(buckets[hover]);
+    else setArmed(hover);
   }
   // Day to day, the guide, the dot and the readout slide (easeOutExpo,
   // 160ms - short enough to land as the pointer settles, so it never trails
@@ -665,10 +721,11 @@ function Area({
   return (
     <div>
       <div
-        className={cx("relative touch-none select-none", heightClass)}
+        className={cx("relative touch-none select-none", onPick && "cursor-pointer", heightClass)}
         onPointerMove={hoverable ? onMove : undefined}
         onPointerDown={hoverable ? onMove : undefined}
         onPointerLeave={hoverable ? () => setShown(false) : undefined}
+        onClick={onPick ? onClick : undefined}
       >
         {/* Dashed guides at the labelled dates, like Polar's. */}
         {tk.map((i, k) => (
@@ -735,6 +792,11 @@ function Area({
                 <span className="font-semibold tabular-nums">{vals[hover] == null ? "-" : format(vals[hover]!)}</span>
               </span>
               {detail ? detail(buckets[hover]) : null}
+              {onPick ? (
+                <span className="mt-1 block text-[11.5px] text-ink-faint">
+                  {pointer === "mouse" || armed === hover ? "Click" : "Tap again"} for the {size === 1 ? "day" : size === 7 ? "week" : "month"}&apos;s details
+                </span>
+              ) : null}
             </span>
           </>
         ) : null}

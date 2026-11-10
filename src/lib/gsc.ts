@@ -299,6 +299,25 @@ export async function getFresh24h(site: string, scArg?: GscClient, cacheScope = 
   return out;
 }
 
+/** One hour of one day on Google. `hour` is Google's own key, an ISO time
+ *  with its Pacific offset ("2026-11-09T14:00:00-08:00"). */
+export type GscHour = { hour: string; clicks: number; impressions: number };
+
+/** Google days (Pacific time, the clock GSC counts days by) hour by hour,
+ *  from the fresh hourly data (dataState HOURLY_ALL). Google keeps it for
+ *  about the last ten days and revises recent hours as they finalize.
+ *  Hours with no searches have no row. Both dates inclusive. Throws on API
+ *  errors. Saved by gsc-hourly.ts syncHourly (the hourly-gsc cron). */
+export async function getHourlyRange(site: string, startDate: string, endDate: string, sc: GscClient): Promise<GscHour[]> {
+  const res = await sc.searchanalytics.query({
+    siteUrl: site,
+    requestBody: { startDate, endDate, dataState: "HOURLY_ALL", dimensions: ["HOUR"], rowLimit: 1000 },
+  });
+  return (res.data.rows ?? [])
+    .filter((r) => r.keys?.[0])
+    .map((r) => ({ hour: r.keys![0], clicks: r.clicks ?? 0, impressions: r.impressions ?? 0 }));
+}
+
 // Full snapshot (totals + top 100 queries/pages) for one date. dataState "ALL"
 // includes Google's fresh provisional numbers; omitted = finalized data only.
 // 100 rows/day keeps the per-page fold lossless well past the current catalog

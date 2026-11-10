@@ -72,6 +72,18 @@ export type ChangelogEntry = {
 // into a new CHANGELOG entry when it's time to cut a release. Nothing reads
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
+  {
+    kind: "new",
+    text: "Your overview now shows your three latest articles under the timeline, with when each went live, how often Google showed it and how many people clicked.",
+  },
+  {
+    kind: "new",
+    text: "Article lists now have two new columns: how many people search each article's keyword a month, and how hard that keyword is to rank for, from 0 to 100.",
+  },
+  {
+    kind: "new",
+    text: "Click any day, week or month on the overview chart to see how it went: the articles people landed on, what they searched for, how it compares with the one before, and for recent days an hour-by-hour chart. On paid plans.",
+  },
   { kind: "fixed", text: "On a site whose own posts show their cover picture under the title, our articles now show theirs there too. Before, the picture appeared on the blog list and in share previews but not on the article itself." },
   { kind: "fixed", text: "Articles, edits and removals now get through on sites where something used to hold them back: a repository that does not allow our usual way of merging, a branch that fell behind, a change that clashed with a newer one, or a check that fails whether or not our change is there. Each is now sorted out on its own." },
   { kind: "fixed", text: "Saving a second edit while the first was still on its way no longer loses the first one's pull request." },

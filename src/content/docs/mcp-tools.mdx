@@ -884,6 +884,40 @@ window (Search Console not connected yet, access granted but no sync
 yet, or an unreachable property) instead of letting zeros read as a real
 traffic story.
 
+### `get_period_stats`
+
+One day, week or month on Google - what the dashboard shows when the
+owner clicks a point on the overview chart. Totals (clicks, impressions,
+CTR, average position), the same stretch just before it (`previous`),
+every day inside it, a single day's rank among all reported days
+(`dayRank`, 1 = best day so far), the top pages people landed on (our
+articles carry `title`, `draftId` and `keyword`), the top searches, and
+the articles that went live in it. Pages and searches are summed from
+each day's stored top lists; `unattributed` counts the clicks below
+those cutoffs. Google reports two to three days behind, and
+`reportedDays` says how many days have data. For a single day, `hourly`
+is that day hour by hour (`state: "ok"` with 24 `{ at, clicks,
+impressions }`, `at` on Google's Pacific clock). The last ten days of
+hours are saved every few hours (and recent days refresh when viewed), so
+`state: "pending"` means not saved yet (it fills on its own shortly), `"tooOld"` means older than Google still
+had when saving began, and `"noGoogle"` means Search Console isn't
+connected.
+
+<Fields>
+  <Field name="from" type="string" required="true">
+    First day, `yyyy-mm-dd` (UTC).
+  </Field>
+  <Field name="to" type="string">
+    Last day, inclusive. Omit for a single day. At most 800 days after `from`.
+  </Field>
+  <Field name="pages" type="number">
+    How many top pages to return, 1-100. Defaults to 10.
+  </Field>
+  <Field name="queries" type="number">
+    How many top searches to return, 1-100. Defaults to 10.
+  </Field>
+</Fields>
+
 ## Backlinks
 
 Backlink prospects (domains worth pursuing) and the curated backlink
@@ -1949,7 +1983,9 @@ that - the same functions the dashboard calls. See
 The dashboard's report in one read: mode, pause state and reason, plan
 and articles per week, `nextArticleAt`, this week's count against the
 quota, the last 50 articles (status, stage, cost, gain, 28-day clicks and
-impressions; `prUrl` / `prMerged` on a
+impressions, `keywordVolume` / `keywordDifficulty` - the target keyword's
+monthly searches and KD as research measured them, null when unmeasured;
+`prUrl` / `prMerged` on a
 repo article - an open, unmerged `prUrl` means it waits for a merge on
 GitHub), Search Console traffic and top queries, the next queued ideas
 (with `lastResearchAt`), what setup is missing (including

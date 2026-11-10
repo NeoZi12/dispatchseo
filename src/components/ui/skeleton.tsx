@@ -219,16 +219,18 @@ function SortSkeleton() {
 export function ArticleRowsSkeleton({ rows = 8 }: { rows?: number }) {
   return (
     <GhostCard className="overflow-hidden rounded-xl">
-      <div className="hidden gap-4 border-b border-line-soft px-5 py-2.5 sm:grid sm:grid-cols-[10rem_minmax(0,1fr)_5rem_5.5rem_1rem]">
+      <div className="hidden gap-4 border-b border-line-soft px-5 py-2.5 sm:grid sm:grid-cols-[8.5rem_minmax(0,1fr)_repeat(4,6.25rem)_1rem]">
         <Txt size={11} className="w-12" />
         <Txt size={11} className="w-14" />
-        <Txt size={11} className="ml-auto w-8" />
-        <Txt size={11} className="ml-auto w-10" />
+        <Txt size={11} className="mx-auto w-11" />
+        <Txt size={11} className="mx-auto w-16" />
+        <Txt size={11} className="mx-auto w-16" />
+        <Txt size={11} className="mx-auto w-10" />
         <span />
       </div>
       <div className="divide-y divide-line-soft">
         {Array.from({ length: Math.max(rows, 1) }, (_, i) => (
-          <div key={i} className="flex flex-col gap-1.5 px-4 py-4 sm:grid sm:grid-cols-[10rem_minmax(0,1fr)_5rem_5.5rem_1rem] sm:items-center sm:gap-4 sm:px-5">
+          <div key={i} className="flex flex-col gap-1.5 px-4 py-4 sm:grid sm:grid-cols-[8.5rem_minmax(0,1fr)_repeat(4,6.25rem)_1rem] sm:items-center sm:gap-4 sm:px-5">
             <div className="min-w-0 sm:order-2">
               <Txt size={15} className={i % 3 === 0 ? "w-3/4" : i % 3 === 1 ? "w-2/3" : "w-4/5"} />
               <Txt size={12.5} className="mt-1 w-1/3" />
@@ -238,9 +240,11 @@ export function ArticleRowsSkeleton({ rows = 8 }: { rows?: number }) {
                 <Circle className="h-2 w-2" />
                 <Txt size={13} className="w-14" />
               </div>
-              <Txt size={13} className="w-14 sm:order-3 sm:ml-auto" />
-              <Txt size={16} className="w-10 sm:order-4 sm:ml-auto" />
-              <Line className="ml-auto h-4 w-4 sm:order-5 sm:ml-0" />
+              <Txt size={16} className="hidden w-14 sm:order-3 sm:mx-auto sm:block" />
+              <Txt size={16} className="hidden w-8 sm:order-4 sm:mx-auto sm:block" />
+              <Txt size={16} className="w-12 sm:order-5 sm:mx-auto" />
+              <Txt size={16} className="w-10 sm:order-6 sm:mx-auto" />
+              <Line className="ml-auto h-4 w-4 sm:order-7 sm:ml-0" />
             </div>
           </div>
         ))}

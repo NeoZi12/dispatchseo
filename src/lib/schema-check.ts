@@ -187,6 +187,9 @@ const PROBES: Probe[] = [
   // site simply has no store and keeps the hosted blog.
   { migration: "0086_blog_stores", table: "blog_stores", column: "recipe" },
   { migration: "0087_repo_site_check", table: "projects", column: "repo_site_check" },
+  // 0088: Google's hour-by-hour numbers (lib/gsc-hourly.ts). Without it the
+  // hourly-gsc cron notes a skip and the day page says the hours are on their way.
+  { migration: "0088_gsc_hourly", table: "gsc_hourly", column: "hours" },
 ];
 
 // Migrations that genuinely CANNOT be probed through this mechanism, with the
