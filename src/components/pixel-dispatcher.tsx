@@ -164,8 +164,9 @@ const SIT = [...BODY_OPEN, ...LEGS_SIT];
 const SIT_BLINK = [...BODY_BLINK, ...LEGS_SIT];
 const SIT_LOOK = [...BODY_LOOK, ...LEGS_SIT];
 
-// 3 x 3 sleep "z" for the paused mood.
-const ZED = ["zzz", ".z.", "zzz"];
+// 4 x 4 sleep "z" for the paused mood. (3 x 3 had no room for the
+// diagonal and read as an "I".)
+const ZED = ["zzzz", "..z.", ".z..", "zzzz"];
 
 // 12 x 9 headset grid, anchored 1 unit above the character's head
 const HEADSET = [

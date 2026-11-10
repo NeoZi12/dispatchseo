@@ -316,6 +316,7 @@ export async function sendInactivityWarnings(limit = 100): Promise<number> {
   if (error || !data?.length) return 0;
   const { getSubscription, isActive } = await import("./billing");
   const { backendBaseUrl } = await import("./pipeline-pack");
+  const { pauseWarningHtml } = await import("./email/templates");
   const base = await backendBaseUrl();
   let warned = 0;
   for (const row of data as { owner_user_id: string; last_seen_at: string }[]) {
@@ -346,6 +347,7 @@ export async function sendInactivityWarnings(limit = 100): Promise<number> {
             `To keep them coming, sign in before then:\n${base}/login\n\n` +
             `That's all it takes. The articles already on your site stay up either way, and if they do pause, signing in starts them again.\n\n` +
             `DispatchSEO`,
+          html: pauseWarningHtml({ base, domain, pauseOn, loginUrl: `${base}/login` }),
         }),
         signal: AbortSignal.timeout(15_000),
       });

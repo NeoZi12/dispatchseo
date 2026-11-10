@@ -180,6 +180,11 @@ export async function proxy(req: NextRequest, event: NextFetchEvent) {
     // renders as its alt text. Only the image files - never a prefix, so a
     // future route under /setup/ stays gated.
     /^\/setup\/[a-z0-9-]+\.webp$/.test(pathname) ||
+    // The dispatcher art in the customer emails (public/email/*.png|gif,
+    // src/lib/email/templates.ts). An email client fetches it with no
+    // session, by definition; behind /login every email shows broken images.
+    // Only the image files, never a prefix.
+    /^\/email\/[a-z0-9-]+\.(png|gif)$/.test(pathname) ||
     pathname === "/blog" ||
     pathname.startsWith("/blog/") ||
     // The hosted blog: customers' sites forward their /blog here, so every
@@ -222,10 +227,13 @@ export async function proxy(req: NextRequest, event: NextFetchEvent) {
     // logged-out.
     pathname === "/about" ||
     PUBLIC_FILES.has(pathname) ||
-    // Dev-only setup-path design review (fixtures, no database). Never in a
-    // production build: there it stays behind login AND the page 404s.
+    // Dev-only design reviews (fixtures, no database): the setup path and the
+    // customer emails. Never in a production build: there it stays behind login AND the page 404s.
     (process.env.NODE_ENV !== "production" &&
-      (pathname === "/onboarding/preview" || pathname === "/onboarding/stage-preview" || pathname === "/qualify/preview")) ||
+      (pathname === "/onboarding/preview" ||
+        pathname === "/onboarding/stage-preview" ||
+        pathname === "/qualify/preview" ||
+        pathname === "/email-preview")) ||
     // The marketing landing page and its per-agent hub pages - cloud
     // deployment only. Self-hosted installs never set LANDING_ENABLED, so
     // theirs stay gated (the pages themselves also redirect to /dashboard as

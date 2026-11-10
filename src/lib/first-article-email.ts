@@ -1,5 +1,6 @@
 import { sitePath } from "@/lib/site-root";
 import { db } from "./db";
+import { firstArticleHtml } from "./email/templates";
 import type { Project } from "./projects";
 
 // "Hey, your first article is up" (owner, 2026-11-08). One email per site,
@@ -46,6 +47,11 @@ export async function notifyFirstArticleLive(
     // ("you.github.io/your-repo"): the bare host is somebody else's page.
     const domain = project.domain ? `${project.domain}${sitePath(project)}` : project.slug;
     const title = article.title?.trim() || "Your first article";
+    // The cover leads the email when the article has one (/api/cover/<id>,
+    // a PNG or the writer's picture); without one the card shows the title.
+    const { data: draft } = await db().from("article_drafts").select("cover_url").eq("id", article.draftId).maybeSingle();
+    const cover = (draft as { cover_url?: string | null } | null)?.cover_url ?? null;
+    const coverUrl = cover ? (cover.startsWith("http") ? cover : `${dashboard}${cover}`) : null;
 
     const res = await fetch(RESEND_URL, {
       method: "POST",
@@ -62,7 +68,7 @@ export async function notifyFirstArticleLive(
           `The next article arrives on your plan's schedule.\n\n` +
           `Your dashboard: ${dashboard}\n\n` +
           `DispatchSEO`,
-        html: firstArticleHtml({ domain, title, url: article.url, dashboard }),
+        html: firstArticleHtml({ base: dashboard, domain, title, url: article.url, dashboard, coverUrl }),
       }),
       signal: AbortSignal.timeout(15_000),
     });
@@ -75,24 +81,4 @@ export async function notifyFirstArticleLive(
     console.warn(`[first-article-email] ${project.slug}: ${e instanceof Error ? e.message : String(e)}`);
     return "skipped";
   }
-}
-
-function esc(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
-function firstArticleHtml(v: { domain: string; title: string; url: string; dashboard: string }): string {
-  return (
-    `<!doctype html><html><body style="margin:0;padding:32px 16px;background:#f6f6f7;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1a1a1a">` +
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">` +
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border:1px solid #e6e6e8;border-radius:12px;padding:32px">` +
-    `<tr><td style="font-size:16px;line-height:1.6">` +
-    `<p style="margin:0 0 16px">Hi,</p>` +
-    `<p style="margin:0 0 16px">The first article DispatchSEO wrote for <strong>${esc(v.domain)}</strong> is live.</p>` +
-    `<p style="margin:0 0 24px;font-size:18px;font-weight:600">${esc(v.title)}</p>` +
-    `<p style="margin:0 0 28px"><a href="${esc(v.url)}" style="display:inline-block;background:#111111;color:#ffffff;text-decoration:none;font-weight:600;padding:12px 20px;border-radius:8px">Read the article</a></p>` +
-    `<p style="margin:0 0 16px;color:#444">Google usually needs a few days to a few weeks to index a new page, so the first visits show up later, not today. The next article arrives on your plan's schedule.</p>` +
-    `<p style="margin:0;color:#444">Everything else is on <a href="${esc(v.dashboard)}" style="color:#111">your dashboard</a>.</p>` +
-    `</td></tr></table></td></tr></table></body></html>`
-  );
 }
