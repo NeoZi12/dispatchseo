@@ -82,6 +82,10 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   },
   {
     kind: "improved",
+    text: "If your site already runs its own blog and keeps its posts in your repo as data (a posts file rather than one markdown file per post), new articles now go into that blog, written in the same shape as your other posts, instead of to a separate /articles page. On the free plan each article carries a small \"Made with DispatchSEO\" link, the same as on our hosted blog, and articles published into a markdown blog folder now carry it too.",
+  },
+  {
+    kind: "improved",
     text: "Your writer now takes the strongest idea in your queue first: the most monthly searches for how hard the keyword is to rank for, so your first articles go after the biggest keywords you can realistically win. The Queue page shows them in that order.",
   },
   {

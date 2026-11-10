@@ -1971,6 +1971,53 @@ const mcpHandler = createMcpHandler(
     );
 
     server.registerTool(
+      "get_blog_store",
+      {
+        title: "Where the site's own blog keeps its posts",
+        description:
+          "Read-only: whether this site's own blog keeps its posts as data in the connected repo " +
+          "(a JSON array, an array in a code file, or one JSON file per post) that new articles are " +
+          "added to in the same shape. `ready` = articles go into that blog through a pull request " +
+          "(only when the site publishes automatically); " +
+          "`none` = they go to the hosted blog (at /articles when the site's /blog is taken), with " +
+          "the reason. Shows the store file, the fields, the address pattern, the other files that " +
+          "get a line per post and the repo's own rules we follow. Use rescan_blog_store to look again.",
+        inputSchema: {},
+      },
+      async () => {
+        const p = currentProject();
+        const { readBlogStore } = await import("@/lib/blog-store");
+        const recipe = await readBlogStore(p.id);
+        if (!recipe) return ok({ checked: false, note: "This site's repo has not been looked at for a blog store yet. It happens on its own when the first article is published; rescan_blog_store does it now." });
+        return ok({ checked: true, ...recipe });
+      },
+    );
+
+    server.registerTool(
+      "rescan_blog_store",
+      {
+        title: "Look for the site's blog store again",
+        description:
+          "Look through the connected repo again for where the site's own blog keeps its posts " +
+          "(see get_blog_store), replacing the saved answer - also one saved after a publish into " +
+          "the store had to be undone. Takes up to a minute and one model call; read-only on the " +
+          "repo; at most three times a day per site. Use it after the site's blog moved, or when get_blog_store's reason no longer holds.",
+        inputSchema: {},
+      },
+      async () => {
+        const p = currentProject();
+        if (!p.github_repo) return fail("No GitHub repo is connected to this site, so there is no store to look for.");
+        // Each look is a model call: three a day per site is plenty.
+        if (!(await rateLimitHit(rateLimitKey("blogstore", p.id), 3, 86400))) {
+          return fail("The blog store was already looked for three times today. Try again tomorrow.");
+        }
+        const { ensureBlogStore } = await import("@/lib/blog-store");
+        const recipe = await ensureBlogStore(p, { force: true, deadlineMs: 50_000 });
+        return ok({ checked: true, ...recipe });
+      },
+    );
+
+    server.registerTool(
       "set_content_path_hint",
       {
         title: "Set where the repo keeps its articles",

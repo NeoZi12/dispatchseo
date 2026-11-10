@@ -40,11 +40,11 @@ const AUTO_FIRST_LOOK_MS = 10 * 60_000;
  *  merge stops costing a job every two hours. */
 const VERIFY_DEADLINE_DAYS = 30;
 
-export async function runRepoPublish(project: Project, draftId: string): Promise<void> {
+export async function runRepoPublish(project: Project, draftId: string, opts: { storeRetries?: number } = {}): Promise<void> {
   const { data } = await db()
     .from("article_drafts")
     .select(
-      "id, title, slug, meta_description, primary_keyword, markdown, faq, cover_url, pr_url, pr_number, repo_path, status, validation",
+      "id, title, slug, meta_description, primary_keyword, markdown, faq, sources, cover_url, pr_url, pr_number, repo_path, status, validation",
     )
     .eq("id", draftId)
     .eq("project_id", project.id)
@@ -77,6 +77,12 @@ export async function runRepoPublish(project: Project, draftId: string): Promise
     }
   }
 
+  // A store publish never stores a repo_path (blog-store.ts says why), so an
+  // open pull request without one may be a store publish being resumed.
+  // Only a site with a store already found: an old markdown PR (rows from
+  // before repo_path existed) must not set off a scout.
+  if (row.pr_number && !row.repo_path && writerMode(project) === "hosted" && (await publishThroughStore(project, row, { cachedOnly: true, storeRetries: opts.storeRetries }))) return;
+
   const result = await publishDraftToRepo(project, row);
 
   if (!result.ok) {
@@ -91,6 +97,12 @@ export async function runRepoPublish(project: Project, draftId: string): Promise
       return;
     }
     if (result.reason === "no-content-dir") {
+      // A blog whose posts are data in the repo (a JSON array, an array in a
+      // code file) takes the article in its own shape (blog-store.ts). Any
+      // failure there falls through to the hosted blog below.
+      // Only on Auto: a store publish leans on the verify job's merge and its
+      // undo; with merging off, the hosted second path below goes live at once.
+      if (effectiveAutomations(project).auto_merge && (await publishThroughStore(project, row, { storeRetries: opts.storeRetries }))) return;
       // No blog in this repo. The old answer was to park the draft and ask
       // the owner for a folder; the new one is to become their blog: switch
       // the project to the hosted route, open the one-line rewrite pull
@@ -127,7 +139,16 @@ export async function runRepoPublish(project: Project, draftId: string): Promise
     }
     throw new Error(`could not open the pull request: ${result.message}`);
   }
+  await recordPullRequest(project, row, result);
+}
 
+type OpenedPr = { prUrl: string; prNumber: number; repoPath: string; predictedUrls: string[]; merged: boolean };
+
+/** Record the pull request on the draft and arm its verify chain. Shared by
+ *  the markdown route and the store route; `store` rides in the verify
+ *  payload so a store publish that breaks is undone instead of commented on
+ *  (verify.ts). */
+async function recordPullRequest(project: Project, row: { id: string }, result: OpenedPr, opts: { store?: boolean; storeRetries?: number } = {}): Promise<void> {
   const now = new Date();
   const { error } = await db()
     .from("article_drafts")
@@ -169,6 +190,7 @@ export async function runRepoPublish(project: Project, draftId: string): Promise
       urls: result.predictedUrls,
       deadline: new Date(now.getTime() + VERIFY_DEADLINE_DAYS * 24 * 60 * 60_000).toISOString(),
       round: 0,
+      ...(opts.store ? { store: true, storeRetries: opts.storeRetries ?? 0 } : {}),
     },
     runAfter: new Date(
       now.getTime() +
@@ -180,4 +202,119 @@ export async function runRepoPublish(project: Project, draftId: string): Promise
     ),
     idempotencyKey: `verify:${row.id}`,
   });
+}
+
+/** The store route's time on one publish job: the conversion only. A scout
+ *  that had to run first gets the job to itself, and the conversion a fresh
+ *  one (the drain route's 240 s does not hold a scout, a conversion and a
+ *  hosted fallback together). */
+const STORE_SCOUT_MS = 120_000;
+const STORE_PUBLISH_MS = 150_000;
+/** Before a re-queued publish runs: time for the close or undo of the old
+ *  pull request to land first. */
+const REQUEUE_AFTER_MS = 60_000;
+
+/**
+ * Publish into the site's own blog store when it has one (blog-store.ts):
+ * true when the pull request is open (or resumed) and recorded - or when the
+ * store was only just found and a fresh publish job will convert into it -
+ * false when the caller should carry on to its own fallback. Never throws
+ * for the store's sake: a store that cannot take this article is the hosted
+ * blog's cue, not a failed job. Only on Auto (`cachedOnly`, the resume of a
+ * store pull request already open, skips that gate).
+ */
+export async function publishThroughStore(project: Project, row: RepoDraft & { sources?: unknown }, opts: { cachedOnly?: boolean; storeRetries?: number } = {}): Promise<boolean> {
+  if (!project.github_repo) return false;
+  if (!opts.cachedOnly && !effectiveAutomations(project).auto_merge) return false;
+  const { ensureBlogStore, publishDraftToStore, readBlogStore } = await import("@/lib/blog-store");
+  const recipe = await readBlogStore(project.id);
+  if (recipe?.status !== "ready") {
+    if (opts.cachedOnly) return false;
+    const scouted = await ensureBlogStore(project, { deadlineMs: STORE_SCOUT_MS }).catch(() => null);
+    if (scouted?.status !== "ready") return false;
+    // Found just now. Converting in this same job would run past its budget;
+    // a fresh job converts, provided the recipe really was saved (otherwise
+    // the next job would scout again, and again).
+    if ((await readBlogStore(project.id))?.status !== "ready") return false;
+    await enqueue({ projectId: project.id, kind: "publish", payload: { draftId: row.id, storeRetries: opts.storeRetries ?? 0 }, idempotencyKey: `publish:${row.id}:store` });
+    return true;
+  }
+  const sources = Array.isArray(row.sources) ? (row.sources as { url: string; title?: string | null }[]) : null;
+  const res = await publishDraftToStore(project, { ...row, sources }, { recipe, deadline: Date.now() + STORE_PUBLISH_MS }).catch((e) => {
+    console.warn(`[publish-repo] ${project.slug}: store publish threw: ${e instanceof Error ? e.message : String(e)}`);
+    return null;
+  });
+  if (!res) return false;
+  if (!res.ok) {
+    if (res.reason !== "not-store-pr") console.warn(`[publish-repo] ${project.slug}: store publish refused (${res.reason}): ${res.message}${res.problems?.length ? ` - ${res.problems.slice(0, 5).join("; ")}` : ""}`);
+    return false;
+  }
+  await recordPullRequest(project, row, res, { store: true, storeRetries: opts.storeRetries });
+  return true;
+}
+
+/** The publish job's door to the store route for a draft id (publish.ts:
+ *  a site already on a hosted second path). False = publish it hosted. */
+export async function runStorePublish(project: Project, draftId: string, opts: { storeRetries?: number } = {}): Promise<boolean> {
+  const { data } = await db()
+    .from("article_drafts")
+    .select("id, title, slug, meta_description, primary_keyword, markdown, faq, sources, cover_url, pr_url, pr_number, repo_path, status, validation")
+    .eq("id", draftId)
+    .eq("project_id", project.id)
+    .maybeSingle();
+  if (!data) return false;
+  const row = data as RepoDraft & { status: string; validation: unknown; sources?: unknown };
+  // The hosted publish applies the same allowlist and dry guard itself.
+  if (!["accepted", "finished", "blocked_setup"].includes(row.status) || dryDraftBlocked(row.validation)) return false;
+  return publishThroughStore(project, row, { cachedOnly: Boolean(row.pr_number && !row.repo_path), storeRetries: opts.storeRetries });
+}
+
+/** The draft forgets its store pull request (every verify chain for that PR
+ *  then stops: verify.ts compares pr_number) and a publish job places it
+ *  again, a minute from now. */
+async function requeue(project: Project, draftId: string, key: string, payload: Record<string, unknown> = {}): Promise<void> {
+  const { error } = await db()
+    .from("article_drafts")
+    .update({ pr_url: null, pr_number: null, pr_merged_at: null, updated_at: new Date().toISOString() })
+    .eq("id", draftId)
+    .eq("project_id", project.id);
+  if (error) throw new Error(`could not release the article from its pull request: ${error.message}`);
+  await enqueue({ projectId: project.id, kind: "publish", payload: { draftId, ...payload }, runAfter: new Date(Date.now() + REQUEUE_AFTER_MS), idempotencyKey: key });
+}
+
+/**
+ * A store publish that broke - its build stayed red after the rebuilds, it
+ * conflicted twice, or it merged and the article never appeared - is undone
+ * and the article goes to the hosted blog (verify.ts). In this order, so a
+ * failure part-way is retried rather than losing the article: the store is
+ * marked "none" first (the queued publish must not pick it again), then the
+ * draft is released and a publish job queued (which, with no store, puts it
+ * on the hosted blog), and only then the pull request closed or its merge
+ * undone (blog-store.ts revertStoreMerge: all files or none). Nothing is
+ * asked of the owner, and nothing is commented.
+ */
+export async function abandonStorePublish(project: Project, draftId: string, prNumber: number, opts: { merged: boolean; reason: string; title: string }): Promise<void> {
+  const { closeStorePr, markBlogStoreNone, revertStoreMerge } = await import("@/lib/blog-store");
+  await markBlogStoreNone(project.id, `a store publish ${opts.reason}`);
+  await requeue(project, draftId, `publish:${draftId}:store-fallback`);
+  if (opts.merged) {
+    const undo = await revertStoreMerge(project, prNumber, opts.title).catch(() => null);
+    console.warn(`[publish-repo] ${project.slug}: store publish #${prNumber} ${opts.reason}; ${undo ? `undo ${undo}` : "nothing could be put back safely"}`);
+  } else {
+    const closed = await closeStorePr(project, prNumber).catch(() => false);
+    console.warn(`[publish-repo] ${project.slug}: store publish #${prNumber} ${opts.reason}; ${closed ? "closed" : "could not be closed"}`);
+  }
+}
+
+/** A store pull request that conflicts with the default branch (another
+ *  store publish merged into the same spot first): closed, and the article
+ *  written again from a fresh read of the branch - once. A second conflict
+ *  sends it to the hosted blog. */
+export async function retryConflictedStorePublish(project: Project, draftId: string, prNumber: number, opts: { retries: number; title: string }): Promise<void> {
+  if (opts.retries >= 1) {
+    return abandonStorePublish(project, draftId, prNumber, { merged: false, reason: "conflicted with the default branch twice", title: opts.title });
+  }
+  const { closeStorePr } = await import("@/lib/blog-store");
+  await requeue(project, draftId, `publish:${draftId}:store-retry`, { storeRetries: opts.retries + 1 });
+  await closeStorePr(project, prNumber).catch(() => false);
 }

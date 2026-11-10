@@ -452,6 +452,18 @@ function promo(site: Site, cls = "", withCredit = true): string {
  *  every customer page is a network footprint). */
 const MARK_DATA_URI = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAgCAMAAAAlvKiEAAACwVBMVEVMaXEAAAAPCRoQChwpIDoBAAYGAgsPChsPChoAAAAHBA6NMcgoHzqNMccQChsAAAADAQgqIDsEAggCAQgCAAY7MFAHBQ8HBA6PMcmOMMmOMch1KpaNMMgAAAAOCRoGAw4nHzkAAAMIBQ4AAAIJBRAGAwt5Kq2fS8yyadYEAwmPMMsEAguaWLCKL8ZyJqUBAQd8KLaILcOUPcUGAgt1JK8rIj5qIJ57JbcBAARnIJ0MBxiFLLgHBBAGAgsiGjUnHzYGBA0BAAYQCRt0ZY14KqeEL7tbTm1IO2BJPGFNHW1IPF47L1F4Yos8MVAIBBKdONuhO954YYqqQuaSULh0K5RBNli+fPE9MVONMca6eO+OMMi+e/N1K5QqITwpITsqITsRCx0rITwpIDsQCxwSCx0QCxsoIDqOMskRCxwFBw88MVIoIDkqIDsPChoEBw8EBxARDB0rIjwOCBePMsoKBRMRCx49MlMPChwQChuPMskpIDopITwnIDkqIT2LMMcnHjqLMMYQCh0LBhQrIj4kGjU7L1ENCBcYEiYmHDlUSGZ/bpg+MlR+bZiAb5k8MFJEOFpDN1krIj0SCh6PMcoJBRIJBhMPCRpWSWcOCRm/fPQJBRNFOVwDBw4RDB4DBg6NMcmPMct1K5UnHzgtJD8gGDApIDweFy4qID01K0Y3LUgqIjxVSGZUSGSXQsaDLL6CKb0rITt/LrR7KLMoHjwoHzsaFCk8MlFUSWRANVZlI5SAbpk9MFECBQt9bpQAAAiEK7+Bb5lCN1gKBxJyJqYKBxWFMLxGOl22Z+o0KkiAbphEOVt/bZhFGWRLPmFEN1kEAQoTDR9TSGQ9MVIEAA8SCxx+La1WSWhVSWYQDB2EMbMQChm8Z/AMCBYiGy+NMcc9MlSRa6WLMceNMsh0K5YGAxGOMcp2LJeJL8SLMcZ3LZYGBxAUf2zIAAAAXXRSTlMAAv7+/qFz/v4x+/7+/v4wn/5zuLf++/r+/v7+/jL7oP6G72Xu7P3+/p7+cfv+/qD+/f5y/v7+/qD+/P7lb/7+dLj+/v7+/v7+/v7+/v7+/v7+/v7+/v7+/v7+/v5YuVyKAAAACXBIWXMAAAsSAAALEgHS3X78AAACCUlEQVQoz2NgAAJVFSUGdKCso6emiC6orbFeSwBdUEh9nYQmhuBaA10MlWxGmwxZ0QWNN5qZ6GOotLY0h6rct8cKKmjb3bLZAsxKPu5az8wIUbnNbgtEZfLRwx1QQQf79q02wiLCjiLJnmfaoYJFe3u6dh3oPdl7uqvHqz/jEFBoWrKb8+7dfaJZWZdEvfsmnPOoyGVgqJjhc+LgEb+pU2bNKplaMuX8hLMcQMNnBPq6X543J29eXl5efl5T/yknBvGiW9O7586cny6TLlUsOb+ydPYxdgbx28HTy+4+WBjzcuEz6cfSIdOaJ3IwiAXdvFY2+0n+q8zMzHwgvDMxkYlBLODq9fsJ0fOjuIuLFxRLLihNLGRi4PJ36QyfG/m84UVdAxA+nBSbyM7AtX/nxazQhIpUIAAS5W2JsUAzK1K3l2WERfBW8vJyy1SmTxIEamdoTO7MSph579HT9HTuyVKVpSCVDAz8a1p3XLiRkJBRkHAlIaVNMJ4dJLi6xTQpKTY+KT4uKS4pvjCWDyjIubI+FggSWTbExyauSkyMBwuuqI/NiY1liUuMTawFSYO0cy5bXh0bH58THxsXHwdkJYEFlyyNi2dhiQOD+HieiSDbZWcsTkriiUvKiYuNi6uKW5zcBIoO+eSq7Jq0tJrstLRshUXJcpA4LklJSEjJaExJSCkoSEhgYAAAKFW+dLPdE5gAAAAASUVORK5CYII=";
 
+/** The free plan's credit as plain parts - the address with our ref and the
+ *  "Made with" words in the site's language - for the routes that write it
+ *  into the site's own files instead of our page (repo-publish.ts: a line at
+ *  the end of a markdown article; blog-store.ts: wherever the site's own
+ *  post shape can hold a link). One source, so every route carries the same
+ *  ref and page-marks.ts finds it the same way. */
+export function creditParts(project: Pick<Project, "domain"> & { hosted_origin?: string | null; language_code?: string | null }): { href: string; madeWith: string; label: string } {
+  const href = `https://dispatchseo.com/?ref=${encodeURIComponent(siteOrigin(project).replace(/^https?:\/\//, ""))}`;
+  const madeWith = stringsFor(project.language_code || "en").madeWith;
+  return { href, madeWith, label: `${madeWith} DispatchSEO` };
+}
+
 function credit(site: Site, cls = ""): string {
   const href = `https://dispatchseo.com/?ref=${encodeURIComponent(site.origin.replace(/^https?:\/\//, ""))}`;
   return `<p class="credit ${cls}">${esc(stringsFor(site.lang).madeWith)} <a href="${href}" rel="sponsored nofollow noopener"><img src="${MARK_DATA_URI}" alt="" width="10" height="16"><span>DispatchSEO</span></a></p>`;

@@ -172,6 +172,7 @@ export async function runVerifyJob(job: Job): Promise<void> {
  *  static build and a CDN purge, short enough that a site whose URLs we guessed
  *  wrong stops being asked about. */
 const LIVE_WINDOW_MS = 48 * 60 * 60_000;
+const STORE_LIVE_WINDOW_MS = 2 * 60 * 60_000;
 const AFTER_MERGE_RETRY_MS = 30 * 60_000;
 const AWAITING_MERGE_RETRY_MS = 2 * 60 * 60_000;
 /** On Auto, the first few looks come every half hour - checks usually finish
@@ -204,7 +205,7 @@ async function verifyRepoArticle(job: Job, draftId: string): Promise<void> {
   const { data } = await db()
     .from("article_drafts")
     .select(
-      "id, project_id, status, title, slug, primary_keyword, suggestion_id, pr_url, pr_merged_at",
+      "id, project_id, status, title, slug, primary_keyword, suggestion_id, pr_url, pr_number, pr_merged_at",
     )
     .eq("id", draftId)
     .maybeSingle();
@@ -218,9 +219,15 @@ async function verifyRepoArticle(job: Job, draftId: string): Promise<void> {
     primary_keyword: string | null;
     suggestion_id: string | null;
     pr_url: string | null;
+    pr_number: number | null;
     pr_merged_at: string | null;
   };
   if (row.status !== "finished") return;
+  // The draft let go of this pull request (a store publish undone or written
+  // again, publish-repo.ts): this chain watches nothing any more. Without
+  // this, our own close of it would read as the owner's "no" below.
+  if (row.pr_number !== null && row.pr_number !== prNumber) return;
+  if (row.pr_number === null && job.payload.store) return;
 
   const project = await getProjectById(row.project_id);
   if (!project) throw new Error("project no longer exists");
@@ -240,6 +247,13 @@ async function verifyRepoArticle(job: Job, draftId: string): Promise<void> {
     // a repo-route PR is ever merged by us - never at open time, so a failing
     // build cannot be merged before its checks have spoken.
     const auto = effectiveAutomations(project).auto_merge;
+    // A store publish that conflicts (another one merged into the same spot
+    // first) is written again from a fresh read of the branch, once.
+    if (job.payload.store && pr.mergeable_state === "dirty") {
+      const { retryConflictedStorePublish } = await import("./publish-repo");
+      await retryConflictedStorePublish(project, draftId, prNumber, { retries: Number(job.payload.storeRetries ?? 0), title: row.title });
+      return;
+    }
     // A check that is already red on the branch the article was branched
     // from is the site's own (tanstack-fetch, 2026-11-10: its Cloudflare
     // copy started failing an hour before our PR, GitHub Pages - the live
@@ -256,6 +270,14 @@ async function verifyRepoArticle(job: Job, draftId: string): Promise<void> {
     // A red build heals itself before anyone has to look at it.
     if (!MERGEABLE_STATES.has(String(pr.mergeable_state))) {
       const heal = await healFailedBuild(job, project, pr);
+      if (heal && "abandon" in heal) {
+        // A store publish (blog-store.ts) whose build stays red is closed and
+        // the article goes to the hosted blog - never a comment asking the
+        // owner to fix an entry we wrote into their post list.
+        const { abandonStorePublish } = await import("./publish-repo");
+        await abandonStorePublish(project, draftId, prNumber, { merged: false, reason: "failed its build after the automatic rebuilds", title: row.title });
+        return;
+      }
       if (heal) {
         if (round < MAX_ROUNDS) {
           await rearm(job, draftId, round, new Date(nowDate.getTime() + heal.lookAfterMs), heal.payload);
@@ -374,6 +396,14 @@ async function verifyRepoArticle(job: Job, draftId: string): Promise<void> {
   // the honest reading is that the URL is not one we guessed, and the draft
   // stays `finished` with its pull request linked, which is true.
   const mergedAt = new Date(row.pr_merged_at ?? pr.merged_at).getTime();
+  // A store publish gets two hours, not two days: its address is the blog's
+  // own pattern rather than a guess, so not live by then means the entry did
+  // not reach the site. Its files are put back and the article goes hosted.
+  if (job.payload.store && nowDate.getTime() >= mergedAt + STORE_LIVE_WINDOW_MS) {
+    const { abandonStorePublish } = await import("./publish-repo");
+    await abandonStorePublish(project, draftId, prNumber, { merged: true, reason: "merged but was not live two hours later", title: row.title });
+    return;
+  }
   if (nowDate.getTime() < mergedAt + LIVE_WINDOW_MS && round < MAX_ROUNDS) {
     await rearm(job, draftId, round, new Date(nowDate.getTime() + AFTER_MERGE_RETRY_MS));
   }
@@ -402,7 +432,7 @@ async function healFailedBuild(
   job: Job,
   project: Project,
   pr: PullRequestState,
-): Promise<{ lookAfterMs: number; payload: Record<string, unknown> } | null> {
+): Promise<{ lookAfterMs: number; payload: Record<string, unknown> } | { abandon: true } | null> {
   const checks = await pullRequestChecks(project, pr.head_sha);
   if (checks) {
     if (checks.verdict !== "failed") return null;
@@ -416,6 +446,8 @@ async function healFailedBuild(
     const ok = await rebuildPullRequest(project, pr.head_ref, pr.head_sha);
     return ok ? { lookAfterMs: REBUILD_LOOK_MS, payload: { rebuilds: rebuilds + 1 } } : null;
   }
+  // Store publishes are undone instead (the caller); nothing is commented.
+  if (job.payload.store) return { abandon: true };
   if (job.payload.buildNotified) return null;
   // No comment on the owner's pull request: we never hand the owner a fix
   // to make (owner rule 2026-11-10). The operator sees the stuck article on

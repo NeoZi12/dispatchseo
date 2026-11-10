@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
-import { getProjectById } from "@/lib/projects";
+import { effectiveAutomations, getProjectById, writerMode } from "@/lib/projects";
+import { hostedPath } from "@/lib/hosted-blog";
 import { markBlockedSetup, publishRoute } from "./draft-status";
 import { credentialsFor } from "@/lib/wordpress-connect";
 import { createPost, publishPost, updatePostContent, uploadMedia } from "@/lib/wordpress";
@@ -39,9 +40,19 @@ export async function runPublishJob(job: Job): Promise<void> {
   const route = publishRoute(project);
   if (route === "repo") {
     const { runRepoPublish } = await import("./publish-repo");
-    return runRepoPublish(project, draftId);
+    return runRepoPublish(project, draftId, { storeRetries: Number(job.payload.storeRetries ?? 0) });
   }
   if (route === "hosted") {
+    // A site hosted at a second path (/articles) because its own /blog is a
+    // real blog: when that blog's posts turn out to be data in the repo
+    // (blog-store.ts), the article goes into it instead, in its own shape.
+    // No store, or one that cannot take this article: hosted, as before.
+    // Only on Auto (publish-repo.ts publishThroughStore says why); with
+    // merging off the hosted second path stays, live at once.
+    if (hostedPath(project) !== "blog" && project.github_repo && writerMode(project) === "hosted" && effectiveAutomations(project).auto_merge) {
+      const { runStorePublish } = await import("./publish-repo");
+      if (await runStorePublish(project, draftId, { storeRetries: Number(job.payload.storeRetries ?? 0) })) return;
+    }
     const { runHostedPublish } = await import("./publish-hosted");
     return runHostedPublish(project, draftId);
   }

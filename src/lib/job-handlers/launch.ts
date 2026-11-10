@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { enqueue, type Job } from "@/lib/jobs";
-import { getProjectById, publishTarget, writerMode, type Project } from "@/lib/projects";
+import { effectiveAutomations, getProjectById, publishTarget, writerMode, type Project } from "@/lib/projects";
 import { tokenForRef } from "@/lib/github";
 import { githubApi } from "@/lib/repo-publish";
 import { siteRoot, sitePath } from "@/lib/site-root";
@@ -161,6 +161,13 @@ async function launchBlog(project: Project): Promise<Project> {
     if (await servesOwnBlog(project)) {
       const { repoHasArticleFolder } = await import("@/lib/repo-publish");
       if ((await repoHasArticleFolder(project).catch(() => null)) !== false) return project;
+      // Posts kept as data in the repo (a JSON array, an array in a code
+      // file) are a blog we can write into: stay on the repo route
+      // (blog-store.ts). A scout that runs out of its minute is "not yet",
+      // uncached, and the publish step asks again.
+      // Only on Auto: without merging the second path is what goes live.
+      const { ensureBlogStore } = await import("@/lib/blog-store");
+      if (effectiveAutomations(project).auto_merge && (await ensureBlogStore(project, { deadlineMs: 60_000 }).catch(() => null))?.status === "ready") return project;
       secondPath = true;
     }
     if (!(await switchToHostedBlog(project, { secondPath }))) {

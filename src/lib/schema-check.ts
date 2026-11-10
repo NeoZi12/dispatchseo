@@ -183,6 +183,9 @@ const PROBES: Probe[] = [
   { migration: "0083_hosted_rewrite_state", table: "projects", column: "hosted_rewrite_state" },
   { migration: "0084_hosted_path", table: "projects", column: "hosted_path" },
   { migration: "0085_site_path", table: "projects", column: "site_path" },
+  // 0086: a site's blog store recipe (lib/blog-store.ts); without it every
+  // site simply has no store and keeps the hosted blog.
+  { migration: "0086_blog_stores", table: "blog_stores", column: "recipe" },
   { migration: "0087_repo_site_check", table: "projects", column: "repo_site_check" },
 ];
 

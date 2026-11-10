@@ -25,11 +25,11 @@ const SKIP = /(^|\/)(node_modules|vendor|\.git|\.next|dist|build|out|coverage)\/
 const READABLE = /\.(md|mdx|markdown|astro|vue|svelte|tsx?|jsx?|mjs|cjs|json|ya?ml|toml|html?|css|scss|txt|prisma|njk|liquid|hbs|ejs)$/i;
 
 /** Never returned even with a readable extension: names that hold secrets. */
-const SECRET_FILE = /(^|\/)(\.env[^/]*|[^/]*(secret|credential|service[-_]?account|adminsdk|private[-_]?key|token|password|passwd|htpasswd|\.npmrc|auth\.json)[^/]*|id_[rd]sa[^/]*)$/i;
+export const SECRET_FILE = /(^|\/)(\.env[^/]*|[^/]*(secret|credential|service[-_]?account|adminsdk|private[-_]?key|token|password|passwd|htpasswd|\.npmrc|auth\.json)[^/]*|id_[rd]sa[^/]*)$/i;
 
 /** Token-shaped strings are blanked out of whatever is read back, so a key
  *  someone committed into a config file does not travel through this tool. */
-function redact(text: string): string {
+export function redact(text: string): string {
   return text
     .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, "[redacted private key]")
     .replace(/\b(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|eyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{10,})\b/g, "[redacted]")

@@ -676,6 +676,26 @@ character offset to start at, for paging a long file; files that can hold
 secrets are never returned, and token-shaped strings are blanked). Use it to work out why an article went to the hosted blog
 instead of the site's own, or to find the folder for `set_content_path_hint`.
 
+### `get_blog_store`
+
+Read-only. Whether the site's own blog keeps its posts as data in the
+connected repo - a JSON array, an array in a code file, or one JSON file per
+post - that new articles are added to in the same shape, through a pull
+request (only when the site publishes automatically; otherwise articles go
+to the hosted blog, live at once). `ready` names the store file, the fields, the address pattern, the
+other files that get one line per post, and the repo's own rules the article
+follows; `none` gives the reason, and articles go to the hosted blog (at
+`/articles` when the site's `/blog` is taken). A publish into the store that
+breaks the build or never goes live is undone, and the store reads `none`.
+
+### `rescan_blog_store`
+
+Look through the repo again for the site's blog store and replace the saved
+answer, including one saved after a publish had to be undone. Takes up to a
+minute and one model call, and only reads the repo; three times a day per
+site at most. Use it after the site's blog moved, or when `get_blog_store`'s
+reason no longer holds.
+
 ### `set_content_path_hint`
 
 Repo route only. The folder in the connected GitHub repo that holds the

@@ -6,6 +6,8 @@ import { yamlDoubleQuote } from "./article-render";
 import { articleSignature } from "./article-signature";
 import { backendBaseUrl } from "./pipeline-pack";
 import { db } from "./db";
+import { isFreeProject } from "./billing";
+import { creditParts } from "./hosted-blog";
 
 // Publishing an article into the customer's own Git repository - from our
 // server, not from an agent in their CI.
@@ -395,6 +397,9 @@ export type ArticleFileInput = {
   /** The article_drafts id: when given, the file ends with the hidden
    *  DispatchSEO signature (lib/article-signature.ts). */
   draftId?: string | null;
+  /** The free plan's visible credit (hosted-blog.ts creditParts): when given,
+   *  the body ends with it as its own line. Paid plans pass nothing. */
+  credit?: { href: string; madeWith: string } | null;
 };
 
 /** Whether a sample has a cover-shaped key at all - the one signal that this
@@ -468,7 +473,14 @@ export function buildArticleFile(sample: ParsedSample | null, article: ArticleFi
   // the FAQ: an inline element both .md and .mdx accept (article-signature.ts
   // says why not a comment), rendering nothing.
   const signature = article.draftId ? `\n\n${articleSignature(article.draftId)}` : "";
-  return `---\n${lines.join("\n")}\n---\n\n${bodyWithFaq(article, sample)}${signature}\n`;
+  // The free plan's credit, the same link the hosted blog prints. Inline
+  // HTML, like the signature: an <a> is valid in .md and in .mdx alike, and
+  // it is the only form that carries rel="sponsored" (a markdown link
+  // cannot). page-marks.ts finds it by its ?ref= address.
+  const credit = article.credit
+    ? `\n\n${article.credit.madeWith} <a href="${article.credit.href}" rel="sponsored nofollow noopener">DispatchSEO</a>`
+    : "";
+  return `---\n${lines.join("\n")}\n---\n\n${bodyWithFaq(article, sample)}${credit}${signature}\n`;
 }
 
 /** The article body plus its FAQ as plain markdown. The gate guarantees every
@@ -1141,6 +1153,7 @@ export async function publishDraftToRepo(
     siteDomain: project.domain,
     faqHeading: faqHeadingFor(project.language_code),
     draftId: draft.id,
+    credit: (await isFreeProject(project.id)) ? creditParts(project) : null,
   });
   treeEntries.unshift({ path: repoPath, mode: "100644", type: "blob", content });
 
