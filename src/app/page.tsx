@@ -8,6 +8,7 @@ import { ChecksLine } from "./checks-line";
 import { ScrollReveal } from "./scroll-reveal";
 import { DomainCta } from "./domain-cta";
 import { LandingNav } from "./landing-nav";
+import { CtaChevrons } from "./cta-chevrons";
 import { PixelDispatcher } from "@/components/pixel-dispatcher";
 import { CardMascot } from "@/components/card-mascot";
 import { RotatingWord } from "./rotating-word";
@@ -261,7 +262,7 @@ export default async function LandingPage({
           </div>
           <div className="nav-cta">
             <a className="btn btn-ghost btn-sm" href="/login">Log in</a>
-            <a className="btn btn-solid btn-sm" href="/signup">Start for free</a>
+            <a className="btn btn-solid btn-sm" href="/signup">Start for free<CtaChevrons /></a>
           </div>
           <LandingNav githubUrl={GITHUB_URL} docsUrl={DOCS_URL} />
         </div>
@@ -319,21 +320,6 @@ export default async function LandingPage({
                 Loved by <b>{lovedLabel(stars)}</b> people
               </span>
             </span>
-          </a>
-        </div>
-        {/* The hero's OTHER bottom corner: the way to reach a human. Mirrors
-            the mascot's note exactly - absolute, 22px off the corner, .hero as
-            the positioned ancestor, a sibling of .wrap so it clears the 1120px
-            measure - just on the left, because the right is taken. Not
-            position: fixed for the same reason the note isn't: a chat-style
-            bubble that tracks the reader down the page is an interruption, and
-            on a phone it is also a fixed layer repainting over the sticky nav.
-            It says "there are people here" next to the CTA and gets out of the
-            way. */}
-        <div className="discord-hero">
-          <a className="dc-link" href={DISCORD_URL} target="_blank" rel="noreferrer">
-            <DiscordMark className="dc-mark" />
-            Discord support
           </a>
         </div>
       </header>
@@ -662,6 +648,15 @@ export default async function LandingPage({
           </div>
         </div>
       </footer>
+
+      {/* Discord support, floating in the bottom-right corner for the whole
+          scroll (the Postiz pattern). Fixed, so it lives at the root rather
+          than inside a section the scroll-reveal transforms - a transformed
+          ancestor would trap position: fixed. Phones get the icon alone. */}
+      <a className="discord-float" href={DISCORD_URL} target="_blank" rel="noreferrer" aria-label="Discord support">
+        <DiscordMark className="dc-mark" />
+        <span className="dc-label">Discord support</span>
+      </a>
     </div>
   );
 }

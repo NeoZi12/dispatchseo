@@ -1,6 +1,7 @@
 import { DM_Sans, Plus_Jakarta_Sans } from "next/font/google";
 import { DispatchMark } from "@/components/logo";
 import { LandingNav } from "./landing-nav";
+import { CtaChevrons } from "./cta-chevrons";
 import "./landing.css";
 
 // The landing page's nav bar, for public pages that are NOT the landing
@@ -42,7 +43,7 @@ export function SiteNav() {
           </div>
           <div className="nav-cta">
             <a className="btn btn-ghost btn-sm" href="/login">Log in</a>
-            <a className="btn btn-solid btn-sm" href="/signup">Start for free</a>
+            <a className="btn btn-solid btn-sm" href="/signup">Start for free<CtaChevrons /></a>
           </div>
           <LandingNav githubUrl={GITHUB_URL} docsUrl={DOCS_URL} links={LINKS} />
         </div>

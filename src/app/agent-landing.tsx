@@ -9,6 +9,7 @@ import { availableAgents, type AgentId } from "@/lib/agents";
 import { FeatureShowcase } from "./feature-showcase";
 import { DomainCta } from "./domain-cta";
 import { LandingNav } from "./landing-nav";
+import { CtaChevrons } from "./cta-chevrons";
 import "./landing.css";
 
 // Shared shell for the two agent-specific marketing pages
@@ -221,7 +222,7 @@ export function AgentLandingPage({ agentId }: { agentId: AgentPageId }) {
           </div>
           <div className="nav-cta">
             <a className="btn btn-ghost btn-sm" href="/login">Log in</a>
-            <a className="btn btn-solid btn-sm" href="/signup">Start for free</a>
+            <a className="btn btn-solid btn-sm" href="/signup">Start for free<CtaChevrons /></a>
           </div>
           <LandingNav githubUrl={GITHUB_URL} docsUrl={DOCS_URL} links={NAV_LINKS} />
         </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { CtaChevrons } from "./cta-chevrons";
 
 // Mobile-only nav for the public landing page. Below 981px the desktop link
 // row and CTA cluster are hidden (they wrapped into three lines on a phone),
@@ -119,7 +120,7 @@ export function LandingNav({ githubUrl, docsUrl, links = DEFAULT_LINKS }: Props)
               </div>
               <div className="nav-panel-cta">
                 <a className="btn btn-ghost" href="/login" onClick={close}>Log in</a>
-                <a className="btn btn-solid" href="/signup" onClick={close}>Start for free</a>
+                <a className="btn btn-solid" href="/signup" onClick={close}>Start for free<CtaChevrons /></a>
               </div>
             </div>
           </>,
