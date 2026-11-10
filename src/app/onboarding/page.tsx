@@ -8,7 +8,10 @@ import { redirect } from "next/navigation";
 import { getActiveProjectOrNull, scopedProjects } from "@/lib/active-project";
 import { isCloudMode } from "@/lib/cloud";
 import { hasConfiguredProject } from "@/lib/onboarding-gate";
-import { fetchProjectToken, publishTarget } from "@/lib/projects";
+import { fetchProjectToken, getProjectById, publishTarget } from "@/lib/projects";
+import { sitePath } from "@/lib/site-root";
+import { resolveSitePath } from "@/lib/site-root-resolve";
+import { repoHasArticleFolder } from "@/lib/repo-publish";
 import { connectionSummary } from "@/lib/wordpress-connect";
 import { latestQualifier } from "@/lib/qualifier";
 import { isWizardAiChoice, type PublishChoice } from "@/lib/wizard-branch";
@@ -214,6 +217,46 @@ function FreePlanUsed({ reason, domain }: { reason: FreeBlock; domain: string })
   );
 }
 
+/** A site we cannot publish to, found at the last setup step (after GitHub,
+ *  before anything starts): it lives in a folder of a shared host - a GitHub
+ *  Pages project site - so nothing can be forwarded to us, and its repo has
+ *  no folder of articles for our pull requests to add to. Said here and the
+ *  setup stops; nothing is launched, nothing is spent, nobody is emailed
+ *  later (owner rule 2026-11-10: refuse at setup, or it must just work). */
+function SiteCantPublish({ address }: { address: string }) {
+  return (
+    <main className="min-h-screen bg-canvas text-ink">
+      <div className="mx-auto w-full max-w-lg px-4 py-16 sm:px-6">
+        <section className="rounded-3xl border border-line bg-surface p-6 sm:p-8">
+          <h1 className="text-[22px] font-semibold tracking-tight text-ink">We can't publish to this site</h1>
+          <p className="mt-2 text-[15px] leading-relaxed text-ink-muted">
+            {address} lives in a folder of a shared GitHub Pages address, and its repository has no folder of articles we could add to. Nothing was set up, and nothing will run.
+          </p>
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            <a href={DISCORD_URL} target="_blank" rel="noopener noreferrer" className="text-[14px] text-ink-faint underline underline-offset-4 hover:text-ink">
+              Think this is wrong? Ask on Discord
+            </a>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+/** "ok", or "cant" for a site in a folder whose repo has nothing to publish
+ *  into. Stores the folder as a side effect (site-root-resolve.ts), so the
+ *  launch that follows starts from it. A check that could not answer is
+ *  "ok": the launch re-checks, and a wrong refusal is worse than a retry. */
+async function folderSiteFit(projectId: string): Promise<{ fit: "ok" | "cant"; address: string }> {
+  const project = await getProjectById(projectId);
+  if (!project) return { fit: "ok", address: "" };
+  const resolved = await resolveSitePath(project).catch(() => project);
+  const address = `${resolved.domain}${sitePath(resolved)}`;
+  if (!sitePath(resolved)) return { fit: "ok", address };
+  const has = await repoHasArticleFolder(resolved).catch(() => null);
+  return { fit: has === false ? "cant" : "ok", address };
+}
+
 // The cloud setup (lib/setup-flow.ts). Which scene shows is derived from
 // evidence on every visit - session, project, plan pick, subscription, repo,
 // Google grant - so coming back from GitHub, Google, Polar or a sign-in link
@@ -239,6 +282,10 @@ async function cloudSetupFlow(params: OnboardingParams) {
       // abuse gate runs here, once, before the stamp (lib/free-gate.ts).
       const blocked = await freeLaunchBlocked(s.user!.id, s.user!.email, s.project);
       if (blocked) return <FreePlanUsed reason={blocked} domain={s.project.domain} />;
+    }
+    if (!s.project.setup_connected_at && s.project.github_repo && /\.github\.io$/i.test(s.project.domain)) {
+      const folder = await folderSiteFit(s.project.id);
+      if (folder.fit === "cant") return <SiteCantPublish address={folder.address} />;
     }
     if (!s.project.setup_connected_at) {
       // One conditional write claims the moment, the same way

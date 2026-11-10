@@ -1,3 +1,4 @@
+import { sitePath } from "@/lib/site-root";
 import { tokenForRef } from "./github";
 import { faqHeadingFor } from "@/lib/writer/evidence";
 import type { Project } from "./projects";
@@ -575,6 +576,8 @@ const NON_URL_SEGMENTS = new Set(["content", "src", "pages", "app", "data"]);
  */
 export function predictUrls(opts: {
   domain: string;
+  /** The folder the site lives in on its host (site-root.ts), "" at the root. */
+  basePath?: string;
   dir: string;
   slug: string;
   sampleStems: string[];
@@ -598,12 +601,19 @@ export function predictUrls(opts: {
   }
 
   const lastDirSegment = opts.dir.split("/").filter(Boolean).pop() ?? "";
-  if (lastDirSegment && !NON_URL_SEGMENTS.has(lastDirSegment.toLowerCase())) {
+  if (lastDirSegment && !NON_URL_SEGMENTS.has(lastDirSegment.toLowerCase()) && !opts.basePath) {
     paths.push(`/${lastDirSegment}/${opts.slug}`);
   }
-  paths.push(`/${opts.slug}`);
+  // The guesses below are relative to the site's own root, which for a site
+  // in a folder of its host is that folder. (A learned prefix above already
+  // carries the folder: it came from the site's real addresses.)
+  const base = (opts.basePath ?? "").replace(/\/+$/, "");
+  if (lastDirSegment && !NON_URL_SEGMENTS.has(lastDirSegment.toLowerCase()) && base) {
+    paths.push(`${base}/${lastDirSegment}/${opts.slug}`);
+  }
+  paths.push(`${base}/${opts.slug}`);
   for (const prefix of ["blog", "posts", "articles", "guides"]) {
-    paths.push(`/${prefix}/${opts.slug}`);
+    paths.push(`${base}/${prefix}/${opts.slug}`);
   }
 
   const seen = new Set<string>();
@@ -929,6 +939,7 @@ export async function publishDraftToRepo(
       repoPath: draft.repo_path ?? "",
       predictedUrls: predictUrls({
         domain: project.domain,
+        basePath: sitePath(project),
         dir: draft.repo_path ? dirOf(draft.repo_path) : "",
         slug: draft.slug,
         sampleStems: [],
@@ -1229,6 +1240,7 @@ export async function publishDraftToRepo(
 
   const predictedUrls = predictUrls({
     domain: project.domain,
+    basePath: sitePath(project),
     dir,
     slug,
     sampleStems: dirFiles.map((p) => fileStem(baseOf(p))),

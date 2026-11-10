@@ -36,7 +36,7 @@ import { cleanDomain, isValidDomain } from "./domain";
 import { detectPlatform, labelFor, type Platform } from "./site-platform";
 import { verdictFor } from "./qualifier";
 import type { PlanMenu } from "@/components/setup-stage/scenes";
-import { isPrivateHost } from "./url-guard";
+import { fetchProjectUrl, isPrivateHost } from "./url-guard";
 import { fetchDomainRegistrationDate } from "./domain-age";
 import { captureServer } from "./posthog-server";
 import type { SiteVerdict } from "@/components/setup-stage/scenes";
@@ -70,6 +70,9 @@ export type SetupSite = {
   ok: boolean;
   /** Another DispatchSEO project already holds this domain. */
   taken?: boolean;
+  /** The address answers "not found": there is no page there to read or
+   *  verify. Refused, and never overridable (an override can't make a page). */
+  noPage?: boolean;
   /** The check refused it and the owner said "my code is on GitHub". */
   override?: boolean;
   at: number;
@@ -375,7 +378,20 @@ export async function probeSite(raw: string): Promise<{ verdict: SiteVerdict; si
     return { verdict: { kind: "unknown" }, site: { domain, platform: "unreachable", host: null, framework: null, hasBlog: false, ok: true, at: Date.now() } };
   }
   try {
-    const [result, extra] = await Promise.all([detectPlatform(domain), hostAndBlog(domain)]);
+    const [result, extra, home] = await Promise.all([detectPlatform(domain), hostAndBlog(domain), homeStatus(domain)]);
+    // An address with no page on it: nothing to read, nothing for Google to
+    // verify, and the setup would stall after sign-up with no way forward
+    // (owner rule 2026-11-10: refuse at the step where it can be known, or it
+    // must just work). The one exception is GitHub Pages: a project site
+    // lives at <owner>.github.io/<repo>/ and its host's root is often empty -
+    // the GitHub step names the repo, and the launch finds the folder from it
+    // (site-root-resolve.ts).
+    if ((home === 404 || home === 410) && !isGithubPagesHost(domain, extra.host)) {
+      return {
+        verdict: { kind: "refused", platform: "no-page" },
+        site: { domain, platform: result.platform, host: extra.host, framework: result.framework ?? null, hasBlog: false, ok: false, noPage: true, at: Date.now() },
+      };
+    }
     const v = verdictFor(result, "hosted", null);
     const site: SetupSite = {
       domain,
@@ -397,6 +413,25 @@ export async function probeSite(raw: string): Promise<{ verdict: SiteVerdict; si
   }
 }
 
+/** The homepage's status code, or null when it did not answer. Redirects are
+ *  followed on the same host only (fetchProjectUrl). */
+async function homeStatus(domain: string): Promise<number | null> {
+  const get = async (host: string) => (await fetchProjectUrl(`https://${host}/`, domain, { timeoutMs: 6_000, userAgent: UA }).catch(() => null))?.status ?? null;
+  const apex = await get(domain);
+  // cleanDomain strips "www.", and a site set up for www only (common on
+  // Vercel and Netlify) answers 404 on the apex. Only "not found" on BOTH
+  // counts as no page.
+  if ((apex === 404 || apex === 410) && !domain.startsWith("www.")) {
+    const www = await get(`www.${domain}`);
+    if (www !== null && www !== 404 && www !== 410) return www;
+  }
+  return apex;
+}
+
+function isGithubPagesHost(domain: string, host: string | null): boolean {
+  return /\.github\.io$/i.test(domain) || host === "GitHub Pages";
+}
+
 /** Hosts that only serve what a repo deployed. Cloudflare and AWS are not
  *  here: they front anything, builders included. */
 const CODE_HOSTS = new Set(["Vercel", "Netlify", "GitHub Pages", "Fly.io", "Render", "Railway"]);
@@ -412,7 +447,7 @@ export function isCodeHost(host: string | null): boolean {
 export async function overrideSetupSite(rawDomain: string): Promise<SetupSite | null> {
   const site = await readSetupSite();
   const domain = cleanDomain(rawDomain);
-  if (!site || site.taken || site.domain !== domain) return null;
+  if (!site || site.taken || site.noPage || site.domain !== domain) return null;
   const next: SetupSite = { ...site, ok: true, override: true, at: Date.now() };
   return (await writeSetupSite(next)) ? next : null;
 }

@@ -1,3 +1,4 @@
+import { sitePath } from "@/lib/site-root";
 import { db } from "@/lib/db";
 import { fetchProjectUrl } from "@/lib/url-guard";
 import { htmlToText } from "@/lib/writer/fetch";
@@ -44,7 +45,7 @@ export function profileLocked(project: Pick<Project, "content_prefs">): boolean 
 const HOMEPAGE_TEXT_CAP = 6_000;
 
 async function homepageText(project: Project): Promise<string> {
-  const origin = project.hosted_origin ?? `https://${project.domain}`;
+  const origin = `${project.hosted_origin ?? `https://${project.domain}`}${sitePath(project)}`;
   const res = await fetchProjectUrl(origin, project.domain, { timeoutMs: 10_000, userAgent: "DispatchSEO-Profile/1.0 (+https://dispatchseo.com)" });
   if (!res || !res.ok || !/html/i.test(res.headers.get("content-type") ?? "")) return "";
   try {
@@ -155,7 +156,7 @@ export async function generateSiteProfile(project: Project): Promise<ProfileOutc
       {
         project_id: project.id,
         name: profile.name,
-        url: project.hosted_origin ?? `https://${project.domain}`,
+        url: `${project.hosted_origin ?? `https://${project.domain}`}${sitePath(project)}`,
         tagline: profile.tagline,
         short_description: profile.short,
         long_description: profile.long,

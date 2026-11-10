@@ -1,3 +1,4 @@
+import { siteRoot } from "@/lib/site-root";
 import { db } from "@/lib/db";
 import { enqueue } from "@/lib/jobs";
 import { getProjectById, writerProvider, type Project } from "@/lib/projects";
@@ -1213,7 +1214,7 @@ async function ownPagesOf(project: Project, brief: SiteBrief): Promise<Set<strin
     ...((pagesRes.data ?? []) as { url: string }[]).map((r) => r.url),
     ...(Array.isArray(candidates) ? (candidates as { url?: unknown }[]).map((c) => (typeof c?.url === "string" ? c.url : "")) : []),
     ...brief.pages.map((p) => p.url),
-    `https://${project.domain}/`,
+    `${siteRoot(project)}/`,
   ];
   const out = new Set<string>();
   for (const u of urls) {

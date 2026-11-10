@@ -1,3 +1,4 @@
+import { sitePath, siteRoot } from "@/lib/site-root";
 import { oauthSearchConsole, setupScopesEnabled } from "@/lib/gsc-oauth";
 import { fetchProjectUrl } from "@/lib/url-guard";
 import { readCapped } from "@/lib/hosted-theme";
@@ -94,6 +95,9 @@ export async function submitSiteSitemap(project: Project): Promise<"submitted" |
 }
 
 async function siteSitemapUrl(project: Project): Promise<string> {
+  // A site in a folder of a shared host: robots.txt is the host's, so its
+  // sitemaps are not this site's. The folder's own sitemap is.
+  if (sitePath(project)) return `${siteRoot(project)}/sitemap.xml`;
   const origin = `https://${project.domain.replace(/^www\./, "")}`;
   const res = await fetchProjectUrl(`${origin}/robots.txt`, project.domain, { timeoutMs: 5_000, userAgent: "DispatchSEO-Sitemap/1.0 (+https://dispatchseo.com)" });
   if (res?.ok) {

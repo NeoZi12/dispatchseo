@@ -3,7 +3,8 @@ import { enqueue, type Job } from "@/lib/jobs";
 import { getProjectById, publishTarget, writerMode, type Project } from "@/lib/projects";
 import { tokenForRef } from "@/lib/github";
 import { githubApi } from "@/lib/repo-publish";
-import { siteOrigin } from "@/lib/hosted-blog";
+import { siteRoot, sitePath } from "@/lib/site-root";
+import { resolveSitePath } from "@/lib/site-root-resolve";
 import { fetchProjectUrl } from "@/lib/url-guard";
 import { isCloudMode } from "@/lib/cloud";
 import { checkRewriteLive, mergeRewritePr, servesOwnBlog, siteAppRoot, switchToHostedBlog } from "@/lib/hosted-rewrite";
@@ -96,6 +97,15 @@ export async function runLaunchJob(job: Job): Promise<void> {
   if (writerMode(project) !== "hosted") return;
 
   const errors: string[] = [];
+  // Before anything reads the site: a GitHub Pages project site lives in a
+  // folder of its host, and the crawl, Google and the article addresses must
+  // all start there (site-root.ts). Best effort - an unanswered check leaves
+  // the site at the root, as before.
+  try {
+    project = await resolveSitePath(project);
+  } catch (e) {
+    console.warn(`[launch] ${project.slug}: site folder not checked: ${message(e)}`);
+  }
   try {
     project = await launchBlog(project);
   } catch (e) {
@@ -124,6 +134,19 @@ function message(e: unknown): string {
 // ---------------------------------------------------------------- blog
 
 async function launchBlog(project: Project): Promise<Project> {
+  // A site in a folder of its host (a GitHub Pages project site) cannot have
+  // a /blog forwarded to us - the host's root is not theirs, and a static
+  // host takes no forwarding rules. Its articles go into its own repo, which
+  // setup only lets through when the repo has an article folder
+  // (onboarding/page.tsx folderSiteFit). Undo a hosted switch an earlier
+  // launch made before the folder was known.
+  if (sitePath(project)) {
+    if (publishTarget(project) === "hosted") {
+      await db().from("projects").update({ publish_target: "github", hosted_rewrite_pr_url: null, hosted_rewrite_state: null }).eq("id", project.id);
+      project = (await getProjectById(project.id)) ?? project;
+    }
+    return project;
+  }
   if (publishTarget(project) !== "hosted" || !project.hosted_key) {
     // A site that already runs its own blog keeps it: articles go into the
     // repo next to its posts (publish-repo), and there is nothing to switch -
@@ -198,11 +221,14 @@ async function queueFirstCrawl(project: Project, job: Job): Promise<void> {
 
 /** The URL-prefix property we verify: the site's real origin, with the
  *  trailing slash Search Console names it with. */
-export function urlPrefixProperty(project: Pick<Project, "domain"> & { hosted_origin?: string | null }): string {
-  return `${siteOrigin(project).replace(/\/+$/, "")}/`;
+export function urlPrefixProperty(project: Pick<Project, "domain"> & { hosted_origin?: string | null; site_path?: string | null }): string {
+  return `${siteRoot(project)}/`;
 }
 
 function propertyCandidates(project: Project): string[] {
+  // A site in a folder is only its folder: the host's domain property or
+  // root (another repo's site, or somebody else's) would count other pages.
+  if (sitePath(project)) return [urlPrefixProperty(project)];
   const host = project.domain.toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "");
   return [
     `sc-domain:${host}`,
@@ -226,7 +252,9 @@ async function launchGoogle(project: Project): Promise<void> {
   // Rows made by the old flow carry a guessed `sc-domain:` from creation.
   // A guess that is not in the account's list is not a property.
   if (project.gsc_site_url) {
-    if (has(project.gsc_site_url)) return;
+    // A folder site's property is its folder; a host-wide one stored before
+    // the folder was known counts other people's pages.
+    if (has(project.gsc_site_url) && (!sitePath(project) || project.gsc_site_url === urlPrefixProperty(project))) return;
     await db().from("projects").update({ gsc_site_url: null }).eq("id", project.id);
     project.gsc_site_url = null;
   }
@@ -275,11 +303,20 @@ async function commitVerificationFile(project: Project, token: string): Promise<
   const paths = ((tree.json?.tree as { path?: string; type?: string }[] | undefined) ?? [])
     .filter((e) => e.type === "blob")
     .map((e) => String(e.path ?? ""));
-  const app = siteAppRoot(paths);
-  const prefix = app.root ? `${app.root}/` : "";
-  const appPaths = prefix ? paths.filter((p) => p.startsWith(prefix)).map((p) => p.slice(prefix.length)) : paths;
-  const usesPublic = appPaths.some((p) => p.startsWith("public/") || /^next\.config\.(js|mjs|ts|cjs)$/.test(p));
-  const path = `${prefix}${usesPublic ? "public/" : ""}${token}`;
+  // Where the site serves its static files from, learned from the live page
+  // first (servedFileDir); the framework guess only when the page names no
+  // file we can find in the repo.
+  // Folder sites only for now: root sites keep the guess that has worked
+  // for every launch so far.
+  let dir = sitePath(project) ? await servedFileDir(project, paths).catch(() => null) : null;
+  if (dir === null) {
+    const app = siteAppRoot(paths);
+    const prefix = app.root ? `${app.root}/` : "";
+    const appPaths = prefix ? paths.filter((p) => p.startsWith(prefix)).map((p) => p.slice(prefix.length)) : paths;
+    const usesPublic = appPaths.some((p) => p.startsWith("public/") || /^next\.config\.(js|mjs|ts|cjs)$/.test(p));
+    dir = `${prefix}${usesPublic ? "public/" : ""}`;
+  }
+  const path = `${dir}${token}`;
 
   const body = siteVerificationFileBody(token);
   const existing = await githubApi(gh, "GET", `/repos/${repo}/contents/${encodeURI(path)}?ref=${encodeURIComponent(branch)}`);
@@ -313,4 +350,50 @@ async function waitForFile(project: Project, url: string, token: string): Promis
     await new Promise((r) => setTimeout(r, FILE_POLL_MS));
   }
   throw new Error("the verification file is not live on the site yet (waiting for the deploy)");
+}
+
+/**
+ * The repo folder whose files the live site serves at its root, read off the
+ * site itself: the homepage names files (its icon, its images), and the repo
+ * file whose path ends in the same relative name says which folder they come
+ * from. "website/public/" for a VitePress site in website/, "public/" for
+ * Next.js, "" for a plain static site. Null when the page names nothing the
+ * repo has - the caller falls back to the framework guess.
+ *
+ * Learned rather than guessed because the guess (public/ when there is a
+ * Next config) put Google's file at the repo root of a VitePress docs site,
+ * where nothing serves it (mohamadgarmabi, 2026-11-10).
+ */
+export async function servedFileDir(project: Project, paths: string[]): Promise<string | null> {
+  const root = siteRoot(project);
+  const host = project.domain.replace(/^www\./, "");
+  const res = await fetchProjectUrl(`${root}/`, host, { timeoutMs: 8_000, userAgent: "DispatchSEO-Check/1.0" });
+  if (!res || !res.ok) return null;
+  const html = (await res.text().catch(() => "")).slice(0, 400_000);
+  const rootUrl = new URL(`${root}/`);
+  const rels = new Set<string>();
+  for (const m of html.matchAll(/\b(?:src|href)\s*=\s*["']([^"'#?]+)["']/gi)) {
+    let u: URL;
+    try {
+      u = new URL(m[1], rootUrl);
+    } catch {
+      continue;
+    }
+    if (u.host !== rootUrl.host || !u.pathname.startsWith(rootUrl.pathname)) continue;
+    const rel = decodeURIComponent(u.pathname.slice(rootUrl.pathname.length));
+    // A file, not a page or a hashed build output nobody commits.
+    if (!/\.(png|jpe?g|gif|svg|webp|ico|txt|xml|webmanifest|json|woff2?)$/i.test(rel)) continue;
+    rels.add(rel);
+  }
+  const votes = new Map<string, number>();
+  for (const rel of rels) {
+    const hits = paths.filter((p) => p === rel || p.endsWith(`/${rel}`));
+    if (hits.length !== 1) continue; // ambiguous or not in the repo
+    const dir = hits[0].slice(0, hits[0].length - rel.length);
+    // A route folder (Next's app/ icons) is not a folder of plain files.
+    if (/(^|\/)(app|pages)\/$/.test(dir)) continue;
+    votes.set(dir, (votes.get(dir) ?? 0) + 1);
+  }
+  const best = [...votes.entries()].sort((a, b) => b[1] - a[1])[0];
+  return best ? best[0] : null;
 }

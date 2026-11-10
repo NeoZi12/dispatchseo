@@ -74,6 +74,10 @@ export type ChangelogEntry = {
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "fixed",
+    text: "Sites that live in a folder of their address - a GitHub Pages project site like you.github.io/your-repo - now work end to end: we read the site where it really is, confirm it with Google there, and publish articles into its own blog. An address that shows \"page not found\" is caught when you type it, before you sign up.",
+  },
+  {
+    kind: "fixed",
     text: "Answers in an article's FAQ now link to their sources like the rest of the article, instead of showing a bare number such as [2].",
   },
   {

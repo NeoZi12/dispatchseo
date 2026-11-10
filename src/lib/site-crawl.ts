@@ -99,6 +99,10 @@ export type SiteDigest = {
 };
 
 export type CrawlOptions = {
+  /** The folder the site lives in on its host ("/tanstack-fetch" for a
+   *  GitHub Pages project site; site-root.ts). The crawl starts there and
+   *  never leaves it - the rest of the host is somebody else's. */
+  basePath?: string;
   /** Total pages to read across the whole crawl. Default 150. */
   maxPages?: number;
   /** Depth cap for the breadth-first fallback only (sitemap and WordPress
@@ -706,6 +710,8 @@ async function bfsCrawl(
   concurrency: number,
   timeoutMs: number,
   robots: { disallow: string[]; allow: string[] },
+  /** The folder site's root URL, or "" for a root site (no extra filter). */
+  scope = "",
 ): Promise<{ pages: CrawledPage[]; fetched: number; skipped: number; errors: number; notes: string[] }> {
   const notes: string[] = [];
   const visited = new Set<string>();
@@ -738,7 +744,10 @@ async function bfsCrawl(
         fetched++;
         pages.push(outcome.page);
         for (const link of outcome.page.internalLinks) {
-          if (!visited.has(link)) {
+          // A site in a folder (scope set): a link out of the folder is
+          // another site on the same host. Root sites follow every link
+          // isProjectUrl accepted, as before (apex, www, http).
+          if (!visited.has(link) && (!scope || link === scope || link.startsWith(`${scope}/`))) {
             visited.add(link);
             nextFrontier.add(link);
           }
@@ -1152,9 +1161,10 @@ export async function crawlSite(domain: string, opts: CrawlOptions = {}): Promis
     return emptyResult("bfs", start, [`"${domain}" is not a public web address we can visit.`]);
   }
 
+  const basePath = (opts.basePath ?? "").replace(/\/+$/, "");
   try {
-    let home = await fetchProjectUrl(`https://${cleanDomain}/`, cleanDomain, { timeoutMs, userAgent: UA });
-    if (!home) home = await fetchProjectUrl(`http://${cleanDomain}/`, cleanDomain, { timeoutMs, userAgent: UA });
+    let home = await fetchProjectUrl(`https://${cleanDomain}${basePath}/`, cleanDomain, { timeoutMs, userAgent: UA });
+    if (!home) home = await fetchProjectUrl(`http://${cleanDomain}${basePath}/`, cleanDomain, { timeoutMs, userAgent: UA });
     if (!home || !home.ok) {
       return emptyResult("bfs", start, [
         `We could not reach ${cleanDomain}. The site might be down, might be blocking automated visits, or the address might be mistyped.`,
@@ -1166,10 +1176,14 @@ export async function crawlSite(domain: string, opts: CrawlOptions = {}): Promis
     } catch {
       origin = `https://${cleanDomain}`;
     }
+    // The site's own root: the host's origin plus the folder it lives in.
+    // Everything below reads from `base`; robots.txt alone is the host's.
+    const base = `${origin}${basePath}`;
+    const inside = (url: string) => !basePath || url === base || url.startsWith(`${base}/`);
 
     // ---- WordPress fast path ---------------------------------------------
     if (opts.isWordPress !== false) {
-      const wp = await tryWordPressFastPath(origin, cleanDomain, maxPages, timeoutMs);
+      const wp = await tryWordPressFastPath(base, cleanDomain, maxPages, timeoutMs);
       if (wp.ok && wp.pages.length > 0) {
         return {
           ok: true,
@@ -1190,7 +1204,9 @@ export async function crawlSite(domain: string, opts: CrawlOptions = {}): Promis
 
     // ---- robots.txt + sitemap ---------------------------------------------
     const robots = await fetchRobots(origin, cleanDomain, timeoutMs);
-    const { locs: rawLocs, totalFound } = await discoverSitemapUrls(origin, cleanDomain, robots.sitemaps, timeoutMs, maxPages);
+    // On a shared host robots.txt names the HOST's sitemaps; the folder's own
+    // sitemap is the one that lists this site.
+    const { locs: rawLocs, totalFound } = await discoverSitemapUrls(base, cleanDomain, basePath ? robots.sitemaps.filter(inside) : robots.sitemaps, timeoutMs, maxPages);
 
     let candidateUrls: string[] = [];
     if (rawLocs.length > 0) {
@@ -1202,7 +1218,7 @@ export async function crawlSite(domain: string, opts: CrawlOptions = {}): Promis
         } catch {
           continue;
         }
-        if (!isProjectUrl(abs, cleanDomain)) continue;
+        if (!isProjectUrl(abs, cleanDomain) || !inside(abs)) continue;
         const norm = normalizeUrl(abs);
         if (!norm || seen.has(norm) || isSkippableUrl(norm)) continue;
         if (!robotsAllows(pathAndQuery(norm), robots.disallow, robots.allow)) continue;
@@ -1253,7 +1269,7 @@ export async function crawlSite(domain: string, opts: CrawlOptions = {}): Promis
     }
 
     if (source === "bfs" && pages.length === 0) {
-      const bfsResult = await bfsCrawl(origin, cleanDomain, maxPages, maxDepth, concurrency, timeoutMs, robots);
+      const bfsResult = await bfsCrawl(base, cleanDomain, maxPages, maxDepth, concurrency, timeoutMs, robots, basePath ? base : "");
       pages = bfsResult.pages;
       fetched += bfsResult.fetched;
       skipped += bfsResult.skipped;

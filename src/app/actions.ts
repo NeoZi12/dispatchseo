@@ -1,5 +1,6 @@
 "use server";
 
+import { sitePath, siteRoot } from "@/lib/site-root";
 import { randomBytes } from "node:crypto";
 import { revalidatePath, updateTag } from "next/cache";
 import { cookies } from "next/headers";
@@ -662,6 +663,7 @@ export async function wizardCheckGscAccess(): Promise<GscAccessProbe> {
   // can never pass - so on "no access", probe the other property shapes and
   // self-correct the project to whichever one the service account can read.
   const alternates = [
+    ...(sitePath(project) ? [`${siteRoot(project)}/`] : []),
     `sc-domain:${project.domain}`,
     `https://${project.domain}/`,
     `https://www.${project.domain}/`,

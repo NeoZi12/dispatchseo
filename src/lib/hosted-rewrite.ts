@@ -1,3 +1,4 @@
+import { sitePath } from "@/lib/site-root";
 import { db } from "@/lib/db";
 import type { Project } from "@/lib/projects";
 import { tokenForRef } from "@/lib/github";
@@ -397,7 +398,8 @@ export async function switchToHostedBlog(project: Project, opts: { secondPath?: 
  *  catch-all, not a page - and (b) look like a blog index: at least three
  *  links into /blog/<something>, or "blog" in its <title>. */
 export async function servesOwnBlog(project: Project): Promise<boolean> {
-  const origin = siteOrigin(project);
+  // A site in a folder: its blog is <folder>/blog, never the host's.
+  const origin = `${siteOrigin(project)}${sitePath(project)}`;
   const init = { timeoutMs: 6_000, userAgent: "DispatchSEO-Check/1.0" };
   const res = await fetchProjectUrl(`${origin}/blog`, project.domain, init);
   if (!res) return !isCloudMode();
@@ -427,7 +429,7 @@ export async function firstFreePath(project: Project): Promise<string | null> {
 }
 
 async function pathFree(project: Project, path: string): Promise<boolean> {
-  const origin = siteOrigin(project);
+  const origin = `${siteOrigin(project)}${sitePath(project)}`;
   const init = { timeoutMs: 6_000, userAgent: "DispatchSEO-Check/1.0" };
   const res = await fetchProjectUrl(`${origin}/${path}`, project.domain, init);
   if (!res) return false;

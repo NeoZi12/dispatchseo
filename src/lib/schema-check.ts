@@ -182,6 +182,7 @@ const PROBES: Probe[] = [
   // 0083: where the hosted blog's forwarding pull request stands (hosted-rewrite.ts).
   { migration: "0083_hosted_rewrite_state", table: "projects", column: "hosted_rewrite_state" },
   { migration: "0084_hosted_path", table: "projects", column: "hosted_path" },
+  { migration: "0085_site_path", table: "projects", column: "site_path" },
 ];
 
 // Migrations that genuinely CANNOT be probed through this mechanism, with the

@@ -1,3 +1,4 @@
+import { sitePath } from "@/lib/site-root";
 import { db } from "@/lib/db";
 import { crawlSite } from "@/lib/site-crawl";
 import { getProjectById, writerMode } from "@/lib/projects";
@@ -30,7 +31,7 @@ export async function runCrawlJob(job: Job): Promise<void> {
     typeof job.payload.isWordPress === "boolean" ? (job.payload.isWordPress as boolean) : undefined;
   const maxPages = typeof job.payload.maxPages === "number" ? (job.payload.maxPages as number) : 150;
 
-  const result = await crawlSite(project.domain, { isWordPress, maxPages });
+  const result = await crawlSite(project.domain, { isWordPress, maxPages, basePath: sitePath(project) });
 
   // A crawl that read nothing is a failure worth retrying (the site may be
   // briefly down), not a digest worth storing. Storing an empty one would let

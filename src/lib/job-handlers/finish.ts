@@ -1,3 +1,4 @@
+import { sitePath } from "@/lib/site-root";
 import { db } from "@/lib/db";
 import { getProjectById, type Project } from "@/lib/projects";
 import { publishRoute } from "./draft-status";
@@ -68,7 +69,7 @@ export async function renderDraftForRoute(
   const siteUrl =
     route === "hosted"
       ? (project.hosted_origin ?? `https://${project.domain}`)
-      : (project.wp_url ?? `https://${project.domain}`);
+      : (project.wp_url ?? `https://${project.domain}${sitePath(project)}`);
 
   return finishArticle({
     submission: {

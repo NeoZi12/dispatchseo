@@ -1,3 +1,4 @@
+import { sitePath } from "@/lib/site-root";
 import { db } from "./db";
 import { DEFAULT_PROJECT_SLUG, type Project } from "./projects";
 
@@ -36,7 +37,7 @@ export const FALLBACK_PROFILE: SiteProfile = {
 function skeletonProfile(project: Project): SiteProfile {
   return {
     name: project.name,
-    url: `https://${project.domain}`,
+    url: `https://${project.domain}${sitePath(project)}`,
     tagline: "",
     short: "",
     long: "",

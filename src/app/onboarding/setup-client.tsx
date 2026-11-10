@@ -31,10 +31,13 @@ function okLine(v: Extract<SiteVerdict, { kind: "ok" }>): string {
 /** "taken" rides the refused shape from the server (scenes.tsx has no
  *  kind for it); this file words it. */
 const isTaken = (v: SiteVerdict) => v.kind === "refused" && v.platform === "taken";
+/** "no-page" rides the same shape: the address answers "not found". */
+const isNoPage = (v: SiteVerdict) => v.kind === "refused" && v.platform === "no-page";
 
 function lineFor(v: SiteVerdict, signedIn: boolean): string {
   if (v.kind === "checking") return "One second…";
   if (isTaken(v)) return "You've started this one before. Sign in and we pick it up from there.";
+  if (isNoPage(v)) return "Hm. There's no page at that address.";
   if (v.kind === "refused") return "Ah. This one I can't write for, sorry.";
   if (v.kind === "ok") return okLine(v);
   if (v.kind === "unknown") return "I couldn't tell what it's built on. If the code's on GitHub, we're good.";
@@ -275,9 +278,14 @@ export function SetupClient(props: {
             }}
             onSubmit={() => void addressContinue()}
             onOverride={() => void overrideCheck()}
-            verdict={isTaken(verdict) ? { kind: "idle" } : verdict}
+            verdict={isTaken(verdict) || isNoPage(verdict) ? { kind: "idle" } : verdict}
             busy={busy}
           />
+          {isNoPage(verdict) ? (
+            <p className="mt-4 rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-[14.5px] text-ink">
+              {domain} answers &quot;page not found&quot;, so there&apos;s nothing there for us to read or publish next to. Type the address your site opens at.
+            </p>
+          ) : null}
           {isTaken(verdict) ? (
             <p className="mt-4 rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-[14.5px] text-ink">
               {domain} is already being set up on a DispatchSEO account.{" "}
