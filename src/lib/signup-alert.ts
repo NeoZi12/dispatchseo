@@ -69,7 +69,8 @@ export async function notifyOwnerOfFreeSignup(signup: FreeSignup): Promise<boole
       body: JSON.stringify({
         from,
         to,
-        subject: count === null ? `New free site: ${signup.domain}` : `New free site: ${signup.domain} (${count} on free)`,
+        // 📟: the nearest emoji to the walkie-talkie logo (there is no walkie-talkie emoji).
+        subject: count === null ? `📟 New free site: ${signup.domain}` : `📟 New free site: ${signup.domain} (${count} on free)`,
         text:
           `A site just launched on the free plan.\n\n` +
           `Site: ${signup.domain}\n` +
