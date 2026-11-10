@@ -72,6 +72,7 @@ export type ChangelogEntry = {
 // into a new CHANGELOG entry when it's time to cut a release. Nothing reads
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
+  { kind: "fixed", text: "Editing or removing an article now goes through on a site whose own checks were already failing before the change. Before, such an edit waited for a green check that was never coming." },
   {
     kind: "improved",
     text: "If the repository you connected isn't your site's code - an empty repo made just for us is the common one - your dashboard now shows one clear card with a button to connect the right repository. Pick it on GitHub, come back, and your waiting article goes live straight away.",

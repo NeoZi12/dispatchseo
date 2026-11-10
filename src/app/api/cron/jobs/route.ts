@@ -63,6 +63,10 @@ async function withDeadline(run: Promise<void>): Promise<void> {
 // nothing but publish jobs never loads the crawler (and a broken import in an
 // unused feature cannot take the whole route down).
 const HANDLERS: Record<string, () => Promise<Handler>> = {
+  // A live repo article that shipped without its cover or its free-plan
+  // credit (src/lib/article-repair.ts): one pull request adds them, and the
+  // job sees it through its merge.
+  "article-repair": async () => (await import("@/lib/job-handlers/article-repair")).runArticleRepairJob,
   // One hosted project's daily pass (research + scheduler), run NOW rather
   // than at tomorrow's /api/cron/autopilot - queued by the first crawl so a
   // new site's first article starts minutes after "You're connected".

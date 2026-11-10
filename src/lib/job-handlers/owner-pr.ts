@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 import { enqueue, type Job } from "@/lib/jobs";
 import { effectiveAutomations, getProjectById } from "@/lib/projects";
 import { mergePr, tokenForRef } from "@/lib/github";
-import { commentOnPullRequest, fetchPullRequest, githubApi } from "@/lib/repo-publish";
+import { commentOnPullRequest, failuresArePreexisting, fetchPullRequest, githubApi } from "@/lib/repo-publish";
 import { afterRemoval } from "@/lib/article-owner";
 import { warmScreenshotsLater } from "@/lib/page-screenshot";
 
@@ -75,7 +75,13 @@ export async function runOwnerPrJob(job: Job): Promise<void> {
   let merged = Boolean(pr.merged_at);
   if (pr.state === "open") {
     const auto = effectiveAutomations(project).auto_merge;
-    if (auto && MERGEABLE_STATES.has(String(pr.mergeable_state))) {
+    // "unstable" for checks that were already red before this pull request
+    // is the site's own trouble, not the edit's (verify.ts's rule, from
+    // tanstack-fetch 2026-11-10: a Cloudflare copy that fails on every
+    // commit). Without it an owner's edit on such a site would never merge.
+    const state = String(pr.mergeable_state);
+    const mergeable = MERGEABLE_STATES.has(state) || (auto && state === "unstable" && (await failuresArePreexisting(project, pr).catch(() => null)) === true);
+    if (auto && mergeable) {
       // A merge that worked is settled right here - a round cap must never
       // leave a merged removal sitting as "removing".
       merged = (await mergePr(project, prNumber)).ok;

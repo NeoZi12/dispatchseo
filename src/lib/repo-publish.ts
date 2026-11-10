@@ -440,6 +440,51 @@ export function publicFolderFor(dir: string, appRoot: string, allPaths: string[]
   return candidates.find((c) => allPaths.some((p) => p.startsWith(c))) ?? (appRoot ? `${appRoot}/public/` : "public/");
 }
 
+/** Where an article's cover goes in the repo and how its frontmatter names
+ *  it, read off the neighbour post's own cover (always as .png here; the
+ *  caller swaps the extension for the real picture's with coverExt). Null =
+ *  no folder this site serves pictures from was found. Shared by the publish
+ *  and by the repair of an article that shipped without its cover.
+ *
+ *    neighbour's cover is RELATIVE ("./x.png", "../images/x.png")
+ *            beside the article, same relative shape - Astro's image()
+ *            content collections resolve a cover as a file next to the post,
+ *            and a site-root "/images/..." string FAILS that schema and
+ *            breaks the build (audit H6);
+ *    neighbour's cover is SITE-ROOT ("/blog/covers/x.webp") and that folder
+ *            really exists under the static folder: ours goes there too. The
+ *            first Paperbot article's cover sat in /images/dispatchseo/,
+ *            which that site's auth proxy does not allowlist - it 307'd to
+ *            /login and the post showed a broken image;
+ *    anything else  <static folder>/images/dispatchseo/. */
+export function coverTargetFor(dir: string, allPaths: string[], sampleCover: string, slug: string): { repoPath: string; ref: string } | null {
+  const relCover = /^\.\.?\//.test(sampleCover);
+  // The monorepo app (apps/<x>, packages/<x>) that owns the content folder:
+  // a root public/ is not served by an app under apps/, which is how a
+  // monorepo article shipped with a cover pointing at nothing.
+  const appRoot = dir.match(/^((?:apps|packages)\/[^/]+)\//)?.[1] ?? "";
+  if (relCover) {
+    const relDir = sampleCover.slice(0, sampleCover.lastIndexOf("/")) || ".";
+    const repoPath = normalizeRepoPath(`${dir}/${relDir}/${slug}.png`);
+    return repoPath ? { repoPath, ref: `${relDir}/${slug}.png` } : null;
+  }
+  const publicPrefix = publicFolderFor(dir, appRoot, allPaths, sampleCover);
+  if (!allPaths.some((p) => p.startsWith(publicPrefix))) return null;
+  // Only when the folder really exists under the static folder (a CDN URL
+  // or a path nobody serves falls back to ours).
+  const siteRootDir = /^\/[^?#]*\//.test(sampleCover) ? sampleCover.slice(0, sampleCover.lastIndexOf("/")) : "";
+  const ownFolder = siteRootDir && allPaths.some((p) => p.startsWith(`${publicPrefix}${siteRootDir.slice(1)}/`));
+  return ownFolder
+    ? { repoPath: `${publicPrefix}${siteRootDir.slice(1)}/${slug}.png`, ref: `${siteRootDir}/${slug}.png` }
+    : { repoPath: `${publicPrefix}images/dispatchseo/${slug}.png`, ref: `/images/dispatchseo/${slug}.png` };
+}
+
+/** A cover file's extension by what the picture is: a picture cover arrives
+ *  as JPEG (cover-art.ts), a drawn one as PNG. */
+export function coverExt(mimeType: string): ".jpg" | ".webp" | ".png" {
+  return mimeType === "image/jpeg" ? ".jpg" : mimeType === "image/webp" ? ".webp" : ".png";
+}
+
 /** Whether a sample has a cover-shaped key at all - the one signal that this
  *  site's articles carry an image, and therefore that committing one is
  *  useful rather than a stray binary in someone's repo. */
@@ -1123,29 +1168,7 @@ export async function publishDraftToRepo(
   let coverPath: string | null = null;
   const coverKey = sampleCoverKey(sample);
   const sampleCover = coverKey && sample ? (sample.values[coverKey] ?? "") : "";
-  const relCover = /^\.\.?\//.test(sampleCover);
-  const appRoot = dir.match(/^((?:apps|packages)\/[^/]+)\//)?.[1] ?? "";
-  const publicPrefix = publicFolderFor(dir, appRoot, allPaths, relCover ? "" : sampleCover);
-  let coverTarget: { repoPath: string; ref: string } | null = null;
-  if (draft.cover_url && coverKey) {
-    if (relCover) {
-      const relDir = sampleCover.slice(0, sampleCover.lastIndexOf("/")) || ".";
-      const repoPath = normalizeRepoPath(`${dir}/${relDir}/${slug}.png`);
-      if (repoPath) coverTarget = { repoPath, ref: `${relDir}/${slug}.png` };
-    } else if (allPaths.some((p) => p.startsWith(publicPrefix))) {
-      // A site-root neighbour ("/blog/covers/x.webp") names the folder this
-      // site already serves its covers from: ours goes there too. The first
-      // Paperbot article's cover sat in /images/dispatchseo/, which that
-      // site's auth proxy does not allowlist - it 307'd to /login and the
-      // post showed a broken image. Only when the folder really exists under
-      // public/ (a CDN URL or a path nobody serves falls back to ours).
-      const siteRootDir = /^\/[^?#]*\//.test(sampleCover) ? sampleCover.slice(0, sampleCover.lastIndexOf("/")) : "";
-      const ownFolder = siteRootDir && allPaths.some((p) => p.startsWith(`${publicPrefix}${siteRootDir.slice(1)}/`));
-      coverTarget = ownFolder
-        ? { repoPath: `${publicPrefix}${siteRootDir.slice(1)}/${slug}.png`, ref: `${siteRootDir}/${slug}.png` }
-        : { repoPath: `${publicPrefix}images/dispatchseo/${slug}.png`, ref: `/images/dispatchseo/${slug}.png` };
-    }
-  }
+  let coverTarget = draft.cover_url && coverKey ? coverTargetFor(dir, allPaths, sampleCover, slug) : null;
   // Never dropped without a word: this is how a site in website/ lost its cover.
   if (draft.cover_url && coverKey && !coverTarget) console.warn(`[publish-repo] cover dropped for ${slug}: no static folder found above ${dir}`);
   if (draft.cover_url && coverTarget) {
@@ -1159,7 +1182,7 @@ export async function publishDraftToRepo(
       if (image) {
         // Named by what it is: a picture cover arrives as JPEG (cover-art.ts),
         // a drawn one as PNG.
-        const ext = image.mimeType === "image/jpeg" ? ".jpg" : image.mimeType === "image/webp" ? ".webp" : ".png";
+        const ext = coverExt(image.mimeType);
         if (ext !== ".png") coverTarget = { repoPath: coverTarget.repoPath.replace(/\.png$/, ext), ref: coverTarget.ref.replace(/\.png$/, ext) };
         const blob = await gh(token, "POST", `/repos/${repo}/git/blobs`, {
           content: Buffer.from(image.bytes).toString("base64"),
