@@ -74,6 +74,10 @@ export type ChangelogEntry = {
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "fixed",
+    text: "Cover pictures now reach sites kept in a subfolder of the repo (for example website/): the article's cover goes into the folder your other covers are served from, wherever that is. Before, such a site got the article without its picture.",
+  },
+  {
+    kind: "fixed",
     text: "Setup now checks that the GitHub repository you connect is the one your site is actually built from - an empty repo counts as the wrong one, and if the right repo is already shared with us we switch to it ourselves. Otherwise it says so right there and lets you pick the right one, instead of writing articles into a repo that never reaches your site.",
   },
   {

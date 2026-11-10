@@ -402,6 +402,33 @@ export type ArticleFileInput = {
   credit?: { href: string; madeWith: string } | null;
 };
 
+/** The folder this site serves its static files from, as a repo path with a
+ *  trailing slash. Found, not assumed: the folders above the posts are walked
+ *  from the nearest one up (never above a monorepo app's own root - a root
+ *  public/ is not served by an app under apps/), and the first that holds a
+ *  public/ or static/ wins; one that really holds the neighbour post's cover
+ *  wins over all. A site kept in website/ (tanstack-fetch, 2026-11-10: posts
+ *  in website/blog, covers in website/public/images) had its cover dropped
+ *  without a word, because only public/ and apps/x/public/ were ever looked
+ *  at. Nothing found = the old answer, which the caller already treats as
+ *  "no folder". */
+export function publicFolderFor(dir: string, appRoot: string, allPaths: string[], sampleCover: string): string {
+  const parts = dir.split("/").filter(Boolean);
+  const bases: string[] = [];
+  for (let i = parts.length; i >= 0; i--) {
+    const base = parts.slice(0, i).join("/");
+    if (appRoot && base !== appRoot && !base.startsWith(`${appRoot}/`)) break;
+    bases.push(base ? `${base}/` : "");
+  }
+  const candidates = bases.flatMap((b) => [`${b}public/`, `${b}static/`]);
+  const cover = /^\/[^?#]+$/.test(sampleCover) ? sampleCover.slice(1) : "";
+  if (cover) {
+    const holds = candidates.find((c) => allPaths.includes(`${c}${cover}`));
+    if (holds) return holds;
+  }
+  return candidates.find((c) => allPaths.some((p) => p.startsWith(c))) ?? (appRoot ? `${appRoot}/public/` : "public/");
+}
+
 /** Whether a sample has a cover-shaped key at all - the one signal that this
  *  site's articles carry an image, and therefore that committing one is
  *  useful rather than a stray binary in someone's repo. */
@@ -1087,7 +1114,7 @@ export async function publishDraftToRepo(
   const sampleCover = coverKey && sample ? (sample.values[coverKey] ?? "") : "";
   const relCover = /^\.\.?\//.test(sampleCover);
   const appRoot = dir.match(/^((?:apps|packages)\/[^/]+)\//)?.[1] ?? "";
-  const publicPrefix = appRoot ? `${appRoot}/public/` : "public/";
+  const publicPrefix = publicFolderFor(dir, appRoot, allPaths, relCover ? "" : sampleCover);
   let coverTarget: { repoPath: string; ref: string } | null = null;
   if (draft.cover_url && coverKey) {
     if (relCover) {
@@ -1108,6 +1135,8 @@ export async function publishDraftToRepo(
         : { repoPath: `${publicPrefix}images/dispatchseo/${slug}.png`, ref: `/images/dispatchseo/${slug}.png` };
     }
   }
+  // Never dropped without a word: this is how a site in website/ lost its cover.
+  if (draft.cover_url && coverKey && !coverTarget) console.warn(`[publish-repo] cover dropped for ${slug}: no static folder found above ${dir}`);
   if (draft.cover_url && coverTarget) {
     try {
       const { fetchCover } = await import("./job-handlers/publish");
