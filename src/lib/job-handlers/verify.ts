@@ -4,16 +4,8 @@ import { fetchProjectUrl } from "@/lib/url-guard";
 
 import { enqueue } from "@/lib/jobs";
 import { getProjectById, effectiveAutomations } from "@/lib/projects";
-import { mergePr } from "@/lib/github";
-import {
-  commitAgeMs,
-  fetchPullRequest,
-  pullRequestChecks,
-  failuresArePreexisting,
-  rebuildPullRequest,
-  type PullRequestState,
-} from "@/lib/repo-publish";
-import type { Project } from "@/lib/projects";
+import { fetchPullRequest } from "@/lib/repo-publish";
+import { landMemo, landPullRequest, mergedWithoutChange } from "@/lib/pr-landing";
 import type { Job } from "@/lib/jobs";
 import { trackPublishedKeyword } from "@/lib/autopilot/tracking";
 import { submitSiteSitemap } from "@/lib/gsc-sitemaps";
@@ -189,13 +181,6 @@ const POST_MERGE_LOOK_MS = 2 * 60_000;
  *  unparseable deadline must never mean forever. 30 days at two-hour rounds
  *  is 360; this leaves room for the early Auto rounds. */
 const MAX_ROUNDS = 500;
-/** GitHub's word for "mergeable and every commit status passed" - "has_hooks"
- *  is the same state on a repo with pre-receive hooks. "unstable" (a check
- *  failing or still running) and "blocked" (required checks or reviews
- *  outstanding) are both a no: a failing build is exactly what we must not
- *  merge over, and a pending one will be clean on the next look. */
-const MERGEABLE_STATES = new Set(["clean", "has_hooks"]);
-
 async function verifyRepoArticle(job: Job, draftId: string): Promise<void> {
   const prNumber = Number(job.payload.prNumber);
   const urls = Array.isArray(job.payload.urls) ? (job.payload.urls as string[]) : [];
@@ -254,50 +239,43 @@ async function verifyRepoArticle(job: Job, draftId: string): Promise<void> {
       await retryConflictedStorePublish(project, draftId, prNumber, { retries: Number(job.payload.storeRetries ?? 0), title: row.title });
       return;
     }
-    // A check that is already red on the branch the article was branched
-    // from is the site's own (tanstack-fetch, 2026-11-10: its Cloudflare
-    // copy started failing an hour before our PR, GitHub Pages - the live
-    // site - built fine). It must not hold the article forever. Only when
-    // GitHub calls the branch "unstable" (non-required checks red; required
-    // ones would be "blocked") and every failing check fails on the base too.
-    if (auto && pr.mergeable_state === "unstable" && (await failuresArePreexisting(project, pr).catch(() => null)) === true) {
-      const merged = await mergePr(project, prNumber);
-      if (merged.ok && round < MAX_ROUNDS) {
-        await rearm(job, draftId, round, new Date(nowDate.getTime() + POST_MERGE_LOOK_MS));
-        return;
-      }
+    // Everything else between "open" and "merged" is pr-landing.ts's. What
+    // it clears on its own: a check that is red on the default branch too
+    // (tanstack-fetch, 2026-11-10: its Cloudflare copy failed on every
+    // commit while GitHub Pages - the live site - built fine), a red build
+    // that passes when run again, a red check that stays red with our
+    // article taken out, a branch the repo wants brought up to date, a repo
+    // with squash merging switched off.
+    const land = await landPullRequest(project, pr, landMemo(job.payload), { merge: auto });
+    if (land.outcome === "merged") {
+      // A merge that WORKED is followed up in minutes rather than at the
+      // next round: the page is a deploy away.
+      if (round < MAX_ROUNDS) await rearm(job, draftId, round, new Date(nowDate.getTime() + POST_MERGE_LOOK_MS), { land: land.memo });
+      return;
     }
-    // A red build heals itself before anyone has to look at it.
-    if (!MERGEABLE_STATES.has(String(pr.mergeable_state))) {
-      const heal = await healFailedBuild(job, project, pr);
-      if (heal && "abandon" in heal) {
-        // A store publish (blog-store.ts) whose build stays red is closed and
-        // the article goes to the hosted blog - never a comment asking the
-        // owner to fix an entry we wrote into their post list.
-        const { abandonStorePublish } = await import("./publish-repo");
-        await abandonStorePublish(project, draftId, prNumber, { merged: false, reason: "failed its build after the automatic rebuilds", title: row.title });
-        return;
-      }
-      if (heal) {
-        if (round < MAX_ROUNDS) {
-          await rearm(job, draftId, round, new Date(nowDate.getTime() + heal.lookAfterMs), heal.payload);
-        }
-        return;
-      }
+    const stuck = land.outcome === "wait" ? land.stuck : undefined;
+    if (stuck === "red" && job.payload.store) {
+      // A store publish (blog-store.ts) whose build stays red is closed and
+      // the article goes to the hosted blog - never a comment asking the
+      // owner to fix an entry we wrote into their post list.
+      const { abandonStorePublish } = await import("./publish-repo");
+      await abandonStorePublish(project, draftId, prNumber, { merged: false, reason: "failed its build after the automatic rebuilds", title: row.title });
+      return;
     }
-    if (auto && MERGEABLE_STATES.has(String(pr.mergeable_state))) {
-      // A refused merge is answered by asking again on the next round, not by
-      // failing a job the owner would be emailed about. A merge that WORKED
-      // is followed up in minutes rather than at the next round.
-      const merged = await mergePr(project, prNumber);
-      if (merged.ok && round < MAX_ROUNDS) {
-        await rearm(job, draftId, round, new Date(nowDate.getTime() + POST_MERGE_LOOK_MS));
-        return;
-      }
+    const patch: Record<string, unknown> = { land: land.memo };
+    if (stuck && !job.payload.buildNotified) {
+      // No comment on the owner's pull request: we never hand the owner a
+      // fix to make (owner rule 2026-11-10). The operator sees the stuck
+      // article on the customer page; the slow cadence carries on, so a
+      // check that turns green later still merges.
+      console.warn(`[verify] ${project.slug}: PR #${pr.number} is stuck (${stuck}) after everything automatic was tried`);
+      patch.buildNotified = true;
     }
     if ((!deadline || now < deadline) && round < MAX_ROUNDS) {
-      const wait = auto && round < AUTO_EARLY_ROUNDS ? AUTO_EARLY_RETRY_MS : AWAITING_MERGE_RETRY_MS;
-      await rearm(job, draftId, round, new Date(nowDate.getTime() + wait));
+      // A refused merge is answered by asking again on the next round, not
+      // by failing a job the owner would be emailed about.
+      const wait = (land.outcome === "wait" ? land.afterMs : null) ?? (auto && round < AUTO_EARLY_ROUNDS ? AUTO_EARLY_RETRY_MS : AWAITING_MERGE_RETRY_MS);
+      await rearm(job, draftId, round, new Date(nowDate.getTime() + wait), patch);
     }
     return;
   }
@@ -318,6 +296,15 @@ async function verifyRepoArticle(job: Job, draftId: string): Promise<void> {
         .eq("id", row.suggestion_id)
         .eq("project_id", row.project_id);
     }
+    return;
+  }
+
+  // Merged by hand in the few minutes the branch held no change (the checks
+  // were being run without the article, pr-landing.ts): nothing reached the
+  // repo. The article is published again, under a new pull request.
+  if (mergedWithoutChange(pr, landMemo(job.payload))) {
+    const { republishAfterEmptyMerge } = await import("./publish-repo");
+    await republishAfterEmptyMerge(project, draftId);
     return;
   }
 
@@ -407,54 +394,6 @@ async function verifyRepoArticle(job: Job, draftId: string): Promise<void> {
   if (nowDate.getTime() < mergedAt + LIVE_WINDOW_MS && round < MAX_ROUNDS) {
     await rearm(job, draftId, round, new Date(nowDate.getTime() + AFTER_MERGE_RETRY_MS));
   }
-}
-
-/** Rebuilds of one pull request before we stop and say so. Two covers a
- *  flaky network twice over; an article that fails three identical builds is
- *  breaking a rule of the site's own, and a fourth costs build minutes for
- *  the same answer. */
-const MAX_REBUILDS = 2;
-/** A preview build takes a minute or two; look again soon after a rebuild. */
-const REBUILD_LOOK_MS = 10 * 60_000;
-/** When the checks themselves cannot be read, a PR GitHub still calls
- *  "unstable" (a check red or still running) this long after its last push
- *  has failed or hung: preview builds finish in a minute or two. */
-const STUCK_RED_MS = 20 * 60_000;
-
-/** When the PR's checks have all finished and one failed, push an empty
- *  commit so they run again (most red builds on an article PR are the
- *  network, not the article: a font or package download that timed out).
- *  After MAX_REBUILDS it logs the failing checks for the operator and the
- *  slow cadence carries on: a fix pushed by hand still merges. It never
- *  comments on the owner's pull request (owner rule 2026-11-10).
- *  Null = nothing to heal (checks passing, still running, or unreadable). */
-async function healFailedBuild(
-  job: Job,
-  project: Project,
-  pr: PullRequestState,
-): Promise<{ lookAfterMs: number; payload: Record<string, unknown> } | { abandon: true } | null> {
-  const checks = await pullRequestChecks(project, pr.head_sha);
-  if (checks) {
-    if (checks.verdict !== "failed") return null;
-  } else {
-    if (pr.mergeable_state !== "unstable") return null;
-    const age = await commitAgeMs(project, pr.head_sha);
-    if (age === null || age < STUCK_RED_MS) return null;
-  }
-  const rebuilds = Number(job.payload.rebuilds ?? 0);
-  if (rebuilds < MAX_REBUILDS) {
-    const ok = await rebuildPullRequest(project, pr.head_ref, pr.head_sha);
-    return ok ? { lookAfterMs: REBUILD_LOOK_MS, payload: { rebuilds: rebuilds + 1 } } : null;
-  }
-  // Store publishes are undone instead (the caller); nothing is commented.
-  if (job.payload.store) return { abandon: true };
-  if (job.payload.buildNotified) return null;
-  // No comment on the owner's pull request: we never hand the owner a fix
-  // to make (owner rule 2026-11-10). The operator sees the stuck article on
-  // the customer page; the slow cadence carries on, so a check that turns
-  // green later still merges.
-  console.warn(`[verify] ${project.slug}: PR #${pr.number} still red after ${rebuilds} rebuilds: ${checks?.failing.map((c) => c.name).join(", ") || "unreadable checks"}`);
-  return { lookAfterMs: AWAITING_MERGE_RETRY_MS, payload: { buildNotified: true } };
 }
 
 /** Queue this job's own successor and finish cleanly.

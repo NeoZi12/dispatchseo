@@ -456,22 +456,33 @@ export async function mergePr(
   const target = refRepo(repo);
   if (!target) return { ok: false, message: "No repo connected for this project" };
   try {
-    const res = await fetch(`${API}/repos/${target}/pulls/${number}/merge`, {
-      method: "PUT",
-      headers: { ...(await headers(repo)), "Content-Type": "application/json" },
-      body: JSON.stringify({ merge_method: "squash" }),
-      // Bound a hung GitHub response so it can't occupy the MCP's 60s budget
-      // until the platform kills it. Every sibling call already fails
-      // gracefully; so must the one mutation here (it used to throw straight
-      // out of the merge_pr tool / dashboard action).
-      signal: AbortSignal.timeout(20000),
-    });
-    const body = (await res.json().catch(() => ({}))) as { message?: string };
+    let res: Response | null = null;
+    let body: { message?: string } = {};
+    // Squash first: one commit per article keeps the owner's history clean.
+    // A repo can switch any of the three merge methods off, and GitHub then
+    // answers 405 "Squash merges are not allowed on this repository." - a
+    // pull request that would sit open for good over a setting. So the merge
+    // is retried the way the repo does allow.
+    for (const merge_method of ["squash", "merge", "rebase"]) {
+      res = await fetch(`${API}/repos/${target}/pulls/${number}/merge`, {
+        method: "PUT",
+        headers: { ...(await headers(repo)), "Content-Type": "application/json" },
+        body: JSON.stringify({ merge_method }),
+        // Bound a hung GitHub response so it can't occupy the MCP's 60s budget
+        // until the platform kills it. Every sibling call already fails
+        // gracefully; so must the one mutation here (it used to throw straight
+        // out of the merge_pr tool / dashboard action).
+        signal: AbortSignal.timeout(15000),
+      });
+      body = (await res.json().catch(() => ({}))) as { message?: string };
+      if (!(res.status === 405 && /not allowed on this repository/i.test(body.message ?? ""))) break;
+    }
+    const ok = Boolean(res?.ok);
     // Bust the cached open-PR list for THIS repo on every successful merge,
     // whichever door it came through (dashboard action or the MCP merge_pr
     // tool) - otherwise the "Ready to ship" card ghosts for up to a minute.
-    if (res.ok) revalidateTag(`seo-prs:${target}`, "max");
-    return { ok: res.ok, message: body.message ?? (res.ok ? "merged" : `HTTP ${res.status}`) };
+    if (ok) revalidateTag(`seo-prs:${target}`, "max");
+    return { ok, message: body.message ?? (ok ? "merged" : `HTTP ${res?.status ?? 0}`) };
   } catch (e) {
     const timedOut = e instanceof Error && e.name === "TimeoutError";
     return { ok: false, message: timedOut ? "GitHub timed out - try again." : "Could not reach GitHub - try again." };

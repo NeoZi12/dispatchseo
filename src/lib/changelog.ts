@@ -72,6 +72,8 @@ export type ChangelogEntry = {
 // into a new CHANGELOG entry when it's time to cut a release. Nothing reads
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
+  { kind: "fixed", text: "Articles, edits and removals now get through on sites where something used to hold them back: a repository that does not allow our usual way of merging, a branch that fell behind, a change that clashed with a newer one, or a check that fails whether or not our change is there. Each is now sorted out on its own." },
+  { kind: "fixed", text: "Saving a second edit while the first was still on its way no longer loses the first one's pull request." },
   { kind: "fixed", text: "A change to a live article no longer waits forever when one of the site's checks fails by chance. The change is built again, up to twice, and goes through once the check passes." },
   { kind: "fixed", text: "Editing or removing an article now goes through on a site whose own checks were already failing before the change. Before, such an edit waited for a green check that was never coming." },
   {

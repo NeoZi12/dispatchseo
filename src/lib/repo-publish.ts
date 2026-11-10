@@ -816,25 +816,14 @@ export async function failuresArePreexisting(project: Project, pr: { head_sha: s
  *  is taken as a verdict. */
 export const MAX_PR_REBUILDS = 2;
 
-/** Our pull request is red on a check that is green on the site's own
- *  branch: build it again (an empty commit) before reading that as a "no".
- *  tanstack-fetch, 2026-11-10: its Cloudflare copy failed on our branch and
- *  on one of the owner's own commits, and passed on the identical tree once
- *  merged - a check that fails by chance, not on the change. True when a
- *  rebuild was started; the caller counts them and looks again later. Never
- *  while checks are still running, and never on a repo whose checks cannot
- *  be read. */
-export async function rebuildIfRed(project: Project, pr: { head_sha: string; head_ref: string }, rebuilds: number): Promise<boolean> {
-  if (rebuilds >= MAX_PR_REBUILDS) return false;
-  const checks = await pullRequestChecks(project, pr.head_sha);
-  if (!checks || checks.verdict !== "failed") return false;
-  return rebuildPullRequest(project, pr.head_ref, pr.head_sha);
-}
-
 export type PullRequestChecks = {
   /** failed = at least one check failed and none is still running. */
   verdict: "passed" | "pending" | "failed" | "none";
   failing: { name: string; url: string | null }[];
+  /** Names of the checks that passed, and of those still running. A check
+   *  in none of the three lists has not reported on this commit at all. */
+  passed: string[];
+  running: string[];
 };
 
 /** Every check on one commit, folded into one verdict: commit statuses
@@ -865,21 +854,26 @@ export async function pullRequestChecks(
   let total = 0;
   let pending = 0;
   const failing: PullRequestChecks["failing"] = [];
+  const passed: string[] = [];
+  const running: string[] = [];
   for (const s of (st.json?.statuses ?? []) as { state?: string; context?: string; target_url?: string | null }[]) {
     total++;
-    if (s.state === "pending") pending++;
-    else if (s.state !== "success") failing.push({ name: String(s.context ?? "status"), url: s.target_url ?? null });
+    const name = String(s.context ?? "status");
+    if (s.state === "pending") (pending++, running.push(name));
+    else if (s.state !== "success") failing.push({ name, url: s.target_url ?? null });
+    else passed.push(name);
   }
   for (const r of (cr.json?.check_runs ?? []) as { status?: string; conclusion?: string | null; name?: string; html_url?: string | null }[]) {
     if (r.conclusion === "action_required") continue;
     total++;
-    if (r.status !== "completed") pending++;
+    const name = String(r.name ?? "check");
+    if (r.status !== "completed") (pending++, running.push(name));
     else if (!["success", "neutral", "skipped"].includes(String(r.conclusion))) {
-      failing.push({ name: String(r.name ?? "check"), url: r.html_url ?? null });
-    }
+      failing.push({ name, url: r.html_url ?? null });
+    } else passed.push(name);
   }
   const verdict = total === 0 ? "none" : pending > 0 ? "pending" : failing.length > 0 ? "failed" : "passed";
-  return { verdict, failing };
+  return { verdict, failing, passed, running };
 }
 
 /** Rebuild a pull request's checks without changing a byte: an empty commit

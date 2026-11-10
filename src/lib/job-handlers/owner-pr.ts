@@ -1,9 +1,10 @@
 import { db } from "@/lib/db";
 import { enqueue, type Job } from "@/lib/jobs";
 import { effectiveAutomations, getProjectById } from "@/lib/projects";
-import { mergePr, tokenForRef } from "@/lib/github";
-import { commentOnPullRequest, failuresArePreexisting, fetchPullRequest, githubApi, rebuildIfRed } from "@/lib/repo-publish";
-import { afterRemoval } from "@/lib/article-owner";
+import { tokenForRef } from "@/lib/github";
+import { commentOnPullRequest, fetchPullRequest, githubApi } from "@/lib/repo-publish";
+import { afterRemoval, redoOwnerChange } from "@/lib/article-owner";
+import { landMemo, landPullRequest, mergedWithoutChange } from "@/lib/pr-landing";
 import { warmScreenshotsLater } from "@/lib/page-screenshot";
 
 // Watches a pull request the owner's Edit or Remove opened on a repo article
@@ -17,7 +18,8 @@ import { warmScreenshotsLater } from "@/lib/page-screenshot";
 //   open    on Auto, merge it once GitHub says the branch is clean - never
 //           before: verify.ts's rule, "a failing build cannot be merged before
 //           its checks have spoken", holds for an edit exactly as for a new
-//           article. Otherwise look again later.
+//           article. Whatever else stands between it and the merge is
+//           pr-landing.ts's to clear. Otherwise look again later.
 //   closed  without merging: somebody said no. An edit's old text goes back
 //           (the site never changed); a removal's row goes back to published
 //           (the page is still up) with its publish PR's address restored.
@@ -30,7 +32,6 @@ import { warmScreenshotsLater } from "@/lib/page-screenshot";
 // back to the truth of the site, which never changed. An open PR nobody is
 // watching would otherwise change the site one day with nothing recording it.
 
-const MERGEABLE_STATES = new Set(["clean", "has_hooks"]);
 const MAX_ROUNDS = 400;
 const AUTO_EARLY_ROUNDS = 6;
 const AUTO_EARLY_RETRY_MS = 10 * 60_000;
@@ -42,7 +43,8 @@ type Payload = {
   kind: "edit" | "remove";
   round?: number;
   deadline?: string;
-  rebuilds?: number;
+  /** pr-landing.ts's memo: what has been tried on this pull request. */
+  land?: unknown;
   previous?: { title: string; meta_description: string | null; markdown: string };
   previousPrUrl?: string | null;
 };
@@ -73,31 +75,37 @@ export async function runOwnerPrJob(job: Job): Promise<void> {
   if (!pr) throw new Error("could not read the pull request from GitHub");
   const now = new Date();
 
-  let merged = Boolean(pr.merged_at);
+  const memo = landMemo(job.payload);
+  // Merged by hand in the few minutes the branch held no change (the checks
+  // were being run without it, pr-landing.ts): nothing reached the site, so
+  // this is "closed" - the records go back to the site as it is.
+  if (mergedWithoutChange(pr, memo)) {
+    await revert(project.id, row, p, now.toISOString());
+    return;
+  }
+
   if (pr.state === "open") {
     const auto = effectiveAutomations(project).auto_merge;
-    // "unstable" for checks that were already red before this pull request
-    // is the site's own trouble, not the edit's (verify.ts's rule, from
-    // tanstack-fetch 2026-11-10: a Cloudflare copy that fails on every
-    // commit). Without it an owner's edit on such a site would never merge.
-    const state = String(pr.mergeable_state);
-    const mergeable = MERGEABLE_STATES.has(state) || (auto && state === "unstable" && (await failuresArePreexisting(project, pr).catch(() => null)) === true);
-    if (auto && mergeable) {
-      // A merge that worked is settled right here - a round cap must never
-      // leave a merged removal sitting as "removing".
-      merged = (await mergePr(project, prNumber)).ok;
-    }
-    if (!merged) {
+    // Everything between "open" and "merged" is pr-landing.ts's: a branch
+    // that is behind, a conflict (the owner's change is built again on the
+    // site as it is now), a repo with squash merging off, a red check that
+    // turns out not to be about the change. A merge that worked is settled
+    // right here - a round cap must never leave a merged removal sitting as
+    // "removing".
+    const land = await landPullRequest(project, pr, memo, { merge: auto, redo: () => redoOwnerChange(project, draftId, p.kind) });
+    if (land.outcome !== "merged") {
       const before = !p.deadline || now.toISOString() < p.deadline;
-      // Red on our branch only (the base is green): build it again before
-      // that counts, twice at most - a check that failed by chance must not
-      // hold an owner's edit for a month.
-      if (auto && state !== "dirty" && before && round < MAX_ROUNDS && (await rebuildIfRed(project, pr, Number(p.rebuilds ?? 0)).catch(() => false))) {
-        await rearm(job, p, round, new Date(now.getTime() + AUTO_EARLY_RETRY_MS), { rebuilds: Number(p.rebuilds ?? 0) + 1 });
-        return;
-      }
       if (before && round < MAX_ROUNDS) {
-        await rearm(job, p, round, new Date(now.getTime() + (auto && round < AUTO_EARLY_ROUNDS ? AUTO_EARLY_RETRY_MS : AWAITING_RETRY_MS)));
+        const watch = land.outcome === "replaced" ? land.prNumber : prNumber;
+        if (watch !== prNumber && p.kind === "remove") {
+          await db()
+            .from("article_drafts")
+            .update({ pr_url: `https://github.com/${project.github_repo}/pull/${watch}`, updated_at: now.toISOString() })
+            .eq("id", row.id)
+            .eq("status", "removing");
+        }
+        const afterMs = (land.outcome === "wait" ? land.afterMs : null) ?? (auto && round < AUTO_EARLY_ROUNDS ? AUTO_EARLY_RETRY_MS : AWAITING_RETRY_MS);
+        await rearm(job, p, watch, round, new Date(now.getTime() + afterMs), { land: land.memo });
         return;
       }
       // Nobody is going to merge it: close it so it cannot land unwatched
@@ -155,12 +163,12 @@ async function revert(projectId: string, row: { id: string; published_url: strin
     .eq("status", "removing");
 }
 
-async function rearm(job: Job, p: Payload, round: number, runAfter: Date, patch: Record<string, unknown> = {}): Promise<void> {
+async function rearm(job: Job, p: Payload, prNumber: number, round: number, runAfter: Date, patch: Record<string, unknown> = {}): Promise<void> {
   await enqueue({
     projectId: job.project_id,
     kind: "owner-pr",
-    payload: { ...job.payload, ...patch, round: round + 1 },
+    payload: { ...job.payload, ...patch, prNumber, round: round + 1 },
     runAfter,
-    idempotencyKey: `owner-pr:${p.draftId}:${p.prNumber}:r${round + 1}`,
+    idempotencyKey: `owner-pr:${p.draftId}:${prNumber}:r${round + 1}`,
   });
 }

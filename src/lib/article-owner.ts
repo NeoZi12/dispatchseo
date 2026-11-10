@@ -225,7 +225,7 @@ export async function loadArticleSource(project: Project, draftId: string, opts:
   };
 }
 
-type PendingPr = { prNumber: number; url: string; previous: Previous | null; previousPrUrl: string | null; branch: string; /** Open on GitHub with no watcher left: a chain that died. */ orphan: boolean };
+type PendingPr = { prNumber: number; url: string; previous: Previous | null; previousPrUrl: string | null; /** Where the pending text is read from: the branch, or a commit on it. */ branch: string; /** Open on GitHub with no watcher left: a chain that died. */ orphan: boolean };
 
 const editBranch = (row: Pick<Row, "slug" | "id">) => `dispatchseo/edit-${row.slug}-${row.id.replace(/-/g, "").slice(0, 8)}`;
 
@@ -240,9 +240,13 @@ async function pendingPr(project: Project, draftId: string, kind: "edit" | "remo
     .is("finished_at", null)
     .contains("payload", { draftId, kind })
     .limit(1);
-  const payload = (data?.[0] as { payload?: { prNumber?: number; previous?: Previous; previousPrUrl?: string | null } } | undefined)?.payload;
+  const payload = (data?.[0] as { payload?: { prNumber?: number; previous?: Previous; previousPrUrl?: string | null; land?: { probe?: { from?: string } | null } } } | undefined)?.payload;
   if (!payload?.prNumber) return null;
-  return { prNumber: Number(payload.prNumber), url: `https://github.com/${project.github_repo}/pull/${payload.prNumber}`, previous: payload.previous ?? null, previousPrUrl: payload.previousPrUrl ?? null, branch, orphan: false };
+  // While the checks are being run without the change (pr-landing.ts), the
+  // branch head holds the site's own text for a few minutes; the owner's
+  // edit is in the commit under it, and that is the one to read.
+  const readFrom = payload.land?.probe?.from || branch;
+  return { prNumber: Number(payload.prNumber), url: `https://github.com/${project.github_repo}/pull/${payload.prNumber}`, previous: payload.previous ?? null, previousPrUrl: payload.previousPrUrl ?? null, branch: readFrom, orphan: false };
 }
 
 /** The edit pull request open for this article: the one a watcher is on,
@@ -696,6 +700,25 @@ function setFrontmatterKey(fm: string, key: string, value: string): string | nul
   return lines.join("\n");
 }
 
+/** The same owner change, built again on the default branch as it is now:
+ *  the watcher's answer to a pull request GitHub reports as conflicting
+ *  (job-handlers/owner-pr.ts). The row already holds the owner's text (an
+ *  edit) or the "removing" mark, so nothing is asked again. Same branch, so
+ *  the same pull request. Null: could not be done, the watcher waits. */
+export async function redoOwnerChange(project: Project, draftId: string, kind: "edit" | "remove"): Promise<{ prNumber: number } | null> {
+  const row = await loadRow(project.id, draftId);
+  if (!row || !project.github_repo || !row.repo_path) return null;
+  if (row.status !== (kind === "edit" ? "published" : "removing")) return null;
+  if (kind === "remove") {
+    const change = await repoChange(project, row, { kind: "remove", title: row.title, closeEditPr: null });
+    return change.ok ? { prNumber: change.prNumber } : null;
+  }
+  const file = await readRepoFile(project, row.repo_path);
+  if (!file.ok) return null;
+  const change = await repoChange(project, row, { kind: "edit", title: row.title, metaDescription: row.meta_description ?? "", markdown: row.markdown, file });
+  return change.ok ? { prNumber: change.prNumber } : null;
+}
+
 async function repoChange(project: Project, row: Row, change: RepoChange): Promise<RepoChangeResult> {
   const repo = project.github_repo!;
   const path = row.repo_path!;
@@ -739,9 +762,9 @@ async function repoChange(project: Project, row: Row, change: RepoChange): Promi
   const baseTree = (headCommit.json?.tree as { sha?: string } | undefined)?.sha;
   if (headCommit.status !== 200 || !baseTree) return bad("tree lookup", headCommit.status);
 
-  // One branch per article and kind, as the publish names its own. (Only
-  // one edit is ever open at a time - see pendingEditPr - so a leftover
-  // branch here is a closed PR's, and is simply reset.)
+  // One branch per article and kind, as the publish names its own. A
+  // second edit while the first still waits on its merge lands on the same
+  // branch and so in the same pull request (see pendingEditPr).
   const id8 = row.id.replace(/-/g, "").slice(0, 8);
   const branch = `dispatchseo/${change.kind}-${row.slug}-${id8}`;
   const owner = repo.split("/")[0];
@@ -751,14 +774,6 @@ async function repoChange(project: Project, row: Row, change: RepoChange): Promi
     const closed = await gh("PATCH", `/repos/${repo}/pulls/${change.closeEditPr}`, { state: "closed" });
     if (closed.status !== 200) return bad("close the pending edit", closed.status);
   }
-  const created = await gh("POST", `/repos/${repo}/git/refs`, { ref: `refs/heads/${branch}`, sha: headSha });
-  if (created.status === 422) {
-    const reset = await gh("PATCH", `/repos/${repo}/git/refs/${encodeURIComponent(`heads/${branch}`)}`, { sha: headSha, force: true });
-    if (reset.status !== 200) return bad("branch reset", reset.status);
-  } else if (created.status !== 201) {
-    return bad("branch create", created.status);
-  }
-
   const tree = await gh("POST", `/repos/${repo}/git/trees`, {
     base_tree: baseTree,
     // sha: null in a tree entry is GitHub's "delete this path".
@@ -775,8 +790,19 @@ async function repoChange(project: Project, row: Row, change: RepoChange): Promi
     parents: [headSha],
   });
   if (commit.status !== 201 || !commit.json?.sha) return bad("commit", commit.status);
-  const push = await gh("PATCH", `/repos/${repo}/git/refs/${encodeURIComponent(`heads/${branch}`)}`, { sha: String(commit.json.sha), force: true });
-  if (push.status !== 200) return bad("branch update", push.status);
+  // The branch is pointed at the finished commit in ONE move: created there,
+  // or (a leftover branch, or a pull request still open on it) moved there.
+  // Never by way of the default branch's head - a branch reset to its base
+  // has nothing to merge, and GitHub CLOSES its open pull request on the
+  // spot; the change then came back under a new pull request nobody watched,
+  // while the old one's watcher saw "closed" and undid the owner's edit.
+  const created = await gh("POST", `/repos/${repo}/git/refs`, { ref: `refs/heads/${branch}`, sha: String(commit.json.sha) });
+  if (created.status === 422) {
+    const moved = await gh("PATCH", `/repos/${repo}/git/refs/${encodeURIComponent(`heads/${branch}`)}`, { sha: String(commit.json.sha), force: true });
+    if (moved.status !== 200) return bad("branch update", moved.status);
+  } else if (created.status !== 201) {
+    return bad("branch create", created.status);
+  }
 
   const base = await backendBaseUrl();
   const auto = effectiveAutomations(project).auto_merge;

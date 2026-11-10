@@ -282,6 +282,14 @@ async function requeue(project: Project, draftId: string, key: string, payload: 
   await enqueue({ projectId: project.id, kind: "publish", payload: { draftId, ...payload }, runAfter: new Date(Date.now() + REQUEUE_AFTER_MS), idempotencyKey: key });
 }
 
+/** A pull request of ours that was merged while its branch held no change
+ *  (pr-landing.ts was running the site's checks without the article, and
+ *  somebody pressed Merge in those minutes): the article never reached the
+ *  repo, so it is published again from the top. */
+export async function republishAfterEmptyMerge(project: Project, draftId: string): Promise<void> {
+  await requeue(project, draftId, `publish:${draftId}:after-empty-merge`);
+}
+
 /**
  * A store publish that broke - its build stayed red after the rebuilds, it
  * conflicted twice, or it merged and the article never appeared - is undone
