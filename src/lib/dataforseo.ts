@@ -80,7 +80,7 @@ export async function credsForProject(
     dataforseo_login: string | null;
     dataforseo_password: string | null;
   },
-  opts: { skipBudgetGate?: boolean } = {},
+  opts: { skipBudgetGate?: boolean; skipFreeBudget?: boolean } = {},
 ): Promise<DataforseoCreds | null> {
   if (project.dataforseo_login && project.dataforseo_password) {
     // The password is stored encrypted at rest; the login (an email) is not.
@@ -136,7 +136,7 @@ export async function credsForProject(
     isCloudMode() &&
     platform &&
     (await writerGate(project.id)).allowed &&
-    (opts.skipBudgetGate || (await platformBudgetGate(project.id)).allowed)
+    (opts.skipBudgetGate || (await platformBudgetGate(project.id, { skipFreeBudget: opts.skipFreeBudget })).allowed)
   ) {
     return {
       login: platform.login,

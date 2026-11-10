@@ -234,6 +234,7 @@ export const FREE_DATAFORSEO_BUDGET_MICROUSD = 300_000;
 
 export async function platformBudgetGate(
   projectId: string,
+  opts: { skipFreeBudget?: boolean } = {},
 ): Promise<{ allowed: true } | { allowed: false; reason: string }> {
   if (!isCloudMode() || !polarConfigured()) return { allowed: true };
   // Account-wide first: it is the one check that holds even when the
@@ -251,6 +252,10 @@ export async function platformBudgetGate(
   // writer never gets here for such an owner (writerGate says no first).
   if (!isActive(sub)) {
     if (FREE_ARTICLES_PER_MONTH <= 0) return { allowed: true };
+    // The writer's one SERP per article (writer/research.ts fetchSerp): the
+    // free article count bounds it, and refusing it after research spent
+    // the month's budget turned paid-for research into no article.
+    if (opts.skipFreeBudget) return { allowed: true };
     // The durable per-owner month too, once free signups are open: the
     // larger of the two, so a deleted site's spend still counts. Its read
     // error is Infinity - denied, never a free pass.

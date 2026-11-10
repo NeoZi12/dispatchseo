@@ -3,7 +3,7 @@ import { isFreePlan, projectPlan, writerGate } from "@/lib/billing";
 import { isCloudMode } from "@/lib/cloud";
 import { platformBudgetGate } from "@/lib/dataforseo-usage";
 import { publishRoute } from "@/lib/job-handlers/draft-status";
-import { credsForProject, keywordOverview, serpSnapshot, type KeywordIdea, type SerpSnapshot } from "@/lib/dataforseo";
+import { credsForProject, keywordOverview, serpSnapshot, type DataforseoCreds, type KeywordIdea, type SerpSnapshot } from "@/lib/dataforseo";
 import {
   cachedBulkKeywordDifficulty,
   cachedKeywordSuggestions,
@@ -92,6 +92,49 @@ const MAX_SEEDS = 8;
  *  keyword_overview call, and the judge calls that round may spend. */
 const MODEL_FIRST_KEYWORDS = 30;
 const MODEL_FIRST_JUDGE_CALLS = 3;
+
+// Research-v2 (2026-11-10): the same filter, the same judge, the same
+// measured volume + KD on every queued idea - fewer DataForSEO requests.
+// The 2026-11-10 ledger for the first three free sites put 80-88% of a
+// fill's keyword-data cost ($0.21-0.24 of $0.27) in 13-15 keyword_suggestions
+// tasks, one per seed, each a flat $0.012 plus rows; the judge then refused
+// 36-60 of their rows per site because the seeds were generic ("häufige
+// fragen", "web agentur"). v2 keeps the same calls and buys them in small
+// rounds, cheapest first, stopping the moment the queue is filled:
+//   0  the model proposes MODEL_FIRST_KEYWORDS_V2 specific searches and ONE
+//      keyword_overview task measures them all (~$0.015-0.02): on the
+//      2026-11-10 shadow runs this round alone filled dfmsolutions' queue
+//      with four ideas for $0.03 where v1 had spent $0.27;
+//   1  keyword_suggestions on the first V2_SEEDS_PER_ROUND seeds (~$0.05),
+//      not all eight;
+//   2-3 the same rows at volume 20 / 10 (no call);
+//   B  backup: the NEXT V2_SEEDS_PER_ROUND seeds, same bar as rung 3, only
+//      while the visible queue is still short;
+//   4  the model names extra seeds; at most V2_WIDER_SEEDS of them, one
+//      round, through the same per-seed calls.
+// Labs keyword_ideas (all seeds in one task) was tried first and dropped:
+// it matches by Google category, and for short seeds returned 300 of 300
+// off-topic rows on every site that reached it ("easy bake oven" for "easy
+// render", "shrek react" for "tanstack fetch").
+// Selected per run by researchV2Enabled(free): env RESEARCH_V2 = "all" |
+// "free" | unset (off). Measured on the shadow route before any default
+// moves (src/app/api/cron/research-shadow).
+const MODEL_FIRST_KEYWORDS_V2 = 150;
+const MODEL_FIRST_JUDGE_CALLS_V2 = 5;
+/** Seeds per round of keyword_suggestions under v2 (rung 1, then backup). */
+const V2_SEEDS_PER_ROUND = 3;
+/** Rung 4's proposed seeds under v2, at most (one round). */
+const V2_WIDER_SEEDS = 3;
+/** Page-one snapshots for the pick under v2 (~$0.002-0.006 each). */
+const V2_SERP_SCORE_MAX = 6;
+/** v2 judge budget: rung 0 gets more candidates, so more Jev calls (each
+ *  ~$0.0001); still bounded. */
+const MAX_JUDGE_CALLS_V2 = 15;
+
+export function researchV2Enabled(free: boolean): boolean {
+  const v = (process.env.RESEARCH_V2 ?? "").trim().toLowerCase();
+  return v === "all" || v === "1" || v === "true" || (v === "free" && free);
+}
 // 100, not 50 (2026-11-09): Labs bills $0.01 per request and $0.0001 per
 // row, so one call for 100 rows ($0.02) buys twice the candidates of two
 // calls for 50 ($0.03). The judge discards most rows anyway; more rows per
@@ -360,6 +403,22 @@ export type ResearchOutcome =
       judgeError?: string;
       /** One owner-facing sentence when thin (thinNote). */
       note?: string;
+      /** Research-v2 ran (researchV2Enabled or the shadow route asked). */
+      v2?: true;
+      /** v2 backup: the next round of seeds, only when rungs 0-3 came up
+       *  short. */
+      fallback?: { seeds: string[]; candidates: number; kept: number; passed: number; usd: number };
+      /** Ideas that passed the judge but were held back by the young-site
+       *  topic lock (YOUNG_SITE_MAX_TOPICS). */
+      topicLocked?: number;
+      /** Shadow run: nothing was written (no ideas queued, no refusals
+       *  stored, no dead seeds, no stamp); `added` lists what WOULD have
+       *  been queued, and the samples say what the judge saw. */
+      shadow?: true;
+      judgedSample?: {
+        passed: Array<{ keyword: string; volume: number; kd: number | null; fit: number; intent: string | null; cluster: string | null }>;
+        rejected: Array<{ keyword: string; volume: number; kd: number | null; why: string }>;
+      };
       costUsd: number;
       dataforseoUsd: number;
     };
@@ -383,7 +442,7 @@ export async function keywordDataBlocked(project: Project): Promise<string | nul
 }
 
 /** The quiet preconditions, shared with the scheduler and the MCP tool. */
-export async function researchReadiness(project: Project): Promise<{ ready: true } | { ready: false; skipped: string }> {
+export async function researchReadiness(project: Project, opts: { skipPlanGate?: boolean } = {}): Promise<{ ready: true } | { ready: false; skipped: string }> {
   if (writerMode(project) !== "hosted") return { ready: false, skipped: "not a hosted project" };
   // Dry run answers every judge question "yes": queuing those as approved
   // ideas on a real site would hand the writer junk. Never in dry run.
@@ -392,17 +451,37 @@ export async function researchReadiness(project: Project): Promise<{ ready: true
   // Ideas for a site that cannot publish, or a deploy that cannot write, are
   // DataForSEO spend with nothing downstream. The missing-keys case is
   // reported once per cron run by the route, not here per project.
-  if (publishRoute(project) === "blocked") return { ready: false, skipped: "setup incomplete: nowhere to publish yet" };
+  // The shadow route measures, it does not spend the owner's plan or
+  // publish: the publish-readiness and plan gates (and the free plan's claim
+  // check, which needs the deploy's FREE_GATE_SALT) are what it skips.
+  if (!opts.skipPlanGate && publishRoute(project) === "blocked") return { ready: false, skipped: "setup incomplete: nowhere to publish yet" };
   if (missingCredentials().length) return { ready: false, skipped: "the writer has no model credentials on this deploy" };
+  if (opts.skipPlanGate) return { ready: true };
   const gate = await writerGate(project.id);
   if (!gate.allowed) return { ready: false, skipped: `plan inactive: ${gate.reason}` };
   return { ready: true };
 }
 
-export async function runResearch(project: Project, now = new Date()): Promise<ResearchOutcome> {
-  const ready = await researchReadiness(project);
+export type RunResearchOptions = {
+  /** Research-v2 on or off for this run; default researchV2Enabled(free). */
+  v2?: boolean;
+  /** Decide everything, write nothing: no ideas queued, no refusals stored,
+   *  no dead seeds, no state, no stamp. The outcome's `added` is what would
+   *  have been queued. The DataForSEO and model calls are real and metered. */
+  shadow?: boolean;
+  /** Credentials to use instead of credsForProject (the shadow route bills
+   *  the operator's default project, never the site's owner). */
+  creds?: DataforseoCreds;
+  /** Shadow only: forget the site's dead seeds for this run, so a refill
+   *  measures like a first fill (every profile seed on the table). */
+  ignoreDead?: boolean;
+};
+
+export async function runResearch(project: Project, now = new Date(), opts: RunResearchOptions = {}): Promise<ResearchOutcome> {
+  const shadow = opts.shadow === true;
+  const ready = await researchReadiness(project, { skipPlanGate: shadow });
   if (!ready.ready) return { skipped: ready.skipped };
-  const creds = await credsForProject(project);
+  const creds = opts.creds ?? (await credsForProject(project));
   if (!creds) {
     // Told apart from "no source at all": a spent budget is temporary and
     // becomes loud if it lasts (health.ts), a missing source is setup - and
@@ -415,13 +494,18 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
   if (profileError) return { skipped: `could not read the site profile: ${profileError}` };
   if (!fromDb) return { skipped: "no site profile yet" };
 
-  const stamp = () => db().from("projects").update({ last_research_at: now.toISOString() }).eq("id", project.id);
+  const stamp = async () => {
+    if (shadow) return;
+    await db().from("projects").update({ last_research_at: now.toISOString() }).eq("id", project.id);
+  };
 
   // The site's own demand first (Search Console), before anything is bought.
-  const gscDemand = await queueSearchConsoleDemand(project, profile, now).catch((e) => {
-    console.warn(`[autopilot] search console demand for ${project.slug} failed: ${e instanceof Error ? e.message : String(e)}`);
-    return { queued: 0, costUsd: 0 };
-  });
+  const gscDemand = shadow
+    ? { queued: 0, costUsd: 0 }
+    : await queueSearchConsoleDemand(project, profile, now).catch((e) => {
+        console.warn(`[autopilot] search console demand for ${project.slug} failed: ${e instanceof Error ? e.message : String(e)}`);
+        return { queued: 0, costUsd: 0 };
+      });
 
   // Two counts. The visible queue (approved) is what the writer takes next
   // and what the owner sees; the backlog behind it (pending, promoted as the
@@ -437,6 +521,7 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
   // never buys the domain-strength lookup: a free site reads as DR 0, which
   // is the strict KD zone a new small site belongs in anyway.
   const free = isFreePlan(plan);
+  const v2 = opts.v2 ?? researchV2Enabled(free);
   const visibleNeeded = ideasNeeded(approvedCount ?? 0, plan.articlesPerWeek);
   // The target scales with the plan (math.ts backlogTarget): eight weeks of
   // the site's own cadence, not a flat hundred, so a 1-a-week site stops
@@ -449,7 +534,10 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
 
   const loc = project.location_code;
   const lang = project.language_code;
-  const [dead, backoff] = await Promise.all([readDeadSeeds(project.id, loc, lang), readResearchState(project.id)]);
+  const [dead, backoff] = await Promise.all([
+    shadow && opts.ignoreDead ? Promise.resolve(new Set<string>()) : readDeadSeeds(project.id, loc, lang),
+    readResearchState(project.id),
+  ]);
   // Fewer seeds when few ideas are needed: every seed is two Labs calls, and
   // topping a queue up by one idea never needed eight of them. Seeds that
   // expanded into nothing usable within the last 30 days are skipped, so
@@ -502,6 +590,7 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
     );
     return { bySeed, failures, rows: [...bySeed.values()].flat() };
   };
+
 
   const dr = free ? null : await getDomainRating(project.id, project.domain, creds).catch(() => null);
   // The auto-approve ceiling, not the "propose and ask" one: nobody approves
@@ -628,8 +717,15 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
   // round leaves the visible queue short.
   let modelFirst: { proposed: number; measured: number; kept: number; passed: number; usd: number; error?: string } | undefined;
   const proposedBySeed = new Map<string, Candidate[]>();
+  const maxJudgeCalls = v2 ? MAX_JUDGE_CALLS_V2 : MAX_JUDGE_CALLS;
   try {
-    const pk = await proposeKeywords(project, profile, existing.texts, [...dead]);
+    // A young site's open topics go into the proposal (2026-11-10 shadow run
+    // on dfmsolutions: four proposals passed the judge and the topic lock
+    // below then dropped all four, because their model-named topics were
+    // not the two the site already builds on) - the model groups under
+    // them when a search belongs there, so the lock keeps what it should.
+    const openNow = isYoungSite(project.created_at, now.getTime()) ? [...(await topicsInUse(project.id))] : [];
+    const pk = await proposeKeywords(project, profile, existing.texts, [...dead], v2 ? MODEL_FIRST_KEYWORDS_V2 : MODEL_FIRST_KEYWORDS, openNow);
     costUsd += pk.costUsd;
     modelFirst = { proposed: pk.keywords.length, measured: 0, kept: 0, passed: 0, usd: 0 };
     if (pk.keywords.length) {
@@ -650,7 +746,7 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
       const filled = await recoverKd(rows, filterCtx, "seeds");
       const screened = filterCandidates(filled, filterCtx);
       modelFirst.kept = screened.kept.length;
-      await judgePool(screened.kept, MODEL_FIRST_JUDGE_CALLS);
+      await judgePool(screened.kept, v2 ? MODEL_FIRST_JUDGE_CALLS_V2 : MODEL_FIRST_JUDGE_CALLS);
       modelFirst.passed = passed.length;
     }
   } catch (e) {
@@ -661,7 +757,11 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
   }
   const skipExpansion = passed.length >= Math.max(1, visibleNeeded);
 
-  const main = skipExpansion ? { bySeed: new Map<string, Candidate[]>(), failures: [] as string[], rows: [] as Candidate[] } : await expand(seeds, "seeds");
+  // Rung 1's pool: one keyword_suggestions task per seed - every seed under
+  // v1, the first V2_SEEDS_PER_ROUND under v2 (the rest wait for the backup
+  // round, bought only if this one leaves the visible queue short).
+  const round1 = v2 ? seeds.slice(0, V2_SEEDS_PER_ROUND) : seeds;
+  const main = skipExpansion ? { bySeed: new Map<string, Candidate[]>(), failures: [] as string[], rows: [] as Candidate[] } : await expand(round1, "seeds");
   const failures = main.failures;
   if (!skipExpansion && main.bySeed.size === 0 && failures.length) {
     // Every call failed: that is a fault worth retrying loudly, not a state.
@@ -673,7 +773,7 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
 
   const raw = await recoverKd(main.rows, widest, "seeds");
   let { kept, dropped } = filterCandidates(raw, filterCtx);
-  const seedCalls = MAX_JUDGE_CALLS - PROPOSAL_JUDGE_CALLS;
+  const seedCalls = maxJudgeCalls - PROPOSAL_JUDGE_CALLS;
   const rung1Kept = kept.length;
   keptByRung["1"] = rung1Kept;
   let widened = false;
@@ -701,6 +801,38 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
     console.warn(`[autopilot] research judge failed for ${project.slug}, keeping ${passed.length} passed: ${judgeError}`);
   }
 
+  // v2 backup (rung B): round 1 did not fill the visible queue, so the
+  // remaining seeds are bought in further rounds of V2_SEEDS_PER_ROUND -
+  // the seeds v1 expanded up front, paid for only while still needed, and
+  // ALL of them before rung 4 (the month-one shadow of easyrender,
+  // 2026-11-10: its one productive seed was the eighth). Same bar as rung 3.
+  let fallback: { seeds: string[]; candidates: number; kept: number; passed: number; usd: number } | undefined;
+  for (let at = round1.length; v2 && !judgeError && !skipExpansion && at < seeds.length; at += V2_SEEDS_PER_ROUND) {
+    if (passed.length >= Math.max(1, visibleNeeded) || batches >= seedCalls || dataforseoUsd >= WIDER_STOP_USD) break;
+    const list = seeds.slice(at, at + V2_SEEDS_PER_ROUND);
+    const before = { usd: dataforseoUsd, passed: passed.length };
+    const ex = await expand(list, "seeds");
+    failures.push(...ex.failures);
+    for (const [seed, rows] of ex.bySeed) expandedSeeds.set(seed, [...(expandedSeeds.get(seed) ?? []), ...rows]);
+    const ctxB = withPassed(widest);
+    const filled = await recoverKd(ex.rows, ctxB, "seeds");
+    const screened = filterCandidates(filled, ctxB);
+    raw.push(...filled);
+    try {
+      await judgePool(screened.kept, seedCalls);
+    } catch (e) {
+      judgeError = e instanceof Error ? e.message : String(e);
+    }
+    if (screened.kept.length) { rung = 3; widened = true; }
+    fallback = {
+      seeds: [...(fallback?.seeds ?? []), ...list],
+      candidates: (fallback?.candidates ?? 0) + ex.rows.length,
+      kept: (fallback?.kept ?? 0) + screened.kept.length,
+      passed: (fallback?.passed ?? 0) + passed.length - before.passed,
+      usd: Math.round(((fallback?.usd ?? 0) + dataforseoUsd - before.usd) * 10_000) / 10_000,
+    };
+  }
+
   // Rung 4: extra seeds from the site itself, expanded and measured by
   // DataForSEO, then judged - in batches of three, so a thin niche stops
   // paying the moment it has enough.
@@ -715,7 +847,7 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
   let widerKept = 0;
   let widerDropped: Record<string, number> = {};
   let oneHop = false;
-  if (!judgeError && passed.length < Math.max(1, visibleNeeded) && batches < MAX_JUDGE_CALLS) {
+  if (!judgeError && passed.length < Math.max(1, visibleNeeded) && batches < maxJudgeCalls) {
     const allowance = widerSearchAllowance(backoff, now.getTime());
     if (!allowance.allowed) widerSkipped = allowance.why;
     else if (dataforseoUsd >= WIDER_STOP_USD) widerSkipped = `this run's keyword data already cost $${dataforseoUsd.toFixed(3)}`;
@@ -743,10 +875,11 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
           if (used.has(k) || matchesBlockedTopic(k, filterCtx.blockedTopics)) continue;
           used.add(k);
           widerSeeds.push(k);
-          if (widerSeeds.length >= MAX_PROPOSED_SEEDS) break;
+          // v2: one round of V2_WIDER_SEEDS, not up to ten in batches.
+          if (widerSeeds.length >= (v2 ? V2_WIDER_SEEDS : MAX_PROPOSED_SEEDS)) break;
         }
         proposed = widerSeeds.length;
-        const judgeCap = Math.min(MAX_JUDGE_CALLS, batches + PROPOSAL_JUDGE_CALLS);
+        const judgeCap = Math.min(maxJudgeCalls, batches + PROPOSAL_JUDGE_CALLS);
         const widerFailures: string[] = [];
         for (let i = 0; i < widerSeeds.length; ) {
           if (passed.length >= Math.max(1, visibleNeeded)) break;
@@ -813,7 +946,7 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
   let serpUsd = 0;
   let serpError: string | undefined;
   if (passed.length > 1 && dataforseoUsd < WIDER_STOP_USD) {
-    const shortlist = passed.slice(0, Math.min(SERP_SCORE_MAX, needed + 4));
+    const shortlist = passed.slice(0, Math.min(v2 ? V2_SERP_SCORE_MAX : SERP_SCORE_MAX, needed + 4));
     const snaps = await Promise.allSettled(shortlist.map((c) => serpSnapshot(c.keyword, creds, loc, lang)));
     snaps.forEach((r, i) => {
       if (r.status === "rejected") {
@@ -841,19 +974,25 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
   // Topic lock: a young site keeps to YOUNG_SITE_MAX_TOPICS topics.
   const youngSite = isYoungSite(project.created_at, now.getTime());
   const openTopics = youngSite ? await topicsInUse(project.id) : new Set<string>();
+  let topicLocked = 0;
   for (const [i, c] of passed.slice(0, needed).entries()) {
     // The rule, where it matters: an idea is queued only with a measured
     // monthly volume at or above the lowest floor and a measured KD.
     if (!(c.volume >= WIDEN2_MIN_VOLUME) || typeof c.kd !== "number") continue;
     const cluster = seedOf(c.keyword);
     if (youngSite && cluster && !openTopics.has(cluster)) {
-      if (openTopics.size >= YOUNG_SITE_MAX_TOPICS) continue;
+      if (openTopics.size >= YOUNG_SITE_MAX_TOPICS) { topicLocked++; continue; }
       openTopics.add(cluster);
     }
     const w = weakness.get(c.keyword);
     // The visible queue's shortfall lands approved, in pick order; the rest
     // waits as pending with its rank, promoted as the queue drains.
     const visible = added.length < visibleNeeded;
+    if (shadow) {
+      if (!visible) backlogged++;
+      added.push({ id: "shadow", keyword: c.keyword, volume: c.volume, kd: c.kd, fit: Math.round(c.fit * 100) / 100, ...(c.wider ? { wider: true as const } : {}), ...(c.proposed ? { proposed: true as const } : {}), ...(visible ? {} : { backlog: true as const }) });
+      continue;
+    }
     const { data, error } = await db()
       .from("suggestions")
       .insert({
@@ -894,7 +1033,9 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
   // to refuse them again every week. Rejected rows sit outside the live-
   // keyword unique index, so they never block a later owner suggestion.
   let rejected = 0;
-  if (failedJudge.length) {
+  if (failedJudge.length && shadow) {
+    rejected = failedJudge.length;
+  } else if (failedJudge.length) {
     const { error } = await db()
       .from("suggestions")
       .insert(
@@ -932,10 +1073,12 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
   // The per-project memory (keyword-research-cache.ts): dead seeds are not
   // expanded or proposed again for 30 days, and two runs in a row that add
   // nothing put rung 4 into back-off.
-  await Promise.all([
-    markDeadSeeds(project.id, deadSeeds, loc, lang),
-    writeResearchState(project.id, nextBackoffState(backoff, added.length, now.getTime(), RESEARCH_EVERY_MS)),
-  ]);
+  if (!shadow) {
+    await Promise.all([
+      markDeadSeeds(project.id, deadSeeds, loc, lang),
+      writeResearchState(project.id, nextBackoffState(backoff, added.length, now.getTime(), RESEARCH_EVERY_MS)),
+    ]);
+  }
   await stamp();
   // Thin = rung 1 came up short from a small pool and the ladder had to
   // widen (or there was no pool at all). A big market that merely spent its
@@ -967,6 +1110,18 @@ export async function runResearch(project: Project, now = new Date()): Promise<R
     ...(proposeError ? { proposeError } : {}),
     ...(judgeError ? { judgeError } : {}),
     ...(thin ? { note: thinNote(lang, rung, added.length, { topics: widerSearched, needed, soon }) } : {}),
+    ...(v2 ? { v2: true as const } : {}),
+    ...(fallback ? { fallback } : {}),
+    ...(topicLocked ? { topicLocked } : {}),
+    ...(shadow
+      ? {
+          shadow: true as const,
+          judgedSample: {
+            passed: passed.slice(0, 20).map((c) => ({ keyword: c.keyword, volume: c.volume, kd: c.kd, fit: Math.round(c.fit * 100) / 100, intent: c.intent, cluster: seedOf(c.keyword) })),
+            rejected: failedJudge.slice(0, 25).map((c) => ({ keyword: c.keyword, volume: c.volume, kd: c.kd, why: rejectionReason(c) })),
+          },
+        }
+      : {}),
     labsCalls: spend.seeds.labsCalls + spend.wider.labsCalls,
     labsCallsBilled: spend.seeds.labsCallsBilled + spend.wider.labsCallsBilled,
     spend: { seeds: round(spend.seeds), ...(rung === 4 ? { wider: round(spend.wider) } : {}) },
@@ -1140,7 +1295,7 @@ const PROPOSE_KEYWORDS_SYSTEM = [
   "Propose the exact phrases this site's readers type into Google: the problems, questions, decisions, costs and how-tos of the people the site serves - 2 to 6 words each, IN THE SITE'S LANGUAGE, the way people actually search (for a small veterinary clinic: \"puppy vaccination schedule\", \"cat not eating for 2 days\", \"dog dental cleaning cost\"). Specific beats broad: a phrase a small, new site could realistically rank for, never a one-word head term.",
   "Mix informational and buying-decision searches. No brand names of any business, this site's included. Nothing already covered by its existing articles or close to them. Nothing under a dead topic.",
   "Group them under up to 6 short topics (1 to 3 words), the subjects the site can build authority on, most central to what it offers first.",
-  'Reply with a JSON array only: [{"keyword": "...", "topic": "..."}], up to 30 items, no prose, no code fence.',
+  'Reply with a JSON array only: [{"keyword": "...", "topic": "..."}], as many items as the request asks for, no prose, no code fence.',
 ].join("\n");
 
 /**
@@ -1155,6 +1310,8 @@ async function proposeKeywords(
   profile: SiteProfile,
   existingTexts: string[],
   deadSeeds: string[],
+  count = MODEL_FIRST_KEYWORDS,
+  openTopics: string[] = [],
 ): Promise<{ keywords: Array<{ keyword: string; topic: string }>; costUsd: number }> {
   const data = (v: string | null | undefined) => String(v ?? "").replace(/[<>]/g, " ");
   const list = (xs: string[]) => (xs.length ? xs.map((x) => `- ${data(x)}`).join("\n") : "(none)");
@@ -1174,11 +1331,18 @@ async function proposeKeywords(
     "Existing articles and queued topics (do not repeat or come close):",
     list(titles),
     "",
+    ...(openTopics.length
+      ? [
+          "Topics this young site is building authority on now (use these exact topic names for every search that belongs to them; most searches should):",
+          list(openTopics),
+          "",
+        ]
+      : []),
     "Dead topics (searched before, nothing usable found; avoid):",
     list(deadSeeds.slice(0, 30)),
     "</site>",
     "",
-    `Propose up to ${MODEL_FIRST_KEYWORDS} searches in ${languageName(project.language_code)} as a JSON array of {"keyword", "topic"} objects.`,
+    `Propose up to ${count} searches in ${languageName(project.language_code)} as a JSON array of {"keyword", "topic"} objects.`,
   ].join("\n");
   const r = await generate({
     slot: "planner",
@@ -1206,7 +1370,7 @@ async function proposeKeywords(
     const rawTopic = typeof item?.topic === "string" ? item.topic.trim().replace(/\s+/g, " ") : "";
     const topic = rawTopic && rawTopic.split(" ").length <= 3 && rawTopic.length <= 40 ? seedKey(rawTopic) : "proposed";
     keywords.push({ keyword, topic });
-    if (keywords.length >= MODEL_FIRST_KEYWORDS) break;
+    if (keywords.length >= count) break;
   }
   return { keywords, costUsd: r.costUsd };
 }
@@ -1493,6 +1657,16 @@ async function seedsFor(project: Project, profile: SiteProfile, dead: Set<string
   const ordered = young
     ? [...gscSeeds, ...profile.categories.filter((c) => profileSeeds.includes(c)), ...heads, ...ownWords]
     : [...gscSeeds, ...tracked, ...ownWords, ...profile.categories.filter((c) => profileSeeds.includes(c)), ...heads, ...profile.tags.filter((t) => profileSeeds.includes(t))];
+  // The site's own name is never a seed: Search Console shows a brand query
+  // first for most sites, and Labs expands it into navigational noise
+  // ("easy render" bought "render easy" and "is it easy to render a wall",
+  // 2026-11-10 shadow run). A word of the name inside a longer seed stays.
+  const brand = new Set(
+    [profile.name, project.domain.replace(/^www\./, "").split(".")[0]]
+      .map((t) => normalizeKeyword((t ?? "").replace(/[-_]+/g, " ")))
+      .filter((t) => t.length >= 3)
+      .flatMap((t) => [t, t.replace(/\s+/g, "")]),
+  );
   const out: string[] = [];
   const seen = new Set<string>();
   let skippedDead = 0;
@@ -1502,6 +1676,7 @@ async function seedsFor(project: Project, profile: SiteProfile, dead: Set<string
     const k = normalizeKeyword((s ?? "").replace(/[-_]+/g, " "));
     const variant = k.replace(/\s+/g, "");
     if (k.length < 3 || seen.has(k) || seen.has(variant)) continue;
+    if (brand.has(k) || brand.has(variant)) continue;
     seen.add(variant);
     // A Search Console query can be a whole pasted error message ("autocompact
     // is thrashing: the context refilled…", 40 words, real impressions). Labs

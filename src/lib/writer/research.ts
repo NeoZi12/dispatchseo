@@ -67,7 +67,13 @@ export type SerpInputs = {
  *  platform's DataForSEO budget or daily ceiling said no - a vendor-side
  *  state that clears by itself, not a site with nothing configured. */
 export async function fetchSerp(project: Project, keyword: string): Promise<{ serp: SerpInputs } | { serp: null; why: "ceiling" | "none"; detail: string }> {
-  const creds = await credsForProject(project);
+  // The article's one SERP (~$0.005) is exempt from the FREE plan's monthly
+  // keyword-data budget (2026-11-10): that budget is checked before a
+  // research run, not during it, so a thin site's research could spend the
+  // whole $0.30 and then this call was refused - research paid for, no
+  // article. The free article count (2 a month) bounds this call on its own;
+  // the account-wide ceilings and every paid-plan budget still apply.
+  const creds = await credsForProject(project, { skipFreeBudget: true });
   if (creds) {
     const r = await serpResearch(keyword, creds, project.location_code, project.language_code, 20);
     return { serp: { organic: r.organic, peopleAlsoAsk: r.peopleAlsoAsk, relatedSearches: r.relatedSearches } };

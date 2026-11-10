@@ -1,4 +1,4 @@
-import { jaccard, tokens } from "../writer/evidence";
+import { tokens } from "../writer/evidence";
 
 // The autopilot's arithmetic, kept PURE (no database, no model, no clock of
 // its own) so every rule that decides "write today?", "pause this site?" or
@@ -471,9 +471,25 @@ export function normalizeKeyword(keyword: string): string {
   return keyword.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-/** Light plural folding so "running shoe" blocks "running shoes". */
+/** Light plural folding so "running shoe" blocks "running shoes", and
+ *  British/American -isation/-ization so "3d architectural visualisations"
+ *  and "3d architectural visualizations" read as one keyword (the
+ *  2026-11-10 shadow run would have queued both). */
 function stem(t: string): string {
-  return t.length > 3 && t.endsWith("s") && !t.endsWith("ss") ? t.slice(0, -1) : t;
+  const s = t.length > 3 && t.endsWith("s") && !t.endsWith("ss") ? t.slice(0, -1) : t;
+  return s.replace(/isation$/, "ization").replace(/ised$/, "ized");
+}
+
+/** Word overlap between two keywords with plurals and -isation/-ization
+ *  folded (the writer's evidence jaccard is exact on purpose: a fact's
+ *  wording must match; a keyword's variants are one article). */
+function keywordJaccard(a: string, b: string): number {
+  const A = new Set(tokens(a).map(stem));
+  const B = new Set(tokens(b).map(stem));
+  if (A.size === 0 || B.size === 0) return 0;
+  let inter = 0;
+  for (const x of A) if (B.has(x)) inter++;
+  return inter / (A.size + B.size - inter);
 }
 
 /**
@@ -539,7 +555,7 @@ export function filterCandidates(
     // kept: "how to choose a crm" and "how to choose crm software" are one
     // article (word overlap 0.67).
     const against = [...ctx.existingTexts, ...keptTexts];
-    if (against.some((t) => jaccard(t, c.keyword) >= DUPLICATE_JACCARD)) { dropped["near-duplicate"]++; continue; }
+    if (against.some((t) => keywordJaccard(t, c.keyword) >= DUPLICATE_JACCARD)) { dropped["near-duplicate"]++; continue; }
     // The capped shapes take room only once everything else passed; the room
     // lives on the context, so it holds across every rung of one run.
     if (ctx.pageTypeRoom && type === "versus") {
