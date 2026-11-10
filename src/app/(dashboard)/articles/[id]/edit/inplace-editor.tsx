@@ -89,6 +89,7 @@ export function InplaceEditor({
   repo,
   autoMerge,
   pendingEdit = false,
+  reviewing = false,
   styles,
   lang,
   dir,
@@ -106,6 +107,9 @@ export function InplaceEditor({
   autoMerge: boolean;
   /** An earlier edit's pull request is still open: saves join it. */
   pendingEdit?: boolean;
+  /** Waiting for the owner's Publish (article-review.ts): a save rewrites
+   *  the stored draft only, and the way on is back to its Publish button. */
+  reviewing?: boolean;
   /** The blog's stylesheet with the site's palette (hosted-blog.ts editorStyles). */
   styles: string;
   lang: string;
@@ -121,8 +125,10 @@ export function InplaceEditor({
   const historyRef = useRef<Snapshot[]>([]);
   const savedRef = useRef<Snapshot>({ title: initial.title, blocks: blocksRef.current });
   const [meta, setMeta] = useState(initial.metaDescription);
-  const [pasteOpen, setPasteOpen] = useState(false);
-  const [pasteText, setPasteText] = useState("");
+  // The HTML tab: the article as HTML code, edited as text, saved as is.
+  const [tab, setTab] = useState<"visual" | "html">("visual");
+  const [htmlText, setHtmlText] = useState("");
+  const [htmlBase, setHtmlBase] = useState("");
   const [copied, setCopied] = useState(false);
   const [tick, setTick] = useState(0);
   const bump = useCallback(() => setTick((t) => t + 1), []);
@@ -130,7 +136,9 @@ export function InplaceEditor({
   const lastSavedAt = useRef<number | null>(null);
 
   const bodyOf = (blocks: Block[]) => blocks.map((b) => b.source.trim()).filter(Boolean).join("\n\n");
-  const dirty = titleRef.current !== savedRef.current.title || meta !== initial.metaDescription || bodyOf(blocksRef.current) !== bodyOf(savedRef.current.blocks);
+  const dirtyVisual = titleRef.current !== savedRef.current.title || meta !== initial.metaDescription || bodyOf(blocksRef.current) !== bodyOf(savedRef.current.blocks);
+  // Typing in the HTML tab counts as a change before it reaches the blocks.
+  const dirty = dirtyVisual || (tab === "html" && htmlText !== htmlBase);
   void tick;
 
   // ---- the preview: plain DOM inside a shadow root --------------------------
@@ -532,50 +540,79 @@ export function InplaceEditor({
     };
   }, [styles, lang, dir, metaLine, mountBlocks, commitBlock, insertAfter, removeBlocks, openRaw, closeRaw, bump]);
 
-  // ---- the whole article as text: out to an AI, and back ---------------------
-  // Copied as Markdown with the title as its first line - the form every
-  // assistant reads and writes well. Pasting back takes Markdown or HTML
-  // (an assistant's answer is often HTML) and replaces everything.
+  // ---- the HTML tab ------------------------------------------------------------
+  // The article as HTML code (title as its H1, then the body), in one box with
+  // a Copy button. Whatever is in the box when the owner saves (or goes back
+  // to the visual tab) becomes the article; Markdown pasted there works too.
 
-  const copyArticle = useCallback(async () => {
-    const text = `# ${titleRef.current}\n\n${bodyOf(blocksRef.current)}\n`;
+  const articleHtml = useCallback(
+    () => `<h1>${esc(titleRef.current)}</h1>\n${renderMarkdown(bodyOf(blocksRef.current), { siteUrl }).html}\n`,
+    [siteUrl],
+  );
+
+  const applyPasted = useCallback(
+    (raw: string): boolean => {
+      let text = raw.replace(/\r\n/g, "\n").trim();
+      if (!text) return false;
+      // HTML when it opens with a tag and carries block tags anywhere.
+      if (/^\s*<[a-z!]/i.test(text) && /<(p|h[1-6]|ul|ol|li|table|pre|blockquote|div|br|hr|img)\b/i.test(text)) text = htmlToMarkdown(text);
+      const h1 = text.match(/^\s*#\s+([^\n]+)\n+/);
+      remember();
+      if (h1) {
+        // The title is plain text: marks in a pasted heading stay out of it.
+        titleRef.current = h1[1].replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/\*\*|__|`|(?<![A-Za-z0-9])[*_](?=\S)|(?<=\S)[*_](?![A-Za-z0-9])/g, "").replace(/\s+/g, " ").trim();
+        const el = rootRef.current?.querySelector<HTMLElement>("h1.title");
+        if (el) el.textContent = titleRef.current;
+        text = text.slice(h1[0].length);
+      }
+      blocksRef.current = withKeys(markdownBlocks(text));
+      mountBlocks();
+      bump();
+      return true;
+    },
+    [mountBlocks, bump],
+  );
+
+  /** The box's edits become the article (no-op when untouched). */
+  const takeHtml = useCallback(() => {
+    if (tab !== "html" || htmlText === htmlBase) return;
+    if (applyPasted(htmlText)) {
+      const fresh = articleHtml();
+      setHtmlText(fresh);
+      setHtmlBase(fresh);
+    }
+  }, [tab, htmlText, htmlBase, applyPasted, articleHtml]);
+
+  const showTab = useCallback(
+    (next: "visual" | "html") => {
+      if (next === tab) return;
+      if (next === "html") {
+        const h = articleHtml();
+        setHtmlText(h);
+        setHtmlBase(h);
+      } else {
+        takeHtml();
+      }
+      setTab(next);
+    },
+    [tab, articleHtml, takeHtml],
+  );
+
+  const copyHtml = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(htmlText);
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
     } catch {
-      setPasteText(text);
-      setPasteOpen(true);
+      // Clipboard blocked: the code is selectable in the box.
     }
-  }, []);
-
-  const replaceArticle = useCallback(() => {
-    let text = pasteText.replace(/\r\n/g, "\n").trim();
-    if (!text) return;
-    // HTML when it opens with a tag and carries block tags anywhere (a copy
-    // from Google Docs or a chat window starts with <meta> or a wrapper).
-    if (/^\s*<[a-z!]/i.test(text) && /<(p|h[1-6]|ul|ol|li|table|pre|blockquote|div|br|hr|img)\b/i.test(text)) text = htmlToMarkdown(text);
-    const h1 = text.match(/^\s*#\s+([^\n]+)\n+/);
-    remember();
-    if (h1) {
-      // The title is plain text: a bolded heading from a pasted document
-      // must not carry its marks into the page title.
-      titleRef.current = h1[1].replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/\*\*|__|`|(?<![A-Za-z0-9])[*_](?=\S)|(?<=\S)[*_](?![A-Za-z0-9])/g, "").replace(/\s+/g, " ").trim();
-      const el = rootRef.current?.querySelector<HTMLElement>("h1.title");
-      if (el) el.textContent = titleRef.current;
-      text = text.slice(h1[0].length);
-    }
-    blocksRef.current = withKeys(markdownBlocks(text));
-    mountBlocks();
-    setPasteOpen(false);
-    setPasteText("");
-    bump();
-  }, [pasteText, mountBlocks, bump]);
+  }, [htmlText]);
 
   // ---- saving ---------------------------------------------------------------
 
   const save = useCallback(() => {
     if (pending) return;
+    takeHtml();
     // Anything still focused is committed first.
     const active = rootRef.current?.activeElement as HTMLElement | null;
     active?.blur();
@@ -590,7 +627,7 @@ export function InplaceEditor({
       fd.set("body", bodyOf(blocksRef.current));
       startTransition(() => formAction(fd));
     }, 10);
-  }, [pending, id, slug, updatedAt, fileSha, meta, formAction]);
+  }, [pending, takeHtml, id, slug, updatedAt, fileSha, meta, formAction]);
 
   useEffect(() => {
     if (state?.ok && state.at !== lastSavedAt.current) {
@@ -621,8 +658,9 @@ export function InplaceEditor({
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
 
-  const where =
-    route === "repo" && pendingEdit
+  const where = reviewing
+    ? "Saving updates this draft. Nothing reaches your site until you publish it."
+    : route === "repo" && pendingEdit
       ? "An earlier edit is waiting on its pull request; saving adds to it."
       : route === "repo"
       ? autoMerge
@@ -643,20 +681,36 @@ export function InplaceEditor({
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
                 <path d="M15 18l-6-6 6-6" />
               </svg>
-              {dirty ? "Leave without saving" : "Back to the article"}
+              {dirty ? "Leave without saving" : reviewing ? "Back to review" : "Back to the article"}
             </Link>
             <p className="hidden min-w-0 truncate text-[13px] text-ink-muted md:block">{where}</p>
           </div>
           <div className="flex shrink-0 items-center gap-3">
             <Toast state={state} />
-            {state?.ok && !dirty && url ? (
+            {state?.ok && !dirty && reviewing ? (
+              // Saved: the next step is the Publish button on the review screen.
+              <Link href={`/articles/${encodeURIComponent(id)}`} className="text-[13px] font-medium text-ok underline decoration-ok/40 underline-offset-[3px] hover:decoration-ok">
+                Review and publish
+              </Link>
+            ) : state?.ok && !dirty && url ? (
               <a href={url} target="_blank" rel="noopener noreferrer" className="text-[13px] font-medium text-accent underline decoration-accent/40 underline-offset-[3px] hover:decoration-accent">
                 Open the live article
               </a>
             ) : null}
-            <Button type="button" variant="secondary" size="sm" onClick={() => setPasteOpen((o) => !o)} aria-expanded={pasteOpen}>
-              Edit with AI
-            </Button>
+            <div role="tablist" aria-label="Editor view" className="inline-flex rounded-lg border border-line bg-surface-2 p-0.5">
+              {(["visual", "html"] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === t}
+                  onClick={() => showTab(t)}
+                  className={cx("rounded-md px-3 py-1 text-[13px] font-medium transition-colors", tab === t ? "bg-surface text-ink shadow-sm" : "text-ink-muted hover:text-ink", FOCUS_RING)}
+                >
+                  {t === "visual" ? "Visual" : "HTML"}
+                </button>
+              ))}
+            </div>
             <Button type="button" variant="ghost" size="sm" onClick={undo} disabled={historyRef.current.length === 0}>
               Undo
             </Button>
@@ -667,56 +721,23 @@ export function InplaceEditor({
         </div>
       </div>
 
-      {pasteOpen ? (
-        <section aria-label="Edit with AI" className="mx-auto mt-5 max-w-[48rem] rounded-2xl border border-line-soft bg-surface p-5 sm:p-6">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-[17px] font-semibold text-ink">Edit with AI</h2>
-              <p className="mt-1 text-[13.5px] leading-relaxed text-ink-muted">Let ChatGPT or Claude rewrite the article for you, in three steps.</p>
-            </div>
-            <Button type="button" variant="ghost" size="sm" onClick={() => setPasteOpen(false)}>
-              Close
+      {tab === "html" ? (
+        // The article as HTML code. Select it and paste over it to replace
+        // the article; Save keeps what's in the box.
+        <section aria-label="HTML" className="mx-auto mt-5 max-w-5xl">
+          <div className="mb-2 flex items-center justify-between gap-4">
+            <p className="text-[13px] text-ink-muted">The article&apos;s HTML. Change it or paste over it, then Save.</p>
+            <Button type="button" variant="secondary" size="sm" onClick={copyHtml}>
+              {copied ? "Copied ✓" : "Copy"}
             </Button>
           </div>
-          <ol className="mt-5 space-y-5">
-            <li className="flex gap-4">
-              <Step n={1} />
-              <div className="min-w-0 flex-1">
-                <p className="text-[14px] font-medium text-ink">Copy the article</p>
-                <p className="mt-0.5 text-[13px] text-ink-muted">The whole article goes to your clipboard as text.</p>
-                <Button type="button" variant="secondary" size="sm" className="mt-2" onClick={copyArticle}>
-                  {copied ? "Copied ✓" : "Copy the article"}
-                </Button>
-              </div>
-            </li>
-            <li className="flex gap-4">
-              <Step n={2} />
-              <div className="min-w-0 flex-1">
-                <p className="text-[14px] font-medium text-ink">Paste it into ChatGPT or Claude and ask for your changes</p>
-                <p className="mt-0.5 text-[13px] text-ink-muted">
-                  For example: <span className="text-ink">&ldquo;Make the intro shorter and add a section about pricing. Give me the whole article back.&rdquo;</span>
-                </p>
-              </div>
-            </li>
-            <li className="flex gap-4">
-              <Step n={3} />
-              <div className="min-w-0 flex-1">
-                <p className="text-[14px] font-medium text-ink">Paste the answer here</p>
-                <p className="mt-0.5 text-[13px] text-ink-muted">It replaces the article below. Undo brings the old version back.</p>
-                <textarea
-                  value={pasteText}
-                  onChange={(e) => setPasteText(e.target.value)}
-                  rows={7}
-                  spellCheck={false}
-                  placeholder="Paste the whole article here"
-                  className={cx("mt-2 w-full resize-y rounded-lg border border-line bg-surface-2 px-3 py-2.5 text-[13.5px] leading-relaxed text-ink outline-none placeholder:text-ink-faint focus-visible:border-accent/60", FOCUS_RING)}
-                />
-                <Button type="button" variant="primary" size="sm" className="mt-2" onClick={replaceArticle} disabled={!pasteText.trim()}>
-                  Use this version
-                </Button>
-              </div>
-            </li>
-          </ol>
+          <textarea
+            value={htmlText}
+            onChange={(e) => setHtmlText(e.target.value)}
+            spellCheck={false}
+            aria-label="Article HTML"
+            className={cx("h-[70vh] w-full resize-y rounded-2xl border border-line bg-surface-2 px-4 py-3 font-mono text-[12.5px] leading-relaxed text-ink outline-none focus-visible:border-accent/60", FOCUS_RING)}
+          />
         </section>
       ) : null}
 
@@ -738,20 +759,16 @@ export function InplaceEditor({
       </div>
 
       {/* The article, as the page shows it. */}
-      <div className="mt-2 overflow-hidden rounded-3xl border border-line-soft">
+      <div className={cx("mt-2 overflow-hidden rounded-3xl border border-line-soft", tab === "html" ? "hidden" : "")}>
         <div ref={hostRef} />
       </div>
 
       <p className="mx-auto mt-4 max-w-[48rem] px-6 text-center text-[12.5px] text-ink-faint">
-        Click any text to change it, table cells too. Hover a block for Delete and more. Edit with AI rewrites the whole article for you. {route !== "hosted" ? "Shown in DispatchSEO's blog layout; your site's own design may differ. " : ""}
+        Click any text to change it, table cells too. Hover a block for Delete and more. The HTML tab shows the code, to copy or paste over. {route !== "hosted" ? "Shown in DispatchSEO's blog layout; your site's own design may differ. " : ""}
         <kbd className="rounded bg-surface-2 px-1">⌘S</kbd> saves, <kbd className="rounded bg-surface-2 px-1">⌘⇧Z</kbd> undoes.
       </p>
     </div>
   );
-}
-
-function Step({ n }: { n: number }) {
-  return <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-[13px] font-semibold text-accent">{n}</span>;
 }
 
 // ---- caret helpers --------------------------------------------------------------

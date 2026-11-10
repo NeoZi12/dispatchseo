@@ -58,7 +58,7 @@ import type { SiteVerdict } from "@/components/setup-stage/scenes";
 // choosing the free plan on the plan step is recorded there too ("free").
 // The account always exists BEFORE checkout, so every payment has an owner.
 
-export type SetupStage = "address" | "checkout" | "github" | "google" | "done";
+export type SetupStage = "address" | "checkout" | "publishing" | "github" | "google" | "done";
 
 /** What the address step found, kept in a signed cookie until checkout. */
 export type SetupSite = {
@@ -766,6 +766,11 @@ export async function resolveSetupStage(urlPick: PaidPlanPick | null = null): Pr
   const state = { ...base, sub, project, checkoutPlan, legacy: writerMode(project) !== "hosted" };
   if (project.setup_connected_at) return { ...state, stage: "done" };
   if (planDue) return { ...state, stage: "checkout" };
+  // Publish automatically, or wait for my review (article-review.ts). Asked
+  // once, right after the plan, so it is settled long before the first
+  // article finishes. Strictly null: a DB without migration 0089 reads the
+  // column as undefined, and asking there would ask forever.
+  if (project.publish_mode === null && !state.legacy) return { ...state, stage: "publishing" };
   if (!project.github_repo) return { ...state, stage: "github" };
   if (!project.gsc_oauth_refresh_token) return { ...state, stage: "google" };
   return { ...state, stage: "done" };

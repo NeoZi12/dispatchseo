@@ -3,7 +3,8 @@
 import { PixelReporter } from "@/components/pixel-dispatcher";
 import { CardMascot } from "@/components/card-mascot";
 import { cx } from "@/components/ui/styles";
-import { BTN_PRIMARY, BTN_QUIET, Check, GithubMark, StepRow, type StepState } from "./primitives";
+import { BTN_PRIMARY, BTN_PUBLISH, BTN_QUIET, Check, GithubMark, StepRow, type StepState } from "./primitives";
+import { Arrow } from "./scenes";
 import { FrameStrip } from "./strip";
 import { SHOTS } from "./shot";
 import s from "./stage.module.css";
@@ -44,6 +45,10 @@ export type FirstArticleProgress = {
    *  (repo-site-check.ts); `href` starts GitHub's repo picker, and on the way
    *  back we find the right repo ourselves and publish the waiting article. */
   blocker?: { kind: "repo"; repo: string; empty: boolean; domain: string; href: string; topic: string | null } | null;
+  /** Review before publishing (article-review.ts): the first article is
+   *  written and waits for the owner's Publish. `href` opens it in the
+   *  dashboard (/articles/<id>), where it can be read, edited and published. */
+  review?: { href: string; title: string | null } | null;
 };
 
 function StuckDetail({ note }: { note: StuckNote }) {
@@ -160,11 +165,55 @@ function HeldArticle({ topic }: { topic: string | null }) {
   );
 }
 
+type Review = NonNullable<FirstArticleProgress["review"]>;
+
+/** Review before publishing: the first article is written and waits for the
+ *  owner. Sits under the headline as the screen's one action - the article
+ *  as a page, its title, and the green button that releases it. */
+function ReviewPanel({ r, topic }: { r: Review; topic: string | null }) {
+  const title = r.title ?? topic;
+  return (
+    <div
+      className={cx("relative mt-6 flex flex-col gap-4 overflow-hidden rounded-2xl border border-ok/25 bg-surface-2/60 p-4 sm:flex-row sm:items-center sm:gap-5 sm:p-5", s.riseIn)}
+      style={{ "--d": "120ms" } as React.CSSProperties}
+    >
+      <span aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(70%_120%_at_0%_50%,var(--color-ok-soft),transparent_70%)]" />
+      <div className="relative flex min-w-0 flex-1 items-center gap-4">
+        <span aria-hidden="true" className="relative grid h-[68px] w-[54px] shrink-0 place-items-center rounded-lg border border-line bg-surface shadow-[0_8px_20px_-12px_rgba(0,0,0,0.8)]">
+          <span className="flex w-[30px] flex-col gap-[4px]">
+            <span className="h-[3px] w-full rounded-full bg-ink-muted/70" />
+            <span className="h-[3px] w-2/3 rounded-full bg-ink-muted/70" />
+            <span className="mt-1 h-[2px] w-full rounded-full bg-ink-faint/40" />
+            <span className="h-[2px] w-full rounded-full bg-ink-faint/40" />
+            <span className="h-[2px] w-4/5 rounded-full bg-ink-faint/40" />
+          </span>
+          <span className="absolute -bottom-1.5 -right-1.5 grid h-5 w-5 place-items-center rounded-full bg-ok text-canvas ring-2 ring-surface">
+            <Check className="h-3 w-3" />
+          </span>
+        </span>
+        <div className="min-w-0">
+          <p className="line-clamp-2 text-[15.5px] font-semibold leading-snug text-ink">{title ? <>&ldquo;{title}&rdquo;</> : "Your first article"}</p>
+          <p className="mt-1 text-[13.5px] text-ink-muted">Written and fact-checked. Waiting for you.</p>
+        </div>
+      </div>
+      <a href={r.href} className={cx(BTN_PUBLISH, "relative w-full shrink-0 sm:w-auto")}>
+        Review and publish
+        <Arrow />
+      </a>
+    </div>
+  );
+}
+
 export function FirstArticleWait({ siteName, progress: p, estimate = "usually 20 to 60 minutes" }: { siteName: string; progress: FirstArticleProgress; estimate?: string }) {
   const live = p.publishing === "done";
   // Waiting on the owner (the card above says what): no "close this tab" and
   // no "nothing else to do" - both would contradict it.
-  const blocked = Boolean(p.blocker) && !live;
+  // Written and held for the owner's Publish (review before publishing).
+  const review = !live && p.review ? p.review : null;
+  // The wrong-repo card's own wording stays its own: review is "held" too,
+  // but nothing about it is a repository.
+  const repoBlocked = Boolean(p.blocker) && !live;
+  const blocked = repoBlocked || (Boolean(review) && !live);
   const stuck = p.stuck ?? {};
   const note = (k: ProgressStep) => (stuck[k] ? <StuckDetail note={stuck[k]!} /> : undefined);
   return (
@@ -187,12 +236,12 @@ export function FirstArticleWait({ siteName, progress: p, estimate = "usually 20
                     </a>
                     . The next one is already scheduled.
                   </>
+                ) : review ? (
+                  <>It goes live when you press Publish.</>
+                ) : blocked ? (
+                  <>Written and ready, but it can&apos;t go out until you connect your site&apos;s repository above. Then it goes live right away, and we&apos;ll email you.</>
                 ) : (
-                  blocked ? (
-                    <>Written and ready, but it can&apos;t go out until you connect your site&apos;s repository above. Then it goes live right away, and we&apos;ll email you.</>
-                  ) : (
-                    <>This {estimate}. You can close this tab; we&apos;ll email you when it&apos;s live.</>
-                  )
+                  <>This {estimate}. You can close this tab; we&apos;ll email you when it&apos;s live.</>
                 )}
               </p>
             </div>
@@ -201,6 +250,7 @@ export function FirstArticleWait({ siteName, progress: p, estimate = "usually 20
               <PixelReporter mood={blocked ? "idle" : "working"} flag={blocked} decorative className="relative w-full" />
             </div>
           </div>
+          {review ? <ReviewPanel r={review} topic={p.topic ?? null} /> : null}
         </div>
 
         <ol className="m-0 list-none px-6 pb-6 pt-5 sm:px-8">
@@ -211,9 +261,15 @@ export function FirstArticleWait({ siteName, progress: p, estimate = "usually 20
           <StepRow index={2} state={p.writing} label={p.topic ? `Writing “${p.topic}”` : "Writing your first article"} detail={note("writing") ?? (p.writing !== "todo" ? "Facts from real sources, checked figure by figure." : undefined)} />
           <StepRow
             index={3}
-            state={blocked ? "you" : p.publishing}
-            label={blocked ? "Connect your site\u2019s repository" : "Publishing to your site"}
-            detail={blocked ? "We can\u2019t publish until you do. Use the button above; the article goes live right after." : (note("publishing") ?? (p.publishing === "done" ? "Live, with its cover, links and a link back to you." : undefined))}
+            state={repoBlocked || review ? "you" : p.publishing}
+            label={repoBlocked ? "Connect your site\u2019s repository" : review ? "Waiting for your review" : "Publishing to your site"}
+            detail={
+              repoBlocked
+                ? "We can\u2019t publish until you do. Use the button above; the article goes live right after."
+                : review
+                  ? "Read it, change anything you like, then press Publish."
+                  : (note("publishing") ?? (p.publishing === "done" ? "Live, with its cover, links and a link back to you." : undefined))
+            }
           />
         </ol>
         {stuck.google ? (

@@ -190,6 +190,7 @@ const PROBES: Probe[] = [
   // 0088: Google's hour-by-hour numbers (lib/gsc-hourly.ts). Without it the
   // hourly-gsc cron notes a skip and the day page says the hours are on their way.
   { migration: "0088_gsc_hourly", table: "gsc_hourly", column: "hours" },
+  { migration: "0089_publish_mode", table: "projects", column: "publish_mode" },
 ];
 
 // Migrations that genuinely CANNOT be probed through this mechanism, with the

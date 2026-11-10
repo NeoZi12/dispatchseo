@@ -806,6 +806,207 @@ export function PlanScene({
   );
 }
 
+// ------------------------------------------------------------- publishing
+
+export type PublishMode = "auto" | "review";
+
+type RouteNode = { key: string; label: string; icon: React.ReactNode; stop?: boolean };
+
+const DOC_ICON = (
+  <svg viewBox="0 0 20 20" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M5.5 2.75h6l3 3v11.5h-9z" />
+    <path d="M11.5 2.75v3h3M8 10h4.5M8 13h3" />
+  </svg>
+);
+const YOU_ICON = (
+  <svg viewBox="0 0 20 20" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <circle cx="10" cy="7" r="3" />
+    <path d="M4.5 16.5c.8-2.9 3-4.5 5.5-4.5s4.7 1.6 5.5 4.5" />
+  </svg>
+);
+const SITE_ICON = (
+  <svg viewBox="0 0 20 20" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="2.75" y="4" width="14.5" height="12" rx="2" />
+    <path d="M2.75 7.5h14.5M5.25 5.75h.01M7.25 5.75h.01" />
+  </svg>
+);
+
+/** The route an article takes, drawn: article, (you,) your site. On the
+ *  picked card a dot carries it along, straight through or with a stop. */
+function Route({ nodes, on }: { nodes: RouteNode[]; on: boolean }) {
+  const stops = nodes.some((n) => n.stop);
+  return (
+    <span aria-hidden="true" className="block rounded-xl border border-line-soft bg-surface-2/60 px-4 pb-3 pt-4">
+      <span className="relative flex items-start justify-between">
+        {/* The line runs centre to centre of the end nodes (w-14, h-9). */}
+        <span className="absolute inset-x-[28px] top-[18px] h-px bg-line">
+          {on ? (
+            <span
+              className={cx(
+                "absolute top-1/2 -ml-1 -mt-1 h-2 w-2 rounded-full bg-accent shadow-[0_0_10px_rgba(167,139,250,0.8)]",
+                stops ? cx("left-1/2", s.travelStop) : cx("left-full", s.travelDirect),
+              )}
+            />
+          ) : null}
+        </span>
+        {nodes.map((n) => (
+          <span key={n.key} className="relative flex w-14 flex-col items-center gap-1.5">
+            <span
+              className={cx(
+                "grid h-9 w-9 place-items-center rounded-lg border bg-surface transition-colors",
+                on && n.stop ? "border-accent/50 text-accent" : "border-line text-ink-muted",
+              )}
+            >
+              {n.icon}
+            </span>
+            <span className={cx("whitespace-nowrap text-[11.5px] font-medium", on && n.stop ? "text-ink" : "text-ink-faint")}>{n.label}</span>
+          </span>
+        ))}
+      </span>
+    </span>
+  );
+}
+
+function ModeCard({
+  mode,
+  title,
+  line,
+  nodes,
+  recommended,
+  on,
+  busy,
+  onPick,
+}: {
+  mode: PublishMode;
+  title: string;
+  line: string;
+  nodes: RouteNode[];
+  recommended?: boolean;
+  on: boolean;
+  busy?: boolean;
+  onPick: (m: PublishMode) => void;
+}) {
+  // The plan step's card, one step earlier: same border, the same 2px violet
+  // border and glow when picked, the same round radio at the top right.
+  return (
+    <label
+      className={cx(
+        "relative flex cursor-pointer flex-col gap-4 rounded-2xl border bg-surface p-4 transition duration-200 motion-reduce:transition-none sm:p-5",
+        on
+          ? "border-2 border-accent-strong shadow-[0_0_60px_-24px_rgba(139,92,246,0.7)]"
+          : "border-line hover:-translate-y-0.5 hover:border-ink-faint/50 motion-reduce:hover:translate-y-0",
+        "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent/70 has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-surface",
+        busy ? "pointer-events-none opacity-60" : "",
+      )}
+    >
+      <input type="radio" name="publish-mode" value={mode} checked={on} onChange={() => onPick(mode)} disabled={busy} className="sr-only" />
+      <Route nodes={nodes} on={on} />
+      <span className="block">
+        <span className="flex items-center justify-between gap-3">
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="text-[16.5px] font-bold text-ink">{title}</span>
+            {recommended ? <span className="rounded-md bg-accent-soft px-1.5 py-0.5 text-[11.5px] font-semibold text-accent">Recommended</span> : null}
+          </span>
+          <span
+            aria-hidden="true"
+            className={cx("grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full border-2 transition-colors", on ? "border-accent bg-accent" : "border-line")}
+          >
+            {on ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
+          </span>
+        </span>
+        <span className="mt-1.5 block text-[14px] leading-relaxed text-ink-muted">{line}</span>
+      </span>
+    </label>
+  );
+}
+
+/** The two choices as cards, each drawing the route an article takes. The
+ *  setup's Publishing step and the dashboard's switch (Articles, Settings)
+ *  render this same pair, so the choice looks the same wherever it's made. */
+export function PublishModeCards({
+  mode,
+  onMode,
+  busy,
+  recommended = true,
+}: {
+  mode: PublishMode;
+  onMode: (m: PublishMode) => void;
+  busy?: boolean;
+  /** The "Recommended" chip on the automatic card (setup asks; the
+   *  dashboard just switches). */
+  recommended?: boolean;
+}) {
+  return (
+    <fieldset className="min-w-0">
+      <legend className="sr-only">How articles go live</legend>
+      <div className="grid gap-3.5 sm:grid-cols-2">
+        <ModeCard
+          mode="auto"
+          title="Publish automatically"
+          line="Each article goes live on your site the moment it's ready."
+          nodes={[
+            { key: "doc", label: "Article", icon: DOC_ICON },
+            { key: "site", label: "Your site", icon: SITE_ICON },
+          ]}
+          recommended={recommended}
+          on={mode === "auto"}
+          busy={busy}
+          onPick={onMode}
+        />
+        <ModeCard
+          mode="review"
+          title="Let me review each one"
+          line="We email you when one is ready. Read it, edit if you like, and press Publish."
+          nodes={[
+            { key: "doc", label: "Article", icon: DOC_ICON },
+            { key: "you", label: "You", icon: YOU_ICON, stop: true },
+            { key: "site", label: "Your site", icon: SITE_ICON },
+          ]}
+          on={mode === "review"}
+          busy={busy}
+          onPick={onMode}
+        />
+      </div>
+    </fieldset>
+  );
+}
+
+/** Between the plan and GitHub: asked once, changeable in Settings. Each
+ *  card draws the route an article takes, so the difference is seen, not
+ *  read: straight to the site, or a stop with the owner first. */
+export function PublishModeScene({
+  mode,
+  onMode,
+  onContinue,
+  busy,
+  error,
+}: {
+  mode: PublishMode;
+  onMode: (m: PublishMode) => void;
+  onContinue: () => void;
+  busy?: boolean;
+  error?: string | null;
+}) {
+  return (
+    <SceneCard
+      id="publishing"
+      title="How should articles go live?"
+      action={
+        <>
+          <button type="button" className={BTN_PRIMARY} onClick={onContinue} disabled={busy}>
+            Continue
+            <Arrow />
+          </button>
+          <span className="text-[13px] text-ink-faint">You can change this any time in Settings.</span>
+        </>
+      }
+    >
+      <PublishModeCards mode={mode} onMode={onMode} busy={busy} />
+      {error ? <p className="mt-5 rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-[14px] text-ink">{error}</p> : null}
+    </SceneCard>
+  );
+}
+
 export function Arrow() {
   return (
     <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">

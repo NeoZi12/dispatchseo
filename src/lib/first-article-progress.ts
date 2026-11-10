@@ -124,6 +124,7 @@ export async function firstArticleProgress(
 
   const stuck: Partial<Record<ProgressStep, StuckNote>> = {};
   let blocker: FirstArticleProgress["blocker"] = null;
+  let review: FirstArticleProgress["review"] = null;
 
   // --- blog: done only once the site's own /blog answers from us
   let blog: FirstArticleProgress["blog"] = "doing";
@@ -210,7 +211,10 @@ export async function firstArticleProgress(
     } else {
       writing = "done";
       publishing = "doing";
-      if (newest.status === "needs_setup") {
+      // Written and waiting for the owner's Publish (article-review.ts):
+      // the card's one job now is to hand them the article.
+      if (newest.status === "review" && newest.draftId) review = { href: `/articles/${encodeURIComponent(newest.draftId)}`, title: newest.title ?? null };
+      else if (newest.status === "needs_setup") {
         const mismatch = target === "github" ? repoMismatchOf(project) : null;
         if (mismatch) blocker = { kind: "repo", repo: mismatch.repo, empty: mismatch.empty, domain: `${project.domain}${sitePath(project)}`, href: `/api/github/install/start?slug=${encodeURIComponent(project.slug)}`, topic: newest.title ?? null };
         // A repo is connected but no folder in it looks like where its posts
@@ -237,6 +241,6 @@ export async function firstArticleProgress(
   return {
     live: false,
     launched: true,
-    progress: { blog, google, reading, topics, writing, publishing, keywordsFound, topic, liveUrl: null, stuck, blocker },
+    progress: { blog, google, reading, topics, writing, publishing, keywordsFound, topic, liveUrl: null, stuck, blocker, review },
   };
 }

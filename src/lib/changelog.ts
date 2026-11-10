@@ -74,6 +74,10 @@ export type ChangelogEntry = {
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "new",
+    text: "You can now read each article before it goes live. Setup asks once: publish automatically, or wait for my review. With review on, we email you when an article is ready, and it waits on your dashboard until you press Publish. You can read it as it will look on your blog, edit it, or drop it. Change your mind any time in Settings.",
+  },
+  {
+    kind: "new",
     text: "Your overview now shows your three latest articles under the timeline, with when each went live, how often Google showed it and how many people clicked.",
   },
   {

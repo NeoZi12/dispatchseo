@@ -28,8 +28,9 @@ import {
 //     query before the site is stopped (the stored snapshots hold only the
 //     top 100 pages a day).
 //
-// A pause stops research and new runs; drafts already finished still publish
-// (their cost is spent, and the owner can see them). It NEVER lifts itself:
+// A pause stops research, new runs and publishing (job-handlers/publish.ts
+// holds a finished article until the owner resumes; only an article the owner
+// approves by hand goes out meanwhile). It NEVER lifts itself:
 // the conditions that tripped it rarely clear on their own, and a brake that
 // releases silently is not a brake. Only the owner resumes (dashboard or the
 // resume_writer MCP tool). A resume stamps writer_resumed_at, after which the
@@ -210,6 +211,20 @@ export async function resumeWriter(projectId: string): Promise<void> {
   if (error) throw new Error(`could not resume the writer: ${error.message}`);
   const slug = (data as { slug: string } | null)?.slug;
   if (!slug) return;
+  // Articles that finished while the Dispatcher was paused held at the
+  // publish job (job-handlers/publish.ts); send them on now. Waiting for
+  // review stays waiting - that one is the owner's Publish, not ours.
+  const { data: held } = await db()
+    .from("article_drafts")
+    .select("id")
+    .eq("project_id", projectId)
+    .in("status", ["accepted", "blocked_setup"])
+    .not("rendered_html", "is", null)
+    .limit(50);
+  if (held?.length) {
+    const { publishDraftNow } = await import("@/lib/job-handlers/draft-status");
+    for (const d of held as { id: string }[]) await publishDraftNow(projectId, d.id).catch(() => undefined);
+  }
   // Clears an auto-pause from the banner: the newest row of the job becomes
   // ok. Only when there IS a failed row to clear - a manual pause never
   // logged one, and an ok row nobody needed would just add a job to the run

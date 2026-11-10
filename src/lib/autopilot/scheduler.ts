@@ -14,6 +14,7 @@ import { keywordDataBlocked, RESEARCH_EVERY_MS, runResearch, type ResearchOutcom
 import { weekUsage } from "./usage";
 import { rampFor } from "./ramp";
 import { pauseWriter } from "./pause";
+import { countAwaitingReview, MAX_WAITING_FOR_REVIEW, reviewsArticles } from "@/lib/article-review";
 
 export { weekUsage, type WeekUsage } from "./usage";
 
@@ -141,6 +142,16 @@ export async function runScheduler(
   if (publishTarget(project) === "hosted" && !project.hosted_rewrite_live_at && (await hasPublishedHostedArticle(project.id))) {
     const live = await rewriteLiveCached(project).catch(() => false);
     if (!live) return { skipped: `setup incomplete: your /${hostedPath(project)} isn't forwarding yet` };
+  }
+
+  // Review before publishing: articles the owner hasn't read yet. A few
+  // waiting is normal (they review weekly); a pile means nobody is reading,
+  // and every further article is spend that never reaches the site. The
+  // next one starts as soon as they publish or drop one. A quiet skip, not
+  // a fault - it is the owner's pace, not a breakage.
+  if (reviewsArticles(project)) {
+    const waiting = await countAwaitingReview(project.id);
+    if (waiting >= MAX_WAITING_FOR_REVIEW) return { skipped: `waiting on the owner: ${waiting} articles ready for review` };
   }
 
   // The profile: research seeds from it and the writer judges topics against

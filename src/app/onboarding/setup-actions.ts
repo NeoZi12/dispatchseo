@@ -20,6 +20,8 @@ import { mintEmailLinkNonce } from "@/lib/email-link-nonce";
 import { rateLimitHit, rateLimitKey } from "@/lib/rate-limit";
 import { clientIp } from "@/lib/login-lockout";
 import { chooseGithubRepo } from "@/app/actions";
+import { getProjectBySlug } from "@/lib/projects";
+import { setPublishMode } from "@/lib/article-review";
 import {
   createHostedProjectForUser,
   DEVICE_COOKIE,
@@ -171,4 +173,19 @@ export async function pickSetupRepo(slug: string, repo: string): Promise<{ ok: t
   const res = await chooseGithubRepo(null, fd);
   if (!res) return { error: "Something went wrong - try again." };
   return "error" in res ? { error: res.error } : { ok: true };
+}
+
+/** The Publishing step: publish each article automatically, or wait for my
+ *  review (lib/article-review.ts). Asked once, of the site being set up;
+ *  Settings changes it later. */
+export async function choosePublishMode(slug: string, mode: "auto" | "review"): Promise<{ ok: true } | { error: string }> {
+  const user = await currentUser();
+  if (!user) return { error: "Sign in again to continue." };
+  if (mode !== "auto" && mode !== "review") return { error: "Pick one of the two." };
+  const project = await getProjectBySlug(slug);
+  if (!project || project.owner_user_id !== user.id) return { error: "That site isn't yours to set up." };
+  const r = await setPublishMode(project, mode);
+  if (!r.ok) return { error: r.error };
+  revalidatePath("/onboarding");
+  return { ok: true };
 }

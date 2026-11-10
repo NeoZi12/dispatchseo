@@ -186,7 +186,7 @@ export async function spendCeilingReason(projectId: string, now = new Date()): P
 }
 
 export async function writerStartGate(project: Project, opts: { gated?: boolean } = {}, now = new Date()): Promise<string | null> {
-  if (project.writer_paused_at) return "The autopilot is paused for this site. Resume it first.";
+  if (project.writer_paused_at) return "The Dispatcher is paused for this site. Resume it first.";
   const missing = missingCredentials();
   if (missing.length) return `The hosted writer has no model credentials on this deploy (${missing.join("; ")}).`;
   const ceiling = await spendCeilingReason(project.id, now);

@@ -11,6 +11,7 @@ import { isFreeProject } from "@/lib/billing";
 import { backendBaseUrl } from "@/lib/pipeline-pack";
 import { enqueue } from "@/lib/jobs";
 import { EDIT_LIMITS, type ArticleRoute } from "@/lib/article-owner-shared";
+import { publishRoute } from "@/lib/job-handlers/draft-status";
 
 // The owner's two levers over a LIVE article: change it, or take it down.
 // (LATER.md, "Owner control over articles": the first two of three, shipped
@@ -167,7 +168,11 @@ function routeOf(project: Project, row: Row): ArticleRoute | null {
 export async function loadArticleSource(project: Project, draftId: string, opts: { repoBody?: boolean } = {}): Promise<ArticleSource | null> {
   const row = await loadRow(project.id, draftId);
   if (!row) return null;
-  const route = routeOf(project, row);
+  // Waiting for the owner's review (article-review.ts): nothing is on the
+  // site yet, so the route is where it WILL go, and the stored source is
+  // the article - editable, never removable (dropping it is "Don't publish").
+  const inReview = row.status === "review";
+  const route = inReview ? upcomingRoute(project) : routeOf(project, row);
   const live = row.status === "published";
   let body = row.markdown.replace(LEADING_H1, "");
   let fileSha: string | null = null;
@@ -219,10 +224,17 @@ export async function loadArticleSource(project: Project, draftId: string, opts:
     prUrl,
     pendingEdit,
     fileSha,
-    canEdit: changeable,
+    canEdit: changeable || inReview,
     canRemove: changeable,
     reason,
   };
+}
+
+/** Where an article that hasn't gone out yet will go, as an ArticleRoute;
+ *  null when the site has nowhere to publish (setup unfinished). */
+function upcomingRoute(project: Project): ArticleRoute | null {
+  const r = publishRoute(project);
+  return r === "hosted" || r === "repo" || r === "wordpress" ? r : null;
 }
 
 type PendingPr = { prNumber: number; url: string; previous: Previous | null; previousPrUrl: string | null; /** Where the pending text is read from: the branch, or a commit on it. */ branch: string; /** Open on GitHub with no watcher left: a chain that died. */ orphan: boolean };
@@ -308,6 +320,7 @@ export async function editArticle(project: Project, draftId: string, input: Edit
   if (!row) return { ok: false, error: "That article is no longer on this site." };
   if (row.status === "removed") return { ok: false, error: "That article was removed from your site, so there is nothing to edit." };
   if (row.status === "removing") return { ok: false, error: "A removal is pending for this article. Merge or close its pull request first." };
+  if (row.status === "review") return editReviewDraft(project, row, input);
   if (row.status !== "published") return { ok: false, error: "Only a live article can be edited from here. This one hasn't gone out yet." };
   if (input.expectedUpdatedAt && input.expectedUpdatedAt !== row.updated_at) return STALE;
   const route = routeOf(project, row);
@@ -432,15 +445,53 @@ export async function editArticle(project: Project, draftId: string, input: Edit
   };
 }
 
+/** An article waiting for the owner's review (article-review.ts): nothing is
+ *  on their site, so the edit is the stored source, re-rendered the way the
+ *  finish rendered it. The publish job renders again from this markdown when
+ *  the owner presses Publish, so what they approve is what goes out. Same
+ *  validation and the same compare-and-swap as a live edit; the repo route's
+ *  build-safety check runs now rather than surfacing as a broken PR later. */
+async function editReviewDraft(project: Project, row: Row, input: EditInput): Promise<OwnerResult> {
+  if (input.expectedUpdatedAt && input.expectedUpdatedAt !== row.updated_at) return STALE;
+  const hadH1 = LEADING_H1.test(row.markdown);
+  const currentBody = row.markdown.replace(LEADING_H1, "").trim();
+  const title = (input.title ?? row.title).trim().replace(/\s+/g, " ");
+  const metaDescription = (input.metaDescription ?? row.meta_description ?? "").trim();
+  const body = (input.body ?? currentBody).replace(/\r\n/g, "\n").replace(LEADING_H1, "").trim();
+  if (title.length < 3) return { ok: false, error: "Give it a title." };
+  if (title.length > EDIT_LIMITS.title) return { ok: false, error: `Keep the title under ${EDIT_LIMITS.title} characters.` };
+  if (metaDescription.length > EDIT_LIMITS.metaDescription) return { ok: false, error: `Keep the description under ${EDIT_LIMITS.metaDescription} characters.` };
+  if (body.length < EDIT_LIMITS.bodyMin) return { ok: false, error: "The article needs a body - at least a short paragraph." };
+  if (body.length > EDIT_LIMITS.bodyMax) return { ok: false, error: "That's too long for one article." };
+  if (title === row.title && metaDescription === (row.meta_description ?? "").trim() && body === currentBody) {
+    return { ok: true, message: "Nothing changed, so nothing to save." };
+  }
+  const markdown = hadH1 ? `# ${title}\n\n${body}\n` : `${body}\n`;
+  const route = publishRoute(project);
+  if (route === "repo") {
+    const { mdxSafety } = await import("@/lib/writer/mdx-safety");
+    const safety = await mdxSafety(markdown);
+    if (!safety.ok) return { ok: false, error: `This can't go into your repo as written - it would break the build: ${safety.problems[0]}.` };
+  }
+  const now = new Date().toISOString();
+  const finished = await renderDraftForRoute(project, { ...row, title, meta_description: metaDescription, markdown }, route, now);
+  // WordPress gets its structured data once WordPress names the permalink
+  // (finish.ts says why); every other route carries it with the HTML.
+  const html = route === "wordpress" ? finished.html : finished.html + schemaScript(finished.schema);
+  const saved = await claim(row, now, { title, meta_description: finished.excerpt, markdown, rendered_html: html }, "review");
+  if (!saved) return STALE;
+  return { ok: true, message: "Saved. Publish it when you're ready." };
+}
+
 /** The claim: still live, unchanged since it was read, and from now on ours
  *  (updated_at moves, so anyone else who read the old value is refused).
  *  Extra fields ride along when the claim IS the whole change (hosted). */
-async function claim(row: Row, now: string, fields: Record<string, unknown> = {}): Promise<boolean> {
+async function claim(row: Row, now: string, fields: Record<string, unknown> = {}, status: "published" | "review" = "published"): Promise<boolean> {
   const { data, error } = await db()
     .from("article_drafts")
     .update({ ...fields, updated_at: now })
     .eq("id", row.id)
-    .eq("status", "published")
+    .eq("status", status)
     .eq("updated_at", row.updated_at)
     .select("id");
   if (error) throw new Error(`could not save the article: ${error.message}`);

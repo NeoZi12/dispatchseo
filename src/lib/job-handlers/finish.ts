@@ -6,6 +6,8 @@ import { finishArticle, schemaScript } from "@/lib/article-render";
 import { enqueue } from "@/lib/jobs";
 import { dryDraftBlocked, parkDryDraft } from "./dry-guard";
 import type { Job } from "@/lib/jobs";
+import { canPublishNow, REVIEW_STATUS, reviewsArticles } from "@/lib/article-review";
+import { notifyArticleReady } from "@/lib/review-email";
 
 // Turns an accepted draft into a page that is ready to go out.
 //
@@ -190,6 +192,19 @@ export async function runFinishJob(job: Job): Promise<void> {
   const html =
     route === "wordpress" ? finished.html : finished.html + schemaScript(finished.schema);
 
+  // REVIEW BEFORE PUBLISHING (article-review.ts). A site whose owner chose to
+  // read each article first parks it here, finished and rendered, instead of
+  // queueing the publish; the owner's Publish queues it later. Only on a
+  // route that could publish at all - an article with nowhere to go is a
+  // setup problem first (blocked_setup), and reviewing it would only end in
+  // a Publish button that cannot work.
+  const publishes = route === "wordpress" || route === "repo" || route === "hosted";
+  // canPublishNow also rules out a connected repo that isn't the site: that
+  // article takes the normal path, the repo publish parks it, and the
+  // wrong-repo card shows - it comes back for review once the right repo is
+  // connected (the publish job's parkForReviewIfDue).
+  const review = publishes && reviewsArticles(project) && canPublishNow(project);
+
   const { error } = await db()
     .from("article_drafts")
     .update({
@@ -202,15 +217,23 @@ export async function runFinishJob(job: Job): Promise<void> {
       rendered_html: html,
       meta_description: finished.excerpt,
       cover_url: coverUrl,
-      status: route === "blocked" ? "blocked_setup" : "accepted",
+      status: route === "blocked" ? "blocked_setup" : review ? REVIEW_STATUS : "accepted",
       updated_at: now,
     })
     .eq("id", row.id);
   if (error) throw new Error(`could not save the finished article: ${error.message}`);
 
+  // Parked for the owner: tell them, and stop. Best-effort (the dashboard
+  // shows it either way), and only after the write, so the email never
+  // names an article the database doesn't have waiting.
+  if (review) {
+    await notifyArticleReady(project, { draftId: row.id, title: row.title });
+    return;
+  }
+
   // The publishing routes go out straight away. Manual and blocked
   // stop here - one has nowhere to go by choice, the other by circumstance.
-  if (route !== "wordpress" && route !== "repo" && route !== "hosted") return;
+  if (!publishes) return;
 
   await enqueue({
     projectId: project.id,

@@ -231,11 +231,12 @@ running without any of them.)*
     links to a removed one are not rewritten; a removed repo article's
     committed cover stays in the repo; `article_drafts.markdown` of a repo
     article is the last text WE wrote, not the file.
-  - **Review-before-publish mode** - an opt-in toggle; articles wait as drafts for
-    approve/edit/discard. Default stays auto-publish. `approve_draft` and
-    `discard_draft` already exist as MCP tools and are the natural base. This is a
-    deliberate, owner-chosen reversal of the 2026-10-24 "no hold" rule, scoped to
-    an opt-in.
+  - ~~**Review-before-publish mode**~~ SHIPPED 2026-11-10: setup's Publishing
+    step (auto default / review), Settings + `set_publish_mode`; review articles
+    park as status `review`, the owner is emailed, and Publish / Edit / Don't
+    publish live on the article page (`approve_draft`, `edit_article`,
+    `discard_draft`). src/lib/article-review.ts. Not built: reminders for an
+    article left waiting, a Restore for a dropped one.
   Each one needs its MCP tool alongside the dashboard control (parity rule).
 
 - **Domain ownership proof for setup holders (security review 2026-11-08).** Today an unpaid site with no connected repo gives way to the next claimant, but one with a connected repo holds its domain even if its owner never proves the site is theirs (anyone can connect their own repo). Real fix: a holder keeps the domain only once Google confirms the Search Console property (gsc_site_url) or a live rewrite is verified; an unverified connected holder older than ~7 days is released (needs a safe project teardown - pages/keywords/suggestions/gsc_stats/rank_checks reference projects without ON DELETE CASCADE) and its free_claims domain row deleted. Until then, release by hand when an owner asks on Discord. Must land before FREE_SIGNUPS_OPEN=1.

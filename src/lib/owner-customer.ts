@@ -503,7 +503,7 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
   const parked = [...parkedBySite.values()].reduce((n, v) => n + v.count, 0);
   const drafts = {
     published: draftRows.filter((r) => r.status === "published").length,
-    inFlight: draftRows.filter((r) => ["submitted", "accepted", "finished", "blocked_setup"].includes(String(r.status))).length - parked,
+    inFlight: draftRows.filter((r) => ["submitted", "accepted", "review", "finished", "blocked_setup"].includes(String(r.status))).length - parked,
     /** Finished, on a hosted-writer site, with nowhere to publish. */
     parked,
     failed: draftRows.filter((r) => r.status === "rejected").length,

@@ -301,6 +301,89 @@ function Difficulty({ kd }: { kd: number }) {
   );
 }
 
+/** One article waiting for the owner's Publish, as the list draws it (the
+ *  plain-data subset of article-review.ts ReviewItem; that module is
+ *  server-only and must never reach this bundle). */
+export type ReviewRow = { id: string; title: string; keyword: string | null; readyAt: string; coverUrl: string | null; words: number };
+
+/** "Waiting for your review": the Articles page's first section whenever
+ *  one waits. Home's top-posts rows (LandedList) in shape - name with a
+ *  faint subline, fixed right-hand columns so the numbers line up - and
+ *  the row opens the article's review screen. Green marks the one thing
+ *  to do. */
+export function ReviewList({ items }: { items: ReviewRow[] }) {
+  return (
+    <section aria-labelledby="review-title" className="arrive-up rounded-2xl border border-line-soft bg-surface px-5 py-5 sm:px-6">
+      <h2 id="review-title" className="flex items-baseline gap-2.5 text-[15px] font-medium text-ink">
+        Waiting for your review
+        <span className="text-[14px] font-normal tabular-nums text-ink-faint">{items.length}</span>
+      </h2>
+      <ol className="-mx-3 mt-3 space-y-1">
+        {items.map((r, i) => (
+          <li key={r.id} className="arrive-up" style={css({ "--at": "60ms", "--i": i, "--step": "40ms" })}>
+            <Link href={`/articles/${encodeURIComponent(r.id)}`} className={cx("group flex items-center gap-4 rounded-xl px-3 py-3 transition-colors hover:bg-surface-2 sm:gap-5", FOCUS_RING)}>
+              <CoverThumb src={r.coverUrl} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[15px] font-medium text-ink" title={r.title}>
+                  {r.title}
+                </span>
+                <span className="mt-1 flex min-w-0 items-center gap-1.5 text-[12.5px] text-ink-faint">
+                  {r.keyword ? (
+                    <>
+                      <SearchIcon className="h-3.5 w-3.5 shrink-0" />
+                      <span className="sr-only">Written for the search </span>
+                      <span className="truncate">{r.keyword}</span>
+                    </>
+                  ) : null}
+                  <span className="shrink-0 sm:hidden">
+                    {r.keyword ? " · " : ""}
+                    {r.words.toLocaleString("en-US")} words
+                  </span>
+                </span>
+              </span>
+              <span className="hidden w-20 shrink-0 text-right sm:block">
+                <span className="block text-[15px] font-semibold leading-6 tabular-nums text-ink-muted">{r.words.toLocaleString("en-US")}</span>
+                <span className="block text-[11px] font-medium uppercase tracking-wider text-ink-faint">Words</span>
+              </span>
+              <span className="hidden w-20 shrink-0 text-right sm:block">
+                <span className="block text-[15px] font-semibold leading-6 tabular-nums text-ink-muted">{shortDate(r.readyAt)}</span>
+                <span className="block text-[11px] font-medium uppercase tracking-wider text-ink-faint">Ready</span>
+              </span>
+              <span className="flex w-[4.5rem] shrink-0 items-center justify-end gap-1 text-[14px] font-semibold text-ok">
+                Review
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden="true">
+                  <path d="M9 6l6 6-6 6" />
+                </svg>
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+/** The article's cover, small; a quiet page glyph when there is none or it
+ *  won't load. */
+function CoverThumb({ src }: { src: string | null }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <span className="hidden h-11 w-[4.75rem] shrink-0 overflow-hidden rounded-md bg-surface-2 ring-1 ring-line-soft sm:block" aria-hidden="true">
+      {src && !failed ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={src} alt="" width={76} height={44} loading="lazy" decoding="async" onError={() => setFailed(true)} className="h-full w-full object-cover" />
+      ) : (
+        <span className="flex h-full w-full items-center justify-center text-ink-faint">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+            <path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10A.5.5 0 0 1 7 20z" />
+            <path d="M10 12h5M10 15.5h5" />
+          </svg>
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function ExternalIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">

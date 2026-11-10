@@ -19,7 +19,7 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { cx, FOCUS_RING } from "@/components/ui/styles";
 import { ARTICLE_STATUS, articleStep, fmtInt, longDate, statusLabel, stepLine, waitingOnMerge } from "../../article-status";
 import { loadReport, redirectIfAgent } from "../../mode";
-import { keywordStatsFor, loadGoneUrls, loadLedger, loadPageDays, type Check, type Ledger, type PageDay } from "../article-data";
+import { keywordStatsFor, loadGoneUrls, loadLedger, loadPageDays, loadReviewDraft, type Check, type Ledger, type PageDay, type ReviewDraft } from "../article-data";
 import { normalizePageUrl } from "@/lib/metrics";
 import { getProjectBySlug, type Project } from "@/lib/projects";
 import { previewSrc, storedShotAt, warmScreenshots } from "@/lib/page-screenshot";
@@ -29,6 +29,10 @@ import { UpgradePanel, fmtCount } from "@/components/upgrade-panel";
 import { loadArticleSource } from "@/lib/article-owner";
 import { RemoveArticle } from "./remove-article";
 import { adoptAndEditAction } from "@/app/autopilot-actions";
+import { decorateBody, editorStyles, readingMinutes } from "@/lib/hosted-blog";
+import { SearchIcon } from "@/components/ui/icons";
+import { PublishFlash, ReviewBar } from "./review-panel";
+import { ReviewPreview } from "./review-preview";
 
 export const dynamic = "force-dynamic";
 
@@ -86,15 +90,24 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
   // cover (loadLedger returns null for them without querying).
   const hasDraft = Boolean(a.draftId) && !a.draftId.startsWith("page:");
   const live = a.status === "published";
+  // Waiting for the owner's Publish (article-review.ts): the page becomes
+  // the review screen below.
+  const awaitingReview = a.status === "review" && hasDraft;
   // Only database reads hold the page: the Search Console numbers stream in
   // below (AnalyticsSection), and the preview is a stored picture.
-  const [ledger, shotAt, source] = await Promise.all([
+  const [ledger, shotAt, source, review] = await Promise.all([
     // An old link by run id whose run has a draft now: read that draft's.
     hasDraft ? (a.draftId === id ? Promise.resolve(ledgerByRoute) : loadLedger(project.id, a.draftId)) : Promise.resolve(null),
     live && a.url ? storedShotAt(project.id, a.url).catch(() => undefined) : Promise.resolve(undefined),
     // The owner's levers (Edit / Remove): only a live writer article has them.
     live && hasDraft && !asOperator ? loadArticleSource(project, a.draftId).catch(() => null) : Promise.resolve(null),
+    awaitingReview ? loadReviewDraft(project.id, a.draftId).catch(() => null) : Promise.resolve(null),
   ]);
+  // Null when it left review between the report's read and this one (a
+  // Publish in another tab): the ordinary page below says where it is now.
+  if (review) {
+    return <ReviewScreen project={project} a={a} review={review} ledger={ledger} asOperator={asOperator} />;
+  }
   // Known not to load any more: say so, and don't send anyone to it.
   const gone = a.url ? goneUrls.has(normalizePageUrl(a.url)) : false;
   // An article from before the writer, on a repo site: Edit and Delete adopt
@@ -231,6 +244,8 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
         </div>
       </header>
 
+      {hasDraft && !asOperator ? <PublishFlash id={a.draftId} /> : null}
+
       {step != null ? (
         <section aria-label="Where it is now" className="arrive-up rounded-2xl border border-accent/25 bg-accent-soft/40 p-5 sm:p-7" style={at(160)}>
           <PipelineSteps current={step} labels />
@@ -308,7 +323,7 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
           {/* Never the raw run error (that is get_writer_runs' job): the
               owner gets the sentence friendly.ts maps it to. */}
           {friendlyError(a.error) ?? "It couldn't finish with facts it could verify, so nothing was published."}
-          {a.runStatus === "failed" && paused ? " Resume autopilot to try it again." : null}
+          {a.runStatus === "failed" && paused ? " Resume the Dispatcher to try it again." : null}
         </Callout>
       ) : null}
 
@@ -337,6 +352,87 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
       ) : null}
 
       {a.source !== "agent" && ledger && (ledger.checks.length || ledger.sources.length) ? <FactCheck ledger={ledger} /> : null}
+    </div>
+  );
+}
+
+const RTL = new Set(["he", "ar", "fa", "ur"]);
+
+/** An article waiting for the owner's Publish: a calm reading screen. The
+ *  bar with Publish / Edit / Don't publish sticks under the header so the
+ *  decision is never a scroll away; under it the title and the facts that
+ *  matter, how it shows on Google, then the article itself as the blog
+ *  draws it, and the fact check folded shut. No analytics: nothing is
+ *  published yet, so there is nothing to measure. */
+function ReviewScreen({ project, a, review, ledger, asOperator }: { project: Project; a: AutopilotArticle; review: ReviewDraft; ledger: Ledger | null; asOperator: boolean }) {
+  const lang = (project.language_code || "en").slice(0, 2);
+  // The schema script finish.ts appends is for search engines, not readers.
+  const html = decorateBody(review.html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ""));
+  const metaLine = [project.author_name?.trim() || null, longDate(new Date().toISOString()), `${readingMinutes(html)} min read`].filter(Boolean).join("  ·  ");
+  return (
+    <div className="-mt-4">
+      <ReviewBar id={review.id} slug={project.slug} updatedAt={review.updatedAt} readOnlyNote={asOperator ? `Viewing ${project.name} as the operator.` : undefined} />
+
+      <div className="mx-auto max-w-5xl space-y-10 pt-8">
+        <header className="arrive-up grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-end" style={at(0)}>
+          <div className="min-w-0">
+            <h1 className="text-balance text-[1.75rem] font-semibold leading-[1.15] tracking-tight text-ink sm:text-[2.15rem]">{review.title}</h1>
+            <ul className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-[14px] text-ink-muted">
+              {a.keyword ? (
+                <li className="flex min-w-0 items-center gap-2">
+                  <SearchIcon className="h-4 w-4 shrink-0 text-ink-faint" />
+                  <span className="sr-only">Written for the search </span>
+                  <span className="truncate">{a.keyword}</span>
+                </li>
+              ) : null}
+              <li className="flex items-center gap-2">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0 text-ink-faint" aria-hidden="true">
+                  <path d="M5 6h14M5 10h14M5 14h14M5 18h9" />
+                </svg>
+                <span className="tabular-nums">{fmtInt(review.words)} words</span>
+              </li>
+              <li className="flex items-center gap-2">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0 text-ink-faint" aria-hidden="true">
+                  <circle cx="12" cy="12" r="8.5" />
+                  <path d="M12 7.5V12l3 2" />
+                </svg>
+                <span>Ready {longDate(review.readyAt)}</span>
+              </li>
+            </ul>
+          </div>
+
+          {/* What a searcher sees before they click: the title and the
+              description the owner is approving along with the page. */}
+          <figure className="min-w-0 rounded-xl border border-line-soft bg-surface px-4 py-3.5">
+            <figcaption className="text-[12.5px] text-ink-faint">How it shows on Google</figcaption>
+            <p className="mt-2 flex min-w-0 items-center gap-2 text-[12.5px] text-ink-muted">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(project.domain)}&sz=32`} alt="" aria-hidden="true" width={16} height={16} className="h-4 w-4 shrink-0 rounded-sm" />
+              <span className="truncate">{project.domain}</span>
+            </p>
+            <p className="mt-1 line-clamp-2 text-[15px] font-medium leading-snug text-ink">{review.title}</p>
+            {review.metaDescription ? <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-ink-muted">{review.metaDescription}</p> : null}
+          </figure>
+        </header>
+
+        {/* The article as the blog draws it, in a browser frame like the
+            live article's screenshot - here it is the real thing, scrollable
+            with the page. */}
+        <section aria-label="The article" className="arrive-up overflow-hidden rounded-xl bg-surface shadow-xl shadow-black/20 ring-1 ring-line" style={at(120)}>
+          <div className="flex h-9 items-center gap-3 border-b border-line-soft bg-surface-2 px-3.5" aria-hidden="true">
+            <span className="flex gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-ink-faint/40" />
+              <span className="h-2.5 w-2.5 rounded-full bg-ink-faint/40" />
+              <span className="h-2.5 w-2.5 rounded-full bg-ink-faint/40" />
+            </span>
+            <span className="min-w-0 flex-1 truncate rounded-md bg-surface px-3 py-1 text-center text-[12px] text-ink-muted">{project.domain}</span>
+            <span className="w-[42px]" />
+          </div>
+          <ReviewPreview html={html} title={review.title} metaLine={metaLine} coverUrl={review.coverUrl} styles={editorStyles(project)} lang={lang} dir={RTL.has(lang) ? "rtl" : "ltr"} />
+        </section>
+
+        {ledger && (ledger.checks.length || ledger.sources.length) ? <FactCheck ledger={ledger} /> : null}
+      </div>
     </div>
   );
 }

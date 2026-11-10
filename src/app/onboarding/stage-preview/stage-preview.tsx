@@ -2,7 +2,19 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SetupStageShell } from "@/components/setup-stage/stage";
-import { AccountScene, AddressScene, GithubScene, GoogleScene, PlanScene, type GoogleProgress, type PlanChoice, type PlanMenu, type SiteVerdict } from "@/components/setup-stage/scenes";
+import {
+  AccountScene,
+  AddressScene,
+  GithubScene,
+  GoogleScene,
+  PlanScene,
+  PublishModeScene,
+  type GoogleProgress,
+  type PlanChoice,
+  type PlanMenu,
+  type PublishMode,
+  type SiteVerdict,
+} from "@/components/setup-stage/scenes";
 import { FirstArticleWait, type FirstArticleProgress } from "@/components/setup-stage/wait";
 import { railFor, type SceneId } from "@/components/setup-stage/primitives";
 import { cx, FOCUS_RING } from "@/components/ui/styles";
@@ -13,17 +25,19 @@ import { cx, FOCUS_RING } from "@/components/ui/styles";
 // in", "goes to GitHub", switches the blog on, and lands on Home's first
 // state while the first article is "written". Click any scene to jump.
 // The plan step is shown with the Free card (free plan open) or without it
-// (the "plans: free closed" variant).
+// (the "plans: free closed" variant). The "first article: waits for review"
+// variant ends Home's first state on the review card instead of live.
 
-type Variant = "ok" | "refused" | "unreadable" | "gsc-missing" | "gsc-stuck" | "free-closed";
+type Variant = "ok" | "refused" | "unreadable" | "gsc-missing" | "gsc-stuck" | "free-closed" | "review";
 type View = SceneId | "wait";
 const DOMAIN = "leatherandco.com";
 const VIEWS: { id: View; label: string }[] = [
   { id: "address", label: "1 · Address" },
   { id: "account", label: "2 · Account" },
   { id: "checkout", label: "3 · Plan" },
-  { id: "github", label: "4 · GitHub" },
-  { id: "google", label: "5 · Google" },
+  { id: "publishing", label: "4 · Publishing" },
+  { id: "github", label: "5 · GitHub" },
+  { id: "google", label: "6 · Google" },
   { id: "wait", label: "Home · first article" },
 ];
 
@@ -42,6 +56,7 @@ export function StagePreview({ plans }: { plans: { open: PlanMenu; closed: PlanM
   const [say, setSay] = useState<string>("Hi. What's your site's address?");
   const [hop, setHop] = useState(false);
   const [plan, setPlan] = useState<PlanChoice>({ tier: "growth", interval: "year" });
+  const [publishMode, setPublishMode] = useState<PublishMode>("auto");
   const run = useRef(0);
 
   // Every timer belongs to a run; a jump or a replay bumps the run and the
@@ -159,6 +174,15 @@ export function StagePreview({ plans }: { plans: { open: PlanMenu; closed: PlanM
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [variant]);
 
+  const playPublishing = useCallback(() => {
+    run.current += 1;
+    setView("publishing");
+    setBusy(false);
+    setPublishMode(variant === "review" ? "review" : "auto");
+    setSay("Most people let me publish. Your call.");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [variant]);
+
   const goStart = useCallback(() => {
     setBusy(true);
     after(1100, () => playPlan());
@@ -176,9 +200,15 @@ export function StagePreview({ plans }: { plans: { open: PlanMenu; closed: PlanM
     after(5800, () => setWait((w) => ({ ...w, reading: "done", topics: "doing" })));
     after(8400, () => setWait((w) => ({ ...w, topics: "done", keywordsFound: 38, writing: "doing", topic: "best leather bag for a daily commute" })));
     after(13400, () => setWait((w) => ({ ...w, writing: "done", publishing: "doing" })));
-    after(16000, () => setWait((w) => ({ ...w, publishing: "done", liveUrl: `https://${DOMAIN}/blog/best-leather-bag-daily-commute` })));
+    after(16000, () =>
+      setWait((w) =>
+        variant === "review"
+          ? { ...w, review: { href: "#review", title: "The best leather bag for a daily commute, by budget" } }
+          : { ...w, publishing: "done", liveUrl: `https://${DOMAIN}/blog/best-leather-bag-daily-commute` },
+      ),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [variant]);
 
   // Jump to a scene in its settled state (manual mode) or play it (auto).
   const jump = useCallback(
@@ -190,9 +220,10 @@ export function StagePreview({ plans }: { plans: { open: PlanMenu; closed: PlanM
       if (v === "google") return playGoogle();
       if (v === "account") return playStart();
       if (v === "checkout") return playPlan();
+      if (v === "publishing") return playPublishing();
       return playWait();
     },
-    [playAddress, playGithub, playGoogle, playStart, playPlan, playWait],
+    [playAddress, playGithub, playGoogle, playStart, playPlan, playPublishing, playWait],
   );
 
   useEffect(() => {
@@ -236,8 +267,20 @@ export function StagePreview({ plans }: { plans: { open: PlanMenu; closed: PlanM
               busy={busy}
               onContinue={() => {
                 setBusy(true);
-                setSay(plan.tier === "free" ? "Free it is. On to GitHub." : "Off to payment… and back.");
-                after(1300, () => playGithub());
+                setSay(plan.tier === "free" ? "Free it is." : "Off to payment… and back.");
+                after(1300, () => playPublishing());
+              }}
+            />
+          ) : null}
+          {view === "publishing" ? (
+            <PublishModeScene
+              mode={publishMode}
+              onMode={setPublishMode}
+              busy={busy}
+              onContinue={() => {
+                setBusy(true);
+                setSay(publishMode === "review" ? "Got it. Each one waits for you." : "Got it. I'll publish as they're ready.");
+                after(1100, () => playGithub());
               }}
             />
           ) : null}
@@ -269,6 +312,7 @@ export function StagePreview({ plans }: { plans: { open: PlanMenu; closed: PlanM
             <option value="gsc-missing">Google: site not in Search Console</option>
             <option value="gsc-stuck">Google: won&apos;t confirm</option>
             <option value="free-closed">plans: free closed</option>
+            <option value="review">first article: waits for review</option>
           </select>
           <button type="button" onClick={() => jump("address")} className={cx("ml-auto rounded-md border border-line px-2.5 py-1 text-ink-muted hover:text-ink", FOCUS_RING)}>
             Replay

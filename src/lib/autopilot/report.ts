@@ -27,7 +27,10 @@ export type AutopilotArticleStatus =
   | "scheduled"
   | "published"
   | "failed"
-  | "needs_setup";
+  | "needs_setup"
+  /** Written and waiting for the owner's Publish (review before
+   *  publishing, article-review.ts). */
+  | "review";
 
 export type AutopilotArticle = {
   /** The article_drafts id. EMPTY STRING for a run that has not produced a
@@ -200,6 +203,7 @@ export function articleStatus(run: Pick<RunRow, "status" | "stage"> | null, draf
       // page is still up, so it is still Live here; its own page says more.
       case "removing": return "published";
       case "blocked_setup": return "needs_setup";
+      case "review": return "review";
       case "rejected": return "failed";
       default: return "scheduled"; // submitted / accepted / finished
     }

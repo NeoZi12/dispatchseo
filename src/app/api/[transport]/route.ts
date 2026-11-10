@@ -35,6 +35,7 @@ import { browserCommand, resolveField } from "@/lib/playbook";
 import { FREE_BACKLINKS, PAID_BACKLINKS, PLAYBOOK_RESEARCHED } from "@/lib/playbook-data";
 import { loadConventions, saveConventions } from "@/lib/conventions";
 import { adoptPage, editArticle, loadArticleSource, removeArticle } from "@/lib/article-owner";
+import { approveArticle, countAwaitingReview, discardReviewArticle, reviewsArticles, setPublishMode } from "@/lib/article-review";
 import {
   GUIDE_ARCHETYPES,
   GUIDE_BLOCKS,
@@ -204,7 +205,7 @@ const SUBMIT_IN_FLIGHT_CAP = 3;
  *  why not. Two counts, one round trip each, only on the accepted path. */
 async function submissionCaps(projectId: string): Promise<string | null> {
   const startOfDay = `${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`;
-  const LIVE = ["submitted", "accepted", "blocked_setup", "finished", "published"];
+  const LIVE = ["submitted", "accepted", "blocked_setup", "review", "finished", "published"];
   const [{ count: todayCount }, { count: inFlight }] = await Promise.all([
     db()
       .from("article_drafts")
@@ -288,6 +289,11 @@ const CHAT_TOOLS = new Set([
   "get_research_notes",
   "submit_article",
   "get_drafts",
+  // Review before publishing (article-review.ts): "publish the article that's
+  // waiting" / "don't review them any more" are chat-sized asks.
+  "approve_draft",
+  "discard_draft",
+  "set_publish_mode",
   // The owner's levers over a live article: "fix the typo in my article" is
   // the kind of thing an owner says to the chat app that is their only agent.
   "get_article",
@@ -1163,12 +1169,12 @@ const mcpHandler = createMcpHandler(
             .select("id, status")
             .eq("project_id", p.id)
             .eq("suggestion_id", input.suggestion_id)
-            .in("status", ["submitted", "rejected", "accepted", "blocked_setup", "finished", "published"])
+            .in("status", ["submitted", "rejected", "accepted", "blocked_setup", "review", "finished", "published"])
             .order("created_at", { ascending: false })
             .limit(1)
             .maybeSingle();
           const row = prior as { id: string; status: string } | null;
-          if (row && ["accepted", "blocked_setup", "finished", "published"].includes(row.status)) {
+          if (row && ["accepted", "blocked_setup", "review", "finished", "published"].includes(row.status)) {
             return failWith(
               "We already accepted an article for that idea. Nothing was changed - read it with get_drafts.",
               { draft_id: row.id, status: row.status },
@@ -1187,7 +1193,7 @@ const mcpHandler = createMcpHandler(
             .from("article_drafts")
             .select("slug, title")
             .eq("project_id", p.id)
-            .in("status", ["accepted", "blocked_setup", "finished", "published"])
+            .in("status", ["accepted", "blocked_setup", "review", "finished", "published"])
             .limit(1000),
         ]);
         const existingSlugs: string[] = [];
@@ -1413,7 +1419,9 @@ const mcpHandler = createMcpHandler(
           "The same list the owner's Drafts screen shows. Call it before submitting " +
           "again after a rejection - the blocking checks and their fixes are here. " +
           "Statuses: submitted (checking) | rejected (sent back, see problems) | " +
-          "accepted (queued to publish) | blocked_setup (nowhere to publish yet - the " +
+          "accepted (queued to publish) | review (finished and waiting for the owner's " +
+          "Publish - the site is on review before publishing; approve_draft releases it, " +
+          "discard_draft drops it) | blocked_setup (nowhere to publish yet - the " +
           "owner has not connected their site) | finished (posted to WordPress, or pull " +
           "request opened in the repo - not yet confirmed live; `pr_url` links it) | " +
           "published (confirmed live) | discarded | removing (a repo article whose deleting pull " +
@@ -1424,6 +1432,7 @@ const mcpHandler = createMcpHandler(
               "submitted",
               "rejected",
               "accepted",
+              "review",
               "blocked_setup",
               "finished",
               "published",
@@ -1506,8 +1515,11 @@ const mcpHandler = createMcpHandler(
           "Owner-gated: publish a finished article immediately. Use ONLY when the owner " +
           "asked for it in this conversation - an accepted article already publishes on " +
           "its own within minutes, so an " +
-          "autonomous run has no reason to call this. Also the way to release an article " +
-          "that parked as blocked_setup, once the owner has connected their site.",
+          "autonomous run has no reason to call this. This is the owner's Publish for an " +
+          "article in status `review` (the site is on review before publishing - see " +
+          "set_publish_mode; read it first with get_article, edit with edit_article). Also " +
+          "the way to release an article that parked as blocked_setup, once the owner has " +
+          "connected their site.",
         inputSchema: {
           id: z.string().uuid().describe("The draft id from get_drafts or submit_article."),
         },
@@ -1523,6 +1535,13 @@ const mcpHandler = createMcpHandler(
         const draft = data as { id: string; status: string; rendered_html: string | null } | null;
         if (!draft) return fail("No draft with that id on this site.");
         if (draft.status === "published") return fail("That article is already live.");
+        // Waiting for review, or parked on setup: this call is the owner's
+        // approval, and article-review.ts flips the status itself (a bare
+        // publish job would park a never-reviewed article for review again).
+        if (draft.status === "review" || draft.status === "blocked_setup") {
+          const r = await approveArticle(p, draft.id);
+          return r.ok ? ok({ id: draft.id, queued: true, note: r.message }) : fail(r.error);
+        }
         // Only a draft that is actually waiting may be pushed out: a discarded
         // one stays discarded, and a submitted/rejected one has not been
         // prepared yet.
@@ -1561,7 +1580,8 @@ const mcpHandler = createMcpHandler(
       {
         title: "Discard a draft",
         description:
-          "Owner-gated: throw an article away so it is never published. Use ONLY when " +
+          "Owner-gated: throw an article away so it is never published - the owner's " +
+          "\"Don't publish\" for an article waiting in status `review`. Use ONLY when " +
           "the owner asked for it in this conversation. The row is kept as history " +
           "rather than deleted, so 'why did that article never appear' stays " +
           "answerable. A rejected draft does not need discarding - fix it and " +
@@ -1573,15 +1593,30 @@ const mcpHandler = createMcpHandler(
       },
       async ({ id }) => {
         const p = currentProject();
+        const { data: current } = await db().from("article_drafts").select("status").eq("id", id).eq("project_id", p.id).maybeSingle();
+        const status = (current as { status: string } | null)?.status;
+        if (!status) return fail("No draft with that id on this site.");
+        // Waiting for review: the same compare-and-swap as the dashboard's
+        // "Don't publish" (article-review.ts).
+        if (status === "review") {
+          const r = await discardReviewArticle(p, id);
+          return r.ok ? ok({ discarded: true, id, note: r.message }) : fail(r.error);
+        }
+        // On the site, or on its way there: a discard here would only hide
+        // it from our records. Taking a live article down is remove_article.
+        if (["published", "removing", "finished"].includes(status)) {
+          return fail("That article is on your site (or on its way there). To take it down, use remove_article.");
+        }
         const { data, error } = await db()
           .from("article_drafts")
           .update({ status: "discarded", updated_at: new Date().toISOString() })
           .eq("id", id)
           .eq("project_id", p.id)
+          .eq("status", status)
           .select("id, title")
           .maybeSingle();
         if (error) return fail(error.message);
-        if (!data) return fail("No draft with that id on this site.");
+        if (!data) return fail("That article changed just now. Read it again with get_drafts, then retry.");
         return ok({ discarded: true, ...(data as { id: string; title: string }) });
       },
     );
@@ -1602,7 +1637,8 @@ const mcpHandler = createMcpHandler(
           "its FAQ pairs, url, status and which way it was published (`route`: hosted | repo | " +
           "wordpress). `canEdit` / `canRemove` say whether edit_article / remove_article will " +
           "take it and `reason` says why not. Hand `updatedAt` (and `fileSha` on a repo site) " +
-          "back to edit_article. Works for any draft id, live or not; only a live one can be changed.",
+          "back to edit_article. Works for any draft id, live or not; a live one, or one waiting " +
+          "in status `review` (not on the site yet - `route` is where it will go), can be changed.",
         inputSchema: {
           id: z.string().uuid().describe("The draft id from get_drafts, get_overview or submit_article."),
         },
@@ -1620,7 +1656,9 @@ const mcpHandler = createMcpHandler(
       {
         title: "Edit a live article",
         description:
-          "Owner-gated: change a LIVE article's title, meta description and/or body, and " +
+          "Owner-gated: change a LIVE article's title, meta description and/or body - or one " +
+          "waiting for the owner's review (status `review`: only the stored article changes, " +
+          "nothing reaches the site until approve_draft) - and " +
           "republish it the way it went out - the hosted page updates within minutes, a repo " +
           "article becomes a pull request (`pr_url`; merged by us once its checks pass when " +
           "the site is on Auto, otherwise the owner merges it), a WordPress post is updated " +
@@ -1886,6 +1924,32 @@ const mcpHandler = createMcpHandler(
           already_queued: job === null,
           note: "We will read the site in the background. Call get_site_digest in a few minutes.",
         });
+      },
+    );
+
+    server.registerTool(
+      "set_publish_mode",
+      {
+        title: "Publish automatically or after review",
+        description:
+          "Owner-gated: choose whether each finished article goes live on its own (`auto`, " +
+          "the default) or waits for the owner (`review`): then every article stops in " +
+          "status `review`, the owner gets an email with a link to it, and nothing reaches " +
+          "the site until approve_draft (or the dashboard's Publish). Switching to `review` " +
+          "holds articles finished from then on; one already finished and on its way goes out. The same choice the " +
+          "setup's Publishing step and Settings make. Switching to `auto` never publishes " +
+          "articles already waiting - they still need approve_draft. While 3 articles wait, " +
+          "the writer starts no new one. Returns the mode now in force and how many articles " +
+          "wait. Use ONLY when the owner asked for the change in this conversation.",
+        inputSchema: {
+          mode: z.enum(["auto", "review"]).describe("auto = publish each article when it's ready; review = wait for the owner's approval."),
+        },
+      },
+      async ({ mode }) => {
+        const p = currentProject();
+        const r = await setPublishMode(p, mode);
+        if (!r.ok) return fail(r.error);
+        return ok({ publish_mode: mode, waiting_for_review: await countAwaitingReview(p.id) });
       },
     );
 
@@ -4167,6 +4231,10 @@ const mcpHandler = createMcpHandler(
           // Read this exact field; never infer the permission from anything
           // else in this payload.
           internal_linking: internalLinkingEnabled(p),
+          // Review before publishing (article-review.ts): "review" = finished
+          // articles wait in status `review` for approve_draft. Null = never
+          // chosen = automatic.
+          publish_mode: reviewsArticles(p) ? "review" : "auto",
           keyword_source: p.keyword_source,
           serp_provider_connected: (await serpProviderForProject(p)) != null,
           dataforseo_connected: dfsCreds != null,

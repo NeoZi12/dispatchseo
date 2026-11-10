@@ -3,11 +3,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SetupStageShell } from "@/components/setup-stage/stage";
-import { AccountScene, AddressScene, GithubScene, GoogleScene, PlanScene, type PaidTier, type PlanChoice, type PlanMenu, type SiteVerdict } from "@/components/setup-stage/scenes";
+import {
+  AccountScene,
+  AddressScene,
+  GithubScene,
+  GoogleScene,
+  PlanScene,
+  PublishModeScene,
+  type PaidTier,
+  type PlanChoice,
+  type PlanMenu,
+  type PublishMode,
+  type SiteVerdict,
+} from "@/components/setup-stage/scenes";
 import { railFor, type SceneId } from "@/components/setup-stage/primitives";
 import { cleanDomain, isValidDomain } from "@/lib/domain";
 import { cx, FOCUS_RING } from "@/components/ui/styles";
-import { checkSite, chooseFreePlan, createSite, overrideSiteCheck, pickSetupRepo, startEmailSignIn, startOAuthSignIn } from "./setup-actions";
+import { checkSite, chooseFreePlan, choosePublishMode, createSite, overrideSiteCheck, pickSetupRepo, startEmailSignIn, startOAuthSignIn } from "./setup-actions";
 
 // The live setup stage. The server decides which step this is (from
 // evidence, lib/setup-flow.ts) and hands it in; this only holds what is
@@ -15,7 +27,7 @@ import { checkSite, chooseFreePlan, createSite, overrideSiteCheck, pickSetupRepo
 // without a reload - everything after it is a trip to GitHub, Google, the
 // inbox or Polar and back, and the server picks the next step on return.
 
-export type SetupClientStage = "address" | "checkout" | "github" | "google";
+export type SetupClientStage = "address" | "checkout" | "publishing" | "github" | "google";
 
 /** A paid plan already picked (pricing page, or Starter while the free plan
  *  is closed): carried across sign-in and preselected on the plan step. */
@@ -79,6 +91,8 @@ export function SetupClient(props: {
     const tier = p && paidTiers.includes(p.tier) ? p.tier : paidTiers.includes("growth") ? "growth" : (paidTiers[0] ?? "free");
     return { tier, interval: yearOk && (p ? p.interval === "year" : true) ? "year" : "month" };
   });
+  // Automatic is the default and the recommendation; review is opt-in.
+  const [publishMode, setPublishMode] = useState<PublishMode>("auto");
   const [address, setAddress] = useState(props.prefill);
   const [verdict, setVerdict] = useState<SiteVerdict>(props.initialVerdict);
   const [busy, setBusy] = useState(false);
@@ -175,6 +189,7 @@ export function SetupClient(props: {
     const notice = scene === props.stage ? props.notice : null;
     if (scene === "account") setSay(notice ?? (sentTo ? "Open the link and I'll take it from there." : "One click and you're in."));
     if (scene === "checkout") setSay(notice ?? (props.planMenu?.free ? "Pick a plan. Free is a real plan." : "Pick a plan, then I take it from there."));
+    if (scene === "publishing") setSay(notice ?? "Most people let me publish. Your call.");
     if (scene === "github") setSay(notice ?? (props.ghError ? "GitHub didn't finish. Let's try that again." : props.repos && props.repos.length > 1 ? "Which of these is your site?" : "Three clicks. I'll show you each one."));
     if (scene === "google") setSay(notice ?? (props.googleError ? "Google didn't finish. One more try?" : "Last step. Two clicks."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -245,6 +260,21 @@ export function SetupClient(props: {
       return;
     }
     window.location.href = "/onboarding";
+  }
+
+  async function savePublishMode() {
+    if (!props.slug) return;
+    setBusy(true);
+    setError(null);
+    const res = await choosePublishMode(props.slug, publishMode);
+    if ("error" in res) {
+      setBusy(false);
+      setError(res.error);
+      setSay("Hm. That didn't take.");
+      return;
+    }
+    // The server lands on the GitHub step; the page remounts on it.
+    router.refresh();
   }
 
   async function pick(repo: string) {
@@ -351,6 +381,19 @@ export function SetupClient(props: {
             const q = new URLSearchParams({ tier: plan.tier, interval, flow: "setup" });
             window.location.href = `/api/polar/checkout?${q.toString()}`;
           }}
+        />
+      ) : null}
+
+      {scene === "publishing" ? (
+        <PublishModeScene
+          mode={publishMode}
+          onMode={(m) => {
+            setError(null);
+            setPublishMode(m);
+          }}
+          onContinue={() => void savePublishMode()}
+          busy={busy}
+          error={error}
         />
       ) : null}
 

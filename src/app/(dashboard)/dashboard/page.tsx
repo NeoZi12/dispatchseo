@@ -92,6 +92,8 @@ import { loadOverviewData } from "./overview-data";
 import { getHostedQueue } from "@/lib/autopilot/queue";
 import { loadReport, writerMode } from "../mode";
 import { warmScreenshotsLater } from "@/lib/page-screenshot";
+import { listAwaitingReview, type ReviewItem } from "@/lib/article-review";
+import { PixelReporter } from "@/components/pixel-dispatcher";
 
 export const dynamic = "force-dynamic";
 
@@ -326,6 +328,85 @@ function SectionSkeleton({ rows = 3 }: { rows?: number }) {
   );
 }
 
+/** Hosted Home, above everything: articles written and waiting for the
+ *  owner's Publish. The dispatcher at its desk with the amber "!" (it waves
+ *  when the card settles), the waiting articles as a small stack of covers
+ *  you can open one by one, and one green way in - the oldest first, the
+ *  order they make sense to read in. */
+function ReviewWaiting({ items }: { items: ReviewItem[] }) {
+  const n = items.length;
+  const first = items[0];
+  const shown = items.slice(0, 3);
+  return (
+    <section aria-label="Articles ready for your review" className="arrive-up relative mx-auto mb-10 max-w-5xl overflow-hidden rounded-2xl border border-ok/25 bg-surface">
+      {/* Two soft glows: green where the action is, violet behind the desk. */}
+      <span aria-hidden="true" className="pointer-events-none absolute -left-16 -top-24 h-64 w-64 rounded-full bg-accent/15 blur-3xl" />
+      <span aria-hidden="true" className="pointer-events-none absolute -bottom-28 right-10 h-64 w-72 rounded-full bg-ok/10 blur-3xl" />
+
+      <div className="relative grid gap-5 p-5 sm:grid-cols-[168px_minmax(0,1fr)] sm:items-center sm:gap-7 sm:p-6">
+        <div className="flex items-end gap-3 sm:block">
+          <div className="w-[132px] shrink-0 overflow-hidden rounded-xl bg-[#0d0d12] ring-1 ring-line sm:w-full">
+            <PixelReporter mood="idle" flag steam decorative className="block w-full" />
+          </div>
+          {/* The speech bubble, its tail pointing at the desk. */}
+          <p className="relative mb-2 rounded-xl rounded-bl-sm border border-line bg-surface-2 px-3 py-2 text-[13px] leading-snug text-ink sm:mb-0 sm:mt-3 sm:rounded-bl-xl sm:rounded-tl-sm">
+            {n === 1 ? "Fresh off my desk. Have a look?" : "Fresh off my desk. Have a look?"}
+          </p>
+        </div>
+
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <h2 className="text-[19px] font-semibold tracking-tight text-ink sm:text-[21px]">
+              {n === 1 ? "Your new article is ready for review" : `${n} articles are ready for your review`}
+            </h2>
+            <Link
+              href={`/articles/${encodeURIComponent(first.id)}`}
+              className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-gradient-to-r from-[#047857] to-[#059669] px-5 text-[14.5px] font-semibold text-white shadow-lg shadow-emerald-900/40 transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ok/70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+            >
+              {n === 1 ? "Review it" : "Start reviewing"}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+                <path d="M9 6l6 6-6 6" />
+              </svg>
+            </Link>
+          </div>
+          <p className="mt-1 text-[13.5px] text-ink-muted">Nothing goes on your site until you press Publish.</p>
+
+          <ul className="mt-4 grid gap-2">
+            {shown.map((it, i) => (
+              <li key={it.id}>
+                <Link
+                  href={`/articles/${encodeURIComponent(it.id)}`}
+                  className="group flex items-center gap-3 rounded-xl border border-line-soft bg-surface-2/50 p-2 pr-3 transition hover:-translate-y-px hover:border-ok/40 hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ok/60 motion-reduce:hover:translate-y-0"
+                >
+                  <span
+                    className="relative h-[38px] w-[68px] shrink-0 overflow-hidden rounded-md bg-surface ring-1 ring-line transition-transform group-hover:rotate-0"
+                    style={{ transform: `rotate(${[-3, 2, -1.5][i] ?? 0}deg)` }}
+                  >
+                    {it.coverUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={it.coverUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+                    ) : null}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[14px] font-medium text-ink">{it.title}</span>
+                    <span className="block text-[12px] text-ink-faint">{it.words.toLocaleString("en-US")} words</span>
+                  </span>
+                  <span className="shrink-0 text-[13px] font-medium text-ok opacity-70 transition group-hover:translate-x-0.5 group-hover:opacity-100">Read ›</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          {n > shown.length ? (
+            <Link href="/articles" className="mt-2 inline-block text-[13px] text-ink-muted hover:text-ink">
+              and {n - shown.length} more on Articles ›
+            </Link>
+          ) : null}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default async function Home({
   searchParams,
 }: {
@@ -347,7 +428,7 @@ export default async function Home({
     // self-host too: the hosted Home speaks for one site). A failed read
     // hides the panel - it never takes Home down.
     const operator = isOperator(auth.user?.id);
-    const [report, overview, siteHealth, operatorSites, queue] = await Promise.all([
+    const [report, overview, siteHealth, operatorSites, queue, awaitingReview] = await Promise.all([
       loadReport(project.id),
       loadOverviewData(project).catch(() => null),
       // Only the autopilot's own job families, in one small read. A site
@@ -359,11 +440,15 @@ export default async function Home({
       // The Queue page's own list and dates (lib/autopilot/queue.ts), so
       // Home's calendar and "Up next" never disagree with /queue.
       getHostedQueue(project, undefined, { parked: false }).catch(() => null),
+      // Articles waiting for the owner's Publish (article-review.ts).
+      listAwaitingReview(project.id).catch(() => [] as ReviewItem[]),
     ]);
     // Live articles without a stored preview get one after this response,
     // a few per visit (page-screenshot.ts), so the article page shows it at once.
     if (report) warmScreenshotsLater(project.id, report.articles.filter((a) => a.status === "published" && a.url).map((a) => a.url!), 4, { onView: true });
     return (
+      <>
+      {awaitingReview.length ? <ReviewWaiting items={awaitingReview} /> : null}
       <HostedReport
         project={project}
         report={report}
@@ -374,6 +459,7 @@ export default async function Home({
         now={Date.now()}
         flags={{ msg: cleanFlagText(flags.msg), gsc: cleanGscFlag(flags.connected, flags.error), sort: flags.sort ?? null }}
       />
+      </>
     );
   }
   // Free-tier DIY: every DataForSEO call bills the project's own account.

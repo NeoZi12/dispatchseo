@@ -58,7 +58,7 @@ export type Ledger = {
 };
 
 // The cover route's own allowlist (src/app/api/cover/[draftId]/route.ts).
-const COVER_STATUSES = new Set(["accepted", "finished", "published", "blocked_setup"]);
+const COVER_STATUSES = new Set(["accepted", "finished", "published", "blocked_setup", "review"]);
 
 const HISTORY_DAYS = 400;
 
@@ -309,4 +309,43 @@ export async function keywordStatsFor(project: Project, keyword: string | null):
     console.warn(`[article] could not measure "${k}" for ${project.slug}: ${e instanceof Error ? e.message : String(e)}`);
     return null;
   }
+}
+
+/** An article waiting for the owner's Publish (article-review.ts), with
+ *  what its review screen draws: the stored rendered HTML for the preview
+ *  and the version stamp the Publish button hands back. Null for any other
+ *  status - the page then renders as it always has. */
+export type ReviewDraft = {
+  id: string;
+  title: string;
+  metaDescription: string | null;
+  /** article_drafts.rendered_html as stored (JSON-LD and all). */
+  html: string;
+  coverUrl: string | null;
+  updatedAt: string;
+  readyAt: string;
+  words: number;
+};
+
+export async function loadReviewDraft(projectId: string, draftId: string): Promise<ReviewDraft | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(draftId)) return null;
+  const { data, error } = await db()
+    .from("article_drafts")
+    .select("id, title, status, meta_description, rendered_html, markdown, cover_url, created_at, updated_at")
+    .eq("project_id", projectId)
+    .eq("id", draftId)
+    .maybeSingle();
+  if (error || !data) return null;
+  const r = data as { id: string; title: string; status: string; meta_description: string | null; rendered_html: string | null; markdown: string | null; cover_url: string | null; created_at: string; updated_at: string };
+  if (r.status !== "review") return null;
+  return {
+    id: r.id,
+    title: r.title,
+    metaDescription: r.meta_description,
+    html: r.rendered_html ?? "",
+    coverUrl: r.cover_url,
+    updatedAt: r.updated_at,
+    readyAt: r.created_at,
+    words: (r.markdown ?? "").split(/\s+/).filter(Boolean).length,
+  };
 }

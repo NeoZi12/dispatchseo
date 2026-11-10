@@ -32,6 +32,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { ForwardingHelp, LookForm } from "./hosted-blog-card";
 import { saveVoice } from "./voice-action";
 import { authorOf, loadReport } from "../mode";
+import { PublishModeMenu } from "@/components/publish-mode-switch";
+import { countAwaitingReview } from "@/lib/article-review";
 
 // Settings for a hosted-writer project, laid out like Polar's: a slim list
 // of sections on the left, the chosen one on the right (?section=, one URL
@@ -41,8 +43,9 @@ import { authorOf, loadReport } from "../mode";
 // Destructive actions live in their own card at the end of Advanced.
 //
 // Only what an owner must be able to change (owner, 2026-10-24), cut again
-// on 2026-11-09: Site, Google, Plan, Advanced, and Publishing only while it
-// needs a hand. Gone from this page, still reachable over MCP: the writing
+// on 2026-11-09: Site, Publishing, Google, Plan, Advanced. Publishing always
+// holds the one choice made in setup (go live on their own, or wait for the
+// owner's review); where articles go shows there only while it needs a hand. Gone from this page, still reachable over MCP: the writing
 // rules and blocked topics (set_tone, set_blocked_topics - writing is the
 // product's job now, not a setting; "Facts only you know" stays under Site),
 // the author byline, and the tagline / long description.
@@ -92,10 +95,11 @@ export async function HostedSettings({
   /** ?section= - which pane is open. */
   section?: string;
 }) {
-  // Publishing shows only while it needs the owner: no route picked yet, a
-  // route we can't serve, or a hosted blog whose forwarding isn't live. The
-  // stuck-state links (first-article-progress, hosted-report, mode.ts) all
-  // land here in exactly those states; once articles flow, the pane is gone.
+  // Where articles go shows only while it needs the owner: no route picked
+  // yet, a route we can't serve, or a hosted blog whose forwarding isn't
+  // live. The stuck-state links (first-article-progress, hosted-report,
+  // mode.ts) all land here in exactly those states; once articles flow, only
+  // the review choice is left in the pane.
   const target = publishTarget(project);
   // A draft parked as blocked_setup is the one state where a connected repo
   // still needs the owner (no folder in it looks like the blog): the card's
@@ -103,9 +107,11 @@ export async function HostedSettings({
   const { count: parked } = await db().from("article_drafts").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("status", "blocked_setup");
   const publishingOpen =
     (target === "github" && !project.github_repo) || target === "manual" || target === "wordpress" || (target === "hosted" && !(await rewriteLiveCached(project))) || (parked ?? 0) > 0;
-  const sections = SECTIONS.filter((x) => (x.id !== "plan" || isCloudMode()) && (x.id !== "publishing" || publishingOpen));
+  const sections = SECTIONS.filter((x) => x.id !== "plan" || isCloudMode());
   const active: SectionId = sections.find((x) => x.id === section)?.id ?? "site";
-  const meta = SECTIONS.find((x) => x.id === active)!;
+  const found = SECTIONS.find((x) => x.id === active)!;
+  // With nothing to fix, Publishing is just the review choice.
+  const meta = active === "publishing" && !publishingOpen ? { ...found, description: "When finished articles go live." } : found;
 
   return (
     <div className="mx-auto max-w-5xl space-y-8">
@@ -143,7 +149,12 @@ export async function HostedSettings({
           </div>
           <div className="arrive-up space-y-5" style={at(140)}>
             {active === "site" ? <SiteSection project={project} /> : null}
-            {active === "publishing" ? <PublishingSection project={project} /> : null}
+            {active === "publishing" ? (
+              <>
+                {publishingOpen ? <PublishingSection project={project} /> : null}
+                <PublishModeForm project={project} />
+              </>
+            ) : null}
             {active === "google" ? <GoogleSection project={project} /> : null}
             {active === "plan" ? <PlanSection project={project} /> : null}
             {active === "advanced" ? <AdvancedSection project={project} account={account} /> : null}
@@ -335,6 +346,21 @@ async function PublishingSection({ project }: { project: Project }) {
           </details>
         </>
       ) : null}
+    </Rows>
+  );
+}
+
+/** Go live on their own (the default) or wait for the owner's Publish. The
+ *  same choice the setup's Publishing step asks; also set_publish_mode over
+ *  MCP. null (never chosen, or a pre-0089 database) reads as automatic. */
+async function PublishModeForm({ project }: { project: Project }) {
+  // The same dropdown as on Overview and Articles.
+  const waiting = await countAwaitingReview(project.id).catch(() => 0);
+  return (
+    <Rows>
+      <Row title="How new articles go live" description="Autopilot publishes each one when it's ready. Manual review waits for your Publish.">
+        <PublishModeMenu slug={project.slug} mode={project.publish_mode} waiting={waiting} align="right" />
+      </Row>
     </Rows>
   );
 }

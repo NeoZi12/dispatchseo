@@ -27,7 +27,9 @@ import { normalizeTheme } from "@/lib/hosted-theme";
 
 export const runtime = "nodejs";
 
-const LIVE_STATUSES = ["accepted", "finished", "published", "blocked_setup"];
+// "review": written and passed the gate, waiting for the owner's Publish
+// (article-review.ts) - its preview shows the cover it will go out with.
+const LIVE_STATUSES = ["accepted", "finished", "published", "blocked_setup", "review"];
 
 type Row = { title: string; slug: string | null; project_id: string; cover_svg?: string | null };
 

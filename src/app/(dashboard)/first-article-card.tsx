@@ -15,7 +15,13 @@ import { FirstArticleWait, type FirstArticleProgress } from "@/components/setup-
 // A few pages stay reachable: billing and settings (the owner may need to
 // cancel, or fix what a stuck step links to) and Google (the stuck Google
 // step sends the owner there to pick the property).
+//
+// And one article's own page (/articles/<id>, its editor included): with
+// review before publishing on, the first article waits there for the
+// owner's Publish, so it has to open while the card still holds every other
+// page. The list (/articles) stays behind the card.
 const EXEMPT = ["/billing", "/settings", "/google"];
+const ARTICLE_PAGE = /^\/articles\/[^/]+(\/edit)?$/;
 
 const POLL_MS = 20_000;
 
@@ -36,7 +42,7 @@ export function FirstArticleCard({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const exempt = EXEMPT.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  const exempt = EXEMPT.some((p) => pathname === p || pathname.startsWith(`${p}/`)) || ARTICLE_PAGE.test(pathname);
   const lastKey = useRef(stateKey);
   lastKey.current = stateKey;
 

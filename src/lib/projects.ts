@@ -180,6 +180,11 @@ export type Project = {
   /** Does the connected repo build this site (migration 0087)? Written and
    *  read by repo-site-check.ts. Null = never checked. */
   repo_site_check?: unknown;
+  /** How a finished article goes out (migration 0089): "auto" = the moment
+   *  it passes the gate; "review" = it waits on the owner's Publish
+   *  (article-review.ts). Null = never chosen, which is automatic. Read it
+   *  through reviewsArticles(), never directly. */
+  publish_mode?: "auto" | "review" | null;
 
   // --- The autopilot (migration 0066) ---
   //
@@ -337,11 +342,15 @@ export function writerProvider(p: Pick<Project, "writer_provider">): "api" | "ag
 
 // mcp_token deliberately excluded - only fetchProjectToken exposes it.
 const COLS =
-  "id, slug, name, domain, gsc_site_url, github_repo, content_mode, content_path_hint, dataforseo_login, dataforseo_password, keyword_source, serpapi_key, powerups_skipped, location_code, language_code, mode, auto_approve, auto_approve_tools, auto_build_guides, auto_build_tools, auto_merge, last_trend_scan_at, site_launched_at, pipeline_installed_at, pipeline_verified, content_prefs, gsc_oauth_refresh_token, github_installation_id, github_app_installed_at, install_progress, onboarding_screen, owner_user_id, agent, internal_linking, publish_target, wp_url, wp_username, wp_app_password, wp_connected_at, wp_seo_plugin, wp_capabilities, publish_hour, ai_choice, chat_last_seen_at, agent_last_seen_at, agent_credential_at, setup_connected_at, setup_deferred, hosted_cta_url, hosted_cta_label, hosted_rewrite_pr_url, hosted_rewrite_live_at, hosted_theme, hosted_key, hosted_origin, writer_mode, writer_paused_at, writer_pause_reason, writer_resumed_at, author_name, author_bio, author_url, last_research_at, next_article_at, writer_provider, writer_weekly_quota, hosted_rewrite_state, hosted_path, site_path, repo_site_check, created_at";
+  "id, slug, name, domain, gsc_site_url, github_repo, content_mode, content_path_hint, dataforseo_login, dataforseo_password, keyword_source, serpapi_key, powerups_skipped, location_code, language_code, mode, auto_approve, auto_approve_tools, auto_build_guides, auto_build_tools, auto_merge, last_trend_scan_at, site_launched_at, pipeline_installed_at, pipeline_verified, content_prefs, gsc_oauth_refresh_token, github_installation_id, github_app_installed_at, install_progress, onboarding_screen, owner_user_id, agent, internal_linking, publish_target, wp_url, wp_username, wp_app_password, wp_connected_at, wp_seo_plugin, wp_capabilities, publish_hour, ai_choice, chat_last_seen_at, agent_last_seen_at, agent_credential_at, setup_connected_at, setup_deferred, hosted_cta_url, hosted_cta_label, hosted_rewrite_pr_url, hosted_rewrite_live_at, hosted_theme, hosted_key, hosted_origin, writer_mode, writer_paused_at, writer_pause_reason, writer_resumed_at, author_name, author_bio, author_url, last_research_at, next_article_at, writer_provider, writer_weekly_quota, hosted_rewrite_state, hosted_path, site_path, repo_site_check, publish_mode, created_at";
+
+// Pre-0089 (review before publishing): publish_mode is absent; such a DB
+// reads as "not chosen", which publishes automatically, as every site did.
+const COLS_PRE_0089 = COLS.replace(", publish_mode", "");
 
 // Pre-0087 (repo/site check): repo_site_check is absent; such a DB reads as
 // "never checked", which never blocks anything.
-const COLS_PRE_0087 = COLS.replace(", repo_site_check", "");
+const COLS_PRE_0087 = COLS_PRE_0089.replace(", repo_site_check", "");
 
 // Pre-0085 (site path): site_path is absent. Newest, so dropped first; such
 // a DB reads as "every site is the root of its domain", which it was.
@@ -443,7 +452,10 @@ async function selectProjects<T>(
     Boolean(e && e.message.includes("does not exist"));
   const first = await run(COLS);
   if (!missingCol(first.error)) return first;
-  // Drop 0087's repo_site_check first (reads as never checked).
+  // Drop 0089's publish_mode first (reads as automatic publishing).
+  const automatic = await run(COLS_PRE_0089);
+  if (!missingCol(automatic.error)) return automatic;
+  // Then 0087's repo_site_check first (reads as never checked).
   const unchecked = await run(COLS_PRE_0087);
   if (!missingCol(unchecked.error)) return unchecked;
   // Then 0085's site_path (reads as the domain's root).
@@ -578,6 +590,7 @@ function envFallbackProject(): Project {
     hosted_path: null,
     site_path: null,
     repo_site_check: null,
+    publish_mode: null,
     // Agent mode, never hosted: "we couldn't read your settings" must never be
     // the reason the server starts writing (and paying for) articles.
     writer_mode: null,

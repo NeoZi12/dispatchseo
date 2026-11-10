@@ -556,7 +556,7 @@ const LOOK_TICKS = 9;
 const MOOD_LABEL: Record<DispatcherMood, string> = {
   working: "Your dispatcher at the desk, typing an article",
   idle: "Your dispatcher at the desk between articles, coffee in reach",
-  paused: "Your dispatcher asleep at the desk while autopilot is paused",
+  paused: "Your dispatcher asleep at the desk while it is paused",
 };
 
 // sessionStorage flag: the walk-in has played in this browser session.

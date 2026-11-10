@@ -2712,6 +2712,17 @@ export async function approveDraft(draftId: string): Promise<DraftActionState> {
     | null;
   if (!draft) return { error: "That article no longer exists." };
   if (draft.status === "published") return { error: "That article is already live." };
+  // Waiting for review, or parked on setup: the owner's click is the
+  // approval (article-review.ts), and it must flip the status itself - a
+  // bare publish job would park a never-reviewed article for review again.
+  if (draft.status === "review" || draft.status === "blocked_setup") {
+    const project = await getProjectById(draft.project_id);
+    if (!project) return { error: "That site no longer exists." };
+    const { approveArticle } = await import("@/lib/article-review");
+    const r = await approveArticle(project, draft.id);
+    revalidatePath("/drafts");
+    return r.ok ? { ok: r.message } : { error: r.error };
+  }
   // Only a draft that is actually waiting may be pushed out - a discarded one
   // stays discarded, and a submitted/rejected one has nothing to publish yet.
   if (!["accepted", "blocked_setup", "finished"].includes(draft.status)) {

@@ -2361,7 +2361,7 @@ async function orphanDraft(projectId: string, run: WriterRun): Promise<string | 
     .select("id, client_kind, status")
     .eq("project_id", projectId)
     .eq("suggestion_id", run.suggestion_id)
-    .in("status", ["submitted", "accepted", "blocked_setup", "finished", "published"])
+    .in("status", ["submitted", "accepted", "blocked_setup", "review", "finished", "published"])
     .limit(1)
     .maybeSingle();
   const live = data as { id: string; client_kind: string | null; status: string } | null;
@@ -2375,7 +2375,7 @@ async function orphanDraft(projectId: string, run: WriterRun): Promise<string | 
 async function existingTitles(projectId: string): Promise<{ titles: string[]; slugs: string[] }> {
   const [pagesRes, draftsRes] = await Promise.all([
     db().from("pages").select("url, title").eq("project_id", projectId).limit(1000),
-    db().from("article_drafts").select("slug, title").eq("project_id", projectId).in("status", ["submitted", "accepted", "blocked_setup", "finished", "published"]).limit(1000),
+    db().from("article_drafts").select("slug, title").eq("project_id", projectId).in("status", ["submitted", "accepted", "blocked_setup", "review", "finished", "published"]).limit(1000),
   ]);
   const titles: string[] = [];
   const slugs: string[] = [];
@@ -2411,7 +2411,7 @@ async function crossSiteCorpus(project: Project, keyword: string): Promise<(Corp
     .select("project_id, title, primary_keyword, markdown")
     .neq("project_id", project.id)
     .ilike("primary_keyword", kw.replace(/[\\%_]/g, (m) => `\\${m}`))
-    .in("status", ["accepted", "blocked_setup", "finished", "published"])
+    .in("status", ["accepted", "blocked_setup", "review", "finished", "published"])
     .gte("created_at", new Date(Date.now() - 183 * 86_400_000).toISOString())
     .order("created_at", { ascending: false })
     .limit(20);
@@ -2437,7 +2437,7 @@ async function corpusEntries(projectId: string): Promise<CorpusEntry[]> {
     .from("article_drafts")
     .select("title, primary_keyword, markdown")
     .eq("project_id", projectId)
-    .in("status", ["submitted", "accepted", "blocked_setup", "finished", "published"])
+    .in("status", ["submitted", "accepted", "blocked_setup", "review", "finished", "published"])
     .order("created_at", { ascending: false })
     .limit(20);
   return ((data ?? []) as { title: string; primary_keyword: string | null; markdown: string }[]).map((r) => ({
@@ -2451,7 +2451,7 @@ async function recentDrafts(projectId: string): Promise<{ archetype: string; ske
     .from("article_drafts")
     .select("markdown, validation")
     .eq("project_id", projectId)
-    .in("status", ["submitted", "accepted", "blocked_setup", "finished", "published"])
+    .in("status", ["submitted", "accepted", "blocked_setup", "review", "finished", "published"])
     .order("created_at", { ascending: false })
     .limit(3);
   return ((data ?? []) as { markdown: string; validation: { plan?: { archetype?: string } } | null }[]).map((r) => ({

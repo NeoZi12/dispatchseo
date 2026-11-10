@@ -9,6 +9,7 @@ import { backendBaseUrl } from "@/lib/pipeline-pack";
 import { enqueue } from "@/lib/jobs";
 import { dryDraftBlocked, parkDryDraft } from "./dry-guard";
 import type { Job } from "@/lib/jobs";
+import { parkForReviewIfDue } from "@/lib/article-review";
 
 // Puts a finished article on the customer's site.
 //
@@ -38,6 +39,19 @@ export async function runPublishJob(job: Job): Promise<void> {
   // this module for fetchCover, and a static import both ways would be a load
   // -time cycle.
   const route = publishRoute(project);
+  // The Dispatcher is paused (Overview's "Pause Dispatcher", or the
+  // autopilot's own brake): nothing new reaches the site. The article stays
+  // as it is and goes out when the owner resumes (pause.ts resumeWriter
+  // queues it again). The one exception is an article the owner approved by
+  // hand - their own Publish is the go-ahead.
+  if (project.writer_paused_at) {
+    const { data: gate } = await db().from("article_drafts").select("approved_at").eq("id", draftId).eq("project_id", project.id).maybeSingle();
+    if (!(gate as { approved_at?: string | null } | null)?.approved_at) return;
+  }
+  // Review before publishing: an article that parked on setup was never
+  // reviewed, so on a review site it waits for the owner now instead of
+  // going out (article-review.ts parkForReviewIfDue says why here).
+  if (await parkForReviewIfDue(project, draftId)) return;
   if (route === "repo") {
     const { runRepoPublish } = await import("./publish-repo");
     return runRepoPublish(project, draftId, { storeRetries: Number(job.payload.storeRetries ?? 0) });

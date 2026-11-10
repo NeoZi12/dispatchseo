@@ -9,7 +9,8 @@ import { InplaceEditor } from "./inplace-editor";
 
 export const dynamic = "force-dynamic";
 
-// The owner changes a live article in place: the article rendered as the
+// The owner changes a live article - or one waiting for review, before it
+// goes anywhere (article-review.ts) - in place: the article rendered as the
 // blog renders it, every heading and paragraph editable where it stands,
 // one Save. The editor itself is inplace-editor.tsx; this page only loads
 // the source (src/lib/article-owner.ts) and the blog's own styles so the
@@ -33,7 +34,7 @@ export default async function EditArticlePage({ params }: { params: Promise<{ id
 
   const lang = (project.language_code || "en").slice(0, 2);
   const words = source.body.split(/\s+/).filter(Boolean).length;
-  const metaLine = [project.author_name?.trim() || null, source.publishedAt ? longDate(source.publishedAt) : null, `${Math.max(1, Math.round(words / 200))} min read`].filter(Boolean).join("  ·  ");
+  const metaLine = [project.author_name?.trim() || null, source.publishedAt ? longDate(source.publishedAt) : source.status === "review" ? longDate(new Date().toISOString()) : null, `${Math.max(1, Math.round(words / 200))} min read`].filter(Boolean).join("  ·  ");
 
   return (
     <div className="-mt-4">
@@ -48,6 +49,7 @@ export default async function EditArticlePage({ params }: { params: Promise<{ id
         repo={source.repo}
         autoMerge={source.autoMerge}
         pendingEdit={source.pendingEdit}
+        reviewing={source.status === "review"}
         styles={editorStyles(project)}
         lang={lang}
         dir={RTL.has(lang) ? "rtl" : "ltr"}

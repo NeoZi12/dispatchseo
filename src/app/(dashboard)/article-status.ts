@@ -11,6 +11,7 @@ export const ARTICLE_STATUS: Record<AutopilotArticleStatus, { label: string; ton
   verifying: { label: "Checking facts", tone: "active", live: true },
   scheduled: { label: "Publishing", tone: "active" },
   needs_setup: { label: "Needs setup", tone: "warn", attention: true },
+  review: { label: "Ready for review", tone: "warn", attention: true },
   published: { label: "Live", tone: "ok" },
   failed: { label: "Stopped", tone: "danger" },
 };

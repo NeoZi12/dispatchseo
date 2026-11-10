@@ -262,7 +262,7 @@ export async function suggestionIdsInFlight(projectId: string): Promise<string[]
       .from("article_drafts")
       .select("id")
       .in("id", pending.map((r) => r.draft_id as string))
-      .in("status", ["submitted", "accepted", "blocked_setup", "finished"]);
+      .in("status", ["submitted", "accepted", "blocked_setup", "review", "finished"]);
     const unpublished = new Set(((drafts ?? []) as { id: string }[]).map((d) => d.id));
     for (const r of pending) if (unpublished.has(r.draft_id as string)) busy.add(r.suggestion_id);
   }

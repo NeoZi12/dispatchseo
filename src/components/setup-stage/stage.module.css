@@ -330,6 +330,55 @@
   }
 }
 
+/* The publishing choice: a dot carries the article along the picked card's
+   route. Straight through to the site, or a stop at "you" first. */
+.travelDirect,
+.travelStop {
+  animation: travelDirect 2.6s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+}
+.travelStop {
+  animation-name: travelStop;
+  animation-duration: 3.6s;
+}
+@keyframes travelDirect {
+  0% {
+    left: 0%;
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  78% {
+    left: 100%;
+    opacity: 1;
+  }
+  100% {
+    left: 100%;
+    opacity: 0;
+  }
+}
+@keyframes travelStop {
+  0% {
+    left: 0%;
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  32%,
+  62% {
+    left: 50%;
+  }
+  86% {
+    left: 100%;
+    opacity: 1;
+  }
+  100% {
+    left: 100%;
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sceneIn,
   .riseIn,
@@ -342,7 +391,9 @@
   .litFrame,
   .spark,
   .pageSkeleton > span,
-  .drawCheck {
+  .drawCheck,
+  .travelDirect,
+  .travelStop {
     animation: none;
     opacity: 1;
     stroke-dashoffset: 0;

@@ -19,7 +19,6 @@ import { DispatcherButton } from "@/components/ui/dispatcher-button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { JourneyBar } from "@/components/ui/journey-bar";
-import { OnAir } from "@/components/ui/on-air";
 import { packDays, type Landed } from "@/components/ui/overview-pack";
 import { pagePath } from "@/lib/metrics";
 import { OverviewChart, TopPosts, type OverviewDay } from "@/components/ui/overview-chart";
@@ -36,6 +35,7 @@ import { articlesPerWeekFor, FREE_ARTICLES_PER_MONTH } from "@/lib/billing";
 import type { OperatorSite } from "@/lib/autopilot/operator";
 import { OperatorIssue } from "./operator-issue";
 import { repoMismatchOf } from "@/lib/site-root";
+import { PublishModeMenu } from "@/components/publish-mode-switch";
 
 // The hosted-mode Home, modelled on Polar's overview: the numbers are the
 // main event, and everything is readable in three seconds.
@@ -118,7 +118,7 @@ function messageOf(r: AutopilotReport, gaps: ReturnType<typeof setupGaps>, proje
   if (r.paused) {
     return {
       title: `I'm paused, since ${shortDate(r.paused.at)}.`,
-      sub: `${r.paused.reason} Nothing new starts until you resume; anything finished still publishes.`,
+      sub: `${r.paused.reason} Nothing is written or published until you resume.`,
       resume: true,
     };
   }
@@ -295,9 +295,9 @@ export async function HostedReport({
     waiting: r.articles.filter((a) => ARTICLE_STATUS[a.status].attention).length,
   };
   const pauseControl = r.paused ? (
-    <ActionForm action={resumeAutopilot} slug={project.slug} submitLabel="Resume autopilot" size="sm" className="[&_p:empty]:hidden" />
+    <ActionForm action={resumeAutopilot} slug={project.slug} submitLabel="Resume Dispatcher" size="sm" className="[&_p:empty]:hidden" />
   ) : (
-    <ActionForm action={pauseAutopilot} slug={project.slug} submitLabel="Pause autopilot" variant="secondary" size="sm" className="[&_p:empty]:hidden" />
+    <ActionForm action={pauseAutopilot} slug={project.slug} submitLabel="Pause Dispatcher" variant="secondary" size="sm" className="[&_p:empty]:hidden" />
   );
 
   return (
@@ -317,7 +317,10 @@ export async function HostedReport({
         <div className="arrive-up col-start-1 row-start-2 -mt-3 flex min-w-0 flex-wrap items-center gap-x-3.5 gap-y-2 self-start text-[13px] text-ink-muted" style={at(0, 1)}>
           <DomainLink domain={project.domain} />
           {plan ? <Badge>{plan}</Badge> : null}
-          <OnAir on={!r.paused}>{r.paused ? "Paused" : "Autopilot on"}</OnAir>
+          {/* The site's status IS the publishing switch: "Autopilot on" /
+              "Review mode on" opens the Autopilot / Manual review menu
+              (components/publish-mode-switch.tsx). */}
+          <PublishModeMenu variant="status" paused={Boolean(r.paused)} slug={project.slug} mode={project.publish_mode} waiting={r.articles.filter((a) => a.status === "review").length} />
         </div>
 
         {/* The dispatcher at its desk, the autopilot's switch right under
@@ -504,7 +507,7 @@ function DispatcherMessage({ message, slug }: { message: Message; slug: string }
       ) : null}
       {message.resume ? (
         <div className="mt-4">
-          <ActionForm action={resumeAutopilot} slug={slug} submitLabel="Resume autopilot" size="sm" />
+          <ActionForm action={resumeAutopilot} slug={slug} submitLabel="Resume Dispatcher" size="sm" />
         </div>
       ) : null}
     </div>

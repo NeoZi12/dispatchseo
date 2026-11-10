@@ -8,15 +8,17 @@ import s from "./stage.module.css";
 // mark that draws itself. Design bar (owner, 2026-11-05): very visual, fun,
 // goof-proof - every screen says one thing and asks for one thing.
 
-export type SceneId = "address" | "account" | "checkout" | "github" | "google";
+export type SceneId = "address" | "account" | "checkout" | "publishing" | "github" | "google";
 export type SceneStep = { id: SceneId; label: string };
 /** The full rail. The Plan step (scene id "checkout": pick a plan, and pay
  *  for a paid one) is in every setup on a deployment with billing; without
- *  billing (self-host) the rail is four steps (railFor). */
+ *  billing (self-host) the rail is five steps (railFor). "publishing" asks
+ *  once whether articles go live on their own or wait for the owner. */
 export const SCENES: SceneStep[] = [
   { id: "address", label: "Your site" },
   { id: "account", label: "Account" },
   { id: "checkout", label: "Plan" },
+  { id: "publishing", label: "Publishing" },
   { id: "github", label: "GitHub" },
   { id: "google", label: "Google" },
 ];
@@ -32,6 +34,12 @@ export const BTN_PRIMARY =
   FOCUS_RING;
 export const BTN_SECONDARY =
   "inline-flex items-center justify-center gap-2 rounded-xl border border-[#8b5cf6]/40 bg-[#8b5cf6]/10 px-6 py-3.5 text-[15px] font-semibold text-ink transition hover:border-[#a855f7]/70 hover:bg-[#8b5cf6]/20 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 " +
+  FOCUS_RING;
+/** The one green button: the action that releases an article to the site
+ *  (Publish). Same shape as the primary; emerald-700 to -600 keeps white
+ *  text readable. Green means "this goes live", nothing else. */
+export const BTN_PUBLISH =
+  "inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#047857] to-[#059669] px-6 py-3.5 text-[15px] font-semibold text-white shadow-lg shadow-[#10b981]/25 transition hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none " +
   FOCUS_RING;
 export const BTN_QUIET =
   "inline-flex items-center justify-center gap-2 rounded-xl border border-line bg-surface-2 px-5 py-3 text-[14px] font-medium text-ink-muted transition hover:border-line hover:text-ink " + FOCUS_RING;

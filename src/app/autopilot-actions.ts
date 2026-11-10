@@ -19,6 +19,7 @@ import {
 } from "@/lib/autopilot/controls";
 import { removeQueuedIdea, restoreQueuedIdea } from "@/lib/autopilot/queue";
 import { adoptPage, editArticle, removeArticle } from "@/lib/article-owner";
+import { approveArticle, discardReviewArticle, setPublishMode } from "@/lib/article-review";
 import { redirect } from "next/navigation";
 import type { ActionState } from "@/components/ui/action-state";
 
@@ -429,4 +430,64 @@ export async function removeArticleAction(_prev: ActionState, fd: FormData): Pro
   // the article is gone from the list, which says so once.
   if (r.pending) redirect(`/articles/${encodeURIComponent(id)}`);
   redirect("/articles?removed=1");
+}
+
+// ---- review before publishing (src/lib/article-review.ts) ----
+
+/** The green Publish on an article waiting for review. `updated_at` is the
+ *  version the page showed: a newer edit (another tab) is read first. */
+export async function approveArticleAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  const o = await ownedProject(fd);
+  if ("refused" in o) return o.refused;
+  const id = text(fd, "id");
+  if (!id) return state(false, "That article can't be published from here.");
+  const r = await approveArticle(o.project, id, { expectedUpdatedAt: text(fd, "updated_at") || undefined }).catch(() => ({
+    ok: false as const,
+    error: "We couldn't publish it just now. Try again in a moment.",
+  }));
+  if (!r.ok) return state(false, r.error);
+  refresh();
+  revalidatePath(`/articles/${id}`);
+  return state(true, r.message);
+}
+
+/** "Don't publish": the article is set aside and the owner lands on the
+ *  list, where the next one waiting (if any) is on top. */
+export async function discardArticleAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  const o = await ownedProject(fd);
+  if ("refused" in o) return o.refused;
+  const id = text(fd, "id");
+  if (!id) return state(false, "That article can't be dropped from here.");
+  const r = await discardReviewArticle(o.project, id).catch(() => ({ ok: false as const, error: "We couldn't drop it just now. Try again in a moment." }));
+  if (!r.ok) return state(false, r.error);
+  refresh();
+  redirect("/articles?dropped=1");
+}
+
+/** Settings: publish automatically, or wait for my review. Articles already
+ *  waiting stay waiting either way - switching to automatic never publishes
+ *  something the owner hasn't seen. */
+export async function savePublishMode(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  const o = await ownedProject(fd);
+  if ("refused" in o) return o.refused;
+  const mode = text(fd, "mode");
+  if (mode !== "auto" && mode !== "review") return state(false, "Pick automatic or review.");
+  const r = await setPublishMode(o.project, mode);
+  if (!r.ok) return state(false, r.error);
+  refresh();
+  return state(
+    true,
+    mode === "review"
+      ? "Saved. Each article finished from now on waits for you, and we email you when one is ready."
+      : "Saved. New articles go live on their own. Any already waiting for you still wait for your Publish.",
+  );
+}
+
+/** The one-click switch (components/publish-mode-switch.tsx, on Articles and
+ *  in Settings): same rules as savePublishMode, called without a form. */
+export async function switchPublishMode(slug: string, mode: "auto" | "review"): Promise<ActionState> {
+  const fd = new FormData();
+  fd.set("slug", slug);
+  fd.set("mode", mode);
+  return savePublishMode(null, fd);
 }
