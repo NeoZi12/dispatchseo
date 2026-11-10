@@ -2275,7 +2275,14 @@ async function handoff(c: Ctx, draft: Draft, p: Plan, report: ValidationReport, 
   // every FAQ shipped a bare "[2]" (dfmsolutions, 2026-11-10). They are
   // linked here, once, so the body, the repo route (which re-renders the FAQ
   // from the column) and the schema all start from the same linked text.
-  const faq = draft.faq.map((f) => ({ ...f, answer: linkCitations(f.answer, sheet.sources, brief.pages) }));
+  // Sanitized HERE as well as in the body below: the repo route rebuilds the
+  // FAQ from this column (repo-publish.ts bodyWithFaq), so text that only
+  // the body copy had cleaned would reach the customer's repo raw.
+  const faq = draft.faq.map((f) => ({
+    ...f,
+    question: sanitizeWriterMarkdown(f.question),
+    answer: sanitizeWriterMarkdown(linkCitations(f.answer, sheet.sources, brief.pages)),
+  }));
   const body = sanitizeWriterMarkdown(linkCitations(draft.markdown, sheet.sources, brief.pages) + closingCta(draft.markdown, brief, project) + renderFaq(faq, draft.faqHeading));
   const sources = sheet.sources.map((s) => ({ url: s.url, title: s.title ?? undefined }));
   const fields = {
