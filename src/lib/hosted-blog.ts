@@ -77,6 +77,25 @@ export function siteOrigin(project: Pick<Project, "domain"> & { hosted_origin?: 
   return project.hosted_origin || `https://${project.domain.replace(/^www\./, "")}`;
 }
 
+/** The public paths the hosted blog can answer at, in the order they are
+ *  tried. "blog" first, always; the others only when the site's own /blog
+ *  is a real blog that repo publishing cannot write into (posts in a CMS,
+ *  not files in the repo - dfmsolutions.de, 2026-11-10). Our own addresses
+ *  stay /hosted/<key>/blog/...; only the path on the site's domain changes. */
+export const HOSTED_PATHS = ["blog", "articles", "guides"] as const;
+
+/** The path segment (no slashes) the hosted blog answers at on the site's
+ *  own domain. Anything unexpected in the column reads as "blog". */
+export function hostedPath(project: { hosted_path?: string | null }): string {
+  const p = (project.hosted_path ?? "").trim().toLowerCase();
+  return /^[a-z0-9][a-z0-9-]{0,39}$/.test(p) ? p : "blog";
+}
+
+/** https://site.com/<path> - the hosted blog's index on the site's domain. */
+export function hostedBase(project: Pick<Project, "domain"> & { hosted_origin?: string | null; hosted_path?: string | null }): string {
+  return `${siteOrigin(project)}/${hostedPath(project)}`;
+}
+
 /** Where an article can be read this minute. A hosted site's published_url
  *  is on the owner's domain, which only answers once their /blog forwards to
  *  us; until then the dashboard's link would land on the site's own 404 (or
@@ -84,7 +103,7 @@ export function siteOrigin(project: Pick<Project, "domain"> & { hosted_origin?: 
  *  hosted_rewrite_live_at is stamped the link goes to the same page on our
  *  address, and flips to theirs the moment the forwarding is seen. */
 export function reachableArticleUrl(
-  project: Pick<Project, "publish_target" | "hosted_key" | "hosted_rewrite_live_at">,
+  project: Pick<Project, "publish_target" | "hosted_key" | "hosted_rewrite_live_at"> & { hosted_path?: string | null },
   publishedUrl: string | null,
   backend: string,
 ): string | null {
@@ -92,15 +111,17 @@ export function reachableArticleUrl(
   if (publishTarget(project) !== "hosted" || !project.hosted_key || project.hosted_rewrite_live_at) return publishedUrl;
   try {
     const u = new URL(publishedUrl);
-    if (!u.pathname.startsWith("/blog")) return publishedUrl;
-    return `${backend}/hosted/${encodeURIComponent(project.hosted_key)}${u.pathname}${u.search}`;
+    // The public path (/blog or /articles) maps onto our own /blog address.
+    const pub = `/${hostedPath(project)}`;
+    if (u.pathname !== pub && !u.pathname.startsWith(`${pub}/`)) return publishedUrl;
+    return `${backend}/hosted/${encodeURIComponent(project.hosted_key)}/blog${u.pathname.slice(pub.length)}${u.search}`;
   } catch {
     return publishedUrl;
   }
 }
 
-export function hostedArticleUrl(project: Pick<Project, "domain"> & { hosted_origin?: string | null }, slug: string): string {
-  return `${siteOrigin(project)}/blog/${encodeURIComponent(slug)}`;
+export function hostedArticleUrl(project: Pick<Project, "domain"> & { hosted_origin?: string | null; hosted_path?: string | null }, slug: string): string {
+  return `${hostedBase(project)}/${encodeURIComponent(slug)}`;
 }
 
 /** The project a hosted request is for, looked up by its random hosted key
@@ -218,18 +239,18 @@ export function decorateBody(html: string, inShort = "In short"): string {
 // --- Rendering ---------------------------------------------------------------
 
 /** Page chrome in the article's own language; English for the rest. */
-type Strings = { onThisPage: string; allPosts: string; minRead: string; inShort: string; blog: string; none: string; visit: string; madeWith: string };
+type Strings = { onThisPage: string; allPosts: string; minRead: string; inShort: string; blog: string; articles: string; guides: string; none: string; visit: string; madeWith: string };
 const STRINGS: Record<string, Strings> = {
-  en: { onThisPage: "On this page", allPosts: "All posts", minRead: "min read", inShort: "In short", blog: "Blog", none: "No articles yet.", visit: "Visit", madeWith: "Made with" },
-  he: { onThisPage: "בעמוד זה", allPosts: "כל המאמרים", minRead: "דקות קריאה", inShort: "בקצרה", blog: "בלוג", none: "אין מאמרים עדיין.", visit: "לאתר", madeWith: "נכתב עם" },
-  ar: { onThisPage: "في هذه الصفحة", allPosts: "كل المقالات", minRead: "دقائق قراءة", inShort: "باختصار", blog: "المدونة", none: "لا توجد مقالات بعد.", visit: "زيارة", madeWith: "صُنع بواسطة" },
-  es: { onThisPage: "En esta página", allPosts: "Todos los artículos", minRead: "min de lectura", inShort: "En resumen", blog: "Blog", none: "Aún no hay artículos.", visit: "Visitar", madeWith: "Hecho con" },
-  de: { onThisPage: "Auf dieser Seite", allPosts: "Alle Beiträge", minRead: "Min. Lesezeit", inShort: "Kurz gesagt", blog: "Blog", none: "Noch keine Beiträge.", visit: "Zu", madeWith: "Erstellt mit" },
-  fr: { onThisPage: "Sur cette page", allPosts: "Tous les articles", minRead: "min de lecture", inShort: "En bref", blog: "Blog", none: "Pas encore d'articles.", visit: "Visiter", madeWith: "Créé avec" },
-  pt: { onThisPage: "Nesta página", allPosts: "Todos os artigos", minRead: "min de leitura", inShort: "Em resumo", blog: "Blog", none: "Ainda não há artigos.", visit: "Visitar", madeWith: "Feito com" },
-  it: { onThisPage: "In questa pagina", allPosts: "Tutti gli articoli", minRead: "min di lettura", inShort: "In breve", blog: "Blog", none: "Ancora nessun articolo.", visit: "Vai a", madeWith: "Creato con" },
-  nl: { onThisPage: "Op deze pagina", allPosts: "Alle artikelen", minRead: "min leestijd", inShort: "Kort gezegd", blog: "Blog", none: "Nog geen artikelen.", visit: "Naar", madeWith: "Gemaakt met" },
-  th: { onThisPage: "ในหน้านี้", allPosts: "บทความทั้งหมด", minRead: "นาทีในการอ่าน", inShort: "สรุปสั้นๆ", blog: "บล็อก", none: "ยังไม่มีบทความ", visit: "ไปที่", madeWith: "สร้างด้วย" },
+  en: { onThisPage: "On this page", allPosts: "All posts", minRead: "min read", inShort: "In short", blog: "Blog", articles: "Articles", guides: "Guides", none: "No articles yet.", visit: "Visit", madeWith: "Made with" },
+  he: { onThisPage: "בעמוד זה", allPosts: "כל המאמרים", minRead: "דקות קריאה", inShort: "בקצרה", blog: "בלוג", articles: "מאמרים", guides: "מדריכים", none: "אין מאמרים עדיין.", visit: "לאתר", madeWith: "נכתב עם" },
+  ar: { onThisPage: "في هذه الصفحة", allPosts: "كل المقالات", minRead: "دقائق قراءة", inShort: "باختصار", blog: "المدونة", articles: "مقالات", guides: "أدلة", none: "لا توجد مقالات بعد.", visit: "زيارة", madeWith: "صُنع بواسطة" },
+  es: { onThisPage: "En esta página", allPosts: "Todos los artículos", minRead: "min de lectura", inShort: "En resumen", blog: "Blog", articles: "Artículos", guides: "Guías", none: "Aún no hay artículos.", visit: "Visitar", madeWith: "Hecho con" },
+  de: { onThisPage: "Auf dieser Seite", allPosts: "Alle Beiträge", minRead: "Min. Lesezeit", inShort: "Kurz gesagt", blog: "Blog", articles: "Artikel", guides: "Ratgeber", none: "Noch keine Beiträge.", visit: "Zu", madeWith: "Erstellt mit" },
+  fr: { onThisPage: "Sur cette page", allPosts: "Tous les articles", minRead: "min de lecture", inShort: "En bref", blog: "Blog", articles: "Articles", guides: "Guides", none: "Pas encore d'articles.", visit: "Visiter", madeWith: "Créé avec" },
+  pt: { onThisPage: "Nesta página", allPosts: "Todos os artigos", minRead: "min de leitura", inShort: "Em resumo", blog: "Blog", articles: "Artigos", guides: "Guias", none: "Ainda não há artigos.", visit: "Visitar", madeWith: "Feito com" },
+  it: { onThisPage: "In questa pagina", allPosts: "Tutti gli articoli", minRead: "min di lettura", inShort: "In breve", blog: "Blog", articles: "Articoli", guides: "Guide", none: "Ancora nessun articolo.", visit: "Vai a", madeWith: "Creato con" },
+  nl: { onThisPage: "Op deze pagina", allPosts: "Alle artikelen", minRead: "min leestijd", inShort: "Kort gezegd", blog: "Blog", articles: "Artikelen", guides: "Gidsen", none: "Nog geen artikelen.", visit: "Naar", madeWith: "Gemaakt met" },
+  th: { onThisPage: "ในหน้านี้", allPosts: "บทความทั้งหมด", minRead: "นาทีในการอ่าน", inShort: "สรุปสั้นๆ", blog: "บล็อก", articles: "บทความ", guides: "คู่มือ", none: "ยังไม่มีบทความ", visit: "ไปที่", madeWith: "สร้างด้วย" },
 };
 const RTL = new Set(["he", "ar", "fa", "ur"]);
 function stringsFor(lang: string) {
@@ -353,7 +374,7 @@ footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--ink)
  *  bottom the last one wins. No dependencies, degrades to plain anchors. */
 const PAGE_JS = `(function(){var c=document.querySelector("img.cover");if(c){c.addEventListener("error",function(){c.remove()})}var links=[].slice.call(document.querySelectorAll('.toc a[href^="#"]'));if(!links.length||!('IntersectionObserver' in window))return;var els=links.map(function(a){return document.getElementById(a.getAttribute('href').slice(1))}).filter(Boolean);function set(id){links.forEach(function(a){if(a.getAttribute('href')==='#'+id)a.setAttribute('aria-current','true');else a.removeAttribute('aria-current')})}var io=new IntersectionObserver(function(es){for(var i=0;i<es.length;i++){if(es[i].isIntersecting){set(es[i].target.id);break}}},{rootMargin:'-96px 0px -70% 0px',threshold:0});els.forEach(function(e){io.observe(e)});window.addEventListener('scroll',function(){if(window.innerHeight+window.scrollY>=document.documentElement.scrollHeight-4)set(els[els.length-1].id)},{passive:true});if(els[0])set(els[0].id)})();`;
 
-type Site = { name: string; tagline: string; short: string; categories: string[]; origin: string; theme: HostedTheme; ctaUrl: string; ctaLabel: string; lang: string; credit: boolean };
+type Site = { name: string; tagline: string; short: string; categories: string[]; origin: string; /** origin + the public path (hostedBase) */ base: string; /** the nav label for that path */ label: string; theme: HostedTheme; ctaUrl: string; ctaLabel: string; lang: string; credit: boolean };
 
 async function siteOf(project: Project): Promise<Site> {
   const [{ profile }, plan] = await Promise.all([loadSiteProfile(project), projectPlan(project.id).catch(() => null)]);
@@ -370,11 +391,21 @@ async function siteOf(project: Project): Promise<Site> {
     short: profile.short,
     categories: Array.isArray(profile.categories) ? profile.categories : [],
     origin,
+    base: hostedBase(project),
+    label: labelFor(hostedPath(project), project.language_code || "en"),
     theme: normalizeTheme(project.hosted_theme),
     ctaUrl: project.hosted_cta_url || origin,
     ctaLabel: project.hosted_cta_label || `${stringsFor(project.language_code || "en").visit} ${profile.name}`,
     lang: project.language_code || "en",
   };
+}
+
+/** The name the blog goes by in its own chrome: "Blog" at /blog, and a
+ *  different word at a second path, so it never reads as the site's own
+ *  /blog sitting right next to it. */
+function labelFor(path: string, lang: string): string {
+  const t = stringsFor(lang);
+  return path === "articles" ? t.articles : path === "guides" ? t.guides : t.blog;
 }
 
 function shell(site: Site, opts: { title: string; description: string; canonical: string; body: string; head?: string; rail?: boolean; spy?: boolean }): string {
@@ -391,17 +422,17 @@ function shell(site: Site, opts: { title: string; description: string; canonical
 <meta name="theme-color" content="${esc(site.theme.mode === "dark" ? "#0a0a0a" : "#ffffff")}">
 <meta property="og:type" content="article"><meta property="og:title" content="${esc(opts.title)}"><meta property="og:description" content="${esc(opts.description)}"><meta property="og:url" content="${esc(opts.canonical)}"><meta property="og:site_name" content="${esc(site.name)}">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="alternate" type="application/rss+xml" title="${esc(site.name)} blog" href="${esc(site.origin)}/blog/feed.xml">
+<link rel="alternate" type="application/rss+xml" title="${esc(site.name)} blog" href="${esc(site.base)}/feed.xml">
 ${site.theme.logo ? `<link rel="icon" href="${esc(site.theme.logo)}">` : ""}
 ${opts.head ?? ""}
 <style>${palette(site.theme)}${CSS}</style>
 </head>
 <body>
-<header class="mast"><div class="mast-in"><a class="brand" href="${esc(site.origin)}">${logo}${esc(site.name)}</a><nav><a href="${esc(site.origin)}/blog">${esc(stringsFor(site.lang).blog)}</a><a href="${esc(site.ctaUrl)}">${esc(site.ctaLabel)}</a></nav></div></header>
+<header class="mast"><div class="mast-in"><a class="brand" href="${esc(site.origin)}">${logo}${esc(site.name)}</a><nav><a href="${esc(site.base)}">${esc(site.label)}</a><a href="${esc(site.ctaUrl)}">${esc(site.ctaLabel)}</a></nav></div></header>
 <main class="${opts.rail ? "rail" : ""}">
 ${opts.body}
 </main>
-<footer><span>© ${new Date().getUTCFullYear()} ${esc(site.name)}</span><a href="${esc(site.origin)}/blog/feed.xml">RSS</a></footer>
+<footer><span>© ${new Date().getUTCFullYear()} ${esc(site.name)}</span><a href="${esc(site.base)}/feed.xml">RSS</a></footer>
 <script>${PAGE_JS}</script>
 </body>
 </html>`;
@@ -456,11 +487,11 @@ export async function renderHostedIndex(project: Project, posts: HostedPost[], p
   const pages = Math.max(1, Math.ceil(paging.total / INDEX_PAGE_SIZE));
   const pager =
     pages > 1
-      ? `<nav class="pager" aria-label="Pages">${paging.page > 1 ? `<a href="${esc(site.origin)}/blog${paging.page > 2 ? `?page=${paging.page - 1}` : ""}">←</a>` : "<span></span>"}<span>${paging.page} / ${pages}</span>${paging.page < pages ? `<a href="${esc(site.origin)}/blog?page=${paging.page + 1}">→</a>` : "<span></span>"}</nav>`
+      ? `<nav class="pager" aria-label="Pages">${paging.page > 1 ? `<a href="${esc(site.base)}${paging.page > 2 ? `?page=${paging.page - 1}` : ""}">←</a>` : "<span></span>"}<span>${paging.page} / ${pages}</span>${paging.page < pages ? `<a href="${esc(site.base)}?page=${paging.page + 1}">→</a>` : "<span></span>"}</nav>`
       : "";
-  const body = `<section class="list"><h1>${esc(site.name)} ${esc(t.blog)}</h1><p class="sub">${esc(site.tagline || site.short || site.name)}</p>${items || `<p class="sub">${esc(t.none)}</p>`}${pager}${promo(site, "below")}</section>`;
-  const canonical = `${site.origin}/blog${paging.page > 1 ? `?page=${paging.page}` : ""}`;
-  return shell(site, { title: `${site.name} ${t.blog}${paging.page > 1 ? ` · ${paging.page}` : ""}`, description: site.short || site.tagline || site.name, canonical, body });
+  const body = `<section class="list"><h1>${esc(site.name)} ${esc(site.label)}</h1><p class="sub">${esc(site.tagline || site.short || site.name)}</p>${items || `<p class="sub">${esc(t.none)}</p>`}${pager}${promo(site, "below")}</section>`;
+  const canonical = `${site.base}${paging.page > 1 ? `?page=${paging.page}` : ""}`;
+  return shell(site, { title: `${site.name} ${site.label}${paging.page > 1 ? ` · ${paging.page}` : ""}`, description: site.short || site.tagline || site.name, canonical, body });
 }
 
 export async function renderHostedArticle(project: Project, post: HostedPost): Promise<string> {
@@ -472,7 +503,7 @@ export async function renderHostedArticle(project: Project, post: HostedPost): P
   const canonical = hostedArticleUrl(project, post.slug);
   const t = stringsFor(site.lang);
   const arrow = dirFor(site.lang) === "rtl" ? "→" : "←";
-  const back = `<a class="back" href="${esc(site.origin)}/blog"><span aria-hidden="true">${arrow}</span> ${esc(t.allPosts)}</a>`;
+  const back = `<a class="back" href="${esc(site.base)}"><span aria-hidden="true">${arrow}</span> ${esc(t.allPosts)}</a>`;
   // The byline the owner set (Settings > Author). Shown only when a real
   // person is named - the structured data says Person in exactly that case
   // (job-handlers/finish.ts), and the page must not claim less or more than
@@ -501,8 +532,7 @@ ${rail ? `<aside class="rail"><div>${tocHtml(headings, "rail", t.onThisPage)}${p
 }
 
 export function renderHostedSitemap(project: Project, posts: HostedPost[]): string {
-  const origin = siteOrigin(project);
-  const urls = [`<url><loc>${esc(origin)}/blog</loc></url>`, ...posts.map((p) => `<url><loc>${esc(hostedArticleUrl(project, p.slug))}</loc><lastmod>${esc(postDate(p).slice(0, 10))}</lastmod></url>`)];
+  const urls = [`<url><loc>${esc(hostedBase(project))}</loc></url>`, ...posts.map((p) => `<url><loc>${esc(hostedArticleUrl(project, p.slug))}</loc><lastmod>${esc(postDate(p).slice(0, 10))}</lastmod></url>`)];
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>\n`;
 }
 
@@ -512,7 +542,7 @@ export async function renderHostedFeed(project: Project, posts: HostedPost[]): P
     .slice(0, 30)
     .map((p) => `<item><title>${esc(p.title)}</title><link>${esc(hostedArticleUrl(project, p.slug))}</link><guid>${esc(hostedArticleUrl(project, p.slug))}</guid><pubDate>${new Date(postDate(p)).toUTCString()}</pubDate>${p.meta_description ? `<description>${esc(p.meta_description)}</description>` : ""}</item>`)
     .join("\n");
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0"><channel><title>${esc(site.name)} blog</title><link>${esc(site.origin)}/blog</link><description>${esc(site.short || site.tagline || site.name)}</description>\n${items}\n</channel></rss>\n`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0"><channel><title>${esc(site.name)} blog</title><link>${esc(site.base)}</link><description>${esc(site.short || site.tagline || site.name)}</description>\n${items}\n</channel></rss>\n`;
 }
 
 /** The one inline script the pages carry, allowed by hash below. */

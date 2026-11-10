@@ -77,8 +77,13 @@ export async function runRepoPublish(project: Project, draftId: string): Promise
       // the project to the hosted route, open the one-line rewrite pull
       // request (best effort - the pages exist on our side either way), and
       // publish this article there now.
+      //
+      // secondPath: the repo has no folder of posts, so a real blog at the
+      // site's /blog (posts kept in a CMS - dfmsolutions.de, 2026-11-10) can
+      // never take this article. The hosted blog then answers at /articles
+      // and their /blog is left alone; before this the draft parked for good.
       const { switchToHostedBlog } = await import("@/lib/hosted-rewrite");
-      const switched = await switchToHostedBlog(project);
+      const switched = await switchToHostedBlog(project, { secondPath: true });
       if (!switched) {
         await markBlockedSetup(draftId);
         return;

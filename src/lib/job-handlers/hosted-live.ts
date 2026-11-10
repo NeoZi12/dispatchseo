@@ -4,7 +4,7 @@ import { getProjectById, publishTarget, type Project } from "@/lib/projects";
 import { checkRewriteLive, manualSnippet, mergeRewritePr, replanForwarding } from "@/lib/hosted-rewrite";
 import { notifyFirstArticleLive } from "@/lib/first-article-email";
 import { backendBaseUrl } from "@/lib/pipeline-pack";
-import { siteOrigin } from "@/lib/hosted-blog";
+import { hostedBase, hostedPath, siteOrigin } from "@/lib/hosted-blog";
 
 // Watches a hosted site's own /blog until it answers from us (the marker
 // header), then sends the "your first article is live" email for the first
@@ -93,22 +93,24 @@ async function notifyForwardingNeeded(project: Project): Promise<void> {
     const to = u?.user?.email;
     if (!to) return;
     const backend = await backendBaseUrl();
-    const snippets = manualSnippet(backend, project.hosted_key);
-    const origin = siteOrigin(project);
+    const snippets = manualSnippet(backend, project.hosted_key, hostedPath(project));
+    // The address the rule makes answer: /blog, or /articles on a site
+    // whose own /blog is a real blog we leave alone.
+    const origin = hostedBase(project);
     const domain = project.domain || project.slug;
     const merged = (project.hosted_rewrite_state ?? "").startsWith("merged") && typeof project.hosted_rewrite_pr_url === "string" && project.hosted_rewrite_pr_url.startsWith("http");
     const text = merged
       ? `Hi,\n\n` +
-        `Your first article for ${domain} is written and waiting. The one change it needs is already merged into your repo (${project.hosted_rewrite_pr_url}), but your site has not been deployed since, so ${origin}/blog does not forward to your hosted blog yet and nobody can reach the article.\n\n` +
-        `Deploy your site the way you usually do. As soon as ${origin}/blog answers, the article is live and you get a mail with the link.\n\n` +
+        `Your first article for ${domain} is written and waiting. The one change it needs is already merged into your repo (${project.hosted_rewrite_pr_url}), but your site has not been deployed since, so ${origin} does not forward to your hosted blog yet and nobody can reach the article.\n\n` +
+        `Deploy your site the way you usually do. As soon as ${origin} answers, the article is live and you get a mail with the link.\n\n` +
         `DispatchSEO`
       : `Hi,\n\n` +
-        `Your first article for ${domain} is written and waiting. One thing is missing on your side: ${origin}/blog does not forward to your hosted blog yet, so nobody can reach it.\n\n` +
+        `Your first article for ${domain} is written and waiting. One thing is missing on your side: ${origin} does not forward to your hosted blog yet, so nobody can reach it.\n\n` +
         `If your site is Next.js, add this to next.config.js and deploy:\n\n${snippets.next}\n\n` +
         `On Vercel without Next.js, put this in vercel.json:\n\n${snippets.vercel}\n\n` +
         `On Netlify, add these two lines to _redirects:\n\n${snippets.netlify}\n` +
         `The same rules, for copying, are on your settings screen: ${backend}/settings?section=publishing\n\n` +
-        `As soon as ${origin}/blog answers, the article is live and you get a mail with the link.\n\n` +
+        `As soon as ${origin} answers, the article is live and you get a mail with the link.\n\n` +
         `DispatchSEO`;
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",

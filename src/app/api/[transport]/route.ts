@@ -73,6 +73,7 @@ import {
   suggestTopic,
 } from "@/lib/autopilot";
 import { checkRewriteLive, manualSnippet, switchToHostedBlog } from "@/lib/hosted-rewrite";
+import { hostedBase, hostedPath } from "@/lib/hosted-blog";
 import { normalizeTheme, readableAccent, readSiteTheme } from "@/lib/hosted-theme";
 import { clientKindStore, currentClientKind, currentProject, projectStore } from "@/lib/mcp-context";
 import { duplicateNote, findDuplicateSuggestion, isDuplicateKeyError } from "@/lib/suggestion-dedupe";
@@ -1912,9 +1913,11 @@ const mcpHandler = createMcpHandler(
         if (target === "hosted") {
           // The full switch: key, theme, forwarding pull request, parked
           // drafts released - not just the column.
-          const switched = await switchToHostedBlog(p);
-          if (!switched) return fail("Could not switch this site to the hosted blog.");
-          return ok({ publish_target: "hosted", blog_url: `${switched.hosted_origin ?? `https://${p.domain}`}/blog`, rewrite_pr: switched.hosted_rewrite_pr_url, note: "Articles now publish to the hosted blog. Merge the forwarding pull request (or add the rule on Settings) so the site's /blog answers from it." });
+          // A site whose /blog is already a real blog is hosted at /articles
+          // instead; /blog is never taken over (owner, 2026-11-10).
+          const switched = await switchToHostedBlog(p, { secondPath: true });
+          if (!switched) return fail("We can't publish to /blog because this site already has something there, and /articles and /guides are taken too. The owner can email support@dispatchseo.com to pick a free path.");
+          return ok({ publish_target: "hosted", blog_url: hostedBase(switched), rewrite_pr: switched.hosted_rewrite_pr_url, note: hostedPath(switched) === "blog" ? "Articles now publish to the hosted blog. Merge the forwarding pull request (or add the rule on Settings) so the site's /blog answers from it." : `This site already has something at /blog, so we can't publish there. Articles now publish at /${hostedPath(switched)} and the site's own /blog is untouched. Merge the forwarding pull request (or add the rule on Settings) so /${hostedPath(switched)} answers from it.` });
         }
         const { error } = await db()
           .from("projects")
@@ -4824,11 +4827,11 @@ const mcpHandler = createMcpHandler(
           publish_target: publishTarget(p),
           cta_url: (patch.hosted_cta_url as string | undefined) ?? p.hosted_cta_url ?? `https://${p.domain}`,
           cta_label: (patch.hosted_cta_label as string | undefined) ?? p.hosted_cta_label ?? null,
-          blog_url: `https://${p.domain}/blog`,
+          blog_url: hostedBase(p),
           theme: normalizeTheme((patch.hosted_theme as unknown) ?? p.hosted_theme),
           forwarding_live: live,
           rewrite_pr: p.hosted_rewrite_pr_url,
-          snippets: p.hosted_rewrite_pr_url === "manual" && p.hosted_key ? manualSnippet(await backendBaseUrl(), p.hosted_key) : undefined,
+          snippets: p.hosted_rewrite_pr_url === "manual" && p.hosted_key ? manualSnippet(await backendBaseUrl(), p.hosted_key, hostedPath(p)) : undefined,
         });
       },
     );

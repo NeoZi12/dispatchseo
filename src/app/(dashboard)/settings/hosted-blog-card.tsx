@@ -71,16 +71,19 @@ export function ForwardingHelp({
   prUrl,
   backend,
   hostedKey,
+  path = "blog",
   className = "",
 }: {
   live: boolean;
   prUrl: string | null;
   backend: string;
   hostedKey: string;
+  /** The public path the rule listens on (hostedPath): blog or articles. */
+  path?: string;
   className?: string;
 }) {
   if (live) return null;
-  const snippets = manualSnippet(backend, hostedKey);
+  const snippets = manualSnippet(backend, hostedKey, path);
   const manual = prUrl === "manual" || !prUrl;
   return (
     <div className={className}>

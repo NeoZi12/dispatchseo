@@ -5,6 +5,7 @@ import { publishTarget } from "@/lib/projects";
 import { hostBlogHere, saveBrand, saveFolder } from "@/app/autopilot-actions";
 import { RepoRow } from "@/components/repo-row";
 import { rewriteLiveCached } from "@/lib/hosted-rewrite";
+import { hostedPath } from "@/lib/hosted-blog";
 import { normalizeTheme } from "@/lib/hosted-theme";
 import { backendBaseUrl } from "@/lib/pipeline-pack";
 import { isCloudMode } from "@/lib/cloud";
@@ -238,8 +239,10 @@ async function PublishingSection({ project }: { project: Project }) {
   const [live, backend] = target === "hosted" ? await Promise.all([rewriteLiveCached(project), backendBaseUrl()]) : [false, ""];
   const hasRepo = target === "github" && Boolean(project.github_repo);
   const nowhere = (target === "github" && !project.github_repo) || target === "manual";
+  // /blog, or /articles for a site whose own /blog is a real blog we keep.
+  const at = `${project.domain}/${hostedPath(project)}`;
   const route =
-    target === "hosted" ? `Your blog at ${project.domain}/blog, hosted by us` : hasRepo ? "Your GitHub repo, as pull requests" : target === "wordpress" ? "Your WordPress site" : "Nowhere yet";
+    target === "hosted" ? (hostedPath(project) === "blog" ? `Your blog at ${at}, hosted by us` : `Your articles at ${at}, hosted by us. Your own /blog stays as it is`) : hasRepo ? "Your GitHub repo, as pull requests" : target === "wordpress" ? "Your WordPress site" : "Nowhere yet";
 
   if (target === "wordpress") {
     // Not supported in this product: shown as it is, with the way out.
@@ -307,12 +310,12 @@ async function PublishingSection({ project }: { project: Project }) {
 
       {target === "hosted" ? (
         <>
-          <Row title="Forwarding" description={`Your domain's /blog has to reach us before articles show at ${project.domain}/blog.`}>
+          <Row title="Forwarding" description={`Your domain's /${hostedPath(project)} has to reach us before articles show at ${at}.`}>
             <OnAir on={live}>{live ? "Forwarding live" : "Not forwarding yet"}</OnAir>
           </Row>
           {!live ? (
             <div className="px-5 py-4">
-              <ForwardingHelp live={live} prUrl={project.hosted_rewrite_pr_url} backend={backend} hostedKey={project.hosted_key ?? ""} />
+              <ForwardingHelp live={live} prUrl={project.hosted_rewrite_pr_url} backend={backend} hostedKey={project.hosted_key ?? ""} path={hostedPath(project)} />
             </div>
           ) : null}
           <details className="group">

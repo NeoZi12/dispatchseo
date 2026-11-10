@@ -126,9 +126,26 @@ function message(e: unknown): string {
 async function launchBlog(project: Project): Promise<Project> {
   if (publishTarget(project) !== "hosted" || !project.hosted_key) {
     // A site that already runs its own blog keeps it: articles go into the
-    // repo next to its posts (publish-repo), and there is nothing to switch.
-    if (await servesOwnBlog(project)) return project;
-    if (!(await switchToHostedBlog(project))) throw new Error("could not switch the project to the hosted blog");
+    // repo next to its posts (publish-repo), and there is nothing to switch -
+    // PROVIDED the repo actually holds its posts. A blog run from a CMS has
+    // none in the repo, and its first article used to park for good
+    // (dfmsolutions.de, 2026-11-10). That site gets the hosted blog at a
+    // second path (/articles) now, while the first article is still being
+    // written, so the forwarding is merged and deployed by the time it is
+    // done. "Could not tell" (GitHub unreadable) keeps the old answer; the
+    // publish step makes the same switch if the folder really is missing.
+    let secondPath = false;
+    if (await servesOwnBlog(project)) {
+      const { repoHasArticleFolder } = await import("@/lib/repo-publish");
+      if ((await repoHasArticleFolder(project).catch(() => null)) !== false) return project;
+      secondPath = true;
+    }
+    if (!(await switchToHostedBlog(project, { secondPath }))) {
+      // A second path that is taken too is the old "keeps its own blog"
+      // answer, not a failure: the publish step parks and says so.
+      if (secondPath) return project;
+      throw new Error("could not switch the project to the hosted blog");
+    }
   } else if (!project.hosted_rewrite_pr_url && !project.hosted_rewrite_live_at) {
     // Flipped on an earlier attempt, but the pull request never opened.
     await switchToHostedBlog({ ...project, publish_target: "github" });

@@ -79,15 +79,15 @@ export function setupGaps(s: SetupFacts): SetupGap[] {
         ? {
             key: "forwarding",
             title: "Merge the forwarding pull request",
-            detail: "We opened a pull request in your repo that points your domain's /blog at your articles. Merge it and the blog is live within minutes of the deploy.",
+            detail: "We opened a pull request in your repo that points your domain at your articles. Merge it and they are live within minutes of the deploy.",
             href: pr,
             done: s.hostedLive !== false,
             blocksPublishing: true,
           }
         : {
             key: "forwarding",
-            title: "Point your /blog at us",
-            detail: "Add the forwarding rule to your site so your domain's /blog shows the articles.",
+            title: "Point your site at us",
+            detail: "Add the forwarding rule to your site so your domain shows the articles.",
             href: "/settings?section=publishing",
             done: s.hostedLive !== false,
             blocksPublishing: true,

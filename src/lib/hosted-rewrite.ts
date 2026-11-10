@@ -3,7 +3,7 @@ import type { Project } from "@/lib/projects";
 import { tokenForRef } from "@/lib/github";
 import { githubApi } from "@/lib/repo-publish";
 import { backendBaseUrl } from "@/lib/pipeline-pack";
-import { HOSTED_HEADER, siteOrigin } from "@/lib/hosted-blog";
+import { HOSTED_HEADER, HOSTED_PATHS, hostedBase, hostedPath, siteOrigin } from "@/lib/hosted-blog";
 import { readSiteTheme } from "@/lib/hosted-theme";
 import { fetchProjectUrl } from "@/lib/url-guard";
 import { isCloudMode } from "@/lib/cloud";
@@ -39,21 +39,28 @@ export function mintHostedKey(): string {
   return randomBytes(9).toString("base64url").replace(/[^a-zA-Z0-9]/g, "").slice(0, 12) || randomBytes(6).toString("hex");
 }
 
-export function manualSnippet(backend: string, slug: string): { vercel: string; netlify: string; next: string } {
+/** The public path's leading-slash form ("/blog", "/articles"). Every rule
+ *  below listens on it; the destination is always our /blog address. */
+function pub(path: string = "blog"): string {
+  return `/${path}`;
+}
+
+export function manualSnippet(backend: string, slug: string, path: string = "blog"): { vercel: string; netlify: string; next: string } {
   const dest = rewriteDestination(backend, slug);
+  const P = pub(path);
   return {
-    vercel: JSON.stringify({ rewrites: [{ source: "/blog", destination: dest }, { source: "/blog/:path*", destination: `${dest}/:path*` }] }, null, 2),
-    netlify: `/blog  ${dest}  200\n/blog/*  ${dest}/:splat  200\n`,
+    vercel: JSON.stringify({ rewrites: [{ source: P, destination: dest }, { source: `${P}/:path*`, destination: `${dest}/:path*` }] }, null, 2),
+    netlify: `${P}  ${dest}  200\n${P}/*  ${dest}/:splat  200\n`,
     // beforeFiles: a plain array runs AFTER the filesystem, so a site that
     // already has an app/blog or pages/blog page (a template blog) would
     // keep serving it and the rule would never fire.
-    next: `// next.config.js\nasync rewrites() {\n  return {\n    beforeFiles: [\n      { source: "/blog", destination: "${dest}" },\n      { source: "/blog/:path*", destination: "${dest}/:path*" },\n    ],\n  };\n}`,
+    next: `// next.config.js\nasync rewrites() {\n  return {\n    beforeFiles: [\n      { source: "${P}", destination: "${dest}" },\n      { source: "${P}/:path*", destination: "${dest}/:path*" },\n    ],\n  };\n}`,
   };
 }
 
 /** Merge our two rewrites into an existing vercel.json without disturbing
  *  anything else in it. Idempotent. */
-export function withVercelRewrites(existing: string | null, backend: string, slug: string): string | null {
+export function withVercelRewrites(existing: string | null, backend: string, slug: string, path: string = "blog"): string | null {
   let json: Record<string, unknown> = {};
   if (existing) {
     try {
@@ -66,21 +73,23 @@ export function withVercelRewrites(existing: string | null, backend: string, slu
     if (json.routes !== undefined) return null;
   }
   const dest = rewriteDestination(backend, slug);
+  const P = pub(path);
   const ours = [
-    { source: "/blog", destination: dest },
-    { source: "/blog/:path*", destination: `${dest}/:path*` },
+    { source: P, destination: dest },
+    { source: `${P}/:path*`, destination: `${dest}/:path*` },
   ];
   const current = Array.isArray(json.rewrites) ? (json.rewrites as { source?: string }[]) : [];
-  const kept = current.filter((r) => r.source !== "/blog" && r.source !== "/blog/:path*");
+  const kept = current.filter((r) => r.source !== P && r.source !== `${P}/:path*`);
   json.rewrites = [...ours, ...kept];
   return JSON.stringify(json, null, 2) + "\n";
 }
 
-export function withNetlifyRedirects(existing: string | null, backend: string, slug: string): string {
+export function withNetlifyRedirects(existing: string | null, backend: string, slug: string, path: string = "blog"): string {
   const dest = rewriteDestination(backend, slug);
-  const lines = (existing ?? "").split("\n").filter((l) => !/^\/blog(\/\*)?\s/.test(l.trim()));
+  const P = pub(path);
+  const lines = (existing ?? "").split("\n").filter((l) => !(l.trim().startsWith(`${P} `) || l.trim().startsWith(`${P}\t`) || l.trim().startsWith(`${P}/* `) || l.trim().startsWith(`${P}/*\t`)));
   const body = lines.join("\n").replace(/\n*$/, "");
-  return `${body ? body + "\n" : ""}/blog  ${dest}  200\n/blog/*  ${dest}/:splat  200\n`;
+  return `${body ? body + "\n" : ""}${P}  ${dest}  200\n${P}/*  ${dest}/:splat  200\n`;
 }
 
 /** One file the forwarding pull request writes (content) or removes (null). */
@@ -107,13 +116,14 @@ export type RewritePlan =
 //                     request is never merged by us (mergeRewritePr).
 
 /** The repo's own /blog page files (app router or pages router, root or src/). */
-export function nextBlogRoute(paths: string[]): { dir: string; files: string[] } | null {
-  const page = paths.find((p) => /^(src\/)?app\/blog\/page\.(js|jsx|ts|tsx|mdx)$/.test(p));
+export function nextBlogRoute(paths: string[], path: string = "blog"): { dir: string; files: string[] } | null {
+  // `path` is always one plain segment (hostedPath guarantees [a-z0-9-]).
+  const page = paths.find((p) => new RegExp(`^(src\\/)?app\\/${path}\\/page\\.(js|jsx|ts|tsx|mdx)$`).test(p));
   if (page) {
     const dir = page.replace(/\/page\.[a-z]+$/, "");
     return { dir, files: paths.filter((p) => p === dir || p.startsWith(`${dir}/`)) };
   }
-  const file = paths.find((p) => /^(src\/)?pages\/blog(\/index)?\.(js|jsx|ts|tsx|mdx)$/.test(p));
+  const file = paths.find((p) => new RegExp(`^(src\\/)?pages\\/${path}(\\/index)?\\.(js|jsx|ts|tsx|mdx)$`).test(p));
   if (file) {
     const dir = file.replace(/(\/index)?\.[a-z]+$/, "");
     return { dir, files: paths.filter((p) => p === file || p.startsWith(`${dir}/`)) };
@@ -140,44 +150,46 @@ export function nextMajor(packageJson: string | null): number | null {
 }
 
 /** The proxy (Next 16+) or middleware file that forwards /blog to `dest`. */
-export function nextProxyContent(dest: string, opts: { ts: boolean; proxy: boolean }): string {
+export function nextProxyContent(dest: string, opts: { ts: boolean; proxy: boolean; path?: string }): string {
   const fn = opts.proxy ? "proxy" : "middleware";
+  const P = pub(opts.path);
   const typeImport = opts.ts ? `import type { NextRequest } from "next/server";\n` : "";
   const param = opts.ts ? "request: NextRequest" : "request";
   return (
     `import { NextResponse } from "next/server";\n` +
     typeImport +
     `\n` +
-    `// Added by DispatchSEO: /blog and everything under it is served by your\n` +
+    `// Added by DispatchSEO: ${P} and everything under it is served by your\n` +
     `// hosted blog, under your own domain. Remove this file to take it back.\n` +
     `const BLOG = "${dest}";\n` +
     `\n` +
     `export function ${fn}(${param}) {\n` +
     `  const { pathname, search } = request.nextUrl;\n` +
-    `  const rest = pathname === "/blog" ? "" : pathname.slice("/blog".length);\n` +
+    `  const rest = pathname === "${P}" ? "" : pathname.slice("${P}".length);\n` +
     `  return NextResponse.rewrite(new URL(\`\${BLOG}\${rest}\${search}\`));\n` +
     `}\n` +
     `\n` +
-    `export const config = { matcher: ["/blog", "/blog/:path*"] };\n`
+    `export const config = { matcher: ["${P}", "${P}/:path*"] };\n`
   );
 }
 
 /** next.config with a beforeFiles rewrite inserted at the top of its config
  *  object. Null when the file is not a plain object literal we can read, or
  *  already defines rewrites - that owner gets the manual snippet. */
-export function withNextConfigRewrites(existing: string, dest: string): string | null {
+export function withNextConfigRewrites(existing: string, dest: string, path: string = "blog"): string | null {
+  const P = pub(path);
   if (/\brewrites\s*\(/.test(existing) || /\brewrites\s*:/.test(existing)) return null;
   const opener = existing.match(/(const\s+\w+\s*(?::\s*NextConfig)?\s*=\s*\{|module\.exports\s*=\s*\{|export\s+default\s*\{)/);
   if (!opener || opener.index === undefined) return null;
   const at = opener.index + opener[0].length;
   const block =
-    `\n  // Added by DispatchSEO: /blog is served by your hosted blog, under your\n` +
-    `  // domain. beforeFiles, so it runs before this app's own /blog page.\n` +
+    `\n  // Added by DispatchSEO: ${P} is served by your hosted blog, under your\n` +
+    `  // domain. beforeFiles, so it runs before this app's own ${P} page.\n` +
     `  async rewrites() {\n` +
     `    return {\n` +
     `      beforeFiles: [\n` +
-    `        { source: "/blog", destination: "${dest}" },\n` +
-    `        { source: "/blog/:path*", destination: "${dest}/:path*" },\n` +
+    `        { source: "${P}", destination: "${dest}" },\n` +
+    `        { source: "${P}/:path*", destination: "${dest}/:path*" },\n` +
     `      ],\n` +
     `    };\n` +
     `  },`;
@@ -234,28 +246,30 @@ export async function detectSiteHost(project: Pick<Project, "domain"> & { hosted
   return "other";
 }
 
-export type PlanOptions = { blogEmpty?: boolean; host?: SiteHost; avoid?: RewritePlan["kind"][] };
+/** `path` = the public path the rule listens on (hostedPath); default "blog". */
+export type PlanOptions = { blogEmpty?: boolean; host?: SiteHost; avoid?: RewritePlan["kind"][]; path?: string };
 
 export function planRewrite(paths: string[], existing: RepoFiles, backend: string, slug: string, opts: PlanOptions = {}): RewritePlan {
   const has = (p: string) => paths.includes(p);
   const avoid = new Set(opts.avoid ?? []);
   const host: SiteHost = opts.host ?? "unknown";
+  const path = opts.path ?? "blog";
   const isNext = paths.some((p) => /^next\.config\.(js|mjs|ts|cjs)$/.test(p));
   // Netlify evidence (in the repo or on the wire) wins over the Next.js
   // guess: a Next app deployed on Netlify ignores vercel.json entirely.
   const onNetlify = host === "netlify" || has("netlify.toml") || has("public/_redirects") || has("_redirects");
   if (onNetlify && !avoid.has("netlify")) {
-    const path = has("public/_redirects") ? "public/_redirects" : has("_redirects") ? "_redirects" : paths.some((p) => p.startsWith("public/")) ? "public/_redirects" : "_redirects";
-    return { kind: "netlify", files: [{ path, content: withNetlifyRedirects(existing.redirects, backend, slug) }] };
+    const file = has("public/_redirects") ? "public/_redirects" : has("_redirects") ? "_redirects" : paths.some((p) => p.startsWith("public/")) ? "public/_redirects" : "_redirects";
+    return { kind: "netlify", files: [{ path: file, content: withNetlifyRedirects(existing.redirects, backend, slug, path) }] };
   }
   const dest = rewriteDestination(backend, slug);
   const vercelPlan = (): RewritePlan | null => {
     if (avoid.has("vercel")) return null;
-    const content = withVercelRewrites(existing.vercelJson, backend, slug);
+    const content = withVercelRewrites(existing.vercelJson, backend, slug, path);
     return content ? { kind: "vercel", files: [{ path: "vercel.json", content }] } : null;
   };
   if (isNext) {
-    const blog = nextBlogRoute(paths);
+    const blog = nextBlogRoute(paths, path);
     // vercel.json only when the live site is on Vercel (or unseen) AND the
     // app has no /blog page of its own - Vercel's filesystem beats that file
     // (easyrender.app, 2026-11-09), and a self-hosted Next app never reads
@@ -269,15 +283,17 @@ export function planRewrite(paths: string[], existing: RepoFiles, backend: strin
       const src = !paths.some((p) => /^(app|pages)\//.test(p)) && paths.some((p) => /^src\/(app|pages)\//.test(p));
       const ts = has("tsconfig.json");
       const proxy = (nextMajor(existing.packageJson) ?? 0) >= 16;
-      const path = `${src ? "src/" : ""}${proxy ? "proxy" : "middleware"}.${ts ? "ts" : "js"}`;
-      return { kind: "next-proxy", files: [{ path, content: nextProxyContent(dest, { ts, proxy }) }] };
+      const file = `${src ? "src/" : ""}${proxy ? "proxy" : "middleware"}.${ts ? "ts" : "js"}`;
+      return { kind: "next-proxy", files: [{ path: file, content: nextProxyContent(dest, { ts, proxy, path }) }] };
     }
     if (existing.nextConfig && !avoid.has("next-config")) {
-      const edited = withNextConfigRewrites(existing.nextConfig.content, dest);
+      const edited = withNextConfigRewrites(existing.nextConfig.content, dest, path);
       if (edited) return { kind: "next-config", files: [{ path: existing.nextConfig.path, content: edited }] };
     }
-    if (blog && opts.blogEmpty && blog.files.length && host !== "other" && !avoid.has("next-remove-blog")) {
-      const vercel = withVercelRewrites(existing.vercelJson, backend, slug);
+    // Removing a template page is only ever about the site's own /blog; at a
+    // second path there is nothing of theirs we would take out.
+    if (path === "blog" && blog && opts.blogEmpty && blog.files.length && host !== "other" && !avoid.has("next-remove-blog")) {
+      const vercel = withVercelRewrites(existing.vercelJson, backend, slug, path);
       if (vercel) return { kind: "next-remove-blog", files: [...blog.files.map((path) => ({ path, content: null })), { path: "vercel.json", content: vercel }] };
     }
     return { kind: "manual" };
@@ -293,22 +309,40 @@ export function planRewrite(paths: string[], existing: RepoFiles, backend: strin
  * Flip the project to the hosted route and open the rewrite pull request.
  * Returns the updated project, or null only when the flip itself failed
  * (the PR is best effort and its absence is recorded, not thrown).
+ *
+ * `secondPath`: the caller has established that the site's own /blog, if it
+ * has one, cannot take our articles (repo publishing found no folder of
+ * posts). Then a real blog at /blog is no longer a reason to give up: the
+ * hosted blog answers at the first free path of HOSTED_PATHS instead
+ * (/articles), and their blog is never touched. Without it, a site with its
+ * own /blog is refused, as before - the owner's own choice of "hosted" from
+ * Settings or MCP must never quietly land somewhere other than /blog.
  */
-export async function switchToHostedBlog(project: Project): Promise<Project | null> {
+export async function switchToHostedBlog(project: Project, opts: { secondPath?: boolean } = {}): Promise<Project | null> {
   // A site that already serves a /blog (a CMS-backed one the repo scan could
   // not see, or anything else) must not have it forwarded away from under
   // it. "No markdown folder" is not "no blog".
-  if (await servesOwnBlog(project)) return null;
+  //
+  // A path chosen on an earlier attempt is kept as it is: once our rule is
+  // live it answers with our marker, and re-deciding would only flip-flop.
+  let path: string | null = project.hosted_path && hostedPath(project) !== "blog" ? hostedPath(project) : null;
+  if (!path && (await servesOwnBlog(project))) {
+    if (!opts.secondPath) return null;
+    path = await firstFreePath(project);
+    if (!path) return null;
+  }
 
   const key = project.hosted_key ?? mintHostedKey();
   const { data, error } = await db()
     .from("projects")
-    .update({ publish_target: "hosted", hosted_key: key })
+    // hosted_path only when there is one: a DB that has not run 0084 must
+    // keep switching /blog sites exactly as before.
+    .update({ publish_target: "hosted", hosted_key: key, ...(path ? { hosted_path: path } : {}) })
     .eq("id", project.id)
     .select("id")
     .maybeSingle();
   if (error || !data) return null;
-  const updated: Project = { ...project, publish_target: "hosted", hosted_key: key };
+  const updated: Project = { ...project, publish_target: "hosted", hosted_key: key, ...(path ? { hosted_path: path } : {}) };
   // The site's colours and logo, read once from its homepage. Best effort:
   // an unreadable homepage leaves the default theme, which the owner can
   // change on Settings.
@@ -380,6 +414,33 @@ export async function servesOwnBlog(project: Project): Promise<boolean> {
   return looksLikeBlogIndex(body);
 }
 
+/** The first of HOSTED_PATHS after "blog" that nothing on the site uses,
+ *  or null. Free = answers 404/410, answers from us already, or is the
+ *  same catch-all shell a random path gets. Anything else - a real page, a
+ *  redirect to one, an unreachable site - is somebody's and is skipped:
+ *  forwarding a path the owner uses would break their site. */
+export async function firstFreePath(project: Project): Promise<string | null> {
+  for (const path of HOSTED_PATHS.slice(1)) {
+    if (await pathFree(project, path)) return path;
+  }
+  return null;
+}
+
+async function pathFree(project: Project, path: string): Promise<boolean> {
+  const origin = siteOrigin(project);
+  const init = { timeoutMs: 6_000, userAgent: "DispatchSEO-Check/1.0" };
+  const res = await fetchProjectUrl(`${origin}/${path}`, project.domain, init);
+  if (!res) return false;
+  if (res.headers.get(HOSTED_HEADER) === "1") return true;
+  if (res.status === 404 || res.status === 410) return true;
+  if (res.status !== 200) return false;
+  const body = await res.text().catch(() => "");
+  const probe = await fetchProjectUrl(`${origin}/dispatchseo-probe-${randomBytes(6).toString("hex")}`, project.domain, init);
+  if (!probe || probe.status !== 200) return false;
+  const other = await probe.text().catch(() => "");
+  return Math.abs(body.length - other.length) <= Math.max(body.length, other.length) * 0.1;
+}
+
 /** Exported for testing: the blog-index shape servesOwnBlog requires. */
 export function looksLikeBlogIndex(html: string): boolean {
   // Posts, not navigation: a template blog ships category/tag pages and a
@@ -443,7 +504,7 @@ export async function openRewritePr(project: Project, opts: PlanOptions = {}): P
       },
       backend,
       project.hosted_key,
-      { blogEmpty: Boolean(opts.blogEmpty), host, avoid: opts.avoid },
+      { blogEmpty: Boolean(opts.blogEmpty), host, avoid: opts.avoid, path: hostedPath(project) },
     );
   }
   if (planned.kind === "manual") {
@@ -461,7 +522,7 @@ export async function openRewritePr(project: Project, opts: PlanOptions = {}): P
   const entries = files.map((f) => (f.content === null ? { path: f.path, mode: "100644", type: "blob", sha: null } : { path: f.path, mode: "100644", type: "blob", content: f.content }));
   const tree = await githubApi(token, "POST", `/repos/${repo}/git/trees`, { base_tree: baseTree, tree: entries });
   if (!tree.json?.sha) return null;
-  const what = PLAN_WORDS[plan.kind];
+  const what = planWords(plan.kind, hostedPath(project));
   const commit = await githubApi(token, "POST", `/repos/${repo}/git/commits`, {
     message: `${what.title}\n\n${what.commit}`,
     tree: String(tree.json.sha),
@@ -470,11 +531,12 @@ export async function openRewritePr(project: Project, opts: PlanOptions = {}): P
   if (!commit.json?.sha) return null;
   await githubApi(token, "PATCH", `/repos/${repo}/git/refs/${encodeURIComponent(`heads/${BRANCH}`)}`, { sha: String(commit.json.sha), force: true });
 
-  const origin = siteOrigin(project);
+  const base = hostedBase(project);
   const body =
     `${what.body}\n\n` +
-    `\`${origin}/blog\` and everything under it is then served by DispatchSEO, under your domain, with your site name and a link back to your site. ` +
-    `Merge it and your blog is live at ${origin}/blog within a few minutes of the deploy. Nothing else in your site changes. ` +
+    `\`${base}\` and everything under it is then served by DispatchSEO, under your domain, with your site name and a link back to your site. ` +
+    `Merge it and your articles are live at ${base} within a few minutes of the deploy. Nothing else in your site changes` +
+    (hostedPath(project) === "blog" ? ". " : `, and your own /blog stays exactly as it is. `) +
     `The same rule for other hosts is on your DispatchSEO settings screen.`;
   let prNumber: number | null = null;
   let url = "";
@@ -500,6 +562,16 @@ export async function openRewritePr(project: Project, opts: PlanOptions = {}): P
 /** Title doubles as the merge guard: a title carrying REMOVES_MARK is the
  *  template-removal kind, which deletes files and is the owner's merge. */
 const REMOVES_MARK = "(removes the empty template blog)";
+/** PLAN_WORDS for the public path the rule listens on: "/blog" in the
+ *  stored wording becomes "/articles" for a second-path site. The title's
+ *  REMOVES_MARK only ever exists on the /blog wording. */
+function planWords(kind: Exclude<RewritePlan["kind"], "manual">, path: string): { title: string; commit: string; body: string } {
+  const w = PLAN_WORDS[kind];
+  if (path === "blog") return w;
+  const swap = (t: string) => t.replace(/\/blog\b/g, `/${path}`);
+  return { title: swap(w.title), commit: swap(w.commit), body: swap(w.body) };
+}
+
 const PLAN_WORDS: Record<Exclude<RewritePlan["kind"], "manual">, { title: string; commit: string; body: string }> = {
   vercel: {
     title: "Forward /blog to your hosted blog",
@@ -625,7 +697,7 @@ export async function startHostedLiveWatch(projectId: string): Promise<void> {
 /** Does the site's own /blog answer with our marker yet? Stamps the time
  *  when it does. Cheap and bounded; called from the settings screen. */
 export async function checkRewriteLive(project: Project): Promise<boolean> {
-  const res = await fetchProjectUrl(`${siteOrigin(project)}/blog`, project.domain, { timeoutMs: 5_000, userAgent: "DispatchSEO-Check/1.0" });
+  const res = await fetchProjectUrl(hostedBase(project), project.domain, { timeoutMs: 5_000, userAgent: "DispatchSEO-Check/1.0" });
   const live = res?.headers.get(HOSTED_HEADER) === "1";
   if (live) await db().from("projects").update({ hosted_rewrite_live_at: new Date().toISOString() }).eq("id", project.id);
   return live;

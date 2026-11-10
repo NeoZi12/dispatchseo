@@ -3,7 +3,7 @@ import { fetchProjectUrl } from "@/lib/url-guard";
 import { readCapped } from "@/lib/hosted-theme";
 import { serviceAccountWriteClient } from "@/lib/gsc";
 import { instanceTokenAllowedFor } from "@/lib/github";
-import { siteOrigin } from "@/lib/hosted-blog";
+import { hostedBase } from "@/lib/hosted-blog";
 import { publishTarget, type Project } from "@/lib/projects";
 
 // Telling Google where the hosted blog's sitemap is, so a site whose owner
@@ -28,8 +28,8 @@ import { publishTarget, type Project } from "@/lib/projects";
 // site are the whole legitimate toolbox.
 
 /** The hosted blog's sitemap address on the owner's domain. */
-export function hostedSitemapUrl(project: Pick<Project, "domain"> & { hosted_origin?: string | null }): string {
-  return `${siteOrigin(project)}/blog/sitemap.xml`;
+export function hostedSitemapUrl(project: Pick<Project, "domain"> & { hosted_origin?: string | null; hosted_path?: string | null }): string {
+  return `${hostedBase(project)}/sitemap.xml`;
 }
 
 /** Submit the hosted blog's sitemap to the project's Search Console

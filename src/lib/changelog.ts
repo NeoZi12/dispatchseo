@@ -73,6 +73,10 @@ export type ChangelogEntry = {
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
+    kind: "fixed",
+    text: "If your site already runs its own blog at /blog and keeps its posts outside your repo, we now host your articles at /articles instead, so they go out on their own and your blog stays exactly as it is.",
+  },
+  {
     kind: "improved",
     text: "The Articles list shows each live article's impressions next to its clicks, so you can see Google is showing a page before anyone has clicked it.",
   },

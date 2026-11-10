@@ -157,6 +157,15 @@ export function blockedReason(project: Project): string {
     if (!isCloudMode()) {
       return "We couldn't publish to your repo yet. Check that a GitHub token with write access is connected (Settings), tell us the folder your articles live in (Settings - Where your articles live), then press Publish now here.";
     }
+    // A hosted-writer site with no folder of posts is moved to the hosted
+    // blog on its own (publish-repo.ts) - at /articles when its /blog is a
+    // real blog. Still parked means every path we can use is taken: /blog,
+    // /articles and /guides all serve something of theirs. Naming a folder
+    // is no answer there (the posts live in a CMS - dfmsolutions.de,
+    // 2026-11-10), so the sentence says what is actually in the way.
+    if (writerMode(project) === "hosted") {
+      return "Your site already uses /blog, /articles and /guides, so we have no free address to publish at. Email support@dispatchseo.com and we'll set one up with you, or tell us your repo's articles folder under Settings - Where your articles live.";
+    }
     return "We couldn't work out where your site keeps its articles. Tell us the folder (for example content/blog) under Settings - Where your articles live - then press Publish now here.";
   }
   return "This site has nowhere to publish yet. Connect WordPress on the Settings screen, or connect a GitHub repo, and this article goes out on its own.";

@@ -214,7 +214,10 @@ export async function firstArticleProgress(
         // lets us host the blog - so say that, not "the moment it's on".
         stuck.publishing =
           target === "github" && project.github_repo
-            ? { text: "The article is ready, but we couldn't find where your blog's posts live in the repo. Name the folder, or let us host the blog.", href: "/settings?section=publishing", linkLabel: "Open Settings" }
+            ? // Reaching here at all means the hosted fallback found no free
+              // address: /blog, /articles and /guides are all the site's own
+              // (draft-status.ts blockedReason says the same).
+              { text: "The article is ready, but your site already uses /blog, /articles and /guides, so we have no free address to publish it at. Email support@dispatchseo.com and we'll set one up.", href: "mailto:support@dispatchseo.com", linkLabel: "Email us" }
             : { text: "The article is ready. It goes out the moment your blog is switched on." };
       } else if (newest.prUrl && !newest.prMerged) {
         stuck.publishing = { text: "The article is a pull request in your repo, waiting for a merge.", href: newest.prUrl, linkLabel: "Merge it" };

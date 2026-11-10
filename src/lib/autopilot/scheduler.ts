@@ -6,6 +6,7 @@ import { publishRoute } from "@/lib/job-handlers/draft-status";
 import { isDryRun, missingCredentials } from "@/lib/writer/models";
 import { startWriterRun, suggestionIdsInFlight } from "@/lib/writer/runs";
 import { rewriteLiveCached } from "@/lib/hosted-rewrite";
+import { hostedPath } from "@/lib/hosted-blog";
 import { publishTarget, writerMode, type Project } from "@/lib/projects";
 import { cadence } from "./math";
 import { generateSiteProfile } from "./profile";
@@ -139,7 +140,7 @@ export async function runScheduler(
   // address nobody can reach from the site is spend with no return.
   if (publishTarget(project) === "hosted" && !project.hosted_rewrite_live_at && (await hasPublishedHostedArticle(project.id))) {
     const live = await rewriteLiveCached(project).catch(() => false);
-    if (!live) return { skipped: "setup incomplete: your /blog isn't forwarding yet" };
+    if (!live) return { skipped: `setup incomplete: your /${hostedPath(project)} isn't forwarding yet` };
   }
 
   // The profile: research seeds from it and the writer judges topics against

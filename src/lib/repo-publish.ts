@@ -790,6 +790,111 @@ export async function commentOnPullRequest(
  * where their articles live (their setup, quiet), a stored GitHub connection
  * will not resolve (a regression, loud), or GitHub had a bad minute (retry).
  */
+/**
+ * The folder this repo keeps its articles in, or null when none qualifies.
+ * Shared by publishDraftToRepo and repoHasArticleFolder so the setup check
+ * and the publish step can never disagree about whether the repo has one.
+ *
+ * The hint wins when it points at something real. It ALSO wins when the
+ * scorer has nothing to offer, or when the listing was cut short - git
+ * creates a directory on first commit, and an owner who typed "content/blog"
+ * into an empty site must not be sent back to the same Settings field by a
+ * scorer that found no articles because there are none yet.
+ */
+async function resolveContentDir(o: {
+  token: string;
+  repo: string;
+  baseBranch: string;
+  allPaths: string[];
+  hint: string | null;
+  candidates: ContentDirCandidate[];
+  truncated: boolean;
+}): Promise<{ dir: string; dirFiles: string[] } | null> {
+  const { token, repo, baseBranch, allPaths, hint, candidates, truncated } = o;
+  let dir: string | null = null;
+  let dirFiles: string[] = [];
+  const hintExists = Boolean(hint) && allPaths.some((p) => p.startsWith(`${hint}/`));
+  if (hint && (hintExists || !candidates[0] || truncated)) {
+    dir = hint;
+    // Only the markdown DIRECTLY inside it - a sample from a subfolder would
+    // teach the wrong naming for the folder we are about to write into.
+    dirFiles = allPaths.filter((p) => dirOf(p) === hint && /\.mdx?$/i.test(p)).sort();
+  }
+  if (!dir) {
+    // A candidate must QUALIFY, not merely rank first: named for articles, or
+    // at least two of its files carry a frontmatter title (read from the
+    // repo, at most three files for each of the first four candidates).
+    // Ranking first among a repo's markdown used to be enough, which is how
+    // an article landed in a folder of changeset notes. Nothing qualifying
+    // means no-content-dir, and a hosted site then gets the hosted blog.
+    let best: ContentDirCandidate | null = null;
+    for (const c of candidates.slice(0, 4)) {
+      if (c.named) {
+        best = c;
+        break;
+      }
+      const texts: string[] = [];
+      for (const f of c.files.slice(-3)) {
+        const res = await gh(token, "GET", `/repos/${repo}/contents/${encodeURI(f)}?ref=${encodeURIComponent(baseBranch)}`);
+        if (res.status === 200 && typeof res.json?.content === "string") {
+          try {
+            texts.push(Buffer.from(res.json.content as string, "base64").toString("utf8"));
+          } catch {
+            // unreadable file: it simply does not count
+          }
+        }
+      }
+      if (qualifiesByFrontmatter(texts)) {
+        best = c;
+        break;
+      }
+    }
+    if (!best) return null;
+    dir = best.dir;
+    dirFiles = best.files;
+  }
+  return { dir, dirFiles };
+}
+
+/**
+ * Does this repo have a folder of articles we can publish into? true / false,
+ * or null when GitHub could not be read (no credential, an error) - "could not
+ * tell" must never be read as "no", which would move a working site's articles
+ * off its own blog. Used by the launch step: a site whose /blog is a real blog
+ * but whose posts are not files in the repo (kept in a CMS - dfmsolutions.de,
+ * 2026-11-10) gets the hosted blog at a second path up front, instead of a
+ * first article that parks with nowhere to go.
+ */
+export async function repoHasArticleFolder(project: Project): Promise<boolean | null> {
+  const repo = project.github_repo;
+  if (!repo) return null;
+  const token = await tokenForRef(project);
+  if (!token) return null;
+  const repoInfo = await gh(token, "GET", `/repos/${repo}`);
+  if (repoInfo.status !== 200) return null;
+  const baseBranch = String(repoInfo.json?.default_branch ?? "main");
+  const ref = await gh(token, "GET", `/repos/${repo}/git/ref/${encodeURIComponent(`heads/${baseBranch}`)}`);
+  const headSha = (ref.json?.object as { sha?: string } | undefined)?.sha;
+  if (ref.status !== 200 || !headSha) return null;
+  const headCommit = await gh(token, "GET", `/repos/${repo}/git/commits/${headSha}`);
+  const baseTree = (headCommit.json?.tree as { sha?: string } | undefined)?.sha;
+  if (headCommit.status !== 200 || !baseTree) return null;
+  const treeRes = await gh(token, "GET", `/repos/${repo}/git/trees/${baseTree}?recursive=1`);
+  if (treeRes.status !== 200) return null;
+  const entries = (treeRes.json?.tree as { path?: string; type?: string }[] | undefined) ?? [];
+  const allPaths = entries.filter((e) => e.type === "blob").map((e) => String(e.path ?? ""));
+  const picked = await resolveContentDir({
+    token,
+    repo,
+    baseBranch,
+    allPaths,
+    hint: normalizeDirHint(project.content_path_hint),
+    candidates: scoreContentDirs(allPaths),
+    truncated: treeRes.json?.truncated === true,
+  });
+  return picked !== null;
+}
+
 export async function publishDraftToRepo(
   project: Project,
   draft: RepoDraft,
@@ -865,59 +970,16 @@ export async function publishDraftToRepo(
   // real - they know their repo - and the scorer answers when they never said.
   const hint = normalizeDirHint(project.content_path_hint);
   const candidates = scoreContentDirs(allPaths);
-  let dir: string | null = null;
-  let dirFiles: string[] = [];
-  // The hint wins when it points at something real. It ALSO wins when the
-  // scorer has nothing to offer, or when the listing was cut short - git
-  // creates a directory on first commit, and an owner who typed "content/blog"
-  // into an empty site must not be sent back to the same Settings field by a
-  // scorer that found no articles because there are none yet.
-  const hintExists = Boolean(hint) && allPaths.some((p) => p.startsWith(`${hint}/`));
-  if (hint && (hintExists || !candidates[0] || treeRes.json?.truncated === true)) {
-    dir = hint;
-    // Only the markdown DIRECTLY inside it - a sample from a subfolder would
-    // teach the wrong naming for the folder we are about to write into.
-    dirFiles = allPaths.filter((p) => dirOf(p) === hint && /\.mdx?$/i.test(p)).sort();
+  const picked = await resolveContentDir({ token, repo, baseBranch, allPaths, hint, candidates, truncated: treeRes.json?.truncated === true });
+  if (!picked) {
+    return {
+      ok: false,
+      reason: "no-content-dir",
+      message: "no directory in this repo looks like where its articles live",
+    };
   }
-  if (!dir) {
-    // A candidate must QUALIFY, not merely rank first: named for articles, or
-    // at least two of its files carry a frontmatter title (read from the
-    // repo, at most three files for each of the first four candidates).
-    // Ranking first among a repo's markdown used to be enough, which is how
-    // an article landed in a folder of changeset notes. Nothing qualifying
-    // means no-content-dir, and a hosted site then gets the hosted blog.
-    let best: ContentDirCandidate | null = null;
-    for (const c of candidates.slice(0, 4)) {
-      if (c.named) {
-        best = c;
-        break;
-      }
-      const texts: string[] = [];
-      for (const f of c.files.slice(-3)) {
-        const res = await gh(token, "GET", `/repos/${repo}/contents/${encodeURI(f)}?ref=${encodeURIComponent(baseBranch)}`);
-        if (res.status === 200 && typeof res.json?.content === "string") {
-          try {
-            texts.push(Buffer.from(res.json.content as string, "base64").toString("utf8"));
-          } catch {
-            // unreadable file: it simply does not count
-          }
-        }
-      }
-      if (qualifiesByFrontmatter(texts)) {
-        best = c;
-        break;
-      }
-    }
-    if (!best) {
-      return {
-        ok: false,
-        reason: "no-content-dir",
-        message: "no directory in this repo looks like where its articles live",
-      };
-    }
-    dir = best.dir;
-    dirFiles = best.files;
-  }
+  const dir: string = picked.dir;
+  const dirFiles: string[] = picked.dirFiles;
 
   // THE NEIGHBOUR WE COPY. Last in sorted order, because a date-prefixed set
   // sorts oldest to newest and the newest file is the one most likely to match

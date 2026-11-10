@@ -6,7 +6,7 @@ import { buildExcerpt, buildSchema, schemaScript, yamlDoubleQuote } from "@/lib/
 import { DESCRIPTION_KEYS, fetchPullRequest, fileStem, githubApi, parseFrontmatter, relativizeOwnLinks, scoreContentDirs } from "@/lib/repo-publish";
 import { articleSignature } from "@/lib/article-signature";
 import { tokenForRef } from "@/lib/github";
-import { siteOrigin } from "@/lib/hosted-blog";
+import { hostedBase, siteOrigin } from "@/lib/hosted-blog";
 import { backendBaseUrl } from "@/lib/pipeline-pack";
 import { enqueue } from "@/lib/jobs";
 import { EDIT_LIMITS, type ArticleRoute } from "@/lib/article-owner-shared";
@@ -155,7 +155,8 @@ async function loadRow(projectId: string, draftId: string): Promise<Row | null> 
 function routeOf(project: Project, row: Row): ArticleRoute | null {
   if (row.wp_post_id) return "wordpress";
   if (row.repo_path || row.pr_url) return "repo";
-  if (row.published_url?.startsWith(`${siteOrigin(project)}/blog/`)) return "hosted";
+  // /blog, or a second path (/articles) for a site whose own /blog is kept.
+  if (row.published_url?.startsWith(`${hostedBase(project)}/`) || row.published_url?.startsWith(`${siteOrigin(project)}/blog/`)) return "hosted";
   if (publishTarget(project) === "hosted") return "hosted";
   // Nothing on the row and the project does not publish through us: the
   // article was handed to the owner's own agent (the manual route).

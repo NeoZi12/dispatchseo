@@ -309,15 +309,25 @@ export async function hostBlogHere(_prev: ActionState, fd: FormData): Promise<Ac
   const { publishTarget } = await import("@/lib/projects");
   if (publishTarget(o.project) === "hosted") return state(true, "Your blog is already hosted by us.");
   const { switchToHostedBlog } = await import("@/lib/hosted-rewrite");
-  const updated = await switchToHostedBlog(o.project).catch(() => null);
+  // secondPath: a site whose /blog is already a real blog is hosted at
+  // /articles instead, and told so. /blog itself is never offered back while
+  // something occupies it (owner, 2026-11-10).
+  const updated = await switchToHostedBlog(o.project, { secondPath: true }).catch(() => null);
   if (!updated) {
     return state(
       false,
-      "Your site already serves a /blog, so we won't take it over. Connect the repo or WordPress behind it instead.",
+      "We can't publish to /blog because your site already has something there, and /articles and /guides are taken too. Email support@dispatchseo.com and we'll find a free path with you.",
     );
   }
   refresh();
-  return state(true, "Done. Your blog is hosted by us; the steps to point /blog at it are below.");
+  const { hostedPath } = await import("@/lib/hosted-blog");
+  const path = hostedPath(updated);
+  return state(
+    true,
+    path === "blog"
+      ? "Done. Your blog is hosted by us; the steps to point /blog at it are below."
+      : `Done. We can't publish to /blog because your site already has something there, so your articles go to /${path} instead. Your own /blog stays exactly as it is; the steps to point /${path} at us are below.`,
+  );
 }
 
 /** The hosted blog's look and button, through the same validation as the
