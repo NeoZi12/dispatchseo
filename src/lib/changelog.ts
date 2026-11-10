@@ -74,6 +74,10 @@ export type ChangelogEntry = {
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "fixed",
+    text: "Answers in an article's FAQ now link to their sources like the rest of the article, instead of showing a bare number such as [2].",
+  },
+  {
+    kind: "fixed",
     text: "If your site already runs its own blog at /blog and keeps its posts outside your repo, we now host your articles at /articles instead, so they go out on their own and your blog stays exactly as it is.",
   },
   {

@@ -1,4 +1,4 @@
-import { getHostedPost, hostedHeaders, hostedPostRemoved, hostedProject, renderHostedArticle } from "@/lib/hosted-blog";
+import { getHostedPost, hostedHeaders, hostedPostRemoved, hostedProject, listHostedPosts, renderHostedArticle, renderHostedSitemap } from "@/lib/hosted-blog";
 
 export async function GET(_req: Request, ctx: { params: Promise<{ slug: string; article: string }> }): Promise<Response> {
   const { slug: key, article } = await ctx.params;
@@ -11,6 +11,15 @@ export async function GET(_req: Request, ctx: { params: Promise<{ slug: string; 
     // keep the raw segment
   }
   const slug = decoded.replace(/\/+$/, "");
+  // On Vercel a request for sitemap.xml lands HERE, not on the sibling
+  // sitemap.xml/route.ts (it works under `next start`; every hosted site's
+  // sitemap answered 404 in production until 2026-11-10, so Google was never
+  // handed the article list). Answer it from this route too, so the sitemap
+  // does not depend on which of the two the platform picks.
+  if (slug === "sitemap.xml") {
+    const posts = await listHostedPosts(project.id, 50_000);
+    return new Response(renderHostedSitemap(project, posts), { headers: hostedHeaders("application/xml; charset=utf-8") });
+  }
   const post = await getHostedPost(project.id, slug);
   if (!post) {
     // Taken down by the owner (article-owner.ts): 410, not 404. Google treats

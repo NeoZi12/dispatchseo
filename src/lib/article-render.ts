@@ -1067,10 +1067,18 @@ export function buildSchema(article: SchemaInput, opts: BuildSchemaOpts = {}): R
     mainEntity: faq.map((f) => ({
       "@type": "Question",
       name: f.question,
-      acceptedAnswer: { "@type": "Answer", text: f.answer },
+      acceptedAnswer: { "@type": "Answer", text: schemaAnswerText(f.answer) },
     })),
   };
   return { "@context": "https://schema.org", "@graph": [articleNode, faqNode] };
+}
+
+/** An FAQ answer as schema.org text: plain words, no markdown. The answers
+ *  are stored as markdown (citation and own-site links), and FAQPage text
+ *  carrying "([host](url))" syntax is noise in a rich result. Bare [n] / [S<n>]
+ *  markers, which drafts written before 2026-11-10 still hold, are dropped. */
+export function schemaAnswerText(answer: string): string {
+  return stripInlineMarkdownToPlainText(answer.replace(/\s?\[S?\d+\](?!\()/g, ""));
 }
 
 // --- Public: buildExcerpt -----------------------------------------------------

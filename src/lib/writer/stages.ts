@@ -2271,7 +2271,12 @@ async function handoff(c: Ctx, draft: Draft, p: Plan, report: ValidationReport, 
   // Sanitized once more at the very end: the FAQ answers are model text that
   // never passed through restrictLinks, and this is the last hand before the
   // customer's repo.
-  const body = sanitizeWriterMarkdown(linkCitations(draft.markdown, sheet.sources, brief.pages) + closingCta(draft.markdown, brief, project) + renderFaq(draft.faq, draft.faqHeading));
+  // The FAQ answers carry [n] markers too, and they used to skip this step:
+  // every FAQ shipped a bare "[2]" (dfmsolutions, 2026-11-10). They are
+  // linked here, once, so the body, the repo route (which re-renders the FAQ
+  // from the column) and the schema all start from the same linked text.
+  const faq = draft.faq.map((f) => ({ ...f, answer: linkCitations(f.answer, sheet.sources, brief.pages) }));
+  const body = sanitizeWriterMarkdown(linkCitations(draft.markdown, sheet.sources, brief.pages) + closingCta(draft.markdown, brief, project) + renderFaq(faq, draft.faqHeading));
   const sources = sheet.sources.map((s) => ({ url: s.url, title: s.title ?? undefined }));
   const fields = {
     title: p.title,
@@ -2279,7 +2284,7 @@ async function handoff(c: Ctx, draft: Draft, p: Plan, report: ValidationReport, 
     meta_description: p.meta_description ?? null,
     primary_keyword: sheet.keyword,
     markdown: body,
-    faq: draft.faq,
+    faq,
     sources,
     // `dry` marks a WRITER_DRY_RUN fixture: job-handlers/dry-guard.ts
     // keeps it off every customer site.
