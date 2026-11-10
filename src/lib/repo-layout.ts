@@ -20,8 +20,22 @@ const BLOGISH = /(blog|post|article|news|guide|journal|insight|devlog|notes?)(s|
 
 const SKIP = /(^|\/)(node_modules|vendor|\.git|\.next|dist|build|out|coverage)\//;
 
-/** Never returned, whoever asks: secrets and key material. */
-const SECRET_FILE = /(^|\/)(\.env[^/]*|[^/]*\.(pem|key|p12|pfx|keystore)|id_rsa[^/]*|credentials[^/]*|secrets?[^/]*)$/i;
+/** The only kinds of file read back: source, content and config text. An
+ *  allowlist, because a denylist of secret-looking names always misses one. */
+const READABLE = /\.(md|mdx|markdown|astro|vue|svelte|tsx?|jsx?|mjs|cjs|json|ya?ml|toml|html?|css|scss|txt|prisma|njk|liquid|hbs|ejs)$/i;
+
+/** Never returned even with a readable extension: names that hold secrets. */
+const SECRET_FILE = /(^|\/)(\.env[^/]*|[^/]*(secret|credential|service[-_]?account|adminsdk|private[-_]?key|token|password|passwd|htpasswd|\.npmrc|auth\.json)[^/]*|id_[rd]sa[^/]*)$/i;
+
+/** Token-shaped strings are blanked out of whatever is read back, so a key
+ *  someone committed into a config file does not travel through this tool. */
+function redact(text: string): string {
+  return text
+    .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, "[redacted private key]")
+    .replace(/\b(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|eyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{10,})\b/g, "[redacted]")
+    .replace(/((?:secret|token|password|passwd|api[-_]?key|private[-_]?key|client[-_]?secret|auth)["']?\s*[:=]\s*["'`])[^"'`\n]{8,}(["'`])/gi, "$1[redacted]$2")
+    .replace(/([a-z][a-z0-9+.-]*:\/\/[^\s:@/"']+:)[^\s@/"']+@/gi, "$1[redacted]@");
+}
 
 const MAX_LIST = 400;
 const MAX_FILE_CHARS = 8000;
@@ -37,12 +51,12 @@ export type RepoLayout = {
   articleFolders: { dir: string; files: number; named: boolean }[];
   blogPaths: string[];
   under?: { dir: string; paths: string[]; more: number };
-  file?: { path: string; bytes: number; text: string; cut: boolean };
+  file?: { path: string; bytes: number; from: number; text: string; cut: boolean };
 };
 
 export async function readRepoLayout(
   project: Project,
-  opts: { under?: string | null; file?: string | null } = {},
+  opts: { under?: string | null; file?: string | null; from?: number | null } = {},
 ): Promise<{ ok: true; layout: RepoLayout } | { ok: false; message: string }> {
   const repo = project.github_repo;
   if (!repo) return { ok: false, message: "No GitHub repo is connected to this site." };
@@ -83,7 +97,9 @@ export async function readRepoLayout(
 
   const file = (opts.file ?? "").trim().replace(/^\/+/, "");
   if (file) {
-    if (SECRET_FILE.test(file)) return { ok: false, message: "That file can hold secrets, so it is never read back." };
+    if (!READABLE.test(file) || SECRET_FILE.test(file)) {
+      return { ok: false, message: "Only source, content and config text files are read back, and never one that can hold secrets." };
+    }
     const blob = blobs.find((b) => b.path === file);
     if (!blob) return { ok: false, message: `No file at ${file} on ${branch}.` };
     if (blob.size > MAX_FILE_BYTES) return { ok: false, message: `${file} is too large to read back (${blob.size} bytes).` };
@@ -93,7 +109,10 @@ export async function readRepoLayout(
     }
     const text = Buffer.from(res.json.content as string, "base64").toString("utf8");
     if (text.slice(0, 2000).includes("\u0000")) return { ok: false, message: `${file} is not a text file.` };
-    layout.file = { path: file, bytes: blob.size, text: text.slice(0, MAX_FILE_CHARS), cut: text.length > MAX_FILE_CHARS };
+    // `from` pages through a file longer than one window (a seed file, a long
+    // config): the same 8,000 characters, starting further in.
+    const from = Math.max(0, Math.min(Math.floor(opts.from ?? 0) || 0, text.length));
+    layout.file = { path: file, bytes: blob.size, from, text: redact(text.slice(from, from + MAX_FILE_CHARS)), cut: text.length > from + MAX_FILE_CHARS };
   }
 
   return { ok: true, layout };

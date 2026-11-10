@@ -1953,17 +1953,18 @@ const mcpHandler = createMcpHandler(
           "file counts per top-level folder, the config files that say what the site is built " +
           "with, the folders that look like they hold articles, and every path that has to do " +
           "with a blog. Pass `under` to list one folder, or `file` to read the top of one text " +
-          "file (never .env or key files). Use it to work out why an article went to the hosted " +
+          "source, content or config file (never one that can hold secrets; token-shaped strings are blanked). Use it to work out why an article went to the hosted " +
           "blog instead of the site's own, or to find the folder for set_content_path_hint.",
         inputSchema: {
           under: z.string().max(200).optional().describe("Repo-relative folder to list, e.g. src/content."),
-          file: z.string().max(300).optional().describe("Repo-relative text file to read the first 8,000 characters of."),
+          file: z.string().max(300).optional().describe("Repo-relative text file to read 8,000 characters of."),
+          from: z.number().int().min(0).optional().describe("Character offset to start reading `file` at (default 0); page a long file by adding 8000."),
         },
       },
-      async ({ under, file }) => {
+      async ({ under, file, from }) => {
         const p = currentProject();
         const { readRepoLayout } = await import("@/lib/repo-layout");
-        const res = await readRepoLayout(p, { under, file });
+        const res = await readRepoLayout(p, { under, file, from });
         if (!res.ok) return fail(res.message);
         return ok(res.layout);
       },
