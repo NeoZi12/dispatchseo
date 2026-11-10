@@ -665,6 +665,16 @@ MCP - same rule as every other credential. Setting `wordpress` before
 that connection exists is allowed, and the response says plainly that
 articles will wait until it's made.
 
+### `get_repo_layout`
+
+Read-only. The shape of the connected GitHub repo as the publisher sees it:
+file counts per top-level folder, the config files that say what the site is
+built with, the folders that look like they hold articles, and every path
+that has to do with a blog. Pass `under` to list one folder, or `file` to
+read the first 8,000 characters of one text file (`.env` and key files are
+never returned). Use it to work out why an article went to the hosted blog
+instead of the site's own, or to find the folder for `set_content_path_hint`.
+
 ### `set_content_path_hint`
 
 Repo route only. The folder in the connected GitHub repo that holds the

@@ -1945,6 +1945,31 @@ const mcpHandler = createMcpHandler(
     );
 
     server.registerTool(
+      "get_repo_layout",
+      {
+        title: "What we can see in the connected repo",
+        description:
+          "Read-only: the shape of this site's connected GitHub repo as the publisher sees it - " +
+          "file counts per top-level folder, the config files that say what the site is built " +
+          "with, the folders that look like they hold articles, and every path that has to do " +
+          "with a blog. Pass `under` to list one folder, or `file` to read the top of one text " +
+          "file (never .env or key files). Use it to work out why an article went to the hosted " +
+          "blog instead of the site's own, or to find the folder for set_content_path_hint.",
+        inputSchema: {
+          under: z.string().max(200).optional().describe("Repo-relative folder to list, e.g. src/content."),
+          file: z.string().max(300).optional().describe("Repo-relative text file to read the first 8,000 characters of."),
+        },
+      },
+      async ({ under, file }) => {
+        const p = currentProject();
+        const { readRepoLayout } = await import("@/lib/repo-layout");
+        const res = await readRepoLayout(p, { under, file });
+        if (!res.ok) return fail(res.message);
+        return ok(res.layout);
+      },
+    );
+
+    server.registerTool(
       "set_content_path_hint",
       {
         title: "Set where the repo keeps its articles",
