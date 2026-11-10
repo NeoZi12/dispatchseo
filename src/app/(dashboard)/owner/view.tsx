@@ -94,6 +94,12 @@ function planGroups(c: CustomersReport): { groups: PlanGroup[]; cancelled: PlanG
     if (k) by.get(k)!.push(x);
     else idle.push(x);
   }
+  // Newest sign-up first inside every plan, oldest at the bottom: the people
+  // who just arrived are the ones worth looking at (Neo, 2026-11-10).
+  // Cancelled re-sorts by cancel date where it is drawn.
+  const newestFirst = (a: Customer, b: Customer) => b.createdAt.localeCompare(a.createdAt);
+  for (const list of by.values()) list.sort(newestFirst);
+  idle.sort(newestFirst);
   const all = keys.map((key) => {
     const people = by.get(key)!;
     const revenue = people.reduce((a, x) => a + x.revenueRecentUsd, 0);
