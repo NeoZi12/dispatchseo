@@ -486,7 +486,10 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
   // finished article waiting on a route that may never appear. Counted as in
   // progress, two sites' stuck articles went unseen here until 2026-11-10,
   // one of them for a week.
-  const hostedIds = new Set(projects.filter((p) => p.hosted).map((p) => p.id));
+  // Not for an account whose plan ended: nobody is waiting on that article
+  // (the first one this flagged was a trial cancelled ten days earlier).
+  const planEnded = ["canceled", "cancelled", "revoked", "incomplete_expired"].includes(String(sub?.status ?? ""));
+  const hostedIds = new Set(planEnded ? [] : projects.filter((p) => p.hosted).map((p) => p.id));
   const parkedBySite = new Map<string, { count: number; since: string | null }>();
   for (const r of draftRows) {
     const pid = String(r.project_id ?? "");
