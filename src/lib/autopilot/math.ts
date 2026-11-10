@@ -492,6 +492,22 @@ function keywordJaccard(a: string, b: string): number {
   return inter / (A.size + B.size - inter);
 }
 
+/** Is `keyword` the subject of `text`? Every word of a keyword of at least
+ *  COVERED_MIN_WORDS words appears in the text (plurals folded). Word
+ *  overlap alone misses this: "b2b lead nurturing" against the site's own
+ *  "B2B Lead Nurturing: A Practical Guide (2026)" overlaps 3 of 7 words
+ *  (0.43), and research queued the page the site already had (reverto.ai,
+ *  2026-11-10). Two-word keywords stay on the overlap rule: "lead nurturing"
+ *  inside "lead nurturing email examples" is the broader article, not the
+ *  same one. */
+export const COVERED_MIN_WORDS = 3;
+function keywordCoveredBy(keyword: string, text: string): boolean {
+  const K = [...new Set(tokens(keyword).map(stem))];
+  if (K.length < COVERED_MIN_WORDS) return false;
+  const T = new Set(tokens(text).map(stem));
+  return K.every((w) => T.has(w));
+}
+
 /**
  * Does `keyword` fall under an owner-blocked topic? A topic matches when every
  * word of it appears in the keyword (in any order, plurals folded): blocking
@@ -555,7 +571,7 @@ export function filterCandidates(
     // kept: "how to choose a crm" and "how to choose crm software" are one
     // article (word overlap 0.67).
     const against = [...ctx.existingTexts, ...keptTexts];
-    if (against.some((t) => keywordJaccard(t, c.keyword) >= DUPLICATE_JACCARD)) { dropped["near-duplicate"]++; continue; }
+    if (against.some((t) => keywordJaccard(t, c.keyword) >= DUPLICATE_JACCARD || keywordCoveredBy(c.keyword, t))) { dropped["near-duplicate"]++; continue; }
     // The capped shapes take room only once everything else passed; the room
     // lives on the context, so it holds across every rung of one run.
     if (ctx.pageTypeRoom && type === "versus") {

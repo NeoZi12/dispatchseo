@@ -1718,8 +1718,29 @@ async function existingTopics(projectId: string): Promise<{ keywords: Set<string
   }
   const crawled = (digest.data as { link_candidates?: unknown } | null)?.link_candidates;
   if (Array.isArray(crawled)) {
-    for (const p of crawled.slice(0, 400) as { title?: unknown }[]) {
+    for (const p of crawled.slice(0, 400) as { url?: unknown; title?: unknown; keywords?: unknown }[]) {
       if (typeof p?.title === "string" && p.title.trim().length > 3) texts.push(p.title.trim());
+      // The page's slug is usually its keyword verbatim ("/blog/b2b-lead-
+      // nurturing"), and its headings are the searches it already answers
+      // ("Lead nurturing email examples" was an H2 on reverto.ai's own post
+      // when research queued that exact keyword, 2026-11-10). A slug of two
+      // to six words is an exact-match keyword; headings are near-dup texts.
+      if (typeof p?.url === "string") {
+        const slug = decodeURIComponent(p.url.replace(/[?#].*$/, "").replace(/\/+$/, "").split("/").pop() ?? "")
+          .replace(/\.[a-z0-9]{2,5}$/i, "")
+          .replace(/[-_]+/g, " ")
+          .trim();
+        const words = slug.split(/\s+/).filter(Boolean).length;
+        if (words >= 2 && words <= 6 && !/^\d+$/.test(slug)) {
+          keywords.add(normalizeKeyword(slug));
+          texts.push(slug);
+        }
+      }
+      if (Array.isArray(p?.keywords)) {
+        for (const h of p.keywords.slice(0, 12)) {
+          if (typeof h === "string" && h.trim().length > 3 && h.trim().length <= 120) texts.push(h.trim());
+        }
+      }
     }
   }
   return { keywords, texts };
