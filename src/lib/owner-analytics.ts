@@ -2,6 +2,7 @@ import { db } from "./db";
 import { isCloudMode } from "./cloud";
 import { TIER_LIMITS, TIER_NAMES, polar, polarConfigured, type Tier } from "./billing";
 import { isOperator } from "./autopilot/operator";
+import { normalizeEmail } from "./free-gate";
 import { ordersByUser, polarOrders, polarOrdersError, summarize, revenueUsd, type MoneySummary, type PolarOrder } from "./owner-money";
 import { memoMinute } from "./owner-memo";
 import { claudeCredit, type ClaudeCredit } from "./claude-credit";
@@ -658,6 +659,11 @@ async function customersReportFresh(range: Range, now = Date.now()): Promise<Cus
     sitesByOwner.set(p.owner_user_id, [...(sitesByOwner.get(p.owner_user_id) ?? []), site]);
   }
 
+  // The operator's +alias test accounts (neozi2014+test2@gmail.com) are the
+  // operator too: same inbox, new id, so isOperator alone counted them as
+  // customers (neozino.dev test run, 2026-11-10).
+  const opInboxes = new Set(usersRes.data.users.filter((u) => isOperator(u.id) && u.email).map((u) => normalizeEmail(u.email as string)).filter(Boolean));
+  const isOp = (u: { id: string; email?: string | null }) => isOperator(u.id) || (!!u.email && opInboxes.has(normalizeEmail(u.email)));
   const customers: Customer[] = usersRes.data.users.map((u) => {
     const sub = subBy.get(u.id);
     const plan = planOf(sub, sub?.provider_subscription_id ? facts.get(sub.provider_subscription_id) : undefined);
@@ -676,7 +682,7 @@ async function customersReportFresh(range: Range, now = Date.now()): Promise<Cus
       userId: u.id,
       email: u.email ?? "(no email)",
       createdAt: u.created_at,
-      operator: isOperator(u.id),
+      operator: isOp(u),
       plan,
       sites,
       articles: sites.reduce((a, s) => a + s.articles, 0),

@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { isCloudMode } from "./cloud";
 import { operatorUserIds } from "./autopilot/operator";
+import { normalizeEmail } from "./free-gate";
 
 // "Someone just joined the free plan" - one email to the owner's own inbox
 // (owner, 2026-11-09). Server-only, cloud-only, best-effort: a missing
@@ -24,7 +25,7 @@ export type FreeSignup = {
  *  still exists, and who have no active or trialing subscription. Launched
  *  sites with a lapsed trial are NOT on the free plan - the engine gives them
  *  nothing without a claim - so they stay out of the number. The operator's
- *  own accounts are left out too. Null when the count cannot be read - the
+ *  own accounts (and its +alias test accounts) are left out too. Null when the count cannot be read - the
  *  email then says so rather than printing 0. */
 export async function freePlanHeadcount(): Promise<number | null> {
   try {
@@ -44,6 +45,24 @@ export async function freePlanHeadcount(): Promise<number | null> {
       if (!c.project_id || !live.has(c.project_id)) continue;
       if (paying.has(c.owner_user_id) || ops.has(c.owner_user_id)) continue;
       free.add(c.owner_user_id);
+    }
+    // The operator's test signups (neozi2014+test2@gmail.com and the like)
+    // are new accounts, so the id list above misses them: the neozino.dev
+    // test run on 2026-11-10 read as a fifth free customer. Same inbox as an
+    // operator account = the operator.
+    if (ops.size && free.size) {
+      const emailOf = async (id: string) => {
+        const { data } = await db().auth.admin.getUserById(id);
+        return data?.user?.email ? normalizeEmail(data.user.email) : null;
+      };
+      const opEmails = new Set((await Promise.all([...ops].map(emailOf))).filter(Boolean));
+      if (opEmails.size) {
+        const owners = [...free];
+        const emails = await Promise.all(owners.map(emailOf));
+        owners.forEach((id, i) => {
+          if (emails[i] && opEmails.has(emails[i])) free.delete(id);
+        });
+      }
     }
     return free.size;
   } catch (e) {
