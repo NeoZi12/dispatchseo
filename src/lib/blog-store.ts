@@ -871,6 +871,92 @@ export type EntryContext = {
   signature: string | null;
 };
 
+// ---------------------------------------------------------------- nothing that runs
+//
+// The entry is written by a model that read an article and pages of someone
+// else's repo, and it lands on the owner's site, rendered by code we never
+// see. So the check is an allowlist learned from the posts already there,
+// with a short list of things refused whatever they use - not a search for
+// "<script". A refusal costs one article its place in the store (it goes to
+// the hosted blog); it never costs the store.
+
+/** Refused whatever the site's posts use: no article we write needs one. */
+const NEVER_TAGS = new Set(["script", "iframe", "frame", "frameset", "object", "embed", "applet", "style", "link", "meta", "base", "form", "input", "button", "textarea", "select", "svg", "math", "template", "noscript", "portal", "audio", "video", "source", "track"]);
+const SAFE_SCHEMES = new Set(["http", "https", "mailto", "tel"]);
+const ENTITIES: Record<string, string> = { colon: ":", tab: "\t", newline: "\n", lt: "<", gt: ">", amp: "&", quot: '"', apos: "'", sol: "/", lpar: "(", rpar: ")", nbsp: " " };
+
+/** As a browser reads an attribute: character references decoded. */
+function decodeEntities(s: string): string {
+  return s.replace(/&(?:#x([0-9a-f]{1,6})|#(\d{1,7})|([a-z]{2,8}));?/gi, (m, hex, dec, name) => {
+    if (hex || dec) {
+      const code = hex ? parseInt(hex, 16) : Number(dec);
+      return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : "";
+    }
+    return ENTITIES[String(name).toLowerCase()] ?? m;
+  });
+}
+
+/** The scheme of an address the way a browser finds it (tabs and line breaks
+ *  dropped, leading spaces and control characters ignored). null = relative. */
+function schemeOf(url: string): string | null {
+  const u = url.replace(/[\t\n\r]/g, "").replace(/^[\u0000- ]+/, "");
+  return /^([a-z][a-z0-9+.-]*):/i.exec(u)?.[1].toLowerCase() ?? null;
+}
+
+/** A markdown body without its code: a renderer shows `Array<string>` in a
+ *  fence as text, so it is not a tag to learn or to refuse. Other formats are
+ *  read whole. */
+function prose(text: string, format: string | undefined): string {
+  if (format !== "markdown" && format !== "mdx") return text;
+  return text.replace(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[^\n]*$/gm, "").replace(/`[^`\n]*`/g, "");
+}
+
+/** Every tag name in a text. An autolink to a safe address (<https://...>)
+ *  and an address in angle brackets are not tags. Capitalised names are JSX
+ *  components and keep their case. */
+function tagNames(text: string, into: Set<string>): void {
+  for (const m of text.matchAll(/<\/?([A-Za-z][A-Za-z0-9._-]*)([:@]?)/g)) {
+    if (m[2] === "@" || (m[2] === ":" && SAFE_SCHEMES.has(m[1].toLowerCase()))) continue;
+    into.add((/^[A-Z]/.test(m[1]) ? m[1] : m[1].toLowerCase()) + (m[2] === ":" ? ":" : ""));
+  }
+}
+
+/** Why this text may not go on the owner's site, or null. `known` = the tags
+ *  the site's posts already use. */
+export function unsafeMarkup(text: string, known: Set<string>, format: string | undefined): string | null {
+  // Whatever the format: tags no article needs, in any spelling.
+  const never = /<\s*\/?\s*([A-Za-z][A-Za-z0-9-]*)/g;
+  for (const m of text.matchAll(never)) if (NEVER_TAGS.has(m[1].toLowerCase())) return `contains a <${m[1].toLowerCase()}> tag, which may not be in an article`;
+  const decoded = decodeEntities(text);
+  // An inline handler, however the attribute is set off (<img/onerror=...).
+  if (/<[^>]*[\s/"'`]on[a-z]+\s*=/i.test(decoded)) return "contains an inline event handler (on...=)";
+  // Addresses: only http, https, mailto, tel or a relative one, wherever an
+  // address can sit - an attribute, a markdown link, an autolink, or a
+  // string that is nothing but an address.
+  const addresses: string[] = [];
+  for (const m of decoded.matchAll(/\b(?:href|src|srcset|action|formaction|poster|background|ping|data|xlink:href)\s*=\s*(?:"([^"]*)"|'([^']*)'|`([^`]*)`|\{\s*["'`]([^"'`]*)|([^\s>]+))/gi)) addresses.push(m[1] ?? m[2] ?? m[3] ?? m[4] ?? m[5] ?? "");
+  for (const m of decoded.matchAll(/\]\(\s*<?([^)\s>]*)/g)) addresses.push(m[1]);
+  for (const m of decoded.matchAll(/^\s{0,3}\[[^\]\n]+\]:\s*<?(\S+)/gm)) addresses.push(m[1]);
+  for (const m of decoded.matchAll(/<([a-z][a-z0-9+.-]*:[^>\s]*)>/gi)) addresses.push(m[1]);
+  if (!/\s/.test(decoded.trim())) addresses.push(decoded);
+  for (const a of addresses) {
+    const scheme = schemeOf(a);
+    if (scheme && !SAFE_SCHEMES.has(scheme)) return `contains a ${scheme}: address; only http, https, mailto and tel are allowed`;
+  }
+  // A javascript: address written with spaces in a field that holds only it.
+  if (/^[\u0000- ]*(?:java[\t\n\r]*script|vbscript)[\t\n\r]*:\S/i.test(decoded)) return "contains a javascript: address";
+  // The site's own posts are the allowlist for every other tag.
+  const mineTags = new Set<string>();
+  tagNames(prose(text, format), mineTags);
+  for (const t of mineTags) if (!known.has(t)) return `contains a <${t}> tag, which none of this site's posts uses (write it as plain text)`;
+  if (format === "mdx") {
+    if (/^\s*(import|export)\s/m.test(text)) return "an MDX body may not contain import or export lines";
+    // An expression runs at build time on the owner's machine.
+    if (/[{}]/.test(prose(text, format))) return "an MDX body may not contain { or } outside code";
+  }
+  return null;
+}
+
 /** Every reason this entry would not sit in the store like its neighbours.
  *  Empty = it may be written. */
 export function validateEntry(entry: Record<string, unknown>, ctx: EntryContext): string[] {
@@ -896,15 +982,18 @@ export function validateEntry(entry: Record<string, unknown>, ctx: EntryContext)
   const mine: { text: string; heading: boolean }[] = [];
   strings(entry, mine);
   const joined = mine.map((s) => s.text).join("\n").toLowerCase();
-  // Nothing that runs: whatever renders this field, a script, a javascript:
-  // address or an inline handler is not ours to put on the owner's site.
+  // Nothing that runs. The allowlist is the site's own posts: a tag none of
+  // them uses is refused, whatever renders the field (unsafeMarkup).
+  const known = new Set<string>(ctx.credit ? ["a"] : []);
+  for (const e of ctx.entries) {
+    const theirs: { text: string; heading: boolean }[] = [];
+    strings(e, theirs);
+    for (const s of theirs) tagNames(prose(s.text, ctx.recipe.bodyFormat), known);
+  }
   for (const { text } of mine) {
-    if (/<\s*script\b/i.test(text) || /javascript\s*:/i.test(text) || /<[^>]*\son[a-z]+\s*=/i.test(text)) {
-      out.push("contains a script, a javascript: address or an inline event handler");
-      break;
-    }
-    if (ctx.recipe.bodyFormat === "mdx" && /^\s*(import|export)\s/m.test(text)) {
-      out.push("an MDX body may not contain import or export lines");
+    const bad = unsafeMarkup(ctx.signature ? text.split(ctx.signature).join("") : text, known, ctx.recipe.bodyFormat);
+    if (bad) {
+      out.push(bad);
       break;
     }
   }
