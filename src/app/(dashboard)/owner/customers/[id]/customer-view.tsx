@@ -213,7 +213,9 @@ function ArticlesTable({ d, rows }: { d: CustomerDetail; rows: CustomerArticle[]
   if (!rows.length) {
     return (
       <p className="m-5 rounded-xl border border-dashed border-line px-4 py-6 text-center text-[13px] text-ink-faint sm:m-6">
-        No article published yet{d.drafts.inFlight ? ` - ${d.drafts.inFlight} in progress` : ""}.
+        No article published yet
+        {d.drafts.inFlight ? ` - ${d.drafts.inFlight} in progress` : ""}
+        {d.drafts.parked ? <span className="text-warn"> - {d.drafts.parked} finished with nowhere to publish</span> : null}.
       </p>
     );
   }
@@ -423,7 +425,7 @@ export function CustomerDetailView({ d, now, inModal = false }: { d: CustomerDet
           label="Articles live"
           value={fmt(d.articleCount)}
           sub={
-            [d.drafts.inFlight ? `${d.drafts.inFlight} in progress` : null, d.drafts.failed ? `${d.drafts.failed} failed the gate` : null, d.firstArticleAt ? `first ${shortDate(d.firstArticleAt)}` : null]
+            [d.drafts.inFlight ? `${d.drafts.inFlight} in progress` : null, d.drafts.parked ? `${d.drafts.parked} stuck` : null, d.drafts.failed ? `${d.drafts.failed} failed the gate` : null, d.firstArticleAt ? `first ${shortDate(d.firstArticleAt)}` : null]
               .filter(Boolean)
               .join(" · ") || "none yet"
           }
@@ -655,6 +657,12 @@ export function CustomerDetailView({ d, now, inModal = false }: { d: CustomerDet
                         </span>
                       ) : null}
                     </span>
+                    {/* Its own line: the one above truncates, and this is the only place a stuck article shows. */}
+                    {s.parked ? (
+                      <span className="block truncate text-[12px] text-warn">
+                        {s.parked} finished {s.parked === 1 ? "article" : "articles"} with nowhere to publish{s.parkedSince ? `, since ${shortDate(s.parkedSince)}` : ""}
+                      </span>
+                    ) : null}
                   </span>
                   <span className="shrink-0 text-right font-mono text-[12.5px] tabular-nums text-ink-muted">
                     {fmt(s.articles)} <span className="font-sans text-ink-faint">{s.articles === 1 ? "article" : "articles"}</span>

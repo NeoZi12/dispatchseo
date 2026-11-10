@@ -92,6 +92,13 @@ export type CustomerDetail = {
     /** When the writer is due to publish next, and when research last ran. */
     nextArticleAt: string | null;
     lastResearchAt: string | null;
+    /** Finished articles with nowhere to publish (draft status blocked_setup)
+     *  on a hosted-writer site, and when the oldest was written. Nothing
+     *  retries one after a week (draft-status.ts), and nobody is emailed, so
+     *  this line is the only place a stuck article shows. Zero on an
+     *  agent-mode site: those park on purpose, their own agent moves them. */
+    parked: number;
+    parkedSince: string | null;
   }>;
   /** Their sites' idea queue: what waits, plus how the rest of the ideas ended. */
   queue: { items: QueueItem[]; rejected: number; done: number; nextArticleAt: string | null; lastResearchAt: string | null };
@@ -114,7 +121,7 @@ export type CustomerDetail = {
   articles: CustomerArticle[];
   articleCount: number;
   /** Every draft that is not discarded, by where it stands. */
-  drafts: { published: number; inFlight: number; failed: number };
+  drafts: { published: number; inFlight: number; parked: number; failed: number };
   firstArticleAt: string | null;
   writer: { done: number; failed: number; running: number; lastError: string | null; lastErrorAt: string | null };
   google: {
@@ -229,7 +236,7 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
           .order("created_at", { ascending: false })
           .limit(200)
       : empty,
-    ids.length ? db().from("article_drafts").select("status").in("project_id", ids).neq("status", "discarded").limit(5000) : empty,
+    ids.length ? db().from("article_drafts").select("status, project_id, created_at").in("project_id", ids).neq("status", "discarded").limit(5000) : empty,
     ids.length ? db().from("writer_runs").select("status").in("project_id", ids).gte("created_at", ISO(now - 90 * DAY)).limit(5000) : empty,
     ids.length
       ? db().from("writer_runs").select("error, updated_at").in("project_id", ids).eq("status", "failed").order("updated_at", { ascending: false }).limit(1)
@@ -475,9 +482,25 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
   const firstArticleAt = articles.map((a) => a.publishedAt).filter(Boolean).sort()[0] ?? null;
 
   const draftRows = (draftsRes.data ?? []) as Row[];
+  // A parked draft on a hosted-writer site is not "in progress": it is a
+  // finished article waiting on a route that may never appear. Counted as in
+  // progress, two sites' stuck articles went unseen here until 2026-11-10,
+  // one of them for a week.
+  const hostedIds = new Set(projects.filter((p) => p.hosted).map((p) => p.id));
+  const parkedBySite = new Map<string, { count: number; since: string | null }>();
+  for (const r of draftRows) {
+    const pid = String(r.project_id ?? "");
+    if (r.status !== "blocked_setup" || !hostedIds.has(pid)) continue;
+    const at = typeof r.created_at === "string" ? r.created_at : null;
+    const cur = parkedBySite.get(pid) ?? { count: 0, since: null };
+    parkedBySite.set(pid, { count: cur.count + 1, since: at && (!cur.since || at < cur.since) ? at : cur.since });
+  }
+  const parked = [...parkedBySite.values()].reduce((n, v) => n + v.count, 0);
   const drafts = {
     published: draftRows.filter((r) => r.status === "published").length,
-    inFlight: draftRows.filter((r) => ["submitted", "accepted", "finished", "blocked_setup"].includes(String(r.status))).length,
+    inFlight: draftRows.filter((r) => ["submitted", "accepted", "finished", "blocked_setup"].includes(String(r.status))).length - parked,
+    /** Finished, on a hosted-writer site, with nowhere to publish. */
+    parked,
     failed: draftRows.filter((r) => r.status === "rejected").length,
   };
 
@@ -530,7 +553,7 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
     qualifier: q
       ? { domain: String(q.domain ?? ""), platform: String(q.platform ?? ""), aiChoice: (q.ai_choice as string | null) ?? null, verdict: (q.verdict as string | null) ?? null, at: String(q.created_at ?? "") }
       : null,
-    sites: projects.map((p, i) => ({ ...p, articles: articlesBySite.get(p.id) ?? 0, clicks28d: sitePages28.get(p.domain.replace(/^www\./, "")) ?? 0, setup: siteSetups[i] })),
+    sites: projects.map((p, i) => ({ ...p, parked: parkedBySite.get(p.id)?.count ?? 0, parkedSince: parkedBySite.get(p.id)?.since ?? null, articles: articlesBySite.get(p.id) ?? 0, clicks28d: sitePages28.get(p.domain.replace(/^www\./, "")) ?? 0, setup: siteSetups[i] })),
     setup,
     orders: mine,
     money: mine ? summarize(mine) : null,
