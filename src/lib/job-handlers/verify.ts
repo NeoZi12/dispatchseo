@@ -6,10 +6,10 @@ import { enqueue } from "@/lib/jobs";
 import { getProjectById, effectiveAutomations } from "@/lib/projects";
 import { mergePr } from "@/lib/github";
 import {
-  commentOnPullRequest,
   commitAgeMs,
   fetchPullRequest,
   pullRequestChecks,
+  failuresArePreexisting,
   rebuildPullRequest,
   type PullRequestState,
 } from "@/lib/repo-publish";
@@ -240,6 +240,19 @@ async function verifyRepoArticle(job: Job, draftId: string): Promise<void> {
     // a repo-route PR is ever merged by us - never at open time, so a failing
     // build cannot be merged before its checks have spoken.
     const auto = effectiveAutomations(project).auto_merge;
+    // A check that is already red on the branch the article was branched
+    // from is the site's own (tanstack-fetch, 2026-11-10: its Cloudflare
+    // copy started failing an hour before our PR, GitHub Pages - the live
+    // site - built fine). It must not hold the article forever. Only when
+    // GitHub calls the branch "unstable" (non-required checks red; required
+    // ones would be "blocked") and every failing check fails on the base too.
+    if (auto && pr.mergeable_state === "unstable" && (await failuresArePreexisting(project, pr).catch(() => null)) === true) {
+      const merged = await mergePr(project, prNumber);
+      if (merged.ok && round < MAX_ROUNDS) {
+        await rearm(job, draftId, round, new Date(nowDate.getTime() + POST_MERGE_LOOK_MS));
+        return;
+      }
+    }
     // A red build heals itself before anyone has to look at it.
     if (!MERGEABLE_STATES.has(String(pr.mergeable_state))) {
       const heal = await healFailedBuild(job, project, pr);
@@ -381,9 +394,9 @@ const STUCK_RED_MS = 20 * 60_000;
 /** When the PR's checks have all finished and one failed, push an empty
  *  commit so they run again (most red builds on an article PR are the
  *  network, not the article: a font or package download that timed out).
- *  After MAX_REBUILDS it leaves one comment on the PR naming the failing
- *  checks, so the owner sees why it is waiting without opening a build log,
- *  and the slow cadence carries on: a fix pushed by hand still merges.
+ *  After MAX_REBUILDS it logs the failing checks for the operator and the
+ *  slow cadence carries on: a fix pushed by hand still merges. It never
+ *  comments on the owner's pull request (owner rule 2026-11-10).
  *  Null = nothing to heal (checks passing, still running, or unreadable). */
 async function healFailedBuild(
   job: Job,
@@ -404,16 +417,11 @@ async function healFailedBuild(
     return ok ? { lookAfterMs: REBUILD_LOOK_MS, payload: { rebuilds: rebuilds + 1 } } : null;
   }
   if (job.payload.buildNotified) return null;
-  const which = checks?.failing.length
-    ? `The failing check${checks.failing.length === 1 ? "" : "s"}:\n\n${checks.failing
-        .map((c) => `- ${c.url ? `[${c.name}](${c.url})` : c.name}`)
-        .join("\n")}`
-    : `See which check is red on the [Checks tab](${pr.html_url}/checks) or in the status list at the bottom of this page.`;
-  await commentOnPullRequest(
-    project,
-    pr.number,
-    `This article's build failed ${rebuilds + 1} times in a row, including ${rebuilds} automatic retries, so it is probably something in the article rather than a network hiccup. ${which}\n\nOpen the log, fix the article on this branch, and it merges on its own once the build is green.`,
-  );
+  // No comment on the owner's pull request: we never hand the owner a fix
+  // to make (owner rule 2026-11-10). The operator sees the stuck article on
+  // the customer page; the slow cadence carries on, so a check that turns
+  // green later still merges.
+  console.warn(`[verify] ${project.slug}: PR #${pr.number} still red after ${rebuilds} rebuilds: ${checks?.failing.map((c) => c.name).join(", ") || "unreadable checks"}`);
   return { lookAfterMs: AWAITING_MERGE_RETRY_MS, payload: { buildNotified: true } };
 }
 

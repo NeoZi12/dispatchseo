@@ -73,6 +73,10 @@ export type ChangelogEntry = {
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
+    kind: "fixed",
+    text: "An article's pull request no longer waits on a check that was already failing on your site before we opened it - if your own build was red first, the article still goes out.",
+  },
+  {
     kind: "improved",
     text: "Your writer now takes the strongest idea in your queue first: the most monthly searches for how hard the keyword is to rank for, so your first articles go after the biggest keywords you can realistically win. The Queue page shows them in that order.",
   },

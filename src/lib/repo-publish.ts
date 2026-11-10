@@ -666,6 +666,8 @@ export type PullRequestState = {
   merged_at: string | null;
   mergeable_state: string | null;
   head_sha: string;
+  /** The base branch's commit the pull request is measured against. */
+  base_sha: string;
   head_ref: string;
 };
 
@@ -685,8 +687,34 @@ export async function fetchPullRequest(
     merged_at: (res.json.merged_at as string | null) ?? null,
     mergeable_state: (res.json.mergeable_state as string | null) ?? null,
     head_sha: String((res.json.head as { sha?: string } | undefined)?.sha ?? ""),
+    base_sha: String((res.json.base as { sha?: string } | undefined)?.sha ?? ""),
     head_ref: String((res.json.head as { ref?: string } | undefined)?.ref ?? ""),
   };
+}
+
+/** A GET against the public API with no token: public repos only. */
+async function anonGithub(path: string): Promise<{ status: number; json: Record<string, unknown> | null }> {
+  try {
+    const res = await fetch(`https://api.github.com${path}`, {
+      headers: { accept: "application/vnd.github+json", "user-agent": "DispatchSEO", "x-github-api-version": "2022-11-28" },
+      signal: AbortSignal.timeout(10_000),
+    });
+    return { status: res.status, json: res.ok ? ((await res.json()) as Record<string, unknown>) : null };
+  } catch {
+    return { status: 0, json: null };
+  }
+}
+
+/** Every check failing on the pull request is also failing on the commit it
+ *  was branched from: the red is the site's own, not the article's. Null when
+ *  either side can't be read. */
+export async function failuresArePreexisting(project: Project, pr: { head_sha: string; base_sha: string }): Promise<boolean | null> {
+  if (!pr.base_sha) return null;
+  const [head, base] = await Promise.all([pullRequestChecks(project, pr.head_sha), pullRequestChecks(project, pr.base_sha)]);
+  if (!head || !base) return null;
+  if (head.verdict !== "failed") return false;
+  const red = new Set(base.failing.map((f) => f.name));
+  return head.failing.every((f) => red.has(f.name));
 }
 
 export type PullRequestChecks = {
@@ -709,10 +737,16 @@ export async function pullRequestChecks(
   if (!project.github_repo || !sha) return null;
   const token = await tokenForRef(project);
   if (!token) return null;
-  const [st, cr] = await Promise.all([
-    gh(token, "GET", `/repos/${project.github_repo}/commits/${sha}/status`),
-    gh(token, "GET", `/repos/${project.github_repo}/commits/${sha}/check-runs?per_page=100`),
-  ]);
+  const read = (t: string | null) =>
+    Promise.all([
+      t ? gh(t, "GET", `/repos/${project.github_repo}/commits/${sha}/status`) : anonGithub(`/repos/${project.github_repo}/commits/${sha}/status`),
+      t ? gh(t, "GET", `/repos/${project.github_repo}/commits/${sha}/check-runs?per_page=100`) : anonGithub(`/repos/${project.github_repo}/commits/${sha}/check-runs?per_page=100`),
+    ]);
+  let [st, cr] = await read(token);
+  // The App holds no Checks/Statuses permission, so its token is refused
+  // here. A PUBLIC repo's checks are public: read them without a token
+  // (GitHub's anonymous allowance; a refusal there is the same null).
+  if (st.status !== 200 || cr.status !== 200) [st, cr] = await read(null);
   if (st.status !== 200 || cr.status !== 200) return null;
   let total = 0;
   let pending = 0;
