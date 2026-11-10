@@ -73,6 +73,10 @@ export type ChangelogEntry = {
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
+    kind: "improved",
+    text: "If the repository you connected isn't your site's code - an empty repo made just for us is the common one - your dashboard now shows one clear card with a button to connect the right repository. Pick it on GitHub, come back, and your waiting article goes live straight away.",
+  },
+  {
     kind: "fixed",
     text: "Cover pictures now reach sites kept in a subfolder of the repo (for example website/): the article's cover goes into the folder your other covers are served from, wherever that is. Before, such a site got the article without its picture.",
   },

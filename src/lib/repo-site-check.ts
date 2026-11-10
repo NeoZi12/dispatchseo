@@ -4,7 +4,7 @@ import type { Project } from "@/lib/projects";
 import { fetchProjectUrl } from "@/lib/url-guard";
 import { tokenForRef } from "@/lib/github";
 import { githubApi } from "@/lib/repo-publish";
-import { siteRoot } from "@/lib/site-root";
+import { repoMismatchOf, siteRoot } from "@/lib/site-root";
 
 // Does the connected repository build this site?
 //
@@ -167,6 +167,12 @@ export async function findSiteRepo(project: Project): Promise<Project | null> {
     const { error } = await db().from("projects").update({ github_repo: repo, repo_site_check: check, content_path_hint: null, hosted_rewrite_pr_url: null, hosted_rewrite_live_at: null }).eq("id", project.id).eq("github_repo", project.github_repo ?? "");
     if (error) return null;
     console.log(`[repo-site] ${project.slug}: ${project.github_repo} is not the site; switched to ${repo} (${check.found}/${check.named})`);
+    // Articles held for the wrong repo go out now, not at the hourly drain.
+    const { data: parked } = await db().from("article_drafts").select("id").eq("project_id", project.id).eq("status", "blocked_setup");
+    const { enqueue } = await import("@/lib/jobs");
+    for (const d of (parked ?? []) as { id: string }[]) {
+      await enqueue({ projectId: project.id, kind: "publish", payload: { draftId: d.id }, idempotencyKey: `publish:${d.id}` }).catch(() => null);
+    }
     return { ...project, github_repo: repo, repo_site_check: check, content_path_hint: null };
   } catch (e) {
     console.warn(`[repo-site] ${project.slug}: other repos not searched: ${e instanceof Error ? e.message : String(e)}`);
@@ -176,6 +182,25 @@ export async function findSiteRepo(project: Project): Promise<Project | null> {
 
 /** True when the stored check says the connected repo does not build the site. */
 export function repoIsNotTheSite(project: Pick<Project, "github_repo"> & { repo_site_check?: unknown }): boolean {
-  const c = project.repo_site_check as RepoSiteCheck | null | undefined;
-  return Boolean(c && c.verdict === "mismatch" && c.repo === project.github_repo);
+  return repoMismatchOf(project) !== null;
 }
+
+/**
+ * The owner changed which repos the App can see (they came back from
+ * GitHub's picker, or GitHub sent installation_repositories): every project
+ * on that installation whose connected repo is the wrong one gets the right
+ * one now, if exactly one of the shared repos builds its site. Best effort;
+ * the hourly drain of held articles does the same search anyway.
+ */
+export async function healReposForInstallation(installationId: number): Promise<number> {
+  const { getProjectById } = await import("@/lib/projects");
+  const { data } = await db().from("projects").select("id").eq("github_installation_id", installationId);
+  let switched = 0;
+  for (const { id } of (data ?? []) as { id: string }[]) {
+    const project = await getProjectById(id).catch(() => null);
+    if (!project?.github_repo || !repoIsNotTheSite(project)) continue;
+    if (await findSiteRepo(project)) switched++;
+  }
+  return switched;
+}
+

@@ -1,4 +1,5 @@
 import { repoIsNotTheSite } from "@/lib/repo-site-check";
+import { repoMismatchOf, sitePath } from "@/lib/site-root";
 import { db } from "@/lib/db";
 import { getAutopilotReport, type AutopilotArticle, type AutopilotReport } from "@/lib/autopilot/report";
 import { friendlyError } from "@/lib/autopilot/friendly";
@@ -122,6 +123,7 @@ export async function firstArticleProgress(
   const stepError = (step: "blog" | "crawl" | "google") => launchStepError(launch?.error, step);
 
   const stuck: Partial<Record<ProgressStep, StuckNote>> = {};
+  let blocker: FirstArticleProgress["blocker"] = null;
 
   // --- blog: done only once the site's own /blog answers from us
   let blog: FirstArticleProgress["blog"] = "doing";
@@ -209,6 +211,8 @@ export async function firstArticleProgress(
       writing = "done";
       publishing = "doing";
       if (newest.status === "needs_setup") {
+        const mismatch = target === "github" ? repoMismatchOf(project) : null;
+        if (mismatch) blocker = { kind: "repo", repo: mismatch.repo, empty: mismatch.empty, domain: `${project.domain}${sitePath(project)}`, href: `/api/github/install/start?slug=${encodeURIComponent(project.slug)}`, topic: newest.title ?? null };
         // A repo is connected but no folder in it looks like where its posts
         // live (easyrender.app, 2026-11-09: a template /blog with no posts).
         // Nothing switches on by itself here - the owner names the folder or
@@ -216,8 +220,8 @@ export async function firstArticleProgress(
         stuck.publishing =
           target === "github" && project.github_repo && repoIsNotTheSite(project)
             ? // The connected repo doesn't build the site (repo-site-check.ts):
-              // the owner picks the right one and the parked article goes out.
-              { text: `The article is ready, but ${project.github_repo} ${(project.repo_site_check as { empty?: boolean } | null)?.empty ? "is empty" : `doesn't hold ${project.domain}'s code`}, so it can't reach your site from there. Connect the repository your site is built from and it goes out on its own.`, href: "/settings?section=publishing", linkLabel: "Change repository" }
+              // the blocker card above the steps says it in full.
+              { text: "Waiting for your site's repository (see above)." }
             : target === "github" && project.github_repo
             ? // Reaching here at all means the hosted fallback found no free
               // address: /blog, /articles and /guides are all the site's own
@@ -233,6 +237,6 @@ export async function firstArticleProgress(
   return {
     live: false,
     launched: true,
-    progress: { blog, google, reading, topics, writing, publishing, keywordsFound, topic, liveUrl: null, stuck },
+    progress: { blog, google, reading, topics, writing, publishing, keywordsFound, topic, liveUrl: null, stuck, blocker },
   };
 }

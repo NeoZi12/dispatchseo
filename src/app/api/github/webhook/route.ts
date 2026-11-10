@@ -66,6 +66,13 @@ export async function POST(req: Request): Promise<Response> {
     bustInstallationTokenCache(installationId);
   }
 
+  if (event === "installation_repositories" && payload.action === "added" && payload.installation?.id) {
+    // Repos newly shared with the App: a project connected to the wrong repo
+    // (repo-site-check.ts) switches to the one that builds its site.
+    const { healReposForInstallation } = await import("@/lib/repo-site-check");
+    await healReposForInstallation(Number(payload.installation.id)).catch(() => 0);
+    return NextResponse.json({ ok: true });
+  }
   if (event === "installation_repositories" && payload.action === "removed") {
     const removed = (payload.repositories_removed ?? [])
       .map((r) => r.full_name)

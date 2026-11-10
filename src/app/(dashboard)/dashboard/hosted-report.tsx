@@ -31,6 +31,7 @@ import { siteIssueLine } from "@/lib/autopilot/friendly";
 import { articlesPerWeekFor, FREE_ARTICLES_PER_MONTH } from "@/lib/billing";
 import type { OperatorSite } from "@/lib/autopilot/operator";
 import { OperatorIssue } from "./operator-issue";
+import { repoMismatchOf } from "@/lib/site-root";
 
 // The hosted-mode Home, modelled on Polar's overview: the numbers are the
 // main event, and everything is readable in three seconds.
@@ -73,7 +74,18 @@ type Message = { title: string; sub: string | null; link?: { href: string; label
 // What the dispatcher has to tell the owner, or null when nothing needs
 // them. Only things the owner can act on qualify - "an article is being
 // written" is news the scene already shows (it's typing).
-function messageOf(r: AutopilotReport, gaps: ReturnType<typeof setupGaps>): Message | null {
+function messageOf(r: AutopilotReport, gaps: ReturnType<typeof setupGaps>, project: Project): Message | null {
+  // The connected repo is empty or isn't the site's code: a finished article
+  // is waiting, and only the owner can point us at the right repo. Comes
+  // before the generic "nowhere to publish" so they get the real reason.
+  const mismatch = repoMismatchOf(project);
+  if (mismatch && r.articles.some((a) => a.status === "needs_setup")) {
+    return {
+      title: "Connect the repository your site is built from.",
+      sub: `${mismatch.repo} ${mismatch.empty ? "is empty" : `doesn't hold ${project.domain}'s code`}, so new articles can't reach your site. Your finished article goes out as soon as you connect the right one.`,
+      link: { href: "/api/github/install/start?slug=" + encodeURIComponent(project.slug), label: "Connect your site's repository" },
+    };
+  }
   if (r.articles.some((a) => a.status === "needs_setup")) {
     return {
       title: "An article is finished, with nowhere to publish.",
@@ -246,7 +258,7 @@ export async function HostedReport({
   // active plan); the plan message already covers it, so no second card.
   const gaps = setupGaps({ ...r.setup, keywordSource: r.plan.articlesPerWeek === 0 ? undefined : r.setup.keywordSource });
   const missing = gaps.filter((g) => !g.done);
-  const message = messageOf(r, gaps);
+  const message = messageOf(r, gaps, project);
   const month = monthCards(r, now, queue);
   // "Up next" in the queue's own order (the owner's drag order included).
   const nextCount = queue ? queue.upcoming.length : r.ideas.approved;

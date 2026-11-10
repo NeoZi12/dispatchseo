@@ -28,3 +28,15 @@ export function siteRoot(project: Pick<Project, "domain"> & { hosted_origin?: st
   const origin = (project.hosted_origin || `https://${project.domain.replace(/^www\./, "")}`).replace(/\/+$/, "");
   return `${origin}${sitePath(project)}`;
 }
+
+/** The connected repo doesn't build the site (projects.repo_site_check, set
+ *  by repo-site-check.ts): which repo, and whether it is simply empty. Null
+ *  when it does, or was never checked. Client-safe - the dashboard card and
+ *  Home's message read it. */
+export type RepoMismatch = { repo: string; empty: boolean };
+export function repoMismatchOf(project: { github_repo?: string | null; repo_site_check?: unknown }): RepoMismatch | null {
+  const c = project.repo_site_check as { verdict?: string; repo?: string; empty?: boolean } | null | undefined;
+  if (!c || c.verdict !== "mismatch" || !project.github_repo || c.repo !== project.github_repo) return null;
+  return { repo: c.repo, empty: Boolean(c.empty) };
+}
+

@@ -1,3 +1,4 @@
+import { healReposForInstallation } from "@/lib/repo-site-check";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { NextResponse } from "next/server";
 import { requireDashboard } from "@/lib/auth-gate";
@@ -119,6 +120,10 @@ export async function GET(req: Request): Promise<Response> {
       const owned = await ownedProjectIds();
       const rows = (bound ?? []) as Array<{ id: string }>;
       if (rows.length > 0 && (owned === null || rows.some((r) => owned.has(r.id)))) {
+        // The owner just changed which repos we can see - often to add the
+        // site's real repo after the dashboard said the connected one is
+        // empty or wrong. Connect it and release the held article now.
+        await healReposForInstallation(installationId).catch(() => 0);
         redirect("/dashboard");
       }
       // Nothing of the caller's is bound to it - fall through and let the
@@ -208,6 +213,9 @@ export async function GET(req: Request): Promise<Response> {
 
       const { error } = await db().from("projects").update(patch).eq("id", project.id);
       if (error) redirect("/onboarding?gh=error&msg=save-failed");
+      // Same as the update path: a project whose connected repo was the wrong
+      // one picks up the right one now that it is shared.
+      if (project.github_repo) await healReposForInstallation(installationId).catch(() => 0);
 
       redirect(repos.length === 1 ? "/onboarding?gh=installed" : "/onboarding?gh=pick_repo");
     }
