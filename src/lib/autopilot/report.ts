@@ -14,6 +14,7 @@ import { blockedTopicsOf } from "./prefs";
 import { weekUsage } from "./scheduler";
 import { staleSitemap } from "@/lib/gsc-sitemaps";
 import { ownerFactsOf } from "@/lib/content-prefs";
+import { sortIdeas, type RankableIdea } from "./idea-order";
 
 // The autopilot report: the ONE data shape the hosted dashboard renders and
 // the get_autopilot MCP tool returns (the parity rule, satisfied by
@@ -477,19 +478,17 @@ async function ideaSummary(projectId: string): Promise<Omit<AutopilotReport["ide
   const [{ data: rows, error: rowsError }, { data: busy, error: busyError }] = await Promise.all([
     db()
       .from("suggestions")
-      .select("id, title, rationale")
+      .select("id, title, rationale, keyword_volume, keyword_difficulty, queue_position, created_at")
       .eq("project_id", projectId)
       .eq("type", "guide")
       .eq("status", "approved")
-      .order("queue_position", { ascending: true, nullsFirst: false })
-      .order("created_at", { ascending: true })
-      .limit(100),
+      .limit(200),
     db().from("writer_runs").select("suggestion_id").eq("project_id", projectId).eq("status", "running").not("suggestion_id", "is", null),
   ]);
   if (rowsError || busyError) throw new Error(`could not read the idea queue: ${(rowsError ?? busyError)!.message}`);
   const taken = new Set(((busy ?? []) as { suggestion_id: string }[]).map((r) => r.suggestion_id));
-  // The owner's order, then oldest first: the order the writer's pick stage takes them in.
-  const free = ((rows ?? []) as { id: string; title: string; rationale: string | null }[]).filter((r) => !taken.has(r.id));
+  // idea-order.ts sortIdeas: the order the writer's pick stage takes them in.
+  const free = sortIdeas(((rows ?? []) as ({ id: string; title: string; rationale: string | null } & RankableIdea)[]).filter((r) => !taken.has(r.id)));
   const wider = free.filter((r) => (r.rationale ?? "").includes(WIDER_SEARCH_TAG)).length;
   return { approved: free.length, nextTitles: free.slice(0, 3).map((r) => r.title), wider, note: null };
 }

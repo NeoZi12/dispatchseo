@@ -212,7 +212,7 @@ export async function restoreQueuedTopicAction(_prev: ActionState, fd: FormData)
     return state(false, "We couldn't put it back just now, so it's still set aside. Try again in a moment.");
   }
   refresh();
-  return restored ? state(true, "Back in the queue, at the end.") : state(false, "That idea isn't set aside any more. Reload to see the current list.");
+  return restored ? state(true, "Back in the queue.") : state(false, "That idea isn't set aside any more. Reload to see the current list.");
 }
 
 // startWriterRun's refusals are written for agents and name MCP tools. Every

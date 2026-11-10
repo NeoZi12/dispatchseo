@@ -241,8 +241,8 @@ pending or when a tool build was (or wasn't) dispatched.
 
 On a hosted site's queue, `status:"parked"` on an approved guide sets it
 aside: it leaves the queue and shows under `parked` in `get_autopilot`.
-`status:"approved"` on a parked guide puts it back at the end of the queue,
-and is never coerced to pending. (The dashboard's Queue page is read-only;
+`status:"approved"` on a parked guide puts it back in the queue, where its
+volume and KD rank it, and is never coerced to pending. (The dashboard's Queue page is read-only;
 this tool is the way to steer it.)
 
 ### `reorder_queue`
@@ -1933,14 +1933,15 @@ strings are the writer's raw text; the dashboard shows a plain-words
 version.
 
 It also carries the Queue screen: `upcoming` is every idea the writer will
-write, in the order it writes them (approved guides, oldest first, minus
-any a run is already on), each as `{ suggestion_id, title, keyword, volume,
+write, in the order it writes them (approved guides minus any a run is
+already on; positions set with `reorder_queue` first, then the best search
+volume for its difficulty: volume / (1 + KD/20), ties to the older idea), each as `{ suggestion_id, title, keyword, volume,
 kd, expected_start }` - `expected_start` is the UTC day (`yyyy-mm-dd`) it is
 expected to start under the weekly quota and spacing, null while paused or
 when the plan includes no articles. `parked` lists the ideas the writer set
 aside, with its `reason`. To take an idea out of the queue, call
 `update_suggestion` with status `parked`; status `approved` puts it back
-at the end. If the queue cannot be read, `upcoming` and `parked` are left
+where its score ranks it. If the queue cannot be read, `upcoming` and `parked` are left
 out and the rest of the report still returns.
 
 ### `pause_writer`

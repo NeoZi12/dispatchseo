@@ -66,6 +66,7 @@ import { blockedTopicsOf } from "@/lib/autopilot/prefs";
 import { copyPictureCover, coverPrompt, coverScenePrompt, draftPicturePath, dryCoverSvg, hueOf, ledgerPicture, paintCover, pickHue, pictureCoverPrompt, pictureCoversEnabled, runPicturePath, sanitizeCoverSvg, storePictureCover, type CoverTheme, type Hue } from "@/lib/cover-art";
 import { normalizeTheme } from "@/lib/hosted-theme";
 import { distinctiveWords, sameSubtopic, SUBTOPIC_SPACING_DAYS } from "@/lib/autopilot/math";
+import { sortIdeas, type RankableIdea } from "@/lib/autopilot/idea-order";
 
 // The stages of one article. Five persisted stages, each one job in the
 // queue; job-handlers/write.ts chains them inside one handler while the
@@ -322,20 +323,19 @@ async function pick(c: Ctx, exclude: string[] = [], spent = 0): Promise<void> {
     const busy = [...(await suggestionIdsInFlight(project.id)), ...exclude];
     let q = db()
       .from("suggestions")
-      .select("id, title, primary_keyword, rationale")
+      .select("id, title, primary_keyword, rationale, keyword_volume, keyword_difficulty, queue_position, created_at")
       .eq("project_id", project.id)
       .eq("type", "guide")
       .eq("status", "approved")
-      // The owner's order first (queue_position: the Queue page's drag and the
-      // reorder_queue tool), then first come first served - the same order
-      // metrics.ts sortQueue shows, so the page never promises an order the
-      // writer does not keep.
-      .order("queue_position", { ascending: true, nullsFirst: false })
-      .order("created_at", { ascending: true })
-      .limit(20);
+      .limit(200);
     if (busy.length) q = q.not("id", "in", `(${busy.join(",")})`);
     const { data } = await q;
-    const s = await spacedPick(project.id, (data ?? []) as { id: string; title: string; primary_keyword: string | null; rationale: string | null }[]);
+    // Best volume for its difficulty first (autopilot/idea-order.ts), after
+    // any explicit reorder_queue order - the same sortIdeas the Queue page
+    // and get_autopilot show, so no page promises an order the writer does
+    // not keep. Sorted here, not in SQL: the score is volume over KD.
+    type Queued = { id: string; title: string; primary_keyword: string | null; rationale: string | null } & RankableIdea;
+    const s = await spacedPick(project.id, sortIdeas((data ?? []) as Queued[]));
     if (!s) return failRun(run, "nothing approved to write: the ideas queue has no approved guide without a run already on it");
     suggestionId = s.id;
     keyword = s.primary_keyword ?? s.title;

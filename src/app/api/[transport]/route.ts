@@ -5023,7 +5023,8 @@ const mcpHandler = createMcpHandler(
           "Search Console traffic, the next queued ideas, what setup is missing (setup.rewritePrUrl = " +
           "the forwarding PR to merge; setup.siteUnreadable = describe the site with set_brand), the " +
           "owner's brand/tone/blocked topics/author, and this month's spend. `upcoming` = the queue " +
-          "the writer will work through, in order, each with its expected_start day (yyyy-mm-dd UTC); " +
+          "the writer will work through, in order (reorder_queue positions first, then best volume for " +
+          "its KD), each with its expected_start day (yyyy-mm-dd UTC); " +
           "`parked` = ideas the writer set aside, with the reason.",
         inputSchema: {},
       },

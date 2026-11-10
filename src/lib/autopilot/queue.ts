@@ -1,11 +1,11 @@
 import { db } from "@/lib/db";
 import { primeProjectHint, projectPlan, type ProjectHint } from "@/lib/billing";
-import { writeQueueOrder } from "@/lib/queue";
 import { suggestionIdsInFlight } from "@/lib/writer/runs";
 import type { Project } from "@/lib/projects";
 import { upcomingStarts, weekStartUtc } from "./math";
 import { weekUsage } from "./usage";
 import { rampInputs, rampSinceDay, rampVerdict } from "./ramp";
+import { sortIdeas } from "./idea-order";
 
 // The hosted writer's queue, as the owner sees it on /queue and the agent
 // reads it in get_autopilot (`upcoming`, `parked`): every idea the scheduler
@@ -14,8 +14,9 @@ import { rampInputs, rampSinceDay, rampVerdict } from "./ramp";
 //
 // The set and the order are the writer's pick stage (writer/stages.ts), to
 // the letter: type "guide", status "approved", not already taken by a
-// running writer_run, the owner's queue_position first (nulls last), then
-// oldest created_at - the order the pick stage reads since 2026-10-24.
+// running writer_run, in idea-order.ts sortIdeas order - any explicit
+// reorder_queue position first, then the best volume for its difficulty
+// (since 2026-11-10; oldest-first before that).
 //
 // The dates are math.ts upcomingStarts over the same weekUsage the
 // scheduler's cadence() reads, floored at next_article_at: the scheduler's
@@ -63,6 +64,8 @@ type Row = {
   keyword_volume: number | null;
   keyword_difficulty: number | null;
   rationale?: string | null;
+  queue_position?: number | null;
+  created_at?: string | null;
 };
 
 const QUEUE_LIMIT = 200;
@@ -95,7 +98,7 @@ export async function getHostedQueue(
   // Whatever of the row the caller holds spares the plan and usage reads
   // below their own single-row lookups (billing.ts projectHint).
   primeProjectHint(project);
-  const cols = "id, title, primary_keyword, keyword_volume, keyword_difficulty";
+  const cols = "id, title, primary_keyword, keyword_volume, keyword_difficulty, queue_position, created_at";
   const [approvedRes, parkedRes, busy, plan, usage, ramp] = await Promise.all([
     db()
       .from("suggestions")
@@ -103,8 +106,6 @@ export async function getHostedQueue(
       .eq("project_id", project.id)
       .eq("type", "guide")
       .eq("status", "approved")
-      .order("queue_position", { ascending: true, nullsFirst: false })
-      .order("created_at", { ascending: true })
       .limit(QUEUE_LIMIT),
     opts.parked === false
       ? Promise.resolve({ data: [] as Row[], error: null })
@@ -126,7 +127,7 @@ export async function getHostedQueue(
   if (approvedRes.error) throw new Error(`could not read the queue: ${approvedRes.error.message}`);
 
   const taken = new Set(busy);
-  const queued = ((approvedRes.data ?? []) as Row[]).filter((r) => !taken.has(r.id));
+  const queued = sortIdeas(((approvedRes.data ?? []) as Row[]).filter((r) => !taken.has(r.id)));
 
   const paused = Boolean(project.writer_paused_at);
   // The projection uses the same ceiling the scheduler will (ramp.ts).
@@ -210,7 +211,8 @@ export async function removeQueuedIdea(projectId: string, suggestionId: string):
   return Boolean(data);
 }
 
-/** Put a set-aside (parked) idea back in the queue, at the end. The MCP
+/** Put a set-aside (parked) idea back in the queue, where its score puts
+ *  it (idea-order.ts). The MCP
  *  counterpart is update_suggestion with status "approved" on a parked
  *  guide. */
 export async function restoreQueuedIdea(projectId: string, suggestionId: string): Promise<boolean> {
@@ -240,26 +242,9 @@ export async function restoreQueuedIdea(projectId: string, suggestionId: string)
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) return false;
-  // A null queue_position alone is not "the end": the pick order is
-  // positions first, then created_at, so an old idea with no position would
-  // jump ahead of every newer unpositioned one. Dense positions with this id
-  // last make the end explicit. The status flip already happened, so a
-  // failed reorder is a warning, not a failure.
-  const { data: queued, error: queueError } = await db()
-    .from("suggestions")
-    .select("id")
-    .eq("project_id", projectId)
-    .eq("type", "guide")
-    .eq("status", "approved")
-    .neq("id", suggestionId)
-    .order("queue_position", { ascending: true, nullsFirst: false })
-    .order("created_at", { ascending: true });
-  if (queueError) {
-    console.warn(`[autopilot] restored idea ${suggestionId} but could not read the queue to place it last: ${queueError.message}`);
-    return true;
-  }
-  const ids = ((queued ?? []) as { id: string }[]).map((r) => r.id);
-  const order = await writeQueueOrder(projectId, "guide", [...ids, suggestionId]);
-  if (!order.ok) console.warn(`[autopilot] restored idea ${suggestionId} but could not place it last: ${order.message}`);
+  // Back with no position, it takes its place by score like every other
+  // unpositioned idea (idea-order.ts). Writing dense positions for the
+  // whole queue here, as this did before 2026-11-10, would freeze the
+  // queue and stop the score from ordering it.
   return true;
 }

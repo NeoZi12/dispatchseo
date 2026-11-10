@@ -73,6 +73,10 @@ export type ChangelogEntry = {
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
+    kind: "improved",
+    text: "Your writer now takes the strongest idea in your queue first: the most monthly searches for how hard the keyword is to rank for, so your first articles go after the biggest keywords you can realistically win. The Queue page shows them in that order.",
+  },
+  {
     kind: "fixed",
     text: "Sites that live in a folder of their address - a GitHub Pages project site like you.github.io/your-repo - now work end to end: we read the site where it really is, confirm it with Google there, and publish articles into its own blog. An address that shows \"page not found\" is caught when you type it, before you sign up.",
   },

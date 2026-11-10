@@ -7,6 +7,7 @@ import { normalizePageUrl, type GscPageStat } from "./metrics";
 import { polarOrders, polarOrdersError, revenueUsd, summarize, type MoneySummary, type PolarOrder } from "./owner-money";
 import { accountSetupProgress, siteSetupProgress, type SetupProgress } from "./owner-setup";
 import type { PublishTarget } from "./setup-path-core";
+import { compareIdeas } from "./autopilot/idea-order";
 
 // One customer, everything: what they paid (every Polar charge), what they
 // cost (every metered line item), what their sites got (every article with
@@ -393,7 +394,8 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
   const rank = (i: IdeaRow) => (i.status === "approved" ? 0 : 1);
   const queueItems: QueueItem[] = ideas
     .filter((i) => i.status === "approved" || i.status === "pending")
-    .sort((a, b) => rank(a) - rank(b) || (a.queue_position ?? 1e9) - (b.queue_position ?? 1e9) || String(a.created_at).localeCompare(String(b.created_at)))
+    // Approved first, then pending; inside each, the writer's own pick order (idea-order.ts).
+    .sort((a, b) => rank(a) - rank(b) || compareIdeas(a, b))
     .map((i) => ({
       id: i.id,
       title: i.title?.trim() || i.primary_keyword || "Untitled idea",

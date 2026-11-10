@@ -515,7 +515,7 @@ export function CustomerDetailView({ d, now, inModal = false }: { d: CustomerDet
       <Panel label="Queue">
         <PanelHead
           title="Idea queue"
-          sub="Ideas waiting for the writer, in the order it takes them: approved first, then pending. Volume is monthly searches, KD is difficulty out of 100."
+          sub="Ideas waiting for the writer, in the order it takes them: approved first, then pending, each by the most searches for its difficulty. Volume is monthly searches, KD is difficulty out of 100."
           meta={[d.queue.items.length ? `${fmt(d.queue.items.length)} waiting` : "empty", d.queue.nextArticleAt ? `next article ${shortDate(d.queue.nextArticleAt)}` : null].filter(Boolean).join(" · ")}
         />
         {d.queue.items.length ? (
