@@ -127,7 +127,8 @@ export function publishRoute(project: Project): "wordpress" | "repo" | "manual" 
  *  is shown. Used by the drafts screen and the MCP read tools. */
 export function blockedReason(project: Project): string {
   if (project.github_repo && repoIsNotTheSite(project)) {
-    return `The repository connected to this site, ${project.github_repo}, doesn't hold ${project.domain}'s code, so an article added there would never reach your site. Connect the repository your site is built from under Settings, and this article goes out on its own.`;
+    const empty = Boolean((project.repo_site_check as { empty?: boolean } | null)?.empty);
+    return `The repository connected to this site, ${project.github_repo}, ${empty ? "is empty" : `doesn't hold ${project.domain}'s code`}, so an article added there would never reach your site. Connect the repository your site is built from under Settings (you don't need a new one for DispatchSEO), and this article goes out on its own.`;
   }
   if (publishTarget(project) === "manual" && writerMode(project) === "hosted") {
     return "Choose where articles go (your GitHub repo, or a blog we host for you) on the Settings screen, and this article goes out on its own.";

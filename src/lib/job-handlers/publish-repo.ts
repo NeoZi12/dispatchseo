@@ -1,4 +1,4 @@
-import { checkRepoBuildsSite } from "@/lib/repo-site-check";
+import { checkRepoBuildsSite, findSiteRepo } from "@/lib/repo-site-check";
 import { db } from "@/lib/db";
 import { enqueue } from "@/lib/jobs";
 import { publishDraftToRepo, type RepoDraft } from "@/lib/repo-publish";
@@ -67,8 +67,13 @@ export async function runRepoPublish(project: Project, draftId: string): Promise
   if (!row.pr_url) {
     const check = await checkRepoBuildsSite(project);
     if (check.verdict === "mismatch") {
-      await markBlockedSetup(draftId);
-      return;
+      // The right repo may already be shared with the App: use it.
+      const switched = await findSiteRepo(project);
+      if (!switched) {
+        await markBlockedSetup(draftId);
+        return;
+      }
+      project = switched;
     }
   }
 

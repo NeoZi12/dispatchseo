@@ -28,6 +28,9 @@ import { siteRoot } from "@/lib/site-root";
 export type RepoSiteCheck = {
   verdict: "match" | "mismatch" | "unknown";
   repo: string;
+  /** The repo has no commits at all (reverto.ai's "DispatchSEO" repo): it
+   *  cannot be the site's code, whatever the homepage names. */
+  empty?: boolean;
   named: number;
   found: number;
   at: string;
@@ -97,22 +100,77 @@ export async function checkRepoBuildsSite(project: Project, opts: { fresh?: bool
     ]);
     if (!home || !home.ok || !token) return unknown();
     const named = namedStaticFiles(await home.text(), new URL(home.url || root.toString()));
-    if (named.length < MIN_NAMED) return unknown();
-    const info = await githubApi(token, "GET", `/repos/${repo}`);
-    const branch = String(info.json?.default_branch ?? "");
-    if (info.status !== 200 || !branch) return unknown();
-    const tree = await githubApi(token, "GET", `/repos/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
-    const paths = ((tree.json?.tree as { path?: string; type?: string }[] | undefined) ?? []).filter((e) => e.type === "blob").map((e) => String(e.path ?? ""));
-    if (tree.status !== 200 || !paths.length) return unknown();
-    // A truncated listing could miss the served folder: never call that a miss.
-    const judged = judgeRepoSite(named, paths);
-    const result: RepoSiteCheck = { ...judged, verdict: tree.json?.truncated === true && judged.verdict === "mismatch" ? "unknown" : judged.verdict, repo, at: new Date().toISOString() };
+    const listing = await repoPaths(token, repo);
+    if (!listing) return unknown();
+    let result: RepoSiteCheck;
+    if (listing.empty) {
+      result = { verdict: "mismatch", repo, empty: true, named: named.length, found: 0, at: new Date().toISOString() };
+    } else {
+      if (named.length < MIN_NAMED) return unknown();
+      // A truncated listing could miss the served folder: never call that a miss.
+      const judged = judgeRepoSite(named, listing.paths);
+      result = { ...judged, verdict: listing.truncated && judged.verdict === "mismatch" ? "unknown" : judged.verdict, repo, at: new Date().toISOString() };
+    }
     await db().from("projects").update({ repo_site_check: result }).eq("id", project.id);
     console.log(`[repo-site] ${project.slug}: ${repo} ${result.verdict} (${result.found}/${result.named} of the homepage's files)`);
     return result;
   } catch (e) {
     console.warn(`[repo-site] ${project.slug}: not checked: ${e instanceof Error ? e.message : String(e)}`);
     return unknown();
+  }
+}
+
+/** Every file path on the repo's default branch; empty = no commits yet
+ *  (GitHub answers 409 "Git Repository is empty"). Null when unreadable. */
+async function repoPaths(token: string, repo: string): Promise<{ paths: string[]; empty: boolean; truncated: boolean } | null> {
+  const info = await githubApi(token, "GET", `/repos/${repo}`);
+  if (info.status !== 200) return null;
+  const branch = String(info.json?.default_branch ?? "");
+  if (Number(info.json?.size ?? -1) === 0 || !branch) return { paths: [], empty: true, truncated: false };
+  const tree = await githubApi(token, "GET", `/repos/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
+  if (tree.status === 409) return { paths: [], empty: true, truncated: false };
+  if (tree.status !== 200) return null;
+  const paths = ((tree.json?.tree as { path?: string; type?: string }[] | undefined) ?? []).filter((e) => e.type === "blob").map((e) => String(e.path ?? ""));
+  return { paths, empty: paths.length === 0, truncated: tree.json?.truncated === true };
+}
+
+/**
+ * The connected repo doesn't build the site: look through the other repos
+ * the owner gave the GitHub App, and when exactly ONE of them builds the site
+ * (its files are the homepage's), connect that one instead - the owner
+ * picked the wrong repo, or created an empty one for us, and the right one
+ * is already shared. Returns the project re-pointed at it, or null when no
+ * single repo is clearly the site (then the caller says so instead).
+ */
+export async function findSiteRepo(project: Project): Promise<Project | null> {
+  if (!project.github_installation_id || !project.domain) return null;
+  try {
+    const { listInstallationRepos } = await import("@/lib/github-app");
+    const repos = (await listInstallationRepos(project.github_installation_id)).map((r) => r.full_name).filter((r) => r !== project.github_repo).slice(0, 15);
+    if (!repos.length) return null;
+    const root = new URL(`${siteRoot(project)}/`);
+    const host = project.domain.replace(/^www\./, "");
+    const [home, token] = await Promise.all([fetchProjectUrl(root.toString(), host, { timeoutMs: 8_000, userAgent: "DispatchSEO-Check/1.0" }), tokenForRef(project)]);
+    if (!home || !home.ok || !token) return null;
+    const named = namedStaticFiles(await home.text(), new URL(home.url || root.toString()));
+    if (named.length < MIN_NAMED) return null;
+    const matches: { repo: string; check: RepoSiteCheck }[] = [];
+    for (const repo of repos) {
+      const listing = await repoPaths(token, repo).catch(() => null);
+      if (!listing || listing.empty) continue;
+      const judged = judgeRepoSite(named, listing.paths);
+      if (judged.verdict === "match") matches.push({ repo, check: { ...judged, repo, at: new Date().toISOString() } });
+    }
+    if (matches.length !== 1) return null;
+    const [{ repo, check }] = matches;
+    // The folder hint and the blog-switch PR belonged to the old repo.
+    const { error } = await db().from("projects").update({ github_repo: repo, repo_site_check: check, content_path_hint: null, hosted_rewrite_pr_url: null, hosted_rewrite_live_at: null }).eq("id", project.id).eq("github_repo", project.github_repo ?? "");
+    if (error) return null;
+    console.log(`[repo-site] ${project.slug}: ${project.github_repo} is not the site; switched to ${repo} (${check.found}/${check.named})`);
+    return { ...project, github_repo: repo, repo_site_check: check, content_path_hint: null };
+  } catch (e) {
+    console.warn(`[repo-site] ${project.slug}: other repos not searched: ${e instanceof Error ? e.message : String(e)}`);
+    return null;
   }
 }
 

@@ -217,7 +217,7 @@ export async function firstArticleProgress(
           target === "github" && project.github_repo && repoIsNotTheSite(project)
             ? // The connected repo doesn't build the site (repo-site-check.ts):
               // the owner picks the right one and the parked article goes out.
-              { text: `The article is ready, but ${project.github_repo} doesn't hold ${project.domain}'s code, so it can't reach your site from there. Connect the repository your site is built from and it goes out on its own.`, href: "/settings?section=publishing", linkLabel: "Change repository" }
+              { text: `The article is ready, but ${project.github_repo} ${(project.repo_site_check as { empty?: boolean } | null)?.empty ? "is empty" : `doesn't hold ${project.domain}'s code`}, so it can't reach your site from there. Connect the repository your site is built from and it goes out on its own.`, href: "/settings?section=publishing", linkLabel: "Change repository" }
             : target === "github" && project.github_repo
             ? // Reaching here at all means the hosted fallback found no free
               // address: /blog, /articles and /guides are all the site's own
