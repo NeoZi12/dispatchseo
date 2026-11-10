@@ -1,3 +1,4 @@
+import { sitePath } from "@/lib/site-root";
 import { db } from "./db";
 import type { Project } from "./projects";
 
@@ -18,7 +19,7 @@ import type { Project } from "./projects";
 const RESEND_URL = "https://api.resend.com/emails";
 
 export async function notifyFirstArticleLive(
-  project: Pick<Project, "id" | "slug" | "domain" | "owner_user_id">,
+  project: Pick<Project, "id" | "slug" | "domain" | "owner_user_id"> & { site_path?: string | null },
   article: { draftId: string; url: string; title: string | null },
 ): Promise<"sent" | "skipped"> {
   try {
@@ -41,7 +42,9 @@ export async function notifyFirstArticleLive(
 
     const { backendBaseUrl } = await import("./pipeline-pack");
     const dashboard = await backendBaseUrl();
-    const domain = project.domain || project.slug;
+    // A site in a folder of its host is named with the folder
+    // ("you.github.io/your-repo"): the bare host is somebody else's page.
+    const domain = project.domain ? `${project.domain}${sitePath(project)}` : project.slug;
     const title = article.title?.trim() || "Your first article";
 
     const res = await fetch(RESEND_URL, {
