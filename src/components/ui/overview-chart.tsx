@@ -93,7 +93,7 @@ function bucketize(from: number, to: number, size: number): Bucket[] {
 
 // Monotone cubic: smooth, and never dips below zero or above a peak that
 // wasn't there.
-function curve(xs: number[], ys: number[]): string {
+export function curve(xs: number[], ys: number[]): string {
   const n = xs.length;
   if (n < 2) return "";
   const d = ys.slice(0, -1).map((y, i) => (ys[i + 1] - y) / (xs[i + 1] - xs[i]));
@@ -122,7 +122,7 @@ function curve(xs: number[], ys: number[]): string {
 }
 
 /** First, last, and evenly between: the dates that get a label and a guide. */
-function ticks(n: number, want: number): number[] {
+export function ticks(n: number, want: number): number[] {
   if (n <= want) return Array.from({ length: n }, (_, i) => i);
   const step = (n - 1) / (want - 1);
   return Array.from({ length: want }, (_, i) => Math.round(i * step));

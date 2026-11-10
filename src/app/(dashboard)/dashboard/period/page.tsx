@@ -5,7 +5,7 @@ import { getActiveProject } from "@/lib/active-project";
 import { isFreePlan, projectPlan } from "@/lib/billing";
 import { getDayHourly, getPeriodStats, HOURLY_DAYS, parsePeriod, type PeriodPage, type PeriodStats } from "@/lib/period-stats";
 import type { Project } from "@/lib/projects";
-import { HourlyChart } from "@/components/ui/hourly-chart";
+import { HourlyChart, PeriodChart } from "@/components/ui/hourly-chart";
 import { GhostCard } from "@/components/ui/skeleton";
 import { DispatcherNote } from "@/components/dispatcher-note";
 import { buttonClass } from "@/components/ui/button";
@@ -196,7 +196,7 @@ export default async function PeriodPage({ searchParams }: { searchParams: Promi
           </Suspense>
         </section>
       ) : null}
-      {stats.days > 1 ? <DayBars s={stats} /> : null}
+      {stats.days > 1 ? <DayChart s={stats} /> : null}
       <TopPages s={stats} unit={unit} />
       {stats.queries.length ? <Searches s={stats} /> : null}
       {stats.published.length ? <WentLive s={stats} unit={unit} /> : null}
@@ -358,62 +358,25 @@ function Figures({ s, unit }: { s: PeriodStats; unit: string }) {
   );
 }
 
-/** A week or a month, day by day: a bar per day, each one a link to that
- *  day. The best day is labelled; a day Google hasn't reported is dashed. */
-function DayBars({ s }: { s: PeriodStats }) {
-  const max = Math.max(1, ...s.daily.map((d) => d.clicks));
-  const bestClicks = Math.max(...s.daily.map((d) => d.clicks));
-  const few = s.daily.length <= 10;
+/** A week or a month, day by day: the overview's chart - people green,
+ *  times seen blue, the readout on hover - each point a day that opens its
+ *  own page on click. Days Google hasn't reported yet (the last 2-3) aren't
+ *  drawn; an unreported day in the middle reads as zero. */
+function DayChart({ s }: { s: PeriodStats }) {
+  const lastReported = s.daily.reduce((m, d, i) => (d.reported ? i : m), -1);
+  const points = s.daily.map((d, i) => ({
+    at: d.date,
+    clicks: d.clicks,
+    impressions: d.impressions,
+    pending: i > lastReported,
+    href: `/dashboard/period?from=${d.date}`,
+  }));
   return (
     <section aria-labelledby="days-title" className="arrive-up space-y-4" style={css({ "--at": "140ms" })}>
       <h2 id="days-title" className="text-xl font-semibold tracking-tight text-ink">
         Day by day
       </h2>
-      <div className="rounded-2xl border border-line-soft bg-surface px-4 pb-4 pt-6 sm:px-6">
-        <ol className="flex h-48 items-end gap-1.5 sm:gap-2.5">
-          {s.daily.map((d, i) => {
-            const best = d.reported && d.clicks === bestClicks && bestClicks > 0;
-            const h = d.reported ? Math.max(3, (d.clicks / max) * 100) : 100;
-            const dt = new Date(t0(d.date));
-            return (
-              <li key={d.date} className="flex h-full min-w-0 flex-1 flex-col">
-                <Link
-                  href={`/dashboard/period?from=${d.date}`}
-                  className={cx("group relative flex h-full flex-col justify-end rounded-md", FOCUS_RING)}
-                  aria-label={`${short(d.date)}: ${d.reported ? `${d.clicks} ${d.clicks === 1 ? "person" : "people"}, ${d.impressions} times seen` : "not reported yet"}`}
-                >
-                  {few && d.reported ? (
-                    <span className={cx("mb-1.5 text-center text-[12.5px] font-semibold tabular-nums", best ? "text-ok" : "text-ink-muted")}>{d.clicks}</span>
-                  ) : null}
-                  <span
-                    className={cx(
-                      "arrive-rise block w-full origin-bottom rounded-t-md transition-[filter,background-color] duration-150",
-                      d.reported
-                        ? best
-                          ? "bg-ok group-hover:brightness-110"
-                          : "bg-ok/35 group-hover:bg-ok/60"
-                        : "border border-dashed border-line bg-transparent",
-                    )}
-                    style={css({ height: `${h}%`, "--at": "220ms", "--i": i, "--step": few ? "45ms" : "12ms" })}
-                  />
-                  {/* Hover readout for the dense month view. */}
-                  {!few ? (
-                    <span className="pointer-events-none absolute -top-2 left-1/2 z-10 hidden -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg border border-line bg-surface-2 px-2.5 py-1.5 text-[12px] shadow-xl shadow-black/40 group-hover:block group-focus-visible:block">
-                      <span className="block text-ink-faint">{short(d.date)}</span>
-                      <span className="block font-semibold text-ink tabular-nums">{d.reported ? `${d.clicks} ${d.clicks === 1 ? "person" : "people"}` : "Not reported yet"}</span>
-                    </span>
-                  ) : null}
-                </Link>
-                <span className={cx("mt-2 text-center text-[11.5px] tabular-nums", best ? "font-medium text-ink" : "text-ink-faint")}>
-                  {few ? WEEKDAYS[dt.getUTCDay()].slice(0, 3) : i % 5 === 0 || i === s.daily.length - 1 ? dt.getUTCDate() : " "}
-                </span>
-                {few ? <span className="text-center text-[11px] text-ink-faint tabular-nums">{dt.getUTCDate()}</span> : null}
-              </li>
-            );
-          })}
-        </ol>
-        <p className="mt-4 text-[12.5px] text-ink-faint">People from Google each day. Open a day for its own breakdown.</p>
-      </div>
+      <PeriodChart points={points} unit="day" />
     </section>
   );
 }
