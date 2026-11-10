@@ -402,6 +402,17 @@ export type ArticleFileInput = {
   credit?: { href: string; madeWith: string } | null;
 };
 
+/** The free plan's credit as a repo article carries it: one line under the
+ *  body, above the signature. One spelling, so the edit path (article-owner.ts)
+ *  writes it back exactly as the publish wrote it. */
+export function creditLine(credit: { href: string; madeWith: string }): string {
+  return `${credit.madeWith} <a href="${credit.href}" rel="sponsored nofollow noopener">DispatchSEO</a>`;
+}
+
+/** That line at the end of a body, with the blank lines before it: what the
+ *  edit path takes off before showing the body and before writing it again. */
+export const CREDIT_LINE_AT_END = /\n*[^\n]*<a href="https:\/\/dispatchseo\.com\/\?ref=[^"]*" rel="sponsored nofollow noopener">DispatchSEO<\/a>[ \t]*$/;
+
 /** The folder this site serves its static files from, as a repo path with a
  *  trailing slash. Found, not assumed: the folders above the posts are walked
  *  from the nearest one up (never above a monorepo app's own root - a root
@@ -505,7 +516,7 @@ export function buildArticleFile(sample: ParsedSample | null, article: ArticleFi
   // it is the only form that carries rel="sponsored" (a markdown link
   // cannot). page-marks.ts finds it by its ?ref= address.
   const credit = article.credit
-    ? `\n\n${article.credit.madeWith} <a href="${article.credit.href}" rel="sponsored nofollow noopener">DispatchSEO</a>`
+    ? `\n\n${creditLine(article.credit)}`
     : "";
   return `---\n${lines.join("\n")}\n---\n\n${bodyWithFaq(article, sample)}${credit}${signature}\n`;
 }

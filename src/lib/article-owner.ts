@@ -3,10 +3,11 @@ import { db } from "@/lib/db";
 import { effectiveAutomations, publishTarget, type Project } from "@/lib/projects";
 import { renderDraftForRoute } from "@/lib/job-handlers/finish";
 import { buildExcerpt, buildSchema, schemaScript, yamlDoubleQuote } from "@/lib/article-render";
-import { DESCRIPTION_KEYS, fetchPullRequest, fileStem, githubApi, parseFrontmatter, relativizeOwnLinks, scoreContentDirs } from "@/lib/repo-publish";
+import { CREDIT_LINE_AT_END, creditLine, DESCRIPTION_KEYS, fetchPullRequest, fileStem, githubApi, parseFrontmatter, relativizeOwnLinks, scoreContentDirs } from "@/lib/repo-publish";
 import { articleSignature } from "@/lib/article-signature";
 import { tokenForRef } from "@/lib/github";
-import { hostedBase, siteOrigin } from "@/lib/hosted-blog";
+import { creditParts, hostedBase, siteOrigin } from "@/lib/hosted-blog";
+import { isFreeProject } from "@/lib/billing";
 import { backendBaseUrl } from "@/lib/pipeline-pack";
 import { enqueue } from "@/lib/jobs";
 import { EDIT_LIMITS, type ArticleRoute } from "@/lib/article-owner-shared";
@@ -282,7 +283,7 @@ async function readRepoFile(project: Project, path: string, ref?: string): Promi
   const text = Buffer.from(file.json.content as string, "base64").toString("utf8").replace(/\r\n/g, "\n");
   const m = text.match(/^\uFEFF?\s*---\n([\s\S]*?)\n---[ \t]*\n?/);
   if (!m) return { ok: false, error: `The article's file in your repo doesn't start with a front matter block, so it can't be changed safely from here. ${ON_GITHUB}` };
-  const body = text.slice(m[0].length).replace(/\s*<span data-dispatchseo="[^"]*" hidden><\/span>\s*$/, "").trim();
+  const body = text.slice(m[0].length).replace(/\s*<span data-dispatchseo="[^"]*" hidden><\/span>\s*$/, "").trim().replace(CREDIT_LINE_AT_END, "").trim();
   return { ok: true, sha: String(file.json.sha), text, frontmatter: m[1], body, hadH1: LEADING_H1.test(body) };
 }
 
@@ -719,7 +720,11 @@ async function repoChange(project: Project, row: Row, change: RepoChange): Promi
     if (fm === null) return { ok: false, error: `The article's front matter writes its title or description over several lines, which can't be updated safely from here. ${ON_GITHUB}` };
     // Own-site links root-relative, as every file we write (a site's lint may
     // require `](/blog/...)`; relativizeOwnLinks says which one did).
-    content = `---\n${fm}\n---\n\n${relativizeOwnLinks(change.markdown, project.domain).trim()}\n\n${articleSignature(row.id)}\n`;
+    // The free plan's credit goes back under the body exactly as the publish
+    // wrote it (readRepoFile took it off, so the owner never edits it and a
+    // save never doubles it): an edit must not be the way it disappears.
+    const credit = (await isFreeProject(project.id)) ? `\n\n${creditLine(creditParts(project))}` : "";
+    content = `---\n${fm}\n---\n\n${relativizeOwnLinks(change.markdown, project.domain).trim().replace(CREDIT_LINE_AT_END, "").trim()}${credit}\n\n${articleSignature(row.id)}\n`;
   } else {
     // The file must still be there to delete (a stale path after a move).
     const head = await gh("GET", `/repos/${repo}/contents/${encodeURI(path)}?ref=${encodeURIComponent(baseBranch)}`);
