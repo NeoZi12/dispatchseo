@@ -54,7 +54,14 @@ export function namedStaticFiles(html: string, rootUrl: URL): string[] {
   for (const m of html.slice(0, 400_000).matchAll(/\b(?:src|href|srcset|content)\s*=\s*["']([^"'#\s]+)/gi)) {
     let u: URL;
     try {
-      u = new URL(m[1].split(/[?,\s]/)[0], rootUrl);
+      // A Next.js site serves every <Image> through its optimizer
+      // (/_next/image?url=%2Fimages%2Fx.webp), so the homepage names its
+      // files only inside that query. Unwrapped, they are the evidence;
+      // skipped as "_next/", neozino.dev (2026-11-10) named none and the
+      // wrong repo it connected was never caught.
+      const raw = m[1].replace(/&amp;/g, "&");
+      const opt = /\/_(?:next|vercel)\/image\?(?:[^&]*&)*?url=([^&]+)/i.exec(raw);
+      u = new URL((opt ? decodeURIComponent(opt[1]) : raw).split(/[?,\s]/)[0], rootUrl);
     } catch {
       continue;
     }

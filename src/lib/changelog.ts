@@ -72,6 +72,7 @@ export type ChangelogEntry = {
 // into a new CHANGELOG entry when it's time to cut a release. Nothing reads
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
+  { kind: "fixed", text: "If you connect a GitHub repository that doesn't build your site, setup now notices on sites made with Next.js too, and switches to the right repository when you've shared it. Before, those sites could connect the wrong one and articles never reached the site." },
   {
     kind: "improved",
     text: "Yearly Starter is now $15 a month and yearly Growth $29 a month, billed once a year. Scale and every monthly price stay the same.",
