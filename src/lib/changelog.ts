@@ -73,6 +73,10 @@ export type ChangelogEntry = {
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
+    kind: "improved",
+    text: "Yearly Starter is now $15 a month and yearly Growth $29 a month, billed once a year. Scale and every monthly price stay the same.",
+  },
+  {
     kind: "new",
     text: "You can now read each article before it goes live. Setup asks once: publish automatically, or wait for my review. With review on, we email you when an article is ready, and it waits on your dashboard until you press Publish. You can read it as it will look on your blog, edit it, or drop it. Change your mind any time in Settings.",
   },

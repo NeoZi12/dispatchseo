@@ -53,14 +53,15 @@ export function isBillingInterval(value: unknown): value is BillingInterval {
 // The yearly figures are per month and show only once the yearly products
 // exist (productIdForTier).
 //
-// Prices set by the owner 2026-11-08 (replacing $15/$29/$59 monthly): the
-// yearly saving differs per tier (Starter 32%, Growth 36%, Scale 15%), so
+// Prices set by the owner 2026-11-08 (replacing $15/$29/$59 monthly); yearly
+// Starter/Growth raised 2026-11-10 from $13/$25 to $15/$29. The yearly saving
+// differs per tier (Starter 21%, Growth 26%, Scale 14%), so
 // copy may say "save up to N%" but never one flat percentage. NEW Polar
 // products at exactly these prices must exist before this ships - until then
 // the page would advertise one price and Polar would charge another.
 export const TIER_LIMITS: Record<Tier, { sites: number; price: number; annual: number }> = {
-  starter: { sites: 1, price: 19, annual: 13 },
-  growth: { sites: 1, price: 39, annual: 25 },
+  starter: { sites: 1, price: 19, annual: 15 },
+  growth: { sites: 1, price: 39, annual: 29 },
   scale: { sites: 1, price: 69, annual: 59 },
 };
 
