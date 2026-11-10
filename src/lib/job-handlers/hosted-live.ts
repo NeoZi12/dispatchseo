@@ -1,10 +1,8 @@
 import { db } from "@/lib/db";
 import { enqueue, type Job } from "@/lib/jobs";
 import { getProjectById, publishTarget, type Project } from "@/lib/projects";
-import { checkRewriteLive, manualSnippet, mergeRewritePr, replanForwarding } from "@/lib/hosted-rewrite";
+import { checkRewriteLive, mergeRewritePr, replanForwarding } from "@/lib/hosted-rewrite";
 import { notifyFirstArticleLive } from "@/lib/first-article-email";
-import { backendBaseUrl } from "@/lib/pipeline-pack";
-import { hostedBase, hostedPath, siteOrigin } from "@/lib/hosted-blog";
 
 // Watches a hosted site's own /blog until it answers from us (the marker
 // header), then sends the "your first article is live" email for the first
@@ -13,10 +11,16 @@ import { hostedBase, hostedPath, siteOrigin } from "@/lib/hosted-blog";
 // (easyrender.app, 2026-11-09). Started by switchToHostedBlog and by a
 // hosted publish that found the forwarding not live yet.
 //
-// One pass per jobs tick for up to a day. After that, the owner gets ONE
-// email with the exact rule for their stack: the product asks the owner,
-// never the operator. The chain then ends; the Settings card keeps showing
-// the rule, and the weekly re-probe keeps looking.
+// One pass per jobs tick for up to a day, then the chain ends quietly. The
+// next hosted publish starts a new one, and the weekly re-probe keeps
+// looking, so the "live" email still goes out whenever the address answers.
+//
+// NO EMAIL ASKS THE OWNER TO ADD THE FORWARDING (owner's rule, 2026-11-10):
+// this product never mails a customer "your site did not work, do X". A site
+// either works end to end and gets one email - "your first article is live" -
+// or it is refused at setup. Until that day a mail went out here after 24
+// hours with the rule to paste; a site we cannot forward on our own is a
+// case for setup to refuse or for us to solve, never the customer's job.
 
 const EVERY_MS = 5 * 60_000;
 const GIVE_UP_MS = 24 * 3_600_000;
@@ -54,10 +58,7 @@ export async function runHostedLiveJob(job: Job): Promise<void> {
   if (state.startsWith("merged") && Date.now() - Date.parse(since) > REPLAN_AFTER_MS) {
     await replanForwarding(project).catch((e) => console.warn(`[hosted-live] ${project.slug}: re-plan failed: ${e instanceof Error ? e.message : String(e)}`));
   }
-  if (Date.now() - Date.parse(since) > GIVE_UP_MS) {
-    await notifyForwardingNeeded(project);
-    return;
-  }
+  if (Date.now() - Date.parse(since) > GIVE_UP_MS) return;
   await enqueue({
     projectId: project.id,
     kind: "hosted-live",
@@ -80,46 +81,4 @@ async function emailFirstPublished(project: Project): Promise<void> {
   const row = data as { id: string; title: string | null; published_url: string | null } | null;
   if (!row?.published_url) return;
   await notifyFirstArticleLive(project, { draftId: row.id, url: row.published_url, title: row.title });
-}
-
-/** One email, after a day without the forwarding: the rule for their stack,
- *  spelled out. Best-effort, never throws (the chain ends either way). */
-async function notifyForwardingNeeded(project: Project): Promise<void> {
-  try {
-    const from = process.env.CUSTOMER_EMAIL_FROM;
-    const apiKey = process.env.RESEND_API_KEY;
-    if (!from || !apiKey || !project.owner_user_id || !project.hosted_key) return;
-    const { data: u } = await db().auth.admin.getUserById(project.owner_user_id);
-    const to = u?.user?.email;
-    if (!to) return;
-    const backend = await backendBaseUrl();
-    const snippets = manualSnippet(backend, project.hosted_key, hostedPath(project));
-    // The address the rule makes answer: /blog, or /articles on a site
-    // whose own /blog is a real blog we leave alone.
-    const origin = hostedBase(project);
-    const domain = project.domain || project.slug;
-    const merged = (project.hosted_rewrite_state ?? "").startsWith("merged") && typeof project.hosted_rewrite_pr_url === "string" && project.hosted_rewrite_pr_url.startsWith("http");
-    const text = merged
-      ? `Hi,\n\n` +
-        `Your first article for ${domain} is written and waiting. The one change it needs is already merged into your repo (${project.hosted_rewrite_pr_url}), but your site has not been deployed since, so ${origin} does not forward to your hosted blog yet and nobody can reach the article.\n\n` +
-        `Deploy your site the way you usually do. As soon as ${origin} answers, the article is live and you get a mail with the link.\n\n` +
-        `DispatchSEO`
-      : `Hi,\n\n` +
-        `Your first article for ${domain} is written and waiting. One thing is missing on your side: ${origin} does not forward to your hosted blog yet, so nobody can reach it.\n\n` +
-        `If your site is Next.js, add this to next.config.js and deploy:\n\n${snippets.next}\n\n` +
-        `On Vercel without Next.js, put this in vercel.json:\n\n${snippets.vercel}\n\n` +
-        `On Netlify, add these two lines to _redirects:\n\n${snippets.netlify}\n` +
-        `The same rules, for copying, are on your settings screen: ${backend}/settings?section=publishing\n\n` +
-        `As soon as ${origin} answers, the article is live and you get a mail with the link.\n\n` +
-        `DispatchSEO`;
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to, subject: merged ? `Deploy your site and your blog at ${domain} is on` : `One line to switch on your blog at ${domain}`, text }),
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!res.ok) console.warn(`[hosted-live] ${project.slug}: Resend answered ${res.status}`);
-  } catch (e) {
-    console.warn(`[hosted-live] ${project.slug}: ${e instanceof Error ? e.message : String(e)}`);
-  }
 }

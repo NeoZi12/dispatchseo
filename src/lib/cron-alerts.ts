@@ -479,12 +479,14 @@ async function alertRunLogBroken(
   }
 }
 
-// Cloud bundle: the project owner behind a per-tenant job (job names carry the
-// slug, e.g. seo-daily--acme), resolved to their account email so a hands-off
-// CUSTOMER is alerted when their own automation breaks - the cloud answer to
-// self-host's BYO email. Cloud only: db() is the supabase-js service client
-// there (auth.admin available); self-host's single owner IS the operator.
-// WHICH FAILURES A CUSTOMER SHOULD BE EMAILED ABOUT.
+// NOTHING BELOW IS EMAILED TO A CUSTOMER ANY MORE (owner's rule, 2026-11-10:
+// the product never mails a customer that something broke and what to do
+// about it). The table stays as the classifier of customer-side causes:
+// scripts/pipeline-pack-lint.mjs pins the agent workflows' usage-limit
+// phrases to its first test. The history below is why the table reads the
+// way it does.
+//
+// WHICH FAILURES A CUSTOMER WAS EMAILED ABOUT (until 2026-11-10).
 //
 // The operator gets every failure - that never changes. The customer gets only
 // the ones they can actually DO something about, because an email that names a
@@ -536,191 +538,9 @@ export function customerActionableLead(errors: string[]): string | null {
   return null;
 }
 
-// The autopilot's own jobs (autopilot--<slug>, autopilot-pause--<slug>,
-// articles--<slug>) and every job of a HOSTED site get their own leads. The
-// table above is written for an owner whose coding agent runs the pipeline -
-// "your coding agent's account hit its limit", "re-paste the credential" - and
-// on a hosted site there is no agent and nothing to re-paste: the writer's
-// model keys and the DataForSEO account are ours. Sending that copy told a
-// customer to fix a thing they do not have (2026-10-24 audit, H5).
+// The autopilot's own jobs, per site: autopilot--<slug>,
+// autopilot-pause--<slug>, articles--<slug>.
 const AUTOPILOT_JOBS = new Set(["autopilot", "autopilot-pause", "articles"]);
-const OUR_SIDE =
-  /model credentials|on this deploy|DataForSEO|keyword data budget|daily ceiling|monthly ceiling|SERP provider|anthropic|typesafe|overloaded|rate.?limit|quota|(anthropic|typesafe|dataforseo|HTTP|status)\s*:?\s*(429|5\d\d)|timed out|gave up at stage|stopped by a problem on our side/i;
-
-export function hostedCustomerLead(job: string, errors: string[]): string | null {
-  const base = baseJobName(job);
-  if (base === "autopilot-pause") {
-    // The reason is the pause row itself ("paused: Auto-paused: <why> [rule]").
-    const why = (errors[0] ?? "")
-      .replace(/^[^:]*:\s*paused:\s*/i, "")
-      .replace(/^paused:\s*/i, "")
-      .replace(/^Auto-paused:\s*/i, "")
-      .replace(/\s*\[[a-z-]+\]\s*$/i, "");
-    return (
-      `Paused: ${why || "the autopilot stopped itself for this site."} ` +
-      // "Resume" lives on the dashboard's Home (the dispatcher's button), not
-      // Settings - the email names the place the button actually is.
-      "No new articles start until you press Resume autopilot on your dashboard's Home page; articles already written still publish."
-    );
-  }
-  // First: the never-live line carries an article TITLE, which can contain
-  // anything (a "500" or "quota" in a headline must not read as our outage).
-  if (errors.some((e) => e.includes("not live after 48 hours"))) {
-    return errors.some((e) => /waiting for a merge/i.test(e))
-      ? "An article has waited over two days for its pull request to be merged. Merge it on GitHub (the link is on the article's page in your dashboard) and it goes live within minutes."
-      : "An article went out over two days ago but its page still doesn't load on your site. The article's page in your dashboard shows where it went.";
-  }
-  if (errors.some((e) => OUR_SIDE.test(e))) {
-    return "A problem on our side stopped the autopilot for your site for now. You don't need to do anything: it retries by itself, and we're on it.";
-  }
-  if (errors.some((e) => /github app|installation|repository not found|repo.*(access|permission)|\b40[34]\b/i.test(e))) {
-    return "We can no longer reach your repository, so articles can't be published. Reconnect the DispatchSEO GitHub App from Settings and they go out again.";
-  }
-  if (errors.some((e) => /wordpress|wp-json|rest_cannot/i.test(e))) {
-    return "We can no longer post to your WordPress site, so articles can't be published. Reconnect WordPress from Settings and they go out again.";
-  }
-  if (errors.some((e) => /search console|gsc|google.*(permission|access|denied)/i.test(e))) {
-    return "We lost access to your Search Console property, so traffic stats have stopped updating. Re-granting access on the Google page restores them.";
-  }
-  return null;
-}
-
-/** Which lead a failure gets: the hosted table for autopilot jobs and hosted
- *  sites, the agent table for everything else. `hosted` is the owning
- *  project's writer mode when the caller knows it. */
-export function customerLeadFor(job: string, errors: string[], hosted: boolean): string | null {
-  return hosted || AUTOPILOT_JOBS.has(baseJobName(job)) ? hostedCustomerLead(job, errors) : customerActionableLead(errors);
-}
-
-// One customer email per CAUSE per project, not per job. The per-job debounce
-// above is the wrong unit for the customer: a dead agent credential fails
-// seo-daily, seo-tools, seo-token-check and seo-geo-scan separately, each on
-// its own 6h window, so an owner whose account broke once got the identical
-// "here is what to do" email several times a day, every day, until they fixed
-// it (Maxpertise, 2026-08-04..06). They were told; repeating it daily only
-// trains them to ignore the address. While the same actionable cause keeps
-// failing anywhere in the project, re-send at most every 72h; a DIFFERENT
-// cause (a different CUSTOMER_ACTIONABLE lead) still emails immediately.
-// The operator's per-job emails are untouched. Best-effort like everything
-// here: a query error means "not emailed recently", never a swallowed alert.
-const CUSTOMER_CAUSE_DEBOUNCE_HOURS = 72;
-
-async function customerCauseEmailedRecently(job: string, lead: string, hosted: boolean): Promise<boolean> {
-  const slug = jobProjectSlug(job);
-  if (!slug) return false;
-  try {
-    const since = new Date(
-      Date.now() - CUSTOMER_CAUSE_DEBOUNCE_HOURS * 3600 * 1000,
-    ).toISOString();
-    const { data } = await db()
-      .from("cron_runs")
-      .select("job, errors")
-      .like("job", `%--${slug}`)
-      .not("emailed_at", "is", null)
-      .gte("emailed_at", since)
-      .limit(50);
-    // Same lead function the send used, per row's own job: a hosted site's
-    // pause and an agent site's quota wait must never debounce each other.
-    return Boolean(
-      data?.some((r) => customerLeadFor(r.job as string, (r.errors as string[]) ?? [], hosted) === lead),
-    );
-  } catch {
-    return false;
-  }
-}
-
-/** Is the project behind a per-project job a hosted-writer site? Best-effort:
- *  a failed read answers false (the agent table), which at worst sends the
- *  pre-autopilot copy - never a crash in the reporting path. */
-async function jobProjectHosted(job: string): Promise<boolean> {
-  const slug = jobProjectSlug(job);
-  if (!slug) return false;
-  try {
-    const { data } = await db().from("projects").select("writer_mode").eq("slug", slug).maybeSingle();
-    return (data as { writer_mode?: string | null } | null)?.writer_mode === "hosted";
-  } catch {
-    return false;
-  }
-}
-
-async function ownerContactForJob(
-  job: string,
-): Promise<{ email: string; domain: string | null } | null> {
-  const slug = jobProjectSlug(job);
-  if (!slug) return null;
-  try {
-    const { data: proj } = await db()
-      .from("projects")
-      .select("owner_user_id, domain")
-      .eq("slug", slug)
-      .maybeSingle();
-    const ownerId = (proj as { owner_user_id?: string | null } | null)?.owner_user_id;
-    if (!ownerId) return null;
-    const { data } = await db().auth.admin.getUserById(ownerId);
-    const email = data?.user?.email;
-    return email
-      ? { email, domain: (proj as { domain?: string | null }).domain ?? null }
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-// The customer-facing failure alert: friendlier than the operator's ALERT_EMAIL
-// copy (no Vercel/Actions internals), pointing at their own dashboard.
-async function sendCustomerFailureEmail(
-  to: string,
-  domain: string | null,
-  job: string,
-  errors: string[],
-  lead: string,
-  hosted = false,
-): Promise<boolean> {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) return false;
-  // `||`, not `??`: docker-compose passes ALERT_EMAIL_FROM through as
-  // `${ALERT_EMAIL_FROM:-}`, so on every Docker install the variable is PRESENT
-  // and EMPTY rather than undefined. `??` only catches null/undefined, so the
-  // default never fired there and Resend got a request with an empty required
-  // `from` - a 422 on every alert, swallowed into console.error. The result was
-  // the worst possible shape for an alerting system: a self-hoster follows the
-  // documented two-line setup (RESEND_API_KEY + ALERT_EMAIL), no email ever
-  // arrives, and the docs tell them "no email means everything is working".
-  const from = process.env.ALERT_EMAIL_FROM || "DispatchSEO <onboarding@resend.dev>";
-  const site = domain ?? "your site";
-  // Strip the "slug: " prefix collectErrors adds, for a clean customer line.
-  const list = errors
-    .slice(0, 8)
-    .map((e) => `- ${e.replace(/^[^:]+:\s*/, "")}`)
-    .join("\n");
-  // Hosted sites: no raw error list (it is our internal text, and on a pause
-  // the lead already says why), and no "nothing is lost" - a slot that
-  // failed after research was spent, and promising otherwise is the kind of
-  // reassurance this product bans.
-  const text = hosted
-    ? `${lead}\n\nYour DispatchSEO dashboard shows the current status of ${site}, and you can reply to this email if you want a hand.`
-    : `${lead}\n\nWhat we saw on ${site}:\n${list || "(no detail captured)"}\n\n` +
-      `Nothing is lost - the work stays queued and picks up again by itself once this ` +
-      `is sorted. Your DispatchSEO dashboard shows the current status, and you can ` +
-      `reply to this email if you want a hand.`;
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      from,
-      to,
-      // Lead with the CAUSE and the fix, not the job name. This email is only
-      // ever sent for a failure we can name a customer action for (see
-      // customerActionableLead), so it should read as "here is what to do",
-      // never as "a job called seo-tools failed, good luck".
-      subject: hosted ? `DispatchSEO: an update on ${site}` : `DispatchSEO: ${site} needs something from you`,
-      text,
-    }),
-    signal: AbortSignal.timeout(15000),
-  });
-  if (!res.ok) throw new Error(`Resend HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  return true;
-}
 
 // The one call every cron route makes. Never throws.
 // claimedOnly (0039): true only for /api/builder/jobs's handout marker - a
@@ -817,27 +637,12 @@ export async function reportCronRun(
         } catch (e) {
           console.error(`[cron-alerts] ${job} operator failure email failed:`, e);
         }
-        // Cloud bundle: also alert the CUSTOMER (project owner's account email,
-        // from our Resend) so a hands-off owner hears their own job broke
-        // without setting up any email of their own. Per-tenant debounce comes
-        // free - the job name carries the slug, so cron_runs.emailed_at is
-        // already per-tenant - plus the cross-job cause debounce above, so a
-        // single broken credential does not email once per workflow it kills.
-        const hosted = isCloudMode() ? await jobProjectHosted(job) : false;
-        const lead = isCloudMode() ? customerLeadFor(job, errors, hosted) : null;
-        if (lead && !(await customerCauseEmailedRecently(job, lead, hosted))) {
-          try {
-            const owner = await ownerContactForJob(job);
-            if (
-              owner &&
-              (await sendCustomerFailureEmail(owner.email, owner.domain, job, errors, lead, hosted || AUTOPILOT_JOBS.has(baseJobName(job))))
-            ) {
-              sent = true;
-            }
-          } catch (e) {
-            console.error(`[cron-alerts] ${job} customer failure email failed:`, e);
-          }
-        }
+        // The customer is NOT emailed (owner's rule, 2026-11-10): this
+        // product never mails a customer that something broke and what to do
+        // about it. Until that day a second email went to the project owner
+        // here ("<site> needs something from you"). Their dashboard still
+        // shows the state; the only mail a customer gets is "your first
+        // article is live".
         if (sent) emailedAt = new Date().toISOString();
       }
     }

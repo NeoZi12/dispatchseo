@@ -1664,9 +1664,9 @@ export function CloudOnboardingWizard(props: {
           </p>
           {modeChoice === "auto" ? (
             <p className="mt-3 rounded-lg border border-emerald-400/20 bg-emerald-400/5 p-3 text-sm text-neutral-300">
-              In automatic mode nobody opens the dashboard on a normal day — so if a job ever breaks,
-              <b className="font-medium text-neutral-100"> we email you</b> at your account address
-              automatically. Nothing to set up; it&apos;s part of your plan.
+              In automatic mode nobody opens the dashboard on a normal day. If a job ever breaks,
+              <b className="font-medium text-neutral-100"> your dashboard&apos;s Home page shows it</b>, with
+              what happened.
             </p>
           ) : null}
           {modeError ? (
