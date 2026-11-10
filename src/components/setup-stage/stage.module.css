@@ -206,6 +206,130 @@
   }
 }
 
+/* The clay agent sitting on a card (card-mascot.tsx) blinks every few
+   seconds. Its own rules live in landing.css under .ld, which the dashboard
+   and setup never load, so the stage carries the blink itself. */
+.blink :global(.cm-eyes-shut) {
+  opacity: 0;
+  animation: blinkShut 4.2s steps(1, end) infinite;
+}
+.blink :global(.cm-eyes-open) {
+  animation: blinkOpen 4.2s steps(1, end) infinite;
+}
+@keyframes blinkOpen {
+  0%,
+  93% {
+    opacity: 1;
+  }
+  94%,
+  97% {
+    opacity: 0;
+  }
+  98% {
+    opacity: 1;
+  }
+}
+@keyframes blinkShut {
+  0%,
+  93% {
+    opacity: 0;
+  }
+  94%,
+  97% {
+    opacity: 1;
+  }
+  98% {
+    opacity: 0;
+  }
+}
+
+/* The held article: the page settles onto the stage at a slight tilt, then
+   the agent drops onto its top edge and lands with a squash. Once. */
+.paperIn {
+  transform: rotate(-3deg);
+  animation: paperIn 0.7s var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
+  animation-delay: var(--d, 0ms);
+}
+@keyframes paperIn {
+  from {
+    opacity: 0;
+    transform: translateY(18px) rotate(2deg);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(-3deg);
+  }
+}
+.perch {
+  animation: perch 0.65s var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
+  animation-delay: var(--d, 0ms);
+  transform-origin: 50% 100%;
+}
+@keyframes perch {
+  0% {
+    opacity: 0;
+    transform: translateY(-26px);
+  }
+  45% {
+    opacity: 1;
+    transform: translateY(0) scaleY(0.88) scaleX(1.06);
+  }
+  70% {
+    transform: translateY(-4px) scaleY(1.04);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+/* An article riding the open road from your site's repo to your site:
+   across, a beat at the far end, again. */
+.travel {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  animation: travel 3.2s var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1)) infinite;
+  animation-delay: var(--d, 0ms);
+}
+@keyframes travel {
+  0% {
+    left: 0%;
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.7);
+  }
+  12% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  62% {
+    left: 100%;
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  78%,
+  100% {
+    left: 100%;
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.7);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blink :global(.cm-eyes-open),
+  .blink :global(.cm-eyes-shut) {
+    animation: none;
+  }
+  .paperIn,
+  .perch {
+    animation: none;
+  }
+  .travel {
+    animation: none;
+    left: 55%;
+    transform: translate(-50%, -50%);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sceneIn,
   .riseIn,

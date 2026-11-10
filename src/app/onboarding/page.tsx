@@ -42,6 +42,7 @@ import { clientIp } from "@/lib/login-lockout";
 import { DEVICE_COOKIE } from "@/lib/setup-flow";
 import { SetupClient, type CheckoutPlan } from "./setup-client";
 import { PaymentConfirming } from "@/components/payment-confirming";
+import { WrongRepo } from "@/components/setup-stage/wrong-repo";
 import type { SiteVerdict } from "@/components/setup-stage/scenes";
 
 export const dynamic = "force-dynamic";
@@ -244,35 +245,6 @@ function SiteCantPublish({ address }: { address: string }) {
   );
 }
 
-/** The repo picked at the GitHub step doesn't build the site: none of the
- *  files the live homepage serves are in it. The owner picks the right one
- *  on GitHub; nothing has launched and nothing has been spent. */
-function WrongRepo({ repo, domain, slug, empty }: { repo: string; domain: string; slug: string; empty: boolean }) {
-  return (
-    <main className="min-h-screen bg-canvas text-ink">
-      <div className="mx-auto w-full max-w-lg px-4 py-16 sm:px-6">
-        <section className="rounded-3xl border border-line bg-surface p-6 sm:p-8">
-          <h1 className="text-[22px] font-semibold tracking-tight text-ink">That repository isn&apos;t {domain}</h1>
-          <p className="mt-2 text-[15px] leading-relaxed text-ink-muted">
-            {empty ? <>{repo} is empty</> : <>{repo} doesn&apos;t hold the files {domain} serves</>}, so articles added there would never reach your site. Pick the repository your site is built from - you don&apos;t need a new one for DispatchSEO.
-          </p>
-          <div className="mt-6 flex flex-wrap items-center gap-3">
-            <a
-              href={`/api/github/install/start?slug=${encodeURIComponent(slug)}`}
-              className="inline-flex items-center justify-center rounded-xl bg-accent px-6 py-3 text-[15px] font-semibold text-white hover:brightness-110"
-            >
-              Pick the right repository
-            </a>
-            <a href={DISCORD_URL} target="_blank" rel="noopener noreferrer" className="text-[14px] text-ink-faint underline underline-offset-4 hover:text-ink">
-              Think this is wrong? Ask on Discord
-            </a>
-          </div>
-        </section>
-      </div>
-    </main>
-  );
-}
-
 /** "ok", or "cant" for a site in a folder whose repo has nothing to publish
  *  into. Stores the folder as a side effect (site-root-resolve.ts), so the
  *  launch that follows starts from it. A check that could not answer is
@@ -326,7 +298,7 @@ async function cloudSetupFlow(params: OnboardingParams) {
       const check = full ? await checkRepoBuildsSite(full, { fresh: true }).catch(() => null) : null;
       if (check?.verdict === "mismatch" && full && !(await findSiteRepo(full))) {
         await db().from("projects").update({ github_repo: null }).eq("id", s.project.id).is("setup_connected_at", null);
-        return <WrongRepo repo={check.repo} domain={s.project.domain} slug={s.project.slug} empty={Boolean(check.empty)} />;
+        return <WrongRepo repo={check.repo} domain={s.project.domain} slug={s.project.slug} empty={Boolean(check.empty)} planStep={s.planStep} />;
       }
     }
     if (!s.project.setup_connected_at) {

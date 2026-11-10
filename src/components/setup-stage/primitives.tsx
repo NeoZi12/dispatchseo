@@ -36,6 +36,15 @@ export const BTN_SECONDARY =
 export const BTN_QUIET =
   "inline-flex items-center justify-center gap-2 rounded-xl border border-line bg-surface-2 px-5 py-3 text-[14px] font-medium text-ink-muted transition hover:border-line hover:text-ink " + FOCUS_RING;
 
+/** GitHub's mark, for the buttons and tiles that lead there. */
+export function GithubMark({ className = "h-[18px] w-[18px]" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" className={className} fill="currentColor" aria-hidden="true">
+      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+    </svg>
+  );
+}
+
 /** A check that draws itself in. */
 export function Check({ className, delay = 0 }: { className?: string; delay?: number }) {
   return (
@@ -140,26 +149,45 @@ export function SceneCard({ title, lead, children, action, id, actionFirst = fal
 }
 
 /** A labelled step row for the automatic scenes: todo / doing / done. */
-export type StepState = "todo" | "doing" | "done";
+/** "you": the step can't move until the owner does something (the card
+ *  above it says what). Never a spinner or "…" - those read as "we're on
+ *  it, wait", which is the opposite of the truth. */
+export type StepState = "todo" | "doing" | "done" | "you";
 export function StepRow({ state, label, detail, index }: { state: StepState; label: string; detail?: ReactNode; index: number }) {
   return (
     <li className={cx("flex items-start gap-3 py-2.5", s.riseIn)} style={{ "--d": `${index * 70}ms` } as React.CSSProperties}>
       <span
         className={cx(
           "relative mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 transition-colors",
-          state === "done" ? "border-ok bg-ok text-canvas" : state === "doing" ? cx("border-accent text-accent", s.pulseRing) : "border-line text-ink-faint",
+          state === "done"
+            ? "border-ok bg-ok text-canvas"
+            : state === "doing"
+              ? cx("border-accent text-accent", s.pulseRing)
+              : state === "you"
+                ? "border-warn bg-warn-soft text-warn"
+                : "border-line text-ink-faint",
         )}
         aria-hidden="true"
       >
         {state === "done" ? <Check className="h-3.5 w-3.5" /> : state === "doing" ? <span className="h-2 w-2 rounded-full bg-accent" /> : null}
+        {state === "you" ? (
+          <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M8 13V3.5M3.5 8 8 3.5 12.5 8" />
+          </svg>
+        ) : null}
         {state === "done" ? <Sparks /> : null}
       </span>
       <div className="min-w-0">
-        <p className={cx("text-[15px] font-medium", state === "todo" ? "text-ink-faint" : "text-ink")}>
-          {label}
-          {state === "doing" ? <span className="ml-1.5 text-ink-faint">…</span> : null}
+        <p className={cx("flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-medium", state === "todo" ? "text-ink-faint" : "text-ink")}>
+          <span>
+            {label}
+            {state === "doing" ? <span className="ml-1.5 text-ink-faint">…</span> : null}
+          </span>
+          {state === "you" ? (
+            <span className="rounded-full border border-warn/30 bg-warn-soft px-2 py-px text-[11.5px] font-semibold text-warn">Needs you</span>
+          ) : null}
         </p>
-        {detail ? <p className="mt-0.5 text-[13.5px] text-ink-muted">{detail}</p> : null}
+        {detail ? <p className={cx("mt-0.5 text-[13.5px]", state === "you" ? "text-ink" : "text-ink-muted")}>{detail}</p> : null}
         {state === "doing" ? <span aria-hidden="true" className={cx("mt-2 block h-[3px] w-40 rounded-full", s.shimmer)} /> : null}
       </div>
     </li>

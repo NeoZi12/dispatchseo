@@ -76,7 +76,7 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   { kind: "fixed", text: "Editing or removing an article now goes through on a site whose own checks were already failing before the change. Before, such an edit waited for a green check that was never coming." },
   {
     kind: "improved",
-    text: "If the repository you connected isn't your site's code - an empty repo made just for us is the common one - your dashboard now shows one clear card with a button to connect the right repository. Pick it on GitHub, come back, and your waiting article goes live straight away.",
+    text: "If the repository you connected isn't your site's code - an empty repo made just for us is the common one - setup now stops and shows you which one to pick, and a site already past setup gets one clear card on its dashboard, with your waiting article and a button to connect the right repository. Pick it on GitHub, come back, and the article goes live straight away.",
   },
   {
     kind: "fixed",
