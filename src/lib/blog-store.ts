@@ -1615,7 +1615,7 @@ export async function publishDraftToStore(
   }
 
   const free = await isFreeProject(project.id);
-  const parts = creditParts(project);
+  const parts = creditParts(project, draft.id);
   const credit = free ? { href: parts.href, label: parts.label } : null;
   const signature = (recipe.bodyFormat === "html" || recipe.bodyFormat === "markdown" || recipe.bodyFormat === "mdx") && postsCarryHtml(entries) ? articleSignature(draft.id) : null;
   const today = opts.today ?? new Date().toISOString().slice(0, 10);

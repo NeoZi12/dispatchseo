@@ -374,7 +374,7 @@ footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--ink)
  *  bottom the last one wins. No dependencies, degrades to plain anchors. */
 const PAGE_JS = `(function(){var c=document.querySelector("img.cover");if(c){c.addEventListener("error",function(){c.remove()})}var links=[].slice.call(document.querySelectorAll('.toc a[href^="#"]'));if(!links.length||!('IntersectionObserver' in window))return;var els=links.map(function(a){return document.getElementById(a.getAttribute('href').slice(1))}).filter(Boolean);function set(id){links.forEach(function(a){if(a.getAttribute('href')==='#'+id)a.setAttribute('aria-current','true');else a.removeAttribute('aria-current')})}var io=new IntersectionObserver(function(es){for(var i=0;i<es.length;i++){if(es[i].isIntersecting){set(es[i].target.id);break}}},{rootMargin:'-96px 0px -70% 0px',threshold:0});els.forEach(function(e){io.observe(e)});window.addEventListener('scroll',function(){if(window.innerHeight+window.scrollY>=document.documentElement.scrollHeight-4)set(els[els.length-1].id)},{passive:true});if(els[0])set(els[0].id)})();`;
 
-type Site = { name: string; tagline: string; short: string; categories: string[]; origin: string; /** origin + the public path (hostedBase) */ base: string; /** the nav label for that path */ label: string; theme: HostedTheme; ctaUrl: string; ctaLabel: string; lang: string; credit: boolean };
+type Site = { name: string; tagline: string; short: string; categories: string[]; origin: string; /** origin + the public path (hostedBase) */ base: string; /** the nav label for that path */ label: string; theme: HostedTheme; ctaUrl: string; ctaLabel: string; lang: string; credit: boolean; /** The article the page shows, for the credit's ref (none on the index). */ articleId?: string };
 
 async function siteOf(project: Project): Promise<Site> {
   const [{ profile }, plan] = await Promise.all([loadSiteProfile(project), projectPlan(project.id).catch(() => null)]);
@@ -458,14 +458,28 @@ const MARK_DATA_URI = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAgCAM
  *  the end of a markdown article; blog-store.ts: wherever the site's own
  *  post shape can hold a link). One source, so every route carries the same
  *  ref and page-marks.ts finds it the same way. */
-export function creditParts(project: Pick<Project, "domain"> & { hosted_origin?: string | null; language_code?: string | null }): { href: string; madeWith: string; label: string } {
-  const href = `https://dispatchseo.com/?ref=${encodeURIComponent(siteOrigin(project).replace(/^https?:\/\//, ""))}`;
+export function creditParts(project: Pick<Project, "domain"> & { hosted_origin?: string | null; language_code?: string | null }, articleId?: string | null): { href: string; madeWith: string; label: string } {
+  const href = creditHref(siteOrigin(project), articleId);
   const madeWith = stringsFor(project.language_code || "en").madeWith;
   return { href, madeWith, label: `${madeWith} DispatchSEO` };
 }
 
+/** The credit's address. `ref` is the site, then the article's id when the
+ *  page is one article: `?ref=example.com/<article id>`. The visit log reads
+ *  it back (visits.ts badgeRef) so /owner can say which site and which
+ *  article sent a reader. One parameter on purpose: a second `&` would need
+ *  escaping differently in HTML, MDX and a store's JSON, and every check
+ *  that finds our credit matches on the `?ref=` prefix alone. The site part
+ *  is percent-encoded (a folder site's path keeps its `/` as %2F), so the
+ *  only raw `/` is the one before the id. */
+export function creditHref(origin: string, articleId?: string | null): string {
+  const site = encodeURIComponent(origin.replace(/^https?:\/\//, "").replace(/\/+$/, ""));
+  const id = articleId ? articleId.replace(/[^a-z0-9-]/gi, "") : "";
+  return `https://dispatchseo.com/?ref=${site}${id ? `/${id}` : ""}`;
+}
+
 function credit(site: Site, cls = ""): string {
-  const href = `https://dispatchseo.com/?ref=${encodeURIComponent(site.origin.replace(/^https?:\/\//, ""))}`;
+  const href = creditHref(site.origin, site.articleId);
   return `<p class="credit ${cls}">${esc(stringsFor(site.lang).madeWith)} <a href="${href}" rel="sponsored nofollow noopener"><img src="${MARK_DATA_URI}" alt="" width="10" height="16"><span>DispatchSEO</span></a></p>`;
 }
 
@@ -507,7 +521,7 @@ export async function renderHostedIndex(project: Project, posts: HostedPost[], p
 }
 
 export async function renderHostedArticle(project: Project, post: HostedPost): Promise<string> {
-  const site = await siteOf(project);
+  const site = { ...(await siteOf(project)), articleId: post.id };
   const base = await backendBaseUrl();
   const cover = post.cover_url ? (post.cover_url.startsWith("http") ? post.cover_url : `${base}${post.cover_url}`) : null;
   const headings = headingsOf(post.rendered_html);

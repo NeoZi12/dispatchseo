@@ -723,7 +723,7 @@ async function repoChange(project: Project, row: Row, change: RepoChange): Promi
     // The free plan's credit goes back under the body exactly as the publish
     // wrote it (readRepoFile took it off, so the owner never edits it and a
     // save never doubles it): an edit must not be the way it disappears.
-    const credit = (await isFreeProject(project.id)) ? `\n\n${creditLine(creditParts(project))}` : "";
+    const credit = (await isFreeProject(project.id)) ? `\n\n${creditLine(creditParts(project, row.id))}` : "";
     content = `---\n${fm}\n---\n\n${relativizeOwnLinks(change.markdown, project.domain).trim().replace(CREDIT_LINE_AT_END, "").trim()}${credit}\n\n${articleSignature(row.id)}\n`;
   } else {
     // The file must still be there to delete (a stale path after a move).

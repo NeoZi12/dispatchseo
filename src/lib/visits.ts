@@ -199,6 +199,26 @@ function referrerHost(raw: string | null | undefined, ownHost: string): string |
   }
 }
 
+/** The free plan's "Made with DispatchSEO" credit links here with
+ *  `?ref=<site>` or `?ref=<site>/<article id>` (hosted-blog.ts creditHref).
+ *  Stored in the utm columns - source = the site, medium = "badge",
+ *  campaign = the article id - so it needs no migration and every reader of
+ *  those columns already carries it; /owner (owner-visitors.ts) reads the
+ *  medium back as its own channel. A real utm_source on the same link wins. */
+export const BADGE_MEDIUM = "badge";
+const ARTICLE_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function badgeRef(raw: string | null | undefined): { site: string; articleId: string | null } | null {
+  const ref = raw?.trim();
+  if (!ref) return null;
+  const cut = ref.lastIndexOf("/");
+  const tail = cut >= 0 ? ref.slice(cut + 1) : "";
+  const articleId = ARTICLE_ID_RE.test(tail) ? tail.toLowerCase() : null;
+  const site = (articleId ? ref.slice(0, cut) : ref).toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/+$/, "");
+  if (!site || site.length > 80 || !/^[a-z0-9.-]+(?::\d+)?(\/[^\s?#]*)?$/.test(site)) return null;
+  return { site, articleId };
+}
+
 function hostedKey(pathname: string): string | null {
   const m = /^\/hosted\/([^/]+)/.exec(pathname);
   return m ? m[1].slice(0, 80) : null;
@@ -225,6 +245,9 @@ export async function recordVisit(input: VisitInput): Promise<void> {
     const bot = input.automated ? true : ua ? isbot(ua) : input.kind === "server";
     const p = input.url.searchParams;
     const ownHost = h.get("host") ?? input.url.host;
+    // Our own pages only (a hosted customer page never carries our ref), and
+    // never over a real tag on the same link.
+    const badge = input.area === "site" && !p.get("utm_source") ? badgeRef(p.get("ref")) : null;
     const row = {
       kind: input.kind,
       area: input.area,
@@ -239,9 +262,9 @@ export async function recordVisit(input: VisitInput): Promise<void> {
       net: netHash(h, salt),
       user_id: input.userId ?? null,
       hosted_key: input.area === "hosted" ? hostedKey(input.url.pathname) : null,
-      utm_source: p.get("utm_source")?.slice(0, 80) || null,
-      utm_medium: p.get("utm_medium")?.slice(0, 80) || null,
-      utm_campaign: p.get("utm_campaign")?.slice(0, 120) || null,
+      utm_source: p.get("utm_source")?.slice(0, 80) || badge?.site || null,
+      utm_medium: badge ? BADGE_MEDIUM : p.get("utm_medium")?.slice(0, 80) || null,
+      utm_campaign: p.get("utm_campaign")?.slice(0, 120) || badge?.articleId || null,
     };
     const { error } = await db().from("web_visits").insert(row);
     // Before 0077 is applied the column does not exist: keep the visit.

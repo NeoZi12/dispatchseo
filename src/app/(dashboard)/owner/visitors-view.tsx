@@ -1,5 +1,5 @@
 import type { TopRow, TrafficReport } from "@/lib/owner-analytics";
-import type { Channel, VisitorsReport } from "@/lib/owner-visitors";
+import type { BadgeSite, Channel, VisitorsReport } from "@/lib/owner-visitors";
 import { MetricChart } from "./area";
 import { BarList, Panel, type BarRow } from "./bits";
 import { delta, fmt, fullDate, rangeShort } from "./format";
@@ -25,6 +25,64 @@ function ChannelLabel({ name, kind, color }: { name: string; kind?: Channel["kin
       <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: color ?? (kind ? KIND_COLOR[kind] : undefined) }} aria-hidden="true" />
       <span className="truncate">{name}</span>
     </span>
+  );
+}
+
+// Readers who clicked "Made with DispatchSEO" under a free customer's
+// article: which sites send them, and which articles. Articles published
+// before 2026-11-10 name only their site, so they count under the site and
+// not in the article list.
+function BadgeDetail({ badges }: { badges: BadgeSite[] }) {
+  const total = badges.reduce((a, b) => a + b.visits, 0);
+  const signedIn = badges.reduce((a, b) => a + b.signedIn, 0);
+  const articles = badges
+    .flatMap((b) => b.articles.map((a) => ({ ...a, site: b.site })))
+    .sort((a, b) => b.visits - a.visits)
+    .slice(0, 7);
+  return (
+    <div className="bg-surface px-5 pb-6 pt-5 sm:px-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+        <h3 className="text-[13px] font-medium text-ink">From the badge on customer articles</h3>
+        {total ? (
+          <p className="text-[12px] text-ink-faint">
+            {fmt(total)} {total === 1 ? "visit" : "visits"} · {fmt(signedIn)} signed in the same day
+          </p>
+        ) : null}
+      </div>
+      <div className="mt-4 grid gap-8 md:grid-cols-2">
+        <div>
+          <p className="mb-3 text-[12px] text-ink-faint">By site</p>
+          <BarList
+            rows={badges.slice(0, 7).map((b) => ({
+              key: b.site,
+              label: (
+                <span title={b.site}>
+                  {b.site}
+                  {b.signedIn ? <span className="ml-2 text-[12px] text-ok">{fmt(b.signedIn)} signed in</span> : null}
+                </span>
+              ),
+              value: b.visits,
+            }))}
+            empty="No one has clicked a badge yet."
+          />
+        </div>
+        <div>
+          <p className="mb-3 text-[12px] text-ink-faint">By article</p>
+          <BarList
+            rows={articles.map((a) => ({
+              key: a.id,
+              label: (
+                <span title={`${a.title ?? a.id} · ${a.site}`}>
+                  {a.title ?? "Article no longer on record"} <span className="text-ink-faint">· {a.site}</span>
+                </span>
+              ),
+              value: a.visits,
+            }))}
+            empty="No article named yet - badges link the article from 2026-11-10 on."
+          />
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -113,6 +171,9 @@ export function VisitorsSection({ t, v, who, now }: { t: TrafficReport; v: Visit
           <Detail title="Pages they opened">
             <BarList rows={t.pages.slice(0, 7).map((r) => ({ key: r.key, label: r.key || "/", value: r.views }))} total={t.totals.views} empty="No page view yet." />
           </Detail>
+        </div>
+        <div className="md:col-span-2">
+          <BadgeDetail badges={v?.badges ?? []} />
         </div>
       </div>
 

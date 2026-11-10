@@ -107,7 +107,7 @@ export async function repairRepoArticle(project: Project, draftId: string): Prom
   }
 
   // THE CREDIT: free plan only, as the publish writes it.
-  const credit = (await isFreeProject(project.id)) ? creditLine(creditParts(project)) : null;
+  const credit = (await isFreeProject(project.id)) ? creditLine(creditParts(project, row.id)) : null;
   const fixed = repairedFile(text, { signature: articleSignature(row.id), cover, credit });
   if (!fixed) return { ok: true, nothing: true };
   const added = fixed.added;

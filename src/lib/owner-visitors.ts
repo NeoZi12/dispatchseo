@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { operatorUserIds } from "./autopilot/operator";
 import { isCloudMode } from "./cloud";
-import { AUTOMATED_BROWSER } from "./visits";
+import { AUTOMATED_BROWSER, BADGE_MEDIUM } from "./visits";
 import { aiReferrer } from "./owner-insights";
 import { windows, type Range } from "./owner-analytics";
 import { memoMinute } from "./owner-memo";
@@ -15,7 +15,7 @@ import { memoMinute } from "./owner-memo";
 // migration: traffic is small, and the read is capped (`capped` says when the
 // cap cut the oldest rows off).
 
-export type Channel = { name: string; kind: "ai" | "search" | "social" | "direct" | "site" | "campaign" };
+export type Channel = { name: string; kind: "ai" | "search" | "social" | "direct" | "site" | "campaign" | "badge" };
 
 export type Visit = {
   key: string;
@@ -27,6 +27,8 @@ export type Visit = {
   /** The site that sent them, when it differs from the channel's name. */
   referrer: string | null;
   campaign: string | null;
+  /** Came through a customer article's "Made with DispatchSEO" credit. */
+  badge: { site: string; articleId: string | null; title: string | null } | null;
   landing: string;
   pages: string[];
   views: number;
@@ -52,9 +54,21 @@ export type VisitorsReport = {
   channels: Array<{ name: string; kind: Channel["kind"]; visits: number }>;
   /** utm_campaign / utm_source pairs that brought someone, most first. */
   campaigns: Array<{ name: string; visits: number }>;
+  /** Visits through the free plan's credit, per customer site, most first.
+   *  `signedIn`: visits whose browser was signed in to DispatchSEO the same
+   *  day (a sign-up, or an existing user). `articles` is empty for credits
+   *  published before the ref named the article (2026-11-10). */
+  badges: BadgeSite[];
   /** How many visits look like a person, a bot, or can't be told apart. */
   estimate: Record<Verdict, number>;
   capped: boolean;
+};
+
+export type BadgeSite = {
+  site: string;
+  visits: number;
+  signedIn: number;
+  articles: Array<{ id: string; title: string | null; visits: number }>;
 };
 
 const SEARCH: Array<[RegExp, string]> = [
@@ -92,7 +106,10 @@ function match(list: Array<[RegExp, string]>, host: string): string | null {
 
 /** How a visit reached the site: an AI answer, a search engine, a social
  *  site, a tagged link, another site, or nothing at all (typed / bookmarked). */
-export function channelOf(referrer: string | null, utmSource: string | null): Channel {
+export function channelOf(referrer: string | null, utmSource: string | null, utmMedium: string | null = null): Channel {
+  // Our own credit on a customer article: its tag is more exact than the
+  // referrer, which would only name the customer's site.
+  if (utmMedium === BADGE_MEDIUM && utmSource) return { name: "DispatchSEO badge", kind: "badge" };
   const host = referrer?.toLowerCase() ?? null;
   if (host) {
     const ai = aiReferrer(host);
@@ -131,6 +148,7 @@ type Row = {
   country: string | null;
   device: string | null;
   utm_source: string | null;
+  utm_medium?: string | null;
   utm_campaign: string | null;
   user_id: string | null;
 };
@@ -178,7 +196,7 @@ async function visitorsReportFresh(range: Range, now = Date.now()): Promise<Visi
   // PostgREST hands back at most 1000 rows a request: page through, newest first.
   const rows: Row[] = [];
   // `net` arrives with 0077; read without it until that is applied.
-  let cols = "at, kind, bot, ua, visitor, net, path, referrer, country, device, utm_source, utm_campaign, user_id";
+  let cols = "at, kind, bot, ua, visitor, net, path, referrer, country, device, utm_source, utm_medium, utm_campaign, user_id";
   for (let off = 0; off < CAP; off += PAGE) {
     const { data, error } = await db()
       .from("web_visits")
@@ -234,8 +252,10 @@ async function visitorsReportFresh(range: Range, now = Date.now()): Promise<Visi
     const last = list[list.length - 1];
     // The visit's source is its entry: the first external referrer or tag.
     const ref = list.find((r) => r.referrer)?.referrer ?? null;
-    const utm = list.find((r) => r.utm_source)?.utm_source ?? null;
-    const channel = channelOf(ref, utm);
+    const tagged = list.find((r) => r.utm_source);
+    const utm = tagged?.utm_source ?? null;
+    const channel = channelOf(ref, utm, tagged?.utm_medium ?? null);
+    const badge = channel.kind === "badge" ? { site: utm!, articleId: tagged?.utm_campaign ?? null, title: null } : null;
     const pages: string[] = [];
     for (const r of list) if (pages[pages.length - 1] !== r.path) pages.push(r.path);
     visits.push({
@@ -245,8 +265,9 @@ async function visitorsReportFresh(range: Range, now = Date.now()): Promise<Visi
       country: list.find((r) => r.country)?.country ?? null,
       device: list.find((r) => r.device)?.device ?? null,
       channel,
-      referrer: ref && ref !== channel.name.toLowerCase() ? ref : null,
-      campaign: list.find((r) => r.utm_campaign)?.utm_campaign ?? null,
+      referrer: badge ? badge.site : ref && ref !== channel.name.toLowerCase() ? ref : null,
+      campaign: badge ? null : (list.find((r) => r.utm_campaign)?.utm_campaign ?? null),
+      badge,
       landing: first.path,
       pages,
       views: list.length,
@@ -255,6 +276,7 @@ async function visitorsReportFresh(range: Range, now = Date.now()): Promise<Visi
     });
   }
   visits.sort((a, b) => b.lastAt.localeCompare(a.lastAt));
+  const badges = await badgeSites(visits);
 
   const ch = new Map<string, { name: string; kind: Channel["kind"]; visits: number }>();
   const camp = new Map<string, number>();
@@ -262,7 +284,7 @@ async function visitorsReportFresh(range: Range, now = Date.now()): Promise<Visi
     const c = ch.get(v.channel.name) ?? { name: v.channel.name, kind: v.channel.kind, visits: 0 };
     c.visits++;
     ch.set(v.channel.name, c);
-    if (v.campaign || v.channel.kind === "campaign") {
+    if (v.channel.kind !== "badge" && (v.campaign || v.channel.kind === "campaign")) {
       const name = [v.channel.kind === "campaign" ? v.channel.name : null, v.campaign].filter(Boolean).join(" · ");
       camp.set(name, (camp.get(name) ?? 0) + 1);
     }
@@ -274,8 +296,52 @@ async function visitorsReportFresh(range: Range, now = Date.now()): Promise<Visi
     estimate,
     channels: [...ch.values()].sort((a, b) => b.visits - a.visits),
     campaigns: [...camp].map(([name, n]) => ({ name, visits: n })).sort((a, b) => b.visits - a.visits),
+    badges,
     capped: rows.length >= CAP,
   };
+}
+
+/** The badge visits grouped by site and article. Fills each visit's article
+ *  title (and the visit row's campaign, so the table names it) and counts
+ *  the visits whose browser signed in to DispatchSEO that same day - the
+ *  dashboard is "app" area, which the visit read above leaves out. */
+async function badgeSites(visits: Visit[]): Promise<BadgeSite[]> {
+  const mine = visits.filter((v) => v.badge);
+  if (!mine.length) return [];
+
+  const ids = [...new Set(mine.map((v) => v.badge!.articleId).filter((x): x is string => !!x))];
+  const titles = new Map<string, string>();
+  for (let i = 0; i < ids.length; i += 150) {
+    const { data } = await db().from("article_drafts").select("id, title").in("id", ids.slice(i, i + 150));
+    for (const r of (data ?? []) as Array<{ id: string; title: string | null }>) if (r.title) titles.set(r.id, r.title);
+  }
+
+  // The visit key is `<visitor hash>:<day>`; the hash already rotates daily.
+  const hashes = [...new Set(mine.map((v) => v.key.split(":")[0]).filter((k) => k && k !== "row"))];
+  const signed = new Set<string>();
+  for (let i = 0; i < hashes.length; i += 150) {
+    const { data } = await db().from("web_visits").select("visitor").in("visitor", hashes.slice(i, i + 150)).not("user_id", "is", null).limit(PAGE);
+    for (const r of (data ?? []) as Array<{ visitor: string | null }>) if (r.visitor) signed.add(r.visitor);
+  }
+
+  const bySite = new Map<string, BadgeSite & { byArticle: Map<string, { id: string; title: string | null; visits: number }> }>();
+  for (const v of mine) {
+    const b = v.badge!;
+    b.title = b.articleId ? (titles.get(b.articleId) ?? null) : null;
+    if (b.articleId) v.campaign = b.title ?? "Article no longer on record";
+    const s = bySite.get(b.site) ?? { site: b.site, visits: 0, signedIn: 0, articles: [], byArticle: new Map() };
+    s.visits++;
+    if (v.userId || signed.has(v.key.split(":")[0])) s.signedIn++;
+    if (b.articleId) {
+      const a = s.byArticle.get(b.articleId) ?? { id: b.articleId, title: b.title, visits: 0 };
+      a.visits++;
+      s.byArticle.set(b.articleId, a);
+    }
+    bySite.set(b.site, s);
+  }
+  return [...bySite.values()]
+    .map(({ byArticle, ...s }) => ({ ...s, articles: [...byArticle.values()].sort((a, b) => b.visits - a.visits) }))
+    .sort((a, b) => b.visits - a.visits);
 }
 
 /** Person, bot or unsure, strongest evidence first. An estimate: a careful

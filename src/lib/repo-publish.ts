@@ -1235,7 +1235,7 @@ export async function publishDraftToRepo(
     siteDomain: project.domain,
     faqHeading: faqHeadingFor(project.language_code),
     draftId: draft.id,
-    credit: (await isFreeProject(project.id)) ? creditParts(project) : null,
+    credit: (await isFreeProject(project.id)) ? creditParts(project, draft.id) : null,
   });
   treeEntries.unshift({ path: repoPath, mode: "100644", type: "blob", content });
 

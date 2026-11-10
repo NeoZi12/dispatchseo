@@ -6,7 +6,8 @@ export const VERDICT: Record<"person" | "bot" | "unsure", { word: string; color:
   bot: { word: "Bot", color: "var(--color-warn)", cls: "border-warn/30 bg-warn/10 text-warn" },
 };
 
-export const KIND_COLOR: Record<"ai" | "search" | "social" | "direct" | "site" | "campaign", string> = {
+export const KIND_COLOR: Record<"ai" | "search" | "social" | "direct" | "site" | "campaign" | "badge", string> = {
+  badge: "#f472b6",
   ai: "var(--color-accent)",
   search: "var(--color-info)",
   social: "var(--color-ok)",
@@ -20,6 +21,7 @@ export const KIND_NAME: Record<keyof typeof KIND_COLOR, string> = {
   search: "Search",
   social: "Social",
   campaign: "Tagged link",
+  badge: "Made with DispatchSEO",
   site: "Other site",
   direct: "Direct",
 };
