@@ -63,8 +63,9 @@ const DOCS_URL = "/docs";
 const STARS_FALLBACK = 97;
 // People who love it beyond GitHub: paying and free-plan customers who never
 // starred the repo. Added on top of the live star count, so the badge keeps
-// climbing with the stars. 2 on 2026-11-09: one paid, one free (owner's count).
-const LOVED_BEYOND_GITHUB = 2;
+// climbing with the stars. 4 on 2026-11-10: one paid, three free (two free
+// sites joined that day), which carries the badge past 100 to "100+".
+const LOVED_BEYOND_GITHUB = 4;
 /** Below 100 the exact count; from 100 a round "100+", "150+", ... (owner,
  *  2026-11-09: a round figure reads stronger than 103 and never looks stale). */
 function lovedLabel(n: number): string {
