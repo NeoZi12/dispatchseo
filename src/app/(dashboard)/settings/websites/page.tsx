@@ -19,6 +19,7 @@ import {
 import { customShareLimit, siteShareReport, type SiteShareReport } from "@/lib/site-shares";
 import { buttonClass } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
+import { GrowFasterCard } from "@/components/grow-faster-card";
 import { BackToSettings } from "../more-links";
 import { SitesBoard, WebsitesHeader, type SiteCard } from "./websites-client";
 
@@ -193,6 +194,10 @@ export default async function WebsitesPage({ searchParams }: { searchParams: Pro
   // Past due reports no pool (nothing is written), so show what the plan buys.
   const poolFigure = free ? FREE_ARTICLES_PER_MONTH : pastDue ? (pool ?? articlesPerMonthFor(tier)) : pool;
   const upgradable = tier !== "scale";
+  // Free plan: Home's "Grow faster" card, always (owner, 2026-11-11), with
+  // this month's free articles from the one site the plan covers.
+  const freeSite = free ? (cards.find((c) => c.status !== "uncovered" && c.share != null) ?? null) : null;
+  const growFaster = free ? { share: freeSite?.share || FREE_ARTICLES_PER_MONTH, used: freeSite?.used ?? 0 } : null;
 
   const headerAction = canAdd ? null : free ? null : pastDue ? (
     <a href="/billing" className={buttonClass("secondary", "md")}>
@@ -218,6 +223,7 @@ export default async function WebsitesPage({ searchParams }: { searchParams: Pro
       limit={limit}
       upgradable={upgradable}
       cards={cards}
+      growFaster={growFaster}
     />
   );
 }
@@ -236,6 +242,7 @@ function WebsitesView({
   limit,
   upgradable,
   cards,
+  growFaster,
 }: {
   canAdd: boolean;
   initialOpen: boolean;
@@ -250,6 +257,8 @@ function WebsitesView({
   limit: number | null;
   upgradable: boolean;
   cards: SiteCard[];
+  /** Free plan only: this month's free articles, for the Grow faster card. */
+  growFaster: { share: number; used: number } | null;
 }) {
   return (
     <div className="mx-auto max-w-3xl space-y-3">
@@ -303,6 +312,8 @@ function WebsitesView({
           cards={cards}
           resets={nextMonthLabel()}
         />
+
+        {growFaster ? <GrowFasterCard share={growFaster.share} used={growFaster.used} now={Date.now()} /> : null}
 
         {free ? (
           <p className="text-[13.5px] text-ink-muted">

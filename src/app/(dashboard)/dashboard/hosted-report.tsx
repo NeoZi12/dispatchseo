@@ -32,11 +32,12 @@ import { setupGaps } from "../mode";
 import { TOPIC_LIMITS } from "@/lib/autopilot/controls";
 import type { CronHealth } from "@/lib/cron-alerts";
 import { siteIssueLine } from "@/lib/autopilot/friendly";
-import { articlesPerMonthFor, FREE_ARTICLES_PER_MONTH, freeSpacingDays, priceLabel, TIER_LIMITS } from "@/lib/billing";
+import { articlesPerMonthFor, FREE_ARTICLES_PER_MONTH, freeSpacingDays } from "@/lib/billing";
 import type { OperatorSite } from "@/lib/autopilot/operator";
 import { OperatorIssue } from "./operator-issue";
 import { repoMismatchOf } from "@/lib/site-root";
 import { PublishModeMenu } from "@/components/publish-mode-switch";
+import { GrowFasterCard } from "@/components/grow-faster-card";
 
 // The hosted-mode Home, modelled on Polar's overview: the numbers are the
 // main event, and everything is readable in three seconds.
@@ -572,7 +573,7 @@ export async function HostedReport({
             ) : null}
           </p>
         </div>
-        {freeCap ? <FreeCapCard share={freeCap.share} used={freeCap.used} next={nextFreeLabel(r, now)} now={now} /> : null}
+        {freeCap ? <GrowFasterCard share={freeCap.share} used={freeCap.used} next={nextFreeLabel(r, now)} now={now} arriveAt={920} /> : null}
         <MonthBoard cards={month.cards} today={month.today} at={940} />
       </section>
 
@@ -662,92 +663,6 @@ function NextArticleLine({ at: iso, now, review }: { at: string; now: number; re
           </div>
           <div className="pt-2 text-[30px] font-semibold leading-none tracking-tight tabular-nums text-ink">{d.getUTCDate()}</div>
           <div className="pb-2 pt-1 text-[11px] font-medium text-ink-faint">{d.toLocaleString("en-US", { weekday: "short", timeZone: "UTC" })}</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** The free month is used up: the dispatcher on its coffee break, a row of
- *  Starter's month as article slots (the free ones ticked, the rest locked),
- *  and one bright button. Same family as NextArticleLine and UpgradePanel:
- *  colour in the glow, the ticks and the button, never a tinted tile. The
- *  copy promises only the plan's monthly number, never a count for the rest
- *  of this month - how many more fit depends on the day they upgrade. */
-function FreeCapCard({ share, used, next, now }: { share: number; used: number; next: string; now: number }) {
-  const slots = Math.max(STARTER_PER_MONTH, share);
-  const filled = Math.min(used, share);
-  return (
-    <div
-      className="arrive-up relative isolate overflow-hidden rounded-2xl border border-accent/25 bg-surface p-4 sm:p-5"
-      style={at(920)}
-      role="region"
-      aria-label="Free plan used up this month"
-    >
-      <div aria-hidden="true" className="pointer-events-none absolute -left-20 top-1/2 -z-10 h-64 w-80 -translate-y-1/2 rounded-full bg-accent-strong/20 blur-3xl" />
-      <div aria-hidden="true" className="pointer-events-none absolute -bottom-24 right-0 -z-10 h-56 w-72 rounded-full bg-info/10 blur-3xl" />
-
-      <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:gap-6">
-        <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-5">
-          <div className="relative shrink-0">
-            <PixelReporter mood="idle" steam decorative className="w-[96px] sm:w-[132px]" />
-            <span aria-hidden="true" className="absolute inset-x-2 -bottom-1 h-1.5 rounded-[50%] bg-black/40 blur-[3px]" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-balance text-[16px] font-semibold leading-snug tracking-tight text-ink sm:text-[17px]">
-              That&apos;s your {share} free articles for {monthNameOf(now)}.
-            </p>
-            <p className="mt-1 text-[13.5px] leading-relaxed text-ink-muted">
-              I&apos;m on a coffee break until {next}. Starter writes {STARTER_PER_MONTH} a month, so I&apos;d keep going.
-            </p>
-
-            {/* Starter's month as slots: the free ones done, the rest locked. */}
-            <ol className="mt-3.5 flex flex-wrap items-center gap-1.5" aria-label={`${filled} of ${slots} articles a month on Starter`}>
-              {Array.from({ length: slots }, (_, i) => {
-                const done = i < filled;
-                return (
-                  <li
-                    key={i}
-                    className={`flex h-8 w-8 items-center justify-center rounded-lg ${
-                      done ? "bg-ok-soft text-ok ring-1 ring-inset ring-ok/30" : "border border-dashed border-accent/45 text-accent"
-                    }`}
-                  >
-                    {done ? (
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
-                        <path d="M5 12.5l4.5 4.5L19 7.5" />
-                      </svg>
-                    ) : (
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5" aria-hidden="true">
-                        <rect x="5" y="11" width="14" height="9" rx="2" />
-                        <path d="M8 11V8a4 4 0 0 1 8 0v3" />
-                      </svg>
-                    )}
-                    <span className="sr-only">{done ? "written" : "locked"}</span>
-                  </li>
-                );
-              })}
-              <li className="ml-1.5 text-[12.5px] font-medium text-ink-faint">
-                {filled} of {slots} on Starter
-              </li>
-            </ol>
-          </div>
-        </div>
-
-        <div className="flex shrink-0 flex-row items-center gap-4 sm:flex-col sm:items-end sm:gap-2">
-          <Link
-            href="/billing#plans"
-            className="group inline-flex h-11 items-center gap-2.5 rounded-2xl bg-gradient-to-br from-accent-strong via-violet-600 to-indigo-600 pl-5 pr-2 text-[15px] font-semibold text-white shadow-lg shadow-accent-strong/30 ring-1 ring-inset ring-white/20 transition duration-200 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-accent-strong/40 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent active:translate-y-0 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
-          >
-            Grow faster
-            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-white/20 transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
-                <path d="M5 12h14M13 6l6 6-6 6" />
-              </svg>
-            </span>
-          </Link>
-          <span className="text-[13px] text-ink-muted">
-            <span className="font-semibold text-ink tabular-nums">{priceLabel(TIER_LIMITS.starter.price)}</span> a month
-          </span>
         </div>
       </div>
     </div>

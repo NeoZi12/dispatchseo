@@ -87,6 +87,7 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   { kind: "improved", text: "The site switcher and Log out moved to the bottom left of the sidebar, and Settings now sits right under your site's screens. Billing shows the full plan cards." },
   { kind: "improved", text: "Your overview now says when your next article is due, right above your latest articles: the day, and how many days away it is." },
   { kind: "improved", text: "On the free plan, once this month's free articles are out, your overview says so and shows when the next one goes out." },
+  { kind: "improved", text: "On the free plan, the Websites page in Settings now shows how many free articles you have left this month, next to what Starter writes." },
   { kind: "fixed", text: "If you connect a GitHub repository that doesn't build your site, setup now notices on sites made with Next.js too, and switches to the right repository when you've shared it. Before, those sites could connect the wrong one and articles never reached the site." },
   {
     kind: "improved",
