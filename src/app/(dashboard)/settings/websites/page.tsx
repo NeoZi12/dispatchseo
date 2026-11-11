@@ -132,7 +132,7 @@ export default async function WebsitesPage({ searchParams }: { searchParams: Pro
       line = `I start writing for ${p.domain} once its setup is finished.`;
     } else if (p.writer_paused_at) {
       status = "paused";
-      line = "Writing is paused for this site. Resume it from its Overview.";
+      line = "Writing is paused for this website. Switch it back on below whenever you like.";
     } else if (r?.safeMax === 0) {
       status = "paused";
       line = "Google has indexed too few of its older articles, so I've paused it. It picks up again on its own once Google catches up.";

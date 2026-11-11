@@ -444,7 +444,16 @@ function PublishModeRow({ card: c }: { card: SiteCard }) {
           ) : null}
         </>
       }
-    />
+    >
+      {/* The save takes a few seconds on a real account; say so, the dimmed
+          cards alone read as nothing happening. */}
+      {pending ? (
+        <span role="status" className="inline-flex items-center gap-2 text-[13px] font-medium text-ink-muted">
+          <Spinner />
+          Saving
+        </span>
+      ) : null}
+    </ControlRow>
   );
 }
 
