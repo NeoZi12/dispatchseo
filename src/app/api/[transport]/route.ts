@@ -1452,7 +1452,12 @@ const mcpHandler = createMcpHandler(
 
         let draftId = existingId;
         if (draftId) {
-          const { error } = await db().from("article_drafts").update(row).eq("id", draftId);
+          // A rejected row that is accepted now becomes an article NOW: the
+          // daily cap (submissionCaps) and the month's count read created_at,
+          // so a draft rejected yesterday and accepted today would otherwise
+          // count toward neither day's limit (push security review, 2026-11-12).
+          const acceptedNow = report.ok && existingStatus === "rejected";
+          const { error } = await db().from("article_drafts").update(acceptedNow ? { ...row, created_at: now } : row).eq("id", draftId);
           if (error) {
             await refundFree();
             return fail(`Could not save the article: ${error.message}`);
