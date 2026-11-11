@@ -35,10 +35,17 @@ export const dynamic = "force-dynamic";
 // this page only links out. Self-host has no billing, so it bounces home.
 
 const TIER_COPY: Record<Tier, { name: string; sub: string }> = {
-  starter: { name: "Starter", sub: "One site on autopilot" },
+  starter: { name: "Starter", sub: "A steady start" },
   growth: { name: "Growth", sub: "For a small portfolio" },
   scale: { name: "Scale", sub: "For a bigger portfolio" },
 };
+
+// "1 website" / "1 to 3 websites": a plan's site allowance, worded as on every
+// plan card (owner, 2026-11-11). An owner may use fewer sites than the plan
+// covers, hence "1 to N".
+function sitesLine(sites: number): string {
+  return sites === 1 ? "1 website" : `1 to ${sites} websites`;
+}
 
 const at = (ms: number, i = 0) => ({ "--at": `${ms}ms`, "--i": i }) as React.CSSProperties;
 
@@ -51,7 +58,7 @@ export default async function BillingPage({
   if (!isCloudMode() || !auth.user) redirect("/dashboard");
   const { success, error } = await searchParams;
   // Which product the plan cards describe: a hosted site is sold articles a
-  // week; an agent site runs on GitHub Actions, whose cost note applies.
+  // month; an agent site runs on GitHub Actions, whose cost note applies.
   // The project and the subscription are independent reads: together.
   const [activeOrNull, sub, owned] = await Promise.all([getActiveProjectOrNull(), getSubscription(auth.user.id), scopedProjects()]);
   const hostedMode = writerMode(activeOrNull) === "hosted";
@@ -144,8 +151,8 @@ export default async function BillingPage({
             </div>
             <p className="mt-3 text-[15px] text-ink">
               {hostedMode
-                ? `${perMonth} ${perMonth === 1 ? "article" : "articles"} / month${sitesLimitOf(sub) > 1 ? `, up to ${sitesLimitOf(sub)} sites` : ", one site"}`
-                : `Up to ${sitesLimitOf(sub)} ${sitesLimitOf(sub) === 1 ? "site" : "sites"}`}
+                ? `${perMonth} ${perMonth === 1 ? "article" : "articles"} a month, ${sitesLine(sitesLimitOf(sub))}`
+                : sitesLine(sitesLimitOf(sub))}
             </p>
             <p className="mt-1 text-[14px] text-ink-muted">{state.line}</p>
             <div className="mt-6 flex flex-wrap items-start gap-3">
@@ -170,7 +177,7 @@ export default async function BillingPage({
             {/* No live plan = the free tier (billing.ts isFreePlan), which is
                 what the Free pill on the sidebar's Settings row says too. */}
             <p className="text-[1.25rem] font-semibold tracking-tight text-ink">You&apos;re on the free plan</p>
-            <p className="mt-2 text-[15px] text-ink-muted">Pick a plan below for weekly articles, keyword research, rankings and advanced analytics.</p>
+            <p className="mt-2 text-[15px] text-ink-muted">Pick a plan below for more articles a month, keyword research, rankings and advanced analytics.</p>
           </>
         )}
         </div>
@@ -211,16 +218,14 @@ export default async function BillingPage({
                 <p className="mt-4 text-[14px] text-ink">
                   {hostedMode ? (
                     <>
-                      <span className="font-semibold tabular-nums">{monthly}</span> {monthly === 1 ? "article" : "articles"} / month
+                      <span className="font-semibold tabular-nums">{monthly}</span> {monthly === 1 ? "article" : "articles"} a month
                     </>
                   ) : (
-                    <>
-                      Up to <span className="font-semibold tabular-nums">{limits.sites}</span> {limits.sites === 1 ? "site" : "sites"}
-                    </>
+                    sitesLine(limits.sites)
                   )}
                 </p>
                 <p className="mt-1 text-[13px] text-ink-muted">
-                  {hostedMode ? `${TIER_COPY[tier].sub}, up to ${limits.sites} ${limits.sites === 1 ? "site" : "sites"}` : TIER_COPY[tier].sub}
+                  {hostedMode ? `${sitesLine(limits.sites)}. ${TIER_COPY[tier].sub}` : TIER_COPY[tier].sub}
                 </p>
                 {!hasUpstreamSub ? <p className="mt-1 text-[12.5px] font-medium text-ink-faint">Billed today</p> : null}
                 {/* Multi-site tiers on an agent site only: after two sites
@@ -259,6 +264,12 @@ export default async function BillingPage({
               </div>
             );
           })}
+        </div>
+        {/* How a plan's articles reach its sites - the same two lines as the
+            landing's pricing section and /plans. */}
+        <div className="space-y-0.5 text-[13.5px] text-ink-muted">
+          <p>Use one site and it gets all of them. Add more and we split them for you.</p>
+          <p>New sites start slower while Google gets to know them.</p>
         </div>
         {/* The point of purchase for an upgrade, so the same express-consent
             line /plans and setup's checkout step carry (EU/UK 14-day

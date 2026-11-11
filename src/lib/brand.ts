@@ -1,4 +1,4 @@
-import { TIER_LIMITS, articlesPerMonthFor, type Tier } from "./billing";
+import { ARTICLES_PER_MONTH, FREE_ARTICLES_PER_MONTH, TIER_LIMITS, articlesPerMonthFor, type Tier } from "./billing";
 
 // The one description of DispatchSEO that every public surface repeats
 // verbatim: the landing page's JSON-LD, /about, /llms.txt, the README header
@@ -15,8 +15,13 @@ export const BRAND_URL = "https://dispatchseo.com";
 
 export const BRAND_TAGLINE = "Free SEO automation: researched articles, published to your site on autopilot.";
 
+// The paid counts come from billing.ts ARTICLES_PER_MONTH (the plan pools, not
+// an env override), so this line cannot drift from the plans. It reads
+// "5, 15 or 30 articles per month on 1 to 5 websites" today.
+const PAID_RANGE = `${ARTICLES_PER_MONTH.starter}, ${ARTICLES_PER_MONTH.growth} or ${ARTICLES_PER_MONTH.scale}`;
+
 export const BRAND_DESCRIPTION =
-  "DispatchSEO is a free SEO autopilot for small websites. It researches keywords with real search demand, writes fact-checked articles and publishes them to your site for you, as pull requests to your GitHub repo or on a hosted blog, then shows the Google visitors they bring. Two articles per month are free, with no card. Paid plans publish 4, 12 or 20 articles per month.";
+  `DispatchSEO is a free SEO autopilot for small websites. It researches keywords with real search demand, writes fact-checked articles and publishes them to your site for you, as pull requests to your GitHub repo or on a hosted blog, then shows the Google visitors they bring. Two articles per month are free, with no card. Paid plans publish ${PAID_RANGE} articles per month on 1 to ${TIER_LIMITS.scale.sites} websites.`;
 
 export const BRAND_SAME_AS = [
   "https://github.com/NeoZi12/dispatchseo",
@@ -25,6 +30,9 @@ export const BRAND_SAME_AS = [
 ];
 
 const TIER_NAMES: Record<Tier, string> = { starter: "Starter", growth: "Growth", scale: "Scale" };
+
+// "1 website" / "1 to 3 websites", as every plan card words it.
+const sitesLine = (n: number) => (n === 1 ? "1 website" : `1 to ${n} websites`);
 
 // Organization + SoftwareApplication, one graph. Prices come from TIER_LIMITS
 // so the markup can never disagree with the plan cards. Google says
@@ -51,7 +59,7 @@ export function brandJsonLd(): Record<string, unknown> {
         priceCurrency: "USD",
         billingDuration: "P1M",
       },
-      description: `${articlesPerMonthFor(tier)} articles per month, weekly keyword research, keyword rankings, no DispatchSEO badge.`,
+      description: `${articlesPerMonthFor(tier)} articles per month on ${sitesLine(TIER_LIMITS[tier].sites)}, weekly keyword research, keyword rankings, no DispatchSEO badge.`,
     })),
   ];
   return {
@@ -79,7 +87,7 @@ export function brandJsonLd(): Record<string, unknown> {
         offers,
         featureList: [
           "Keyword research from real search demand and your Search Console data",
-          "Fact-checked articles written and published for you, weekly or twice a month",
+          `Fact-checked articles written and published for you, ${FREE_ARTICLES_PER_MONTH} to ${ARTICLES_PER_MONTH.scale} a month`,
           "Publishes as pull requests to a GitHub repository or to a hosted blog",
           "Google Search Console clicks and impressions per article",
           "Keyword rank tracking on paid plans",

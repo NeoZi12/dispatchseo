@@ -116,8 +116,9 @@ export default function TermsPage() {
         <p>
           Paid plans are billed <Term>monthly in advance</Term> through our payment provider,
           Polar, who acts as merchant of record and is the seller of record for your purchase.
-          Prices are shown at checkout. Each plan sets limits - number of sites and tracked
-          keywords - which are enforced on your account.
+          Prices are shown at checkout. Each plan sets limits - the number of sites it covers,
+          the articles a month it publishes, shared across those sites, and tracked keywords -
+          which are enforced on your account.
         </p>
         <p>
           <Term>Your subscription renews automatically</Term> at the end of each billing period,
@@ -126,7 +127,8 @@ export default function TermsPage() {
         </p>
         <p>
           <Term>Free plan.</Term> The free plan needs no payment method. What it includes is shown
-          on the pricing page. It covers one site per person, and one free site per domain, ever.
+          on the pricing page. It covers one site per person, and one free site per domain, ever;
+          a paid plan covers the number of sites shown for it on the pricing page.
           A free site whose dashboard nobody opens for 60 days pauses new articles until you sign
           in again; we email you first. We may change or end the free plan, and we may refuse or
           close free accounts we believe were made to get around its limits.

@@ -1,7 +1,7 @@
 import { getAllDocs } from "@/lib/docs";
 import { getAllPosts } from "@/lib/blog";
 import { BRAND_DESCRIPTION } from "@/lib/brand";
-import { TIER_LIMITS, priceLabel } from "@/lib/billing";
+import { ARTICLES_PER_MONTH, TIER_LIMITS, priceLabel } from "@/lib/billing";
 
 // The agent-facing index (llmstxt.org). Generated, not hand-written: the page
 // list comes from DOCS_NAV, so a new doc page appears here the moment it is
@@ -34,20 +34,22 @@ publishes it to your site, and reports the Google clicks and impressions it
 earns. Articles reach your site as pull requests to your GitHub repository
 (Next.js, Astro and other code-built sites), through the API of a self-hosted
 WordPress site, or on a hosted blog when your site has no repository. Every
-site starts on the free plan; paid plans publish weekly.
+site starts on the free plan; paid plans publish more articles a month.
 
 ## Key facts
 
 - Free plan: 2 fact-checked articles per month, published for you, with your
   Google Search Console stats. No card, no end date. Free articles carry a
   small DispatchSEO badge.
-- Paid plans, per site, billed monthly: Starter ${priceLabel(TIER_LIMITS.starter.price)}
-  (4 articles per month), Growth ${priceLabel(TIER_LIMITS.growth.price)} (12 articles per month),
-  Scale ${priceLabel(TIER_LIMITS.scale.price)} (20 articles per month). Paid plans add weekly
-  keyword research, keyword rank tracking and advanced analytics, and remove
-  the badge. Yearly billing is cheaper where offered.
+- Paid plans, billed monthly: Starter ${priceLabel(TIER_LIMITS.starter.price)}
+  (${ARTICLES_PER_MONTH.starter} articles per month, 1 website), Growth ${priceLabel(TIER_LIMITS.growth.price)} (${ARTICLES_PER_MONTH.growth} articles per month,
+  1 to ${TIER_LIMITS.growth.sites} websites), Scale ${priceLabel(TIER_LIMITS.scale.price)} (${ARTICLES_PER_MONTH.scale} articles per month, 1 to ${TIER_LIMITS.scale.sites} websites).
+  A plan's articles are shared by its websites: one site gets all of them,
+  and more sites split them. Paid plans add weekly keyword research, keyword
+  rank tracking and advanced analytics, and remove the badge. Yearly billing
+  is cheaper where offered.
 - Articles are only written about topics with real, measured search demand.
-  A thin niche may not fill its weekly quota, and the product says so rather
+  A thin niche may not fill its monthly quota, and the product says so rather
   than padding.
 - Supported sites: anything whose source lives in a GitHub repository, and
   self-hosted WordPress. Hosted site builders (Wix, Squarespace, Shopify,

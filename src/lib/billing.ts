@@ -104,7 +104,7 @@ export const UNBILLED_ARTICLES_PER_WEEK = 2;
 
 /** Articles a month a free-tier site (isFreePlan) gets (the free tier opened
  *  2026-11-08). The scheduler, the free start ledger (free-gate.ts) and the
- *  dashboard's upgrade panel ("2x the free plan") all read THIS constant;
+ *  dashboard's free-plan lines all read THIS constant;
  *  0 closes the tier again. */
 export const FREE_ARTICLES_PER_MONTH = 2;
 

@@ -568,6 +568,9 @@ export type PlanOffer = {
   name: string;
   /** Articles a month on the plan (the owner's pool). */
   perMonth: number;
+  /** Websites the plan covers (TIER_LIMITS sites). Optional so the card
+   *  simply drops the row if the server does not send it. */
+  sites?: number;
   /** Per month, billed monthly. */
   monthly: number;
   /** Null = no yearly product on this deployment. */
@@ -589,15 +592,18 @@ const money = (n: number) => (Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`
  *  words as the landing's pricing cards and /plans. */
 const WHO: Record<PlanTier, string> = {
   free: "Try it on a side project",
-  starter: "Steady start, weekly articles",
+  starter: "Steady start, monthly articles",
   growth: "Serious about traffic",
   scale: "All in on content",
 };
 
-// Plans are stated per month everywhere (owner, 2026-11-09): 1 / 3 / 5 a week
-// x 4 = 4 / 12 / 20, the same count the landing cards show.
-const perMonthLine = (n: number) => (n === 1 ? "1 article per month" : `${n} articles per month`);
-// Three rows at most: the pill already says the pace, the row says the rest.
+// Plans are stated per month everywhere, flat (owner, 2026-11-11): 5 / 15 /
+// 30, the same count the landing cards show.
+const perMonthLine = (n: number) => (n === 1 ? "1 article a month" : `${n} articles a month`);
+// The plan's websites, worded as on every plan card: "1 website", "1 to 3
+// websites" (an owner may use fewer sites than the plan covers).
+const sitesLine = (n: number) => (n === 1 ? "1 website" : `1 to ${n} websites`);
+// Three rows at most after the pace (and the websites row on a paid card).
 const PAID_ROWS = ["Topics people search for", "Rankings and analytics", "No badge"];
 const FREE_ROWS = ["Topics people search for", "Your Google stats", "Small DispatchSEO badge"];
 
@@ -618,7 +624,7 @@ function PlanCard({
   name: string;
   price: string;
   billing: string;
-  /** "4 articles per month": the first row, in bold. */
+  /** "5 articles a month": the first row, in bold. */
   pace: string;
   who: string;
   rows: string[];
@@ -777,7 +783,7 @@ export function PlanScene({
                   billing={y ? `Billed ${money(y.charge)} a year, save ${y.savePct}%` : "Billed monthly"}
                   pace={perMonthLine(o.perMonth)}
                   who={WHO[o.tier]}
-                  rows={o.tier === "scale" ? [...PAID_ROWS, "Priority support"] : PAID_ROWS}
+                  rows={[...(o.sites ? [sitesLine(o.sites)] : []), ...PAID_ROWS, ...(o.tier === "scale" ? ["Priority support"] : [])]}
                   popular={o.tier === "growth"}
                   on={choice.tier === o.tier}
                   busy={busy}

@@ -498,6 +498,10 @@ html:has(.ld) { scroll-behavior: smooth; }
   .ld .plans.plans-4 .plan { padding: 26px 16px; }
   .ld .plans.plans-4 .plan li { font-size: 13px; }
 }
+/* The two lines under the cards: how a plan's articles reach its sites.
+   Same words under /plans and the billing page. */
+.ld .plans-note { margin: 26px auto 0; max-width: 640px; text-align: center; font-size: 14.5px; line-height: 1.55; color: var(--mut); }
+.ld .plans-note p + p { margin-top: 2px; }
 .ld .plan { border: 1px solid var(--line); border-radius: 16px; padding: 30px 26px; background: var(--card); display: flex; flex-direction: column; position: relative; }
 .ld .plan.hero-plan { border: 2px solid var(--vio); }
 /* The mascot sitting on the Growth card (card-mascot.tsx): 5px pixels, body
@@ -593,7 +597,7 @@ html:has(.ld) { scroll-behavior: smooth; }
 .ld .pm-ticks { list-style: none; margin: 20px 0 22px; padding-top: 20px; border-top: 1px solid var(--line2); }
 .ld .pm-pick .pm-ticks { border-top-color: rgba(139, 92, 246, 0.3); }
 /* ticks match the desktop .plan li: a bare violet check, no circle (owner, 2026-11-09) */
-.ld .pm-ticks li { position: relative; padding: 7px 0 7px 28px; font-size: 15.5px; line-height: 1.3; color: var(--txt); }
+.ld .pm-ticks li { position: relative; padding: 7px 0 7px 28px; font-size: 15.5px; line-height: 1.3; color: var(--txt); white-space: nowrap; }
 .ld .pm-ticks li b { font-weight: 700; color: #fff; }
 .ld .pm-ticks li::before { content: "✓"; position: absolute; left: 2px; font-size: 17px; font-weight: 700; color: var(--vio2); }
 .ld .pm-card .btn { width: 100%; min-height: 50px; font-size: 16px; border-radius: 999px; margin-top: auto; }

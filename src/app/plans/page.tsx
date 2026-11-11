@@ -33,7 +33,7 @@ const TIER_COPY: Record<
 > = {
   starter: {
     name: "Starter",
-    tagline: "Steady start, weekly articles",
+    tagline: "Steady start, monthly articles",
     cta: "Choose Starter",
     recommended: false,
   },
@@ -57,6 +57,13 @@ const TIER_COPY: Record<
 // Tick rows are always ONE row (owner rule, 2026-11-09): keep each short
 // enough for a card at the lg three-column width, and never let one wrap.
 const CAPABILITIES = ["Written and published for you", "Weekly keyword research", "Rank and Search Console tracking", "Pauses if Google drops your site"];
+
+// "1 website" / "1 to 3 websites": the plan's site allowance, worded as on
+// every plan card (owner, 2026-11-11). An owner may use fewer sites than the
+// plan covers, hence "1 to N".
+function sitesLine(sites: number): string {
+  return sites === 1 ? "1 website" : `1 to ${sites} websites`;
+}
 
 function Check({ className }: { className?: string }) {
   return (
@@ -282,16 +289,13 @@ export default async function PlansPage({
                     <li className="flex items-center gap-2.5 whitespace-nowrap text-neutral-300">
                       <Check className="h-4 w-4 shrink-0 text-violet-400" />
                       <span>
-                        <span className="font-medium text-white tabular-nums">{limits.sites}</span>{" "}
-                        site{limits.sites === 1 ? "" : "s"}
+                        <span className="font-medium text-white tabular-nums">{articlesPerMonthFor(tier)}</span>{" "}
+                        article{articlesPerMonthFor(tier) === 1 ? "" : "s"} a month
                       </span>
                     </li>
                     <li className="flex items-center gap-2.5 whitespace-nowrap text-neutral-300">
                       <Check className="h-4 w-4 shrink-0 text-violet-400" />
-                      <span>
-                        <span className="font-medium text-white tabular-nums">{articlesPerMonthFor(tier)}</span>{" "}
-                        article{articlesPerMonthFor(tier) === 1 ? "" : "s"} per month
-                      </span>
+                      <span>{sitesLine(limits.sites)}</span>
                     </li>
                     {CAPABILITIES.map((cap) => (
                       <li key={cap} className="flex items-center gap-2.5 whitespace-nowrap text-neutral-300">
@@ -306,8 +310,15 @@ export default async function PlansPage({
           })}
         </div>
 
+        {/* How a plan's articles reach its sites - the same two lines as
+            the landing's pricing section and the billing page. */}
+        <div className="mt-10 space-y-0.5 text-center text-sm text-neutral-400">
+          <p>Use one site and it gets all of them. Add more and we split them for you.</p>
+          <p>New sites start slower while Google gets to know them.</p>
+        </div>
+
         {/* Reassurance + the legal line, quiet at the base of the page. */}
-        <div className="mt-10 space-y-1 text-center">
+        <div className="mt-6 space-y-1 text-center">
           <p className="text-sm text-neutral-500">Cancel anytime</p>
           {/* The express-consent line required to validly waive the EU/UK
               14-day withdrawal right on a service that starts immediately.

@@ -73,6 +73,10 @@ export type ChangelogEntry = {
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   { kind: "improved", text: "A shorter sidebar. Billing, Feedback and Docs moved into Settings, so the sidebar holds only your site's screens. Your plan badge now sits on the Settings row." },
+  {
+    kind: "improved",
+    text: "Paid plans now publish more articles a month and cover more websites, at the same prices: Starter 5 articles a month on 1 website, Growth 15 on 1 to 3 websites, Scale 30 on 1 to 5 websites. Use one site and it gets all of them. Add more and we split them for you.",
+  },
   { kind: "improved", text: "Your overview now says when your next article is due, right above your latest articles: the day, and how many days away it is." },
   { kind: "fixed", text: "If you connect a GitHub repository that doesn't build your site, setup now notices on sites made with Next.js too, and switches to the right repository when you've shared it. Before, those sites could connect the wrong one and articles never reached the site." },
   {

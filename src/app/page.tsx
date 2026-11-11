@@ -145,12 +145,20 @@ function PlanLink({ tier, annual, children }: { tier: Tier; annual: boolean; chi
   );
 }
 
-// The mobile pricing cards' paid plans. Articles a month come from billing.ts
-// (1 / 3 / 5 a week x 4), so a pace change can't leave these behind.
+// "1 website" / "1 to 3 websites": a plan's site allowance as every plan card
+// states it (owner, 2026-11-11). An owner may use fewer sites than the plan
+// covers, which is why the paid rows read "1 to N".
+function sitesLine(sites: number): string {
+  return sites === 1 ? "1 website" : `1 to ${sites} websites`;
+}
+
+// The mobile pricing cards' paid plans. Articles a month and sites come from
+// billing.ts (ARTICLES_PER_MONTH, TIER_LIMITS), so a plan change can't leave
+// these behind.
 const PM_PAID: { tier: Tier; perMonth: number; tagline: string; ticks: string[]; pick: boolean }[] = [
   {
     tier: "starter", perMonth: articlesPerMonthFor("starter"), pick: false,
-    tagline: "Steady start, weekly articles",
+    tagline: "Steady start, monthly articles",
     ticks: ["Weekly keyword research", "Fact-checked articles", "Keyword rankings", "Advanced analytics", "No DispatchSEO badge"],
   },
   {
@@ -400,9 +408,9 @@ export default async function LandingPage({
               free/paid split decided 2026-11-06/08: free keeps the result
               (articles + its Google numbers), paid adds the pace, weekly
               research, rankings, advanced analytics and drops the badge.
-              Paid counts are stated flat and per month (4 / 12 / 20 a month =
-              1 / 3 / 5 a week x 4, owner 2026-11-09), never "up to"
-              (owner, 2026-11-08: people get what they pay for). Same perks as the dashboard's upgrade panel - keep the
+              Paid counts are stated flat and per month (5 / 15 / 30 a month,
+              owner 2026-11-11), never "up to" (owner, 2026-11-08: people get
+              what they pay for); the second row is the plan's websites. Same perks as the dashboard's upgrade panel - keep the
               two in step. Yearly is the default once the yearly Polar
               products exist; the tag says "up to" because the saving differs
               per tier. */}
@@ -413,7 +421,7 @@ export default async function LandingPage({
               <div className="p-price">$0<small>/forever</small></div>
               <div className="p-sub">Try it on a side project</div>
               <ul>
-                <li>2 articles per month</li>
+                <li>2 articles a month</li>
                 <li>Topics people search for</li>
                 <li>Fact-checked articles</li>
                 <li>Published for you</li>
@@ -424,9 +432,10 @@ export default async function LandingPage({
             <div className="plan">
               <h3>Starter</h3>
               <PlanPrice tier="starter" annual={annual} />
-              <div className="p-sub">Steady start, weekly articles</div>
+              <div className="p-sub">Steady start, monthly articles</div>
               <ul>
-                <li>4 articles per month</li>
+                <li>{articlesPerMonthFor("starter")} articles a month</li>
+                <li>{sitesLine(TIER_LIMITS.starter.sites)}</li>
                 <li>Weekly keyword research</li>
                 <li>Fact-checked articles</li>
                 <li>Keyword rankings</li>
@@ -443,7 +452,8 @@ export default async function LandingPage({
               <PlanPrice tier="growth" annual={annual} />
               <div className="p-sub">Serious about traffic</div>
               <ul>
-                <li>12 articles per month</li>
+                <li>{articlesPerMonthFor("growth")} articles a month</li>
+                <li>{sitesLine(TIER_LIMITS.growth.sites)}</li>
                 <li>Weekly keyword research</li>
                 <li>Fact-checked articles</li>
                 <li>Keyword rankings</li>
@@ -457,7 +467,8 @@ export default async function LandingPage({
               <PlanPrice tier="scale" annual={annual} />
               <div className="p-sub">All in on content</div>
               <ul>
-                <li>20 articles per month</li>
+                <li>{articlesPerMonthFor("scale")} articles a month</li>
+                <li>{sitesLine(TIER_LIMITS.scale.sites)}</li>
                 <li>Weekly keyword research</li>
                 <li>Fact-checked articles</li>
                 <li>Keyword rankings</li>
@@ -484,7 +495,7 @@ export default async function LandingPage({
                 <span className="pm-price">$0<small>/forever</small></span>
                 <span className="pm-tag">Try it on a side project</span>
                 <ul className="pm-ticks">
-                  <li><b>2 articles per month</b></li>
+                  <li><b>2 articles a month</b></li>
                   <li>Topics people search for</li>
                   <li>Fact-checked articles</li>
                   <li>Published for you</li>
@@ -502,7 +513,8 @@ export default async function LandingPage({
                   <PmPrice tier={plan.tier} annual={annual} />
                   <span className="pm-tag">{plan.tagline}</span>
                   <ul className="pm-ticks">
-                    <li><b>{plan.perMonth} articles per month</b></li>
+                    <li><b>{plan.perMonth} articles a month</b></li>
+                    <li>{sitesLine(TIER_LIMITS[plan.tier].sites)}</li>
                     {plan.ticks.map((t) => <li key={t}>{t}</li>)}
                   </ul>
                   <PlanLink tier={plan.tier} annual={annual}>Choose {TIER_NAMES[plan.tier]}</PlanLink>
@@ -511,6 +523,12 @@ export default async function LandingPage({
             </div>
           </div>
           </PricingSwitch>
+          {/* How a multi-site plan's articles reach its sites, under every
+              plan surface in the same two lines (landing, /plans, billing). */}
+          <div className="plans-note">
+            <p>Use one site and it gets all of them. Add more and we split them for you.</p>
+            <p>New sites start slower while Google gets to know them.</p>
+          </div>
         </div>
       </section>
 
@@ -523,7 +541,7 @@ export default async function LandingPage({
           <div className="faq-list">
             <details open>
               <summary>Is it really free?</summary>
-              <div className="a">Yes. Every site gets 2 articles a month for free, with no card and no end date. Free articles carry a small DispatchSEO badge. The paid plans publish 4, 12 or 20 articles per month, without the badge.</div>
+              <div className="a">Yes. Every site gets 2 articles a month for free, with no card and no end date. Free articles carry a small DispatchSEO badge. The paid plans publish {articlesPerMonthFor("starter")}, {articlesPerMonthFor("growth")} or {articlesPerMonthFor("scale")} articles a month, without the badge.</div>
             </details>
             <details>
               <summary>What do I need to get started?</summary>
@@ -535,7 +553,7 @@ export default async function LandingPage({
             </details>
             <details>
               <summary>How many articles will I get?</summary>
-              <div className="a">2 articles per month on Free, 4 on Starter, 12 on Growth and 20 on Scale. Every one is about a topic with real search demand behind it.</div>
+              <div className="a">2 articles a month on Free, {articlesPerMonthFor("starter")} on Starter, {articlesPerMonthFor("growth")} on Growth and {articlesPerMonthFor("scale")} on Scale. Growth covers {sitesLine(TIER_LIMITS.growth.sites)} and Scale {sitesLine(TIER_LIMITS.scale.sites)}, sharing the plan&apos;s articles between them. Every article is about a topic with real search demand behind it.</div>
             </details>
             <details>
               <summary>Is this another AI content spammer?</summary>

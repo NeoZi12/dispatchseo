@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FREE_ARTICLES_PER_MONTH, TIER_LIMITS, TIER_NAMES, articlesPerWeekFor, priceLabel } from "@/lib/billing";
+import { TIER_LIMITS, TIER_NAMES, articlesPerMonthFor, priceLabel } from "@/lib/billing";
 
 // The free tier's one upgrade surface (billing.ts isFreePlan decides who
 // sees it). Every lock in the hosted dashboard is this panel: the site's own
@@ -17,17 +17,14 @@ import { FREE_ARTICLES_PER_MONTH, TIER_LIMITS, TIER_NAMES, articlesPerWeekFor, p
 const at = (ms: number) => ({ "--at": `${ms}ms` }) as React.CSSProperties;
 
 // Everything Starter adds over the free tier - the same list on every lock,
-// and each line true of the engine: the weekly cadence is ARTICLES_PER_WEEK,
-// rank tracking (daily-ranks) only runs for paid sites, and the "Made with
-// DispatchSEO" credit (hosted-blog.ts) only shows on free ones. Change a
-// line here only when the engine changes with it.
-const STARTER_PER_WEEK = articlesPerWeekFor("starter");
-// A month is 52/12 weeks; floor so the line never promises a fraction more.
-const STARTER_PER_MONTH = Math.floor((STARTER_PER_WEEK * 52) / 12);
-// "2x the free plan" only once the engine gives free sites articles.
-const VS_FREE = FREE_ARTICLES_PER_MONTH > 0 ? Math.floor(STARTER_PER_MONTH / FREE_ARTICLES_PER_MONTH) : 0;
+// and each line true of the engine: the monthly count is the Starter pool
+// (articlesPerMonthFor, enforced by the month gate), rank tracking
+// (daily-ranks) only runs for paid sites, and the "Made with DispatchSEO"
+// credit (hosted-blog.ts) only shows on free ones. Change a line here only
+// when the engine changes with it.
+const STARTER_PER_MONTH = articlesPerMonthFor("starter");
 const PERKS: { label: string; icon: keyof typeof ICONS }[] = [
-  { label: `${STARTER_PER_MONTH} articles per month${VS_FREE >= 2 ? `, ${VS_FREE}× the free plan` : ""}`, icon: "pen" },
+  { label: `${STARTER_PER_MONTH} articles a month`, icon: "pen" },
   // Research (research.ts) and rank tracking (daily-ranks) both sit behind
   // planGate, so neither runs for a free site.
   { label: "Fresh keyword research every week", icon: "search" },
