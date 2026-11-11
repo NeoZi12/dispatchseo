@@ -17,6 +17,13 @@ export type PostMeta = {
   readingMinutes: number;
   keyword?: string;
   cover?: string; // absolute-from-root image path (e.g. /blog/covers/<slug>.webp)
+  // Frontmatter `googleNoindex: true`: the post stays live and readable by
+  // Bing and the AI crawlers, but tells Googlebot alone not to index it, and
+  // stays out of the sitemap. For comparison-shaped pages ("X alternatives",
+  // "A vs B", "best X tools") written for AI answers: that page type is what
+  // Google's August 2026 spam update demoted this site for, so Google must
+  // not count them while the site waits to be re-judged.
+  googleNoindex?: boolean;
 };
 
 const BLOG_DIR = join(process.cwd(), "src/content/blog");
@@ -49,6 +56,7 @@ export function getAllPosts(): PostMeta[] {
         readingMinutes: estimateReadingMinutes(content),
         ...(data.keyword ? { keyword: data.keyword as string } : {}),
         ...(data.cover ? { cover: data.cover as string } : {}),
+        ...(data.googleNoindex === true ? { googleNoindex: true } : {}),
       };
     })
     .sort((a, b) => (a.date < b.date ? 1 : -1));
@@ -70,6 +78,7 @@ export function getPost(slug: string): { meta: PostMeta; content: string } | nul
         readingMinutes: estimateReadingMinutes(content),
         ...(data.keyword ? { keyword: data.keyword as string } : {}),
         ...(data.cover ? { cover: data.cover as string } : {}),
+        ...(data.googleNoindex === true ? { googleNoindex: true } : {}),
       },
       content,
     };

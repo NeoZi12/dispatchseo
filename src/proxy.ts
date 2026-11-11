@@ -23,6 +23,8 @@ const AGENT_LANDING_PATHS = new Set(availableAgents().map((a) => a.landingPath))
 
 const PUBLIC_FILES = new Set([
   "/sitemap.xml",
+  // Temporary removal sitemap (src/app/sitemap-removed.xml/route.ts).
+  "/sitemap-removed.xml",
   "/robots.txt",
   "/setup.sh",
   // The self-host one-liner: curl -fsSL https://dispatchseo.com/install.sh | sh

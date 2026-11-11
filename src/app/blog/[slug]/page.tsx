@@ -29,6 +29,9 @@ export async function generateMetadata({
     title: `${post.meta.title} - DispatchSEO`,
     description: post.meta.description,
     alternates: { canonical: `/blog/${slug}` },
+    // Googlebot only (see PostMeta.googleNoindex): every other crawler keeps
+    // indexing the page, which is who it was written for.
+    ...(post.meta.googleNoindex ? { robots: { googleBot: { index: false, follow: true } } } : {}),
     openGraph: {
       title: post.meta.title,
       description: post.meta.description,

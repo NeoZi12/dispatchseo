@@ -52,10 +52,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // product and its pricing as prose a crawler can quote.
     { url: `${base}/about`, changeFrequency: "monthly" },
     { url: `${base}/blog`, changeFrequency: "daily" },
-    ...getAllPosts().map((post) => ({
-      url: `${base}/blog/${post.slug}`,
-      lastModified: new Date(post.date),
-    })),
+    // Posts hidden from Google (PostMeta.googleNoindex) stay out: listing a
+    // URL here while telling Googlebot not to index it is a mixed signal.
+    ...getAllPosts()
+      .filter((post) => !post.googleNoindex)
+      .map((post) => ({
+        url: `${base}/blog/${post.slug}`,
+        lastModified: new Date(post.date),
+      })),
     { url: `${base}/docs` },
     ...getDocSlugs().map((slug) => ({ url: `${base}/docs/${slug}` })),
     { url: `${base}/free-tools`, changeFrequency: "weekly" },
