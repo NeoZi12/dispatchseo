@@ -16,6 +16,8 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { isCloudMode } from "@/lib/cloud";
+import { isOperator } from "@/lib/autopilot/operator";
+import { rateLimitHit, rateLimitKey } from "@/lib/rate-limit";
 import { dashboardAuth } from "@/lib/auth-gate";
 import { PROJECT_COOKIE, scopedProjects } from "@/lib/active-project";
 import { getProjectBySlug } from "@/lib/projects";
@@ -33,6 +35,9 @@ export type AddWebsiteState = {
   override?: boolean;
   domain?: string;
 } | null;
+
+/** Websites one account may add in any 24 hours; see addWebsite. */
+const ADD_WEBSITE_DAILY_LIMIT = 4;
 
 /** Add a website to the signed-in owner's plan, then send them through the
  *  setup steps for it (publishing, GitHub, Google). */
@@ -58,6 +63,20 @@ export async function addWebsite(_prev: AddWebsiteState, fd: FormData): Promise<
       override: true,
       domain,
     };
+  }
+
+  // A quiet ceiling on how many websites one account can add in a day
+  // (owner, 2026-11-11). Removing a site and adding it again earns no extra
+  // articles (owner_month_carry, free_article_starts), but every add still
+  // costs us a site read and a profile call, so a loop is worth stopping.
+  // Counted here, after every refusal above, so a typo or a site we can't
+  // serve never uses one up; in the rate_limits ledger, which is keyed by
+  // the owner and so survives the site being removed. Not shown anywhere:
+  // nobody adding real sites gets near it (the largest plan covers 5, and
+  // the first comes through setup). The operator is exempt, and a ledger
+  // outage lets the add through rather than blocking a paying customer.
+  if (!isOperator(user.id) && !(await rateLimitHit(rateLimitKey("add-website", user.id), ADD_WEBSITE_DAILY_LIMIT, 86_400, { failOpen: true }))) {
+    return { error: "That's a lot of websites for one day. You can add another one tomorrow.", domain };
   }
 
   const made = await createHostedProjectForUser(user.id, domain);
