@@ -17,10 +17,9 @@ import {
 } from "@/lib/billing";
 import { customShareLimit, siteShareReport, type SiteShareReport } from "@/lib/site-shares";
 import { DispatcherNote } from "@/components/dispatcher-note";
-import { PageHeading } from "@/components/ui/page-heading";
 import { cx } from "@/components/ui/styles";
 import { BTN_PRIMARY, BTN_SECONDARY } from "@/components/setup-stage/primitives";
-import { SettingsNav } from "../hosted-settings";
+import { BackToSettings } from "../more-links";
 import { SiteList, WebsitesHeader, type SiteCard } from "./websites-client";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +34,12 @@ export const maxDuration = 60;
 // gets a share (lib/site-shares.ts). The numbers come from siteShareReport,
 // the same read the get_site_share MCP tool returns; the Auto / Custom
 // control writes through setSiteShare, the same write as set_site_share.
+//
+// Layout (2026-11-11): one column, like every other Settings pane. The
+// sidebar is the settings menu while this page is open (nav.tsx
+// settingsGroups has the Websites entry), so there is no section list here.
+// Each site is a card of its own with its controls in view: how its articles
+// go live, its share of the month, pause, and remove.
 
 const at = (ms: number, i = 0) => ({ "--at": `${ms}ms`, "--i": i }) as React.CSSProperties;
 
@@ -158,6 +163,12 @@ export default async function WebsitesPage({ searchParams }: { searchParams: Pro
       removeNote: removeNote(p),
       repo: p.github_repo,
       hosted: writerMode(p) === "hosted",
+      // null (never chosen, or a pre-0089 database) reads as automatic.
+      publishMode: p.publish_mode === "review" ? "review" : "auto",
+      ownerPaused: Boolean(p.writer_paused_at),
+      // The per-site switches only mean something for a site we write for
+      // that the plan covers and whose setup is done.
+      controllable: writerMode(p) === "hosted" && covered && !settingUp,
       lastSiteWhileSubscribed: mine.length === 1 && active,
     };
   });
@@ -178,15 +189,66 @@ export default async function WebsitesPage({ searchParams }: { searchParams: Pro
   ) : null;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8">
-      <PageHeading className="arrive-up" title="Settings" />
-      <div className="grid gap-6 md:grid-cols-[12rem_minmax(0,1fr)] md:gap-10">
-        <SettingsNav active="websites" />
+    <WebsitesView
+      canAdd={canAdd}
+      initialOpen={params.add === "1" && canAdd}
+      headerAction={headerAction}
+      unread={head == null}
+      poolFigure={poolFigure}
+      free={free}
+      sitesFigure={sitesFigure}
+      sitesLabel={sitesLabel}
+      segments={segments}
+      held={held}
+      uncovered={uncovered}
+      limit={limit}
+      upgradable={upgradable}
+      cards={cards}
+    />
+  );
+}
 
-        <section aria-labelledby="websites-title" className="min-w-0 space-y-5">
-          <WebsitesHeader canAdd={canAdd} initialOpen={params.add === "1" && canAdd} action={headerAction} style={at(80)} />
+/** The page itself, from numbers already worked out above. */
+function WebsitesView({
+  canAdd,
+  initialOpen,
+  headerAction,
+  unread,
+  poolFigure,
+  free,
+  sitesFigure,
+  sitesLabel,
+  segments,
+  held,
+  uncovered,
+  limit,
+  upgradable,
+  cards,
+}: {
+  canAdd: boolean;
+  initialOpen: boolean;
+  headerAction: React.ReactNode;
+  /** This month's numbers couldn't be read; the sites still list. */
+  unread: boolean;
+  poolFigure: number | null;
+  free: boolean;
+  sitesFigure: string;
+  sitesLabel: string;
+  segments: SiteCard[];
+  held: number;
+  uncovered: SiteCard[];
+  limit: number | null;
+  upgradable: boolean;
+  cards: SiteCard[];
+}) {
+  return (
+    <div className="mx-auto max-w-3xl space-y-3">
+        {/* Phones only: there the settings menu is a drawer. */}
+        <BackToSettings />
+        <section aria-labelledby="websites-title" className="min-w-0 space-y-6">
+          <WebsitesHeader canAdd={canAdd} initialOpen={initialOpen} action={headerAction} style={at(40)} />
 
-          {head == null ? (
+          {unread ? (
             <DispatcherNote
               kind="alert"
               title="I couldn't read this month's numbers just now"
@@ -251,7 +313,6 @@ export default async function WebsitesPage({ searchParams }: { searchParams: Pro
             </DispatcherNote>
           ) : null}
         </section>
-      </div>
     </div>
   );
 }

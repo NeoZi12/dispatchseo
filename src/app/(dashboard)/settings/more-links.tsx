@@ -12,6 +12,8 @@ export type MoreLink = { href: string; label: string; external?: boolean };
 
 export function moreLinks(): MoreLink[] {
   return [
+    // Cloud only, like Billing: the account's sites and their monthly split.
+    ...(isCloudMode() ? [{ href: "/settings/websites", label: "Websites" }] : []),
     // Cloud only - self-host has nothing to bill.
     ...(isCloudMode() ? [{ href: "/billing", label: "Billing" }] : []),
     { href: "/feedback", label: "Feedback" },

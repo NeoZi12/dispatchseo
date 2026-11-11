@@ -198,6 +198,17 @@ function BillingIcon({ className }: IconProps) {
   );
 }
 
+// A globe: the sites on the account.
+function WebsitesIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18" />
+      <path d="M12 3c2.6 2.5 3.9 5.5 3.9 9s-1.3 6.5-3.9 9c-2.6-2.5-3.9-5.5-3.9-9S9.4 5.5 12 3Z" />
+    </svg>
+  );
+}
+
 // Sliders: the knobs you set once and leave.
 function AdvancedIcon({ className }: IconProps) {
   return (
@@ -384,6 +395,10 @@ function settingsGroups({ mode, hasProject, billing }: { mode: NavMode; hasProje
   const site: SettingsLink[] = !hasProject ? [] : mode === "hosted" ? HOSTED_SECTIONS : [{ href: "/settings", label: "Project", Icon: SettingsIcon }];
   const account: SettingsLink[] = [
     ...(hasProject ? [] : [{ href: "/settings", label: "Account", Icon: SettingsIcon }]),
+    // Cloud only: every site on the account and how the plan's articles are
+    // split between them (settings/websites). Self-host has no plan to split
+    // and adds sites from the picker at the foot.
+    ...(billing ? [{ href: "/settings/websites", label: "Websites", Icon: WebsitesIcon }] : []),
     // Cloud only - self-host has nothing to bill.
     ...(billing ? [{ href: "/billing", label: "Billing", Icon: BillingIcon, plan: true }] : []),
   ];
@@ -448,6 +463,7 @@ function PlanPill({ plan }: { plan: PlanChip }) {
 // Routes reachable outside the sidebar, so the topbar title still resolves.
 const EXTRA_TITLES: { href: string; label: string }[] = [
   { href: "/settings", label: "Settings" },
+  { href: "/settings/websites", label: "Websites" },
   { href: "/feedback", label: "Feedback" },
   { href: "/new", label: "New project" },
   { href: "/playbook", label: "Backlinks" },
@@ -763,7 +779,10 @@ function SettingsMenuList({ mode, pathname, hasProject, billing, plan, onNavigat
               pathname={pathname}
               big={big}
               onNavigate={onNavigate}
-              active={l.external ? undefined : l.href.startsWith("/settings") ? onSettings && (l.section ? l.section === pane : true) : undefined}
+              // The panes share one pathname, so they decide by ?section=;
+              // the bare /settings must not light for a page under it
+              // (/settings/websites). Everything else goes by its own path.
+              active={l.external ? undefined : l.section || l.href === "/settings" ? onSettings && (l.section ? l.section === pane : true) : undefined}
               trailing={l.plan && plan ? <PlanPill plan={plan} /> : undefined}
             />
           ))}

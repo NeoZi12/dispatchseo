@@ -1,19 +1,21 @@
 "use client";
 
 import { useActionState, useEffect, useId, useRef, useState } from "react";
-import { addWebsite, saveSiteShare, type AddWebsiteState, type SiteShareState } from "@/app/site-actions";
+import { addWebsite, saveSitePaused, saveSitePublishMode, saveSiteShare, type AddWebsiteState, type SiteShareState } from "@/app/site-actions";
+import { CardMascot } from "@/components/card-mascot";
 import { DeleteProjectForm } from "@/components/delete-project";
-import { MascotFace } from "@/components/mascot-face";
 import { SiteIcon } from "@/components/ui/site-icon";
 import { cx, FOCUS_RING } from "@/components/ui/styles";
 import { BTN_PRIMARY, BTN_SECONDARY } from "@/components/setup-stage/primitives";
 
-// The Websites page's moving parts (page.tsx has the data and the why):
-// the header with its Add website panel, and one row per site in the
-// "Your top posts" shape - name and a quiet status line on the left, fixed
-// right-hand numbers over tiny labels, the share as the one coloured figure.
-// A row opens to its controls: the dispatcher's word on it, Auto / Custom,
-// and Remove.
+// The Websites page's moving parts (page.tsx has the data and the why): the
+// header with its Add website panel, and one CARD per site. The card's head
+// is the "Your top posts" shape - name and a quiet status line on the left,
+// fixed right-hand numbers over tiny labels, the share as the one coloured
+// figure. Under it, in view rather than behind a click, the site's controls
+// as rows (the Settings row shape): how its articles go live, its share of
+// the month, pause, and remove. An account holds five sites at most, so
+// nothing needs hiding, and the thing an owner came to change is on screen.
 
 export type SiteCard = {
   slug: string;
@@ -39,6 +41,12 @@ export type SiteCard = {
   repo: string | null;
   hosted: boolean;
   lastSiteWhileSubscribed: boolean;
+  /** How this site's articles go live. */
+  publishMode: "auto" | "review";
+  /** Paused by the owner (not the automatic slow-downs in `status`). */
+  ownerPaused: boolean;
+  /** Whether the publishing and pause switches apply to this site. */
+  controllable: boolean;
 };
 
 /** Smaller cut of the setup's purple primary, for buttons inside a card. */
@@ -52,7 +60,8 @@ const BTN_SECONDARY_SM = cx(BTN_SECONDARY, "rounded-lg px-4 py-2 text-[14px]");
 export function DispatcherLine({ tone = "info", children, action }: { tone?: "info" | "warn"; children: React.ReactNode; action?: React.ReactNode }) {
   return (
     <div role={tone === "warn" ? "alert" : "status"} className="flex items-start gap-3">
-      <MascotFace className="mt-1 h-7 w-7 shrink-0" />
+      {/* With his headset on (owner, 2026-11-11); the blink is .dash-mascot. */}
+      <CardMascot className="dash-mascot mt-0.5 h-8 w-8 shrink-0" />
       <div className={cx("relative min-w-0 rounded-xl border bg-surface-2/80 px-3.5 py-2.5", tone === "warn" ? "border-warn/30" : "border-line")}>
         <span
           aria-hidden="true"
@@ -81,11 +90,14 @@ export function WebsitesHeader({
 }) {
   const [open, setOpen] = useState(initialOpen);
   return (
-    <div className="arrive-up space-y-4" style={style}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="websites-title" className="text-[1.4rem] font-semibold tracking-tight text-ink">
-          Websites
-        </h2>
+    <div className="arrive-up space-y-5" style={style}>
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
+        <div className="min-w-0">
+          <h1 id="websites-title" className="text-[1.75rem] font-semibold leading-tight tracking-tight text-ink">
+            Websites
+          </h1>
+          <p className="mt-2 max-w-[52ch] text-sm leading-relaxed text-ink-muted">Every site on your plan, and how this month&apos;s articles are split between them.</p>
+        </div>
         {canAdd ? (
           open ? null : (
             <button type="button" onClick={() => setOpen(true)} className={BTN_PRIMARY_SM}>
@@ -229,97 +241,177 @@ const STATUS: Record<SiteCard["status"], { label: string; dot: string }> = {
 
 export function SiteList({ cards, style }: { cards: SiteCard[]; style?: React.CSSProperties }) {
   return (
-    <div className="arrive-up overflow-hidden rounded-2xl border border-line-soft bg-surface px-3 py-3 sm:px-5 sm:py-4" style={style}>
-      <ol className="space-y-1">
-        {cards.map((c, i) => (
-          <SiteRow key={c.slug} card={c} index={i} />
-        ))}
-      </ol>
-    </div>
+    <ol className="space-y-4" style={style}>
+      {cards.map((c, i) => (
+        <SiteCardView key={c.slug} card={c} index={i} />
+      ))}
+    </ol>
   );
 }
 
-function SiteRow({ card: c, index }: { card: SiteCard; index: number }) {
-  const [open, setOpen] = useState(false);
-  const panel = useId();
+function SiteCardView({ card: c, index }: { card: SiteCard; index: number }) {
   const st = STATUS[c.status];
   const muted = c.status === "uncovered";
   const used = c.used ?? null;
   return (
-    <li className="arrive-up" style={{ "--at": "220ms", "--i": index, "--step": "55ms" } as React.CSSProperties}>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        aria-controls={panel}
-        className={cx("group flex w-full items-center gap-4 rounded-xl px-3 py-3.5 text-left transition-colors hover:bg-surface-2 sm:gap-5", open && "bg-surface-2/60", FOCUS_RING)}
-      >
-        <SiteIcon domain={c.domain} className={cx("h-9 w-9", muted && "opacity-50 grayscale")} />
-        <span className="min-w-0 flex-1">
-          <span className={cx("block truncate text-[15px] font-medium", muted ? "text-ink-muted" : "text-ink")} title={c.domain}>
+    <li
+      className={cx("arrive-up overflow-hidden rounded-2xl border bg-surface", muted ? "border-line-soft/70" : "border-line-soft")}
+      style={{ "--at": "200ms", "--i": index, "--step": "70ms" } as React.CSSProperties}
+    >
+      {/* Head: who it is, how it's doing, and its number. */}
+      <div className="flex items-center gap-4 px-5 py-5 sm:gap-5 sm:px-6">
+        <span className={cx("flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-line-soft bg-surface-2", muted && "opacity-50 grayscale")}>
+          <SiteIcon domain={c.domain} className="h-7 w-7" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className={cx("truncate text-[16px] font-semibold tracking-tight", muted ? "text-ink-muted" : "text-ink")} title={c.domain}>
             {c.domain}
-          </span>
-          <span className="mt-1 flex items-center gap-1.5 text-[12.5px] text-ink-faint">
+          </p>
+          <p className="mt-1 flex items-center gap-1.5 text-[13px] text-ink-muted">
             <span aria-hidden="true" className={cx("h-1.5 w-1.5 shrink-0 rounded-full", st.dot)} />
             <span className="truncate">
               {st.label}
-              {c.editable ? <span className="hidden sm:inline">{c.mode === "custom" ? ", set by you" : ", split for you"}</span> : null}
               {c.outside ? ", pace set by DispatchSEO" : null}
             </span>
-          </span>
-        </span>
-        {/* Started this month: its own fixed column, the same two-line
-            shape as the share beside it so the labels share a baseline. */}
-        <span className="hidden w-20 shrink-0 text-center sm:block">
-          <span className="block text-[1.125rem] font-semibold leading-7 tabular-nums text-ink-muted">{used ?? "-"}</span>
-          <span className="mt-0.5 block text-[11px] font-medium uppercase tracking-wider text-ink-faint">Started</span>
-        </span>
-        <span className="w-24 shrink-0 text-right">
-          <span
-            className={cx("block text-[1.625rem] font-semibold leading-7 tracking-tight tabular-nums", c.hue ? "" : "text-ink-muted")}
-            style={c.hue ? { color: c.hue } : undefined}
-          >
+          </p>
+        </div>
+        {/* Started this month: its own fixed column, the same two-line shape
+            as the share beside it so the labels share a baseline. */}
+        <div className="hidden w-20 shrink-0 text-center sm:block">
+          <p className="text-[1.25rem] font-semibold leading-8 tabular-nums text-ink-muted">{used ?? "-"}</p>
+          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wider text-ink-faint">Started</p>
+        </div>
+        <div className="w-[6.5rem] shrink-0 text-right">
+          <p className={cx("text-[2rem] font-semibold leading-8 tracking-tight tabular-nums", c.hue ? "" : "text-ink-muted")} style={c.hue ? { color: c.hue } : undefined}>
             {c.share ?? "-"}
-          </span>
-          <span className="mt-0.5 block text-[11px] font-medium uppercase tracking-wider text-ink-faint">
-            This month
-            <span className="sm:hidden"> · {used ?? "-"} started</span>
-          </span>
-        </span>
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 16 16"
-          className={cx("h-4 w-4 shrink-0 text-ink-faint transition-transform duration-150", open ? "rotate-90 text-ink" : "group-hover:translate-x-0.5")}
-        >
-          <path d="m6 3.5 4.5 4.5L6 12.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
+          </p>
+          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wider text-ink-faint">This month</p>
+          <p className="text-[11px] font-medium uppercase tracking-wider text-ink-faint sm:hidden">{used ?? "-"} started</p>
+        </div>
+      </div>
 
-      {open ? (
-        <div id={panel} className="dispatch-details-body space-y-5 px-3 pb-5 pt-3 sm:pl-[4.25rem] sm:pr-10">
-          {c.line ? (
-            <DispatcherLine
-              tone={c.status === "uncovered" ? "warn" : "info"}
-              action={
-                c.status === "setup" ? (
-                  <a href="/onboarding" className={BTN_PRIMARY_SM}>
-                    Finish setup
-                  </a>
-                ) : c.status === "uncovered" ? (
-                  <a href="/billing" className={BTN_SECONDARY_SM}>
-                    See plans
-                  </a>
-                ) : undefined
-              }
-            >
-              {c.line}
-            </DispatcherLine>
-          ) : null}
-          {c.editable ? <ShareControl card={c} /> : null}
-          {c.removable ? <RemoveSite card={c} /> : null}
+      {c.line ? (
+        <div className="px-5 pb-5 sm:px-6">
+          <DispatcherLine
+            tone={c.status === "uncovered" ? "warn" : "info"}
+            action={
+              c.status === "setup" ? (
+                <a href="/onboarding" className={BTN_PRIMARY_SM}>
+                  Finish setup
+                </a>
+              ) : c.status === "uncovered" ? (
+                <a href="/billing" className={BTN_SECONDARY_SM}>
+                  See plans
+                </a>
+              ) : undefined
+            }
+          >
+            {c.line}
+          </DispatcherLine>
         </div>
       ) : null}
+
+      {/* Controls, as rows: the setting and one line on the left, its
+          control on the right. */}
+      <div className="divide-y divide-line-soft border-t border-line-soft">
+        {c.controllable ? <PublishModeRow card={c} /> : null}
+        {c.editable ? <ShareControl card={c} /> : null}
+        {c.controllable ? <PauseRow card={c} /> : null}
+        {c.removable ? <RemoveSite card={c} /> : null}
+      </div>
     </li>
+  );
+}
+
+/** One control row inside a site card. */
+function ControlRow({ title, description, children, below }: { title: string; description?: React.ReactNode; children?: React.ReactNode; below?: React.ReactNode }) {
+  return (
+    <div className="px-5 py-4 sm:px-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+        <div className="min-w-0">
+          <p className="text-[14.5px] font-medium text-ink">{title}</p>
+          {description ? <p className="mt-0.5 text-[13px] leading-relaxed text-ink-muted">{description}</p> : null}
+        </div>
+        {children ? <div className="flex shrink-0 items-center gap-3">{children}</div> : null}
+      </div>
+      {below ? <div className="mt-3.5">{below}</div> : null}
+    </div>
+  );
+}
+
+/** Two or three choices in one track; the chosen one is the raised chip. */
+const SEG_TRACK = "flex rounded-lg bg-canvas/70 p-0.5 ring-1 ring-line-soft";
+function segClass(on: boolean): string {
+  return cx(
+    "rounded-md px-3.5 py-1.5 text-[13px] font-medium transition-colors disabled:cursor-default",
+    on ? "bg-surface-3 text-ink shadow-sm shadow-black/30" : "text-ink-faint hover:text-ink",
+    FOCUS_RING,
+  );
+}
+
+/* --------------------------------------------------- publishing and pause */
+
+/** How this site's articles go live: on their own, or after the owner's
+ *  Publish. Each choice is a submit, so one click saves it. */
+function PublishModeRow({ card: c }: { card: SiteCard }) {
+  const [state, formAction, pending] = useActionState<SiteShareState, FormData>(saveSitePublishMode, null);
+  const label = useId();
+  return (
+    <ControlRow
+      title="How articles go live"
+      description={c.publishMode === "review" ? "Each article waits for you to press Publish." : "Each article goes live as soon as it's ready."}
+      below={state && !state.ok ? <DispatcherLine tone="warn">{state.message}</DispatcherLine> : undefined}
+    >
+      <form action={formAction} className={cx(SEG_TRACK, pending && "opacity-60")} role="group" aria-labelledby={label}>
+        <span id={label} className="sr-only">
+          How articles go live for {c.domain}
+        </span>
+        <input type="hidden" name="slug" value={c.slug} />
+        {(
+          [
+            ["auto", "Autopilot"],
+            ["review", "Manual review"],
+          ] as const
+        ).map(([value, text]) => (
+          <button key={value} type="submit" name="mode" value={value} aria-pressed={c.publishMode === value} disabled={pending || c.publishMode === value} className={segClass(c.publishMode === value)}>
+            {text}
+          </button>
+        ))}
+      </form>
+    </ControlRow>
+  );
+}
+
+/** Pause or resume this site's articles. The switch is the submit. */
+function PauseRow({ card: c }: { card: SiteCard }) {
+  const [state, formAction, pending] = useActionState<SiteShareState, FormData>(saveSitePaused, null);
+  const on = !c.ownerPaused;
+  return (
+    <ControlRow
+      title="Writing"
+      description={on ? "Turn off to stop new articles for this site. Nothing is deleted." : "Off. No new articles until you turn it back on."}
+      below={state && !state.ok ? <DispatcherLine tone="warn">{state.message}</DispatcherLine> : undefined}
+    >
+      <form action={formAction} className="flex items-center gap-3">
+        <input type="hidden" name="slug" value={c.slug} />
+        <input type="hidden" name="paused" value={on ? "1" : "0"} />
+        <span className="text-[13px] font-medium tabular-nums text-ink-muted">{pending ? "Saving" : on ? "On" : "Off"}</span>
+        <button
+          type="submit"
+          role="switch"
+          aria-checked={on}
+          aria-label={`Writing for ${c.domain}`}
+          disabled={pending}
+          className={cx(
+            "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors disabled:opacity-60",
+            on ? "border-accent-strong bg-accent-strong" : "border-line bg-surface-3",
+            FOCUS_RING,
+          )}
+        >
+          <span aria-hidden="true" className={cx("inline-block h-[18px] w-[18px] rounded-full bg-white shadow transition-transform", on ? "translate-x-[22px]" : "translate-x-[3px]")} />
+        </button>
+      </form>
+    </ControlRow>
   );
 }
 
@@ -335,67 +427,55 @@ function ShareControl({ card: c }: { card: SiteCard }) {
   const group = useId();
   const full = mode === "custom" && max < 1;
 
+  const stepper =
+    mode !== "custom" ? null : full ? (
+      <DispatcherLine tone="warn">
+        Your other websites already have all {c.pool} of your plan&apos;s articles set by hand. Set one of them back to Auto first.
+      </DispatcherLine>
+    ) : (
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+        <div className="flex items-center rounded-xl border border-line bg-surface-2">
+          <StepButton label="One fewer" disabled={n <= 1} onClick={() => setN((v) => Math.max(1, v - 1))} glyph="M4 8h8" />
+          <output aria-live="polite" className="w-12 text-center text-[1.375rem] font-semibold tabular-nums text-ink">
+            {n}
+          </output>
+          <StepButton label="One more" disabled={n >= max} onClick={() => setN((v) => Math.min(max, v + 1))} glyph="M8 4v8M4 8h8" />
+        </div>
+        <p className="min-w-0 flex-1 text-[13px] leading-relaxed text-ink-muted">
+          From 1 to {max}.
+          {c.safeMax != null ? (
+            <>
+              {" "}
+              Safe for this site right now: <span className="font-medium tabular-nums text-ink">{c.safeMax}</span>. Set more and the rest waits for it.
+            </>
+          ) : null}
+        </p>
+      </div>
+    );
+
   return (
-    <form action={formAction} className="space-y-3">
+    <form action={formAction}>
       <input type="hidden" name="slug" value={c.slug} />
       <input type="hidden" name="mode" value={mode} />
       <input type="hidden" name="share" value={n} />
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p id={group} className="text-[14px] font-medium text-ink">
-          Articles this month
-        </p>
-        <div role="radiogroup" aria-labelledby={group} className="flex rounded-lg bg-canvas/70 p-0.5 ring-1 ring-line-soft">
-          {(["auto", "custom"] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              role="radio"
-              aria-checked={mode === m}
-              onClick={() => setMode(m)}
-              className={cx(
-                "rounded-md px-3.5 py-1.5 text-[13px] font-medium transition-colors",
-                mode === m ? "bg-surface-3 text-ink shadow-sm shadow-black/30" : "text-ink-faint hover:text-ink",
-                FOCUS_RING,
-              )}
-            >
-              {m === "auto" ? "Auto" : "Custom"}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {mode === "auto" ? (
-        <p className="text-[13px] leading-relaxed text-ink-muted">Split for you across your websites. New ones get fewer until Google trusts them.</p>
-      ) : full ? (
-        <DispatcherLine tone="warn">
-          Your other websites already have all {c.pool} of your plan&apos;s articles set by hand. Set one of them back to Auto first.
-        </DispatcherLine>
-      ) : (
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-          <div className="flex items-center rounded-xl border border-line bg-surface-2">
-            <StepButton label="One fewer" disabled={n <= 1} onClick={() => setN((v) => Math.max(1, v - 1))} glyph="M4 8h8" />
-            <output aria-live="polite" className="w-12 text-center text-[1.375rem] font-semibold tabular-nums text-ink">
-              {n}
-            </output>
-            <StepButton label="One more" disabled={n >= max} onClick={() => setN((v) => Math.min(max, v + 1))} glyph="M8 4v8M4 8h8" />
-          </div>
-          <p className="text-[13px] leading-relaxed text-ink-muted">
-            From 1 to {max}.
-            {c.safeMax != null ? (
-              <>
-                {" "}
-                Safe for this site right now: <span className="font-medium tabular-nums text-ink">{c.safeMax}</span>. Set more and the rest waits for it.
-              </>
-            ) : null}
-          </p>
-        </div>
-      )}
-
-      <div className="flex flex-wrap items-center gap-3">
-        <button type="submit" disabled={!dirty || pending || full} className={BTN_PRIMARY_SM}>
-          {pending ? <Spinner /> : null}
-          {pending ? "Saving" : "Save"}
-        </button>
+      <ControlRow
+        title="Articles this month"
+        description={mode === "auto" ? "Split for you across your websites. New ones get fewer until Google trusts them." : "Set by you. The rest of your plan is split across your other websites."}
+        below={
+          stepper || dirty || (state && !state.ok) ? (
+            <div className="space-y-3">
+              {stepper}
+              {dirty ? (
+                <button type="submit" disabled={pending || full} className={BTN_PRIMARY_SM}>
+                  {pending ? <Spinner /> : null}
+                  {pending ? "Saving" : "Save"}
+                </button>
+              ) : null}
+              {state && !state.ok ? <DispatcherLine tone="warn">{state.message}</DispatcherLine> : null}
+            </div>
+          ) : undefined
+        }
+      >
         {state?.ok && !dirty ? (
           <span role="status" className="inline-flex items-center gap-1.5 text-[13px] font-medium text-ok">
             <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -404,8 +484,17 @@ function ShareControl({ card: c }: { card: SiteCard }) {
             Saved
           </span>
         ) : null}
-      </div>
-      {state && !state.ok ? <DispatcherLine tone="warn">{state.message}</DispatcherLine> : null}
+        <div role="radiogroup" aria-labelledby={group} className={SEG_TRACK}>
+          <span id={group} className="sr-only">
+            Articles this month for {c.domain}
+          </span>
+          {(["auto", "custom"] as const).map((m) => (
+            <button key={m} type="button" role="radio" aria-checked={mode === m} onClick={() => setMode(m)} className={segClass(mode === m)}>
+              {m === "auto" ? "Auto" : "Custom"}
+            </button>
+          ))}
+        </div>
+      </ControlRow>
     </form>
   );
 }
@@ -430,31 +519,33 @@ function StepButton({ label, disabled, onClick, glyph }: { label: string; disabl
 
 function RemoveSite({ card: c }: { card: SiteCard }) {
   const [open, setOpen] = useState(false);
-  return (
-    <div className="border-t border-line-soft pt-4">
-      {open ? (
-        <div className="space-y-3">
-          <p className="text-[14px] font-medium text-ink">Remove {c.domain}</p>
-          <p className="text-[13px] leading-relaxed text-ink-muted">{c.removeNote}</p>
-          <DeleteProjectForm
-            slug={c.slug}
-            domain={c.domain}
-            repo={c.repo}
-            hosted={c.hosted}
-            lastSiteWhileSubscribed={c.lastSiteWhileSubscribed}
-            submitLabel="Remove website"
-            pendingLabel="Removing..."
-            returnTo="/settings/websites"
-          />
-          <button type="button" onClick={() => setOpen(false)} className={cx("rounded-md text-[13px] font-medium text-ink-faint hover:text-ink", FOCUS_RING)}>
-            Keep it
-          </button>
-        </div>
-      ) : (
+  if (!open) {
+    return (
+      <div className="flex items-center justify-between gap-4 px-5 py-3.5 sm:px-6">
+        <p className="text-[13px] text-ink-faint">Done with this site?</p>
         <button type="button" onClick={() => setOpen(true)} className={cx("rounded-md text-[13.5px] font-medium text-danger/90 transition-colors hover:text-danger", FOCUS_RING)}>
-          Remove this website
+          Remove website
         </button>
-      )}
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-3 bg-danger/[0.04] px-5 py-5 sm:px-6">
+      <p className="text-[14.5px] font-medium text-ink">Remove {c.domain}</p>
+      <p className="text-[13px] leading-relaxed text-ink-muted">{c.removeNote}</p>
+      <DeleteProjectForm
+        slug={c.slug}
+        domain={c.domain}
+        repo={c.repo}
+        hosted={c.hosted}
+        lastSiteWhileSubscribed={c.lastSiteWhileSubscribed}
+        submitLabel="Remove website"
+        pendingLabel="Removing..."
+        returnTo="/settings/websites"
+      />
+      <button type="button" onClick={() => setOpen(false)} className={cx("rounded-md text-[13px] font-medium text-ink-faint hover:text-ink", FOCUS_RING)}>
+        Keep it
+      </button>
     </div>
   );
 }
