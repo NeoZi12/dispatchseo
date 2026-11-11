@@ -1,6 +1,8 @@
 import { db } from "@/lib/db";
 import { enqueue } from "@/lib/jobs";
 import { projectPlan, writerGate } from "@/lib/billing";
+import { isCloudMode } from "@/lib/cloud";
+import { rateLimitHit, rateLimitKey } from "@/lib/rate-limit";
 import { loadSiteProfile } from "@/lib/site-profile";
 import { publishRoute } from "@/lib/job-handlers/draft-status";
 import { isDryRun, missingCredentials } from "@/lib/writer/models";
@@ -309,6 +311,19 @@ export async function startHostedRunClaimed(
   now = new Date(),
 ): Promise<Awaited<ReturnType<typeof startWriterRun>>> {
   const { writerStartGate } = await import("./usage");
+  // One manual start at a time per OWNER on a pooled plan. The month gate
+  // reads the owner's pool count and then starts the run, so two starts on
+  // two of their sites at the same instant both passed at pool minus one;
+  // the per-site slot claim below can't see the sibling. The cron already
+  // runs an owner's sites one after another, so only the manual doors
+  // (write_article, the dashboard's Retry - both land here) need this.
+  // failOpen: a limiter hiccup must not block a paying owner's article.
+  if (isCloudMode() && project.owner_user_id) {
+    const pooled = await projectPlan(project.id).then((p) => p.poolPerMonth != null).catch(() => false);
+    if (pooled && !(await rateLimitHit(rateLimitKey("owner-start", project.owner_user_id), 1, 10, { failOpen: true }))) {
+      return { refused: "Another article for this account is starting right now. Try again in a few seconds." };
+    }
+  }
   // Not gated: this applies the plan, pause, month (share and pool), quota
   // and spacing rules in full, so the month gate needs no second copy here.
   const gated = await writerStartGate(project, {}, now);

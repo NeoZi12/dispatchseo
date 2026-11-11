@@ -3980,8 +3980,10 @@ const mcpHandler = createMcpHandler(
       },
       async ({ job }) => {
         // Scoped through getCronHealth(slug) inside markCronFixed: a project
-        // token can only clear instance-wide alerts or its own --slug jobs -
-        // a sibling project's job never appears in its health list.
+        // token can only clear its own --slug jobs (plus, on self-host only,
+        // the instance-wide ones) - a sibling project's job never appears in
+        // its health list, and on cloud a bare instance-wide name is refused
+        // in words before the lookup.
         const p = currentProject();
         try {
           await markCronFixed(job, p.slug);

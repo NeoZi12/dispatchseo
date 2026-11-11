@@ -237,6 +237,9 @@ function ownerRefusal(refused: string): string {
   // of 0, all written for an owner already.
   if (refused.startsWith("Your plan's") || refused.startsWith("This site gets none of your plan's")) return refused;
   if (refused.startsWith("This site's plan could not be read")) return refused;
+  // The one-start-at-a-time-per-owner lock (scheduler.ts
+  // startHostedRunClaimed): already an owner sentence, and it says when.
+  if (refused.startsWith("Another article for this account is starting")) return refused;
   if (refused.startsWith("plan inactive")) return "Your plan isn't active, so no new articles start. Reactivate it on the Billing page.";
   if (refused.startsWith("The hosted writer has no model credentials")) return "The writer isn't available on this server right now. Try again later.";
   return "We couldn't start it just now. Try again in a moment.";
@@ -319,6 +322,15 @@ export async function hostBlogHere(_prev: ActionState, fd: FormData): Promise<Ac
   if ("refused" in o) return o.refused;
   const { publishTarget } = await import("@/lib/projects");
   if (publishTarget(o.project) === "hosted") return state(true, "Your blog is already hosted by us.");
+  // Cloud: the same plan check as set_publish_target's `hosted` (the MCP
+  // twin) - switching mints the key that serves pages from our domain, so an
+  // unlaunched or lapsed site must not get it through the dashboard either.
+  const { isCloudMode } = await import("@/lib/cloud");
+  if (isCloudMode()) {
+    const { writerGate } = await import("@/lib/billing");
+    const gate = await writerGate(o.project.id);
+    if (!gate.allowed) return state(false, "The hosted blog needs a live plan on this site. Pick a plan, then switch to it.");
+  }
   const { switchToHostedBlog } = await import("@/lib/hosted-rewrite");
   // secondPath: a site whose /blog is already a real blog is hosted at
   // /articles instead, and told so. /blog itself is never offered back while

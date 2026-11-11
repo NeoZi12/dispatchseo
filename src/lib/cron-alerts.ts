@@ -671,6 +671,16 @@ export async function reportCronRun(
 // problem wasn't really fixed the next failed run or missed window re-raises
 // the banner on its own.
 export async function markCronFixed(job: string, projectSlug?: string): Promise<void> {
+  // Cloud, scoped to one site (mark_cron_fixed, the Home banner button): a
+  // bare job name is the operator's instance-wide cron, and an ok row
+  // against it would silence the banner and alert emails for every tenant.
+  // getCronHealth(slug) already hides those rows, so this was refused
+  // anyway - but as "no active alert", which reads as a typo. Say why.
+  // The operator clears them from the unscoped All sites strip
+  // (operator-actions.ts). Self-host is unchanged: the owner is the operator.
+  if (projectSlug && isCloudMode() && jobProjectSlug(job) === null) {
+    throw new Error("That job belongs to the DispatchSEO service, not to this site, so it can't be marked fixed from here.");
+  }
   const health = await getCronHealth(projectSlug);
   const issue = health.find((h) => h.job === job && (!h.ok || h.stale));
   if (!issue) {

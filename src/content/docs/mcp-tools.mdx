@@ -1635,7 +1635,10 @@ window re-raises the alert on its own.
 <Fields>
   <Field name="job" type="string" required="true">
     The exact job name from `get_cron_health`, including any
-    `--<project>` suffix. Fails if that job has no active alert.
+    `--<project>` suffix. Fails if that job has no active alert. On the
+    hosted version only this site's own `--<slug>` jobs can be cleared; an
+    instance-wide job name (no suffix) belongs to the DispatchSEO service
+    and is refused.
   </Field>
 </Fields>
 
@@ -1979,7 +1982,10 @@ cap (2 runs in flight, 3 starts per UTC day). On a hosted (autopilot)
 site it also takes the weekly slot the daily scheduler uses, atomically:
 it refuses past the plan's weekly quota or the spacing between articles, while the
 platform's keyword data budget is spent, and when another start for the
-site won the same moment. Fails with a `missing` list when the deploy has
+site won the same moment. On a plan whose articles are shared between the
+owner's sites, only one manual start per account goes through in any ten
+seconds; a second one is refused and can be retried a few seconds later.
+Fails with a `missing` list when the deploy has
 no Anthropic key; `WRITER_DRY_RUN=1` exercises the pipeline without any.
 
 <Fields>
