@@ -13,10 +13,11 @@ import {
   type Tier,
 } from "./billing";
 import { getProjectById, type Project } from "./projects";
-import { monthStartUtc } from "./autopilot/math";
+import { earlyResearchAllowed, monthStartUtc } from "./autopilot/math";
 import { rampInputs, rampSinceDay, rampVerdict } from "./autopilot/ramp";
 import { monthUsage, usageFor, weekUsageSince } from "./autopilot/usage";
-import { autoShares, customShareLimit, RAMP_PROBE_QUOTA, resolveShares, safeMaxFor, type ShareMode } from "./site-shares-core";
+import { readResearchState } from "./keyword-research-cache";
+import { autoShares, customShareLimit, RAMP_PROBE_QUOTA, safeMaxFor, safeMaxForSite, sharesForPool, type AutoShareSite, type ShareMode } from "./site-shares-core";
 
 export * from "./site-shares-core";
 
@@ -42,6 +43,10 @@ type ShareRow = {
   monthly_share: number | null;
   share_mode: string | null;
   writer_weekly_quota: number | null;
+  writer_mode: string | null;
+  writer_paused_at: string | null;
+  setup_connected_at: string | null;
+  next_article_at: string | null;
   created_at: string | null;
   site_launched_at: string | null;
   last_research_at: string | null;
@@ -50,7 +55,7 @@ type ShareRow = {
 async function readShareRows(ownerId: string): Promise<{ rows: ShareRow[]; error: string | null }> {
   const { data, error } = await db()
     .from("projects")
-    .select("id, slug, domain, monthly_share, share_mode, writer_weekly_quota, created_at, site_launched_at, last_research_at")
+    .select("id, slug, domain, monthly_share, share_mode, writer_weekly_quota, writer_mode, writer_paused_at, setup_connected_at, next_article_at, created_at, site_launched_at, last_research_at")
     .eq("owner_user_id", ownerId)
     .order("created_at", { ascending: true });
   if (error) return { rows: [], error: error.message };
@@ -74,18 +79,19 @@ async function siteSafeMax(projectId: string, now: Date): Promise<{ safeMax: num
   return { safeMax: safeMaxFor(verdict), reason: verdict.reason };
 }
 
-/** No live ideas (approved or waiting in the backlog) after a research run
- *  has happened: research keeps coming back empty for this site. */
+/** Research keeps coming back empty for this site: no live ideas
+ *  (approved, or waiting in the backlog) AND its research history says
+ *  research is not finding things (the last two runs each kept at most one
+ *  idea, math.ts earlyResearchAllowed). An empty queue between two healthy
+ *  research runs is not dry, and neither is a site never researched. */
 async function isDry(row: ShareRow): Promise<boolean> {
   if (!row.last_research_at) return false;
-  const { count, error } = await db()
-    .from("suggestions")
-    .select("id", { count: "exact", head: true })
-    .eq("project_id", row.id)
-    .eq("type", "guide")
-    .in("status", ["approved", "pending"]);
+  const [{ count, error }, state] = await Promise.all([
+    db().from("suggestions").select("id", { count: "exact", head: true }).eq("project_id", row.id).eq("type", "guide").in("status", ["approved", "pending"]),
+    readResearchState(row.id),
+  ]);
   if (error) throw new Error(`could not count ${row.slug}'s ideas: ${error.message}`);
-  return (count ?? 0) === 0;
+  return (count ?? 0) === 0 && !earlyResearchAllowed(state);
 }
 
 const isCustomRow = (r: { share_mode: string | null; monthly_share: number | null }) => r.share_mode === "custom" && r.monthly_share != null;
@@ -112,38 +118,75 @@ export async function rebalanceOwnerShares(
     if (error) throw new Error(error);
     const covered = rows.slice(0, plan.sitesLimit).filter((r) => !outsidePool(r));
     if (!covered.length) return { shares: {}, held: plan.pool };
-    const inputs = await Promise.all(
-      covered.map(async (r) => {
-        // A custom site keeps its number whatever its ramp says (cadence()
-        // still paces it), so only automatic sites need the two reads.
-        const custom = isCustomRow(r);
-        const [ramp, dry] = custom ? [null, false] : await Promise.all([siteSafeMax(r.id, now), isDry(r)]);
-        return {
-          id: r.id,
-          share_mode: r.share_mode,
-          monthly_share: r.monthly_share,
-          safeMax: ramp ? ramp.safeMax : Infinity,
-          dry,
-          order: Date.parse(r.site_launched_at ?? r.created_at ?? "") || 0,
-        };
-      }),
-    );
-    // Oldest first by when the SITE launched, else when it joined: the site
-    // with the longest history is the one Google trusts with more.
-    inputs.sort((a, b) => a.order - b.order);
-    const result = autoShares({ pool: plan.pool, sites: inputs });
-    const writes = covered.filter((r) => !isCustomRow(r) && result.shares.get(r.id) !== r.monthly_share);
+    // Pinned = a site whose stored number this pass must keep: a Custom
+    // site (cadence() still paces it), or an automatic one whose ramp could
+    // not be read - a read failure is no evidence to cut a share on.
+    const pinned = new Set<string>();
+    let result: { shares: Map<string, number>; held: number };
+    if (covered.length === 1) {
+      // One site alone always has the whole pool (sharesForPool); the ramp
+      // does the limiting week by week.
+      result = { shares: new Map([[covered[0].id, plan.pool]]), held: 0 };
+      if (isCustomRow(covered[0])) pinned.add(covered[0].id);
+    } else {
+      const since = monthStartUtc(now).toISOString();
+      const inputs = await Promise.all(
+        covered.map(async (r): Promise<AutoShareSite & { order: number }> => {
+          const order = Date.parse(r.site_launched_at ?? r.created_at ?? "") || 0;
+          if (isCustomRow(r)) {
+            pinned.add(r.id);
+            return { id: r.id, share_mode: "custom", monthly_share: r.monthly_share, safeMax: Infinity, dry: false, order };
+          }
+          // The month gate's own per-site count (the site's quota bucket), so
+          // a share is never cut below what the site already used.
+          const [inputsRead, dry, used] = await Promise.all([rampInputs(r.id, rampSinceDay(now)), isDry(r), weekUsageSince(r.id, since)]);
+          if (used.readError) throw new Error(`could not count ${r.slug}'s month: ${used.readError}`);
+          if (!inputsRead) {
+            // Keep the stored number. With none stored, the slowest safe cap
+            // stands in for the siblings' arithmetic only; nothing is written.
+            pinned.add(r.id);
+            return r.monthly_share != null
+              ? { id: r.id, share_mode: "custom", monthly_share: r.monthly_share, safeMax: Infinity, dry: false, order }
+              : { id: r.id, share_mode: "auto", monthly_share: null, safeMax: 4, dry, used: used.count, order };
+          }
+          // A paused site, or one whose setup isn't finished, cannot write:
+          // its articles go to the siblings this month.
+          const ramp = safeMaxFor(rampVerdict(inputsRead, RAMP_PROBE_QUOTA, now));
+          const safeMax = safeMaxForSite({ paused: Boolean(r.writer_paused_at), setupDone: Boolean(r.setup_connected_at) }, ramp);
+          return { id: r.id, share_mode: r.share_mode, monthly_share: r.monthly_share, safeMax, dry, used: used.count, order };
+        }),
+      );
+      // Oldest first by when the SITE launched, else when it joined: the site
+      // with the longest history is the one Google trusts with more.
+      inputs.sort((a, b) => a.order - b.order);
+      result = autoShares({ pool: plan.pool, sites: inputs });
+    }
+    const writes = covered.filter((r) => !pinned.has(r.id) && result.shares.get(r.id) !== r.monthly_share);
     const failed: string[] = [];
+    const nowIso = now.toISOString();
     await Promise.all(
       writes.map(async (r) => {
+        const next = result.shares.get(r.id) ?? 0;
         // Only while the site is still automatic: an owner's Custom set in
         // the same instant wins.
         const { error: wErr } = await db()
           .from("projects")
-          .update({ monthly_share: result.shares.get(r.id) ?? 0 })
+          .update({ monthly_share: next })
           .eq("id", r.id)
           .eq("share_mode", r.share_mode ?? "auto");
-        if (wErr) failed.push(`${r.slug}: ${wErr.message}`);
+        if (wErr) {
+          failed.push(`${r.slug}: ${wErr.message}`);
+          return;
+        }
+        // A RAISED share must be usable today: a date stamped in the future
+        // (a month or week the old share had used up) would hold the claim
+        // until then. Same conditional clear setSiteShare uses; every start
+        // still passes the month, ramp, week and spacing rules.
+        const raised = r.monthly_share == null || next > r.monthly_share;
+        if (raised && r.next_article_at && r.next_article_at > nowIso) {
+          const { error: cErr } = await db().from("projects").update({ next_article_at: null }).eq("id", r.id).gt("next_article_at", nowIso);
+          if (cErr) failed.push(`${r.slug} (next_article_at): ${cErr.message}`);
+        }
       }),
     );
     if (failed.length) console.warn(`[site-shares] some shares were not saved for owner ${ownerId}: ${failed.join("; ")}`);
@@ -181,7 +224,14 @@ export async function setSiteShare(
   if (error) return { error: "We couldn't read your sites just now. Try again in a moment." };
   const row = rows.find((r) => r.id === project.id);
   if (!row) return { error: "That site isn't on this account." };
-  if (outsidePool(row)) return { error: "This site's pace is set by DispatchSEO by hand, so it sits outside your plan's split." };
+  if (outsidePool(row)) {
+    return {
+      error:
+        row.writer_mode === "hosted"
+          ? "This site's pace is set by DispatchSEO by hand, so it sits outside your plan's split."
+          : "This site's articles are written by your own agent, not by DispatchSEO, so it sits outside your plan's split.",
+    };
+  }
   const covered = rows.slice(0, plan.sitesLimit).filter((r) => !outsidePool(r));
   if (!covered.some((r) => r.id === project.id)) {
     return { error: "This site isn't covered by your plan right now, so it has no share to set. Upgrade, or remove a site you no longer need." };
@@ -275,7 +325,7 @@ export async function siteShareReport(projectId: string, now = new Date()): Prom
   // one site is the owner's oldest (billing.ts writerGate).
   const limit = isActive(sub) ? sitesLimitOf(sub!) : 1;
   const coveredRows = rows.slice(0, limit);
-  const resolved = pool != null ? resolveShares(pool, coveredRows.filter((r) => !outsidePool(r))) : new Map<string, number>();
+  const resolved = pool != null ? sharesForPool(pool, coveredRows.filter((r) => !outsidePool(r))) : new Map<string, number>();
   const held = pool != null ? Math.max(0, pool - [...resolved.values()].reduce((a, b) => a + b, 0)) : 0;
   const [siteCounts, ownerMonth] = await Promise.all([
     Promise.all(rows.map((r) => usageFor([r.id], since))),
@@ -318,15 +368,16 @@ export type SiteMonthCarry = { ownerId: string; month: string; articleStarts: nu
  * and answers null, and the delete goes ahead.
  */
 export async function measureSiteMonthCarry(
-  project: Pick<Project, "id"> & { owner_user_id?: string | null; writer_weekly_quota?: number | null },
+  project: Pick<Project, "id" | "writer_mode"> & { owner_user_id?: string | null; writer_weekly_quota?: number | null },
   now = new Date(),
 ): Promise<SiteMonthCarry | null> {
   try {
     if (!isCloudMode() || !project.owner_user_id) return null;
     const start = monthStartUtc(now);
     const [usage, dfs] = await Promise.all([
-      // A site on the operator's override is not counted in the pool while
-      // it lives, so it adds nothing to the pool when it goes.
+      // A site outside the pool (the operator's override, or not written by
+      // the hosted writer) is not counted in it while it lives, so it adds
+      // nothing to the pool when it goes.
       outsidePool(project) ? Promise.resolve({ count: 0, readError: undefined as string | undefined }) : usageFor([project.id], start.toISOString()),
       db().from("dataforseo_usage").select("cost_microusd").eq("project_id", project.id).gte("day", start.toISOString().slice(0, 10)),
     ]);

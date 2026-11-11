@@ -5,7 +5,13 @@
 //
 //   node --experimental-strip-types scripts/site-shares-test.mjs
 //
-// No env, no network, no database: the module under test has no imports.
+// No env, no network, no database. site-shares-core.ts has no imports;
+// autopilot/math.ts imports its neighbours without a file extension (the
+// bundler resolves them), so a small resolve hook adds ".ts" for relative
+// imports that name an existing .ts file.
+import { registerHooks } from "node:module";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   autoShares,
   customShareLimit,
@@ -13,7 +19,20 @@ import {
   paceFor,
   resolveShares,
   safeMaxFor,
+  safeMaxForSite,
+  sharesForPool,
 } from "../src/lib/site-shares-core.ts";
+
+registerHooks({
+  resolve(spec, ctx, next) {
+    if ((spec.startsWith("./") || spec.startsWith("../")) && !/\.[cm]?[jt]sx?$/.test(spec) && ctx.parentURL) {
+      const url = new URL(spec + ".ts", ctx.parentURL);
+      if (existsSync(fileURLToPath(url))) return next(url.href, ctx);
+    }
+    return next(spec, ctx);
+  },
+});
+const { researchComingBackEmpty, researchEveryMs, RESEARCH_EVERY_MS, SLOW_RESEARCH_EVERY_MS } = await import("../src/lib/autopilot/math.ts");
 
 let failed = 0;
 let passed = 0;
@@ -119,6 +138,52 @@ const site = (id, extra = {}) => ({ id, share_mode: "auto", monthly_share: null,
     eq([...r.shares.values()].every((v) => v >= 0) && sum(r.shares) + r.held === pool, true, `autoShares accounts for the whole pool of ${pool}`);
   }
 }
+
+// --- the used floor (fix 1d): a share never drops below this month's use ---
+{
+  const r = autoShares({ pool: 15, sites: [site("a", { safeMax: 4, used: 6 }), site("b"), site("c")] });
+  eq(r.shares.get("a"), 6, "1d: a site that used 6 keeps 6 even when its ramp now caps it at 4");
+  eq(sum(r.shares) + r.held, 15, "1d: the floor still accounts for the whole pool");
+}
+{
+  const r = autoShares({ pool: 5, sites: [site("c1", { share_mode: "custom", monthly_share: 4 }), site("a", { used: 3 })] });
+  eq({ ...asObj(r.shares), held: r.held }, { c1: 4, a: 1, held: 0 }, "1d: the floor is limited by what the pool allows");
+}
+{
+  const r = autoShares({ pool: 15, sites: [site("a", { safeMax: 0, used: 2 }), site("b")] });
+  eq({ ...asObj(r.shares), held: r.held }, { a: 2, b: 13, held: 0 }, "1d: a paused site keeps what it already used, nothing more");
+}
+
+// --- the dry remainder (fix 1e): held only when no site may safely take it ---
+{
+  const r = autoShares({ pool: 15, sites: [site("a", { safeMax: 4 }), site("b", { dry: true })] });
+  eq({ ...asObj(r.shares), held: r.held }, { a: 4, b: 11, held: 0 }, "1e: articles the dry cap held back go to the dry site");
+}
+{
+  const r = autoShares({ pool: 15, sites: [site("a", { safeMax: 4 }), site("b", { dry: true, safeMax: 4 })] });
+  eq({ ...asObj(r.shares), held: r.held }, { a: 4, b: 4, held: 7 }, "1e: the dry remainder still respects the safe maximum");
+}
+{
+  const r = autoShares({ pool: 15, sites: [site("a", { dry: true }), site("b", { dry: true }), site("c", { safeMax: 4 })] });
+  eq({ ...asObj(r.shares), held: r.held }, { a: 6, b: 5, c: 4, held: 0 }, "1e: the dry remainder goes round-robin, oldest first");
+}
+
+// --- one pooled site always gets the whole pool (fix 1b) ---
+eq(asObj(sharesForPool(15, [{ id: "a", monthly_share: 4 }])), { a: 15 }, "1b: a single site's stored 4 never cuts its month below the pool");
+eq(asObj(sharesForPool(15, [{ id: "a", monthly_share: 4 }, { id: "b", monthly_share: null }])), { a: 4, b: 11 }, "1b: two sites resolve as stored");
+
+// --- paused or unfinished sites take nothing from the pool (fix 2) ---
+eq(safeMaxForSite({ paused: true, setupDone: true }, Infinity), 0, "a paused site's safe maximum is 0");
+eq(safeMaxForSite({ paused: false, setupDone: false }, 9), 0, "a site whose setup isn't finished has a safe maximum of 0");
+eq(safeMaxForSite({ paused: false, setupDone: true }, 9), 9, "a running, set-up site keeps its ramp's maximum");
+
+// --- research slows to four-weekly only when the last two runs kept nothing (fix 4) ---
+eq(researchComingBackEmpty({ recent_added: [0, 0], research_backoff_until: null }), true, "two empty runs: coming back empty");
+eq(researchComingBackEmpty({ recent_added: [1, 0], research_backoff_until: null }), false, "a run that kept one idea is still finding things");
+eq(researchComingBackEmpty({ recent_added: [0], research_backoff_until: null }), false, "one run is not a history");
+eq(researchComingBackEmpty({ recent_added: [], research_backoff_until: null }), false, "never researched is not empty");
+eq(researchEveryMs({ recent_added: [0, 0], research_backoff_until: null }), SLOW_RESEARCH_EVERY_MS, "two empty runs: every four weeks");
+eq(researchEveryMs({ recent_added: [1, 1], research_backoff_until: null }), RESEARCH_EVERY_MS, "one idea a run: weekly as before");
 
 // --- safeMaxFor: the ramp's weekly ceiling as a monthly cap ---
 eq(safeMaxFor({ quota: 1, stage: "ramp-1" }), 4, "ramp quota 1 -> 4 a month");

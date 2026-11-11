@@ -236,6 +236,7 @@ function ownerRefusal(refused: string): string {
   // has used its N articles for this month" is caught above) and the share
   // of 0, all written for an owner already.
   if (refused.startsWith("Your plan's") || refused.startsWith("This site gets none of your plan's")) return refused;
+  if (refused.startsWith("This site's plan could not be read")) return refused;
   if (refused.startsWith("plan inactive")) return "Your plan isn't active, so no new articles start. Reactivate it on the Billing page.";
   if (refused.startsWith("The hosted writer has no model credentials")) return "The writer isn't available on this server right now. Try again later.";
   return "We couldn't start it just now. Try again in a moment.";
@@ -253,6 +254,7 @@ export async function retryArticle(_prev: ActionState, fd: FormData): Promise<Ac
   const [{ projectPlan }, { missingCredentials }] = await Promise.all([import("@/lib/billing"), import("@/lib/writer/models")]);
   const plan = await projectPlan(project.id).catch(() => null);
   if (!plan) return state(false, "We couldn't check your plan just now. Try again in a moment.");
+  if (plan.readError) return state(false, "This site's plan could not be read just now, so no article starts until it can; try again in a minute.");
   // A covered site with no share of the pool this month is not a lapsed plan.
   if (plan.poolPerMonth != null && plan.articlesPerMonth === 0) {
     return state(false, `This site gets none of your plan's ${plan.poolPerMonth} articles this month. Change how they're split between your sites in Settings.`);

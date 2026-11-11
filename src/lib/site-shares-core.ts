@@ -63,14 +63,32 @@ export function resolveShares(pool: number, sites: StoredShare[]): Map<string, n
   return out;
 }
 
+/**
+ * The shares projectPlan acts on: resolveShares, except that an owner with
+ * exactly ONE site in the pool always gives that site the whole pool,
+ * whatever its stored number says. A single site has no sibling to hand
+ * articles to, so a stored number below the pool could only take articles
+ * from a paying customer; the ramp already paces a young site week by week.
+ */
+export function sharesForPool(pool: number, sites: StoredShare[]): Map<string, number> {
+  if (sites.length === 1) return new Map([[sites[0].id, Math.max(0, Math.floor(pool))]]);
+  return resolveShares(pool, sites);
+}
+
 export type AutoShareSite = {
   id: string;
   share_mode: string | null | undefined;
   monthly_share: number | null | undefined;
   /** The most this site may take this month (safeMaxFor); Infinity = no cap. */
   safeMax: number;
-  /** Research keeps coming back empty: no live ideas after a research run. */
+  /** Research keeps coming back empty: no live ideas, and the last two
+   *  research runs each kept at most one. */
   dry: boolean;
+  /** Articles already counted for this site this month (the month gate's
+   *  own count). Its share never drops below what it has used, as far as
+   *  the pool allows: a share cut under the used count would only strand
+   *  the site until the 1st. Absent = 0. */
+  used?: number;
 };
 
 /** The most a "dry" site gets automatically: articles nobody can find
@@ -80,12 +98,18 @@ export const DRY_SITE_MAX = 2;
 /**
  * The automatic split. `sites` oldest first (site_launched_at ?? created_at).
  *   1. Custom sites keep min(their share, what is left), in order.
- *   2. An auto site's cap is its safe maximum, and 2 when it is dry.
- *   3. Every auto site that may take one gets 1, oldest first, while the
- *      pool lasts.
- *   4. Then +1 round-robin, oldest first, to auto sites under their cap,
+ *   2. Every auto site starts at what it has already used this month, as
+ *      far as the pool allows (oldest first).
+ *   3. An auto site's cap is its safe maximum, and 2 when it is dry.
+ *   4. Every auto site still at 0 that may take one gets 1, oldest first,
+ *      while the pool lasts.
+ *   5. Then +1 round-robin, oldest first, to auto sites under their cap,
  *      until the pool is spent or every site is capped.
- *   5. Whatever is left is HELD: not given to anyone this month.
+ *   6. Still some left, and a site was held back ONLY by the dry cap: the
+ *      rest goes round-robin to those sites, within their safe maximum. A
+ *      dry niche is a reason to give a site less, never to leave articles
+ *      nobody takes.
+ *   7. Whatever is left is HELD: no site may safely take it this month.
  * A custom site with no number stored counts as auto.
  */
 export function autoShares(input: { pool: number; sites: AutoShareSite[] }): { shares: Map<string, number>; held: number } {
@@ -99,29 +123,45 @@ export function autoShares(input: { pool: number; sites: AutoShareSite[] }): { s
     left -= v;
   }
   const auto = input.sites.filter((s) => !isCustom(s));
-  const cap = new Map(auto.map((s) => [s.id, Math.max(0, Math.min(s.safeMax, s.dry ? DRY_SITE_MAX : Infinity))]));
-  for (const s of auto) shares.set(s.id, 0);
+  const safe = (s: AutoShareSite) => Math.max(0, s.safeMax);
+  const cap = new Map(auto.map((s) => [s.id, Math.min(safe(s), s.dry ? DRY_SITE_MAX : Infinity)]));
+  for (const s of auto) {
+    const floor = Math.min(Math.max(0, Math.floor(s.used ?? 0)), left);
+    shares.set(s.id, floor);
+    left -= floor;
+  }
   for (const s of auto) {
     if (left <= 0) break;
-    if ((cap.get(s.id) ?? 0) >= 1) {
+    if ((shares.get(s.id) ?? 0) === 0 && (cap.get(s.id) ?? 0) >= 1) {
       shares.set(s.id, 1);
       left--;
     }
   }
-  let gave = true;
-  while (left > 0 && gave) {
-    gave = false;
-    for (const s of auto) {
-      if (left <= 0) break;
-      const have = shares.get(s.id) ?? 0;
-      if (have < (cap.get(s.id) ?? 0)) {
-        shares.set(s.id, have + 1);
-        left--;
-        gave = true;
+  const roundRobin = (sites: AutoShareSite[], limit: (s: AutoShareSite) => number) => {
+    let gave = true;
+    while (left > 0 && gave) {
+      gave = false;
+      for (const s of sites) {
+        if (left <= 0) break;
+        const have = shares.get(s.id) ?? 0;
+        if (have < limit(s)) {
+          shares.set(s.id, have + 1);
+          left--;
+          gave = true;
+        }
       }
     }
-  }
+  };
+  roundRobin(auto, (s) => cap.get(s.id) ?? 0);
+  roundRobin(auto.filter((s) => s.dry), safe);
   return { shares, held: left };
+}
+
+/** A covered site that cannot write this month - paused, or setup not
+ *  finished - may take nothing from the pool: its articles go to the
+ *  siblings. (One site alone still gets the whole pool: sharesForPool.) */
+export function safeMaxForSite(site: { paused: boolean; setupDone: boolean }, rampSafeMax: number): number {
+  return site.paused || !site.setupDone ? 0 : rampSafeMax;
 }
 
 /** The ramp's weekly ceiling as a monthly cap: one a week -> 4 a month, two

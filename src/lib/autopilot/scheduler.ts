@@ -189,6 +189,9 @@ export async function runScheduler(
   await returnSlotAfterOurFailure(project, now);
 
   const plan = await projectPlan(project.id);
+  // The owner's sites could not be read, so the site's share is unknown:
+  // wait for tomorrow's pass quietly rather than act on a guessed 0.
+  if (plan.readError) return { skipped: `this site's plan could not be read (${plan.readError})`, next_article_at: project.next_article_at, profile: profileOutcome };
   // The ramp and index-rate brake cap the plan's weekly number (ramp.ts).
   const ramp = await rampFor(project.id, plan.articlesPerWeek, now);
   if (ramp.stage === "pause") {
@@ -199,10 +202,15 @@ export async function runScheduler(
   // monthly pool, and the pool across their sites. Quiet like "quota met":
   // a used month is the plan working, and the next one starts on the 1st.
   // A month that could not be counted waits for tomorrow's pass.
+  //
+  // next_article_at is NOT written here. The row's date is a claim marker
+  // (claimSlot only takes a slot that is unset or due), so stamping the 1st
+  // stranded the site there even when its share rose the same day - a new
+  // site joining, a sibling paused, an owner's Custom change. Each daily
+  // pass asks the month gate again instead; the date rides in the outcome.
   const month = await monthAllowance(project, plan, now);
   if (month && "readError" in month) return { skipped: `this month's usage could not be read (${month.readError})`, next_article_at: project.next_article_at, profile: profileOutcome };
   if (month) {
-    await setNextArticleAt(project.id, month.nextAt);
     return { skipped: month.reason, next_article_at: month.nextAt.toISOString(), profile: profileOutcome };
   }
   const usage = await weekUsage(project.id, now);

@@ -227,6 +227,11 @@ export async function monthAllowance(
   return reason ? { reason, nextAt: nextMonthStartUtc(now), share: plan.articlesPerMonth, pool: plan.poolPerMonth } : null;
 }
 
+/** When the site's plan (its owner's sites, its share) could not be read:
+ *  a refusal for now, never "your plan isn't active" and never a share of 0.
+ *  autopilot-actions.ts retryArticle says the same. */
+export const PLAN_READ_ERROR = "This site's plan could not be read just now, so no article starts until it can; try again in a minute.";
+
 /** The owner-facing sentence for a month-gate refusal. writerStartGate
  *  returns it, and autopilot-actions.ts ownerRefusal passes both shapes
  *  through by their opening words ("This site has used its", "Your plan's"). */
@@ -287,7 +292,8 @@ export async function writerStartGate(project: Project, opts: { gated?: boolean 
   if (isCloudMode()) {
     if (!polarConfigured()) return "plan inactive: billing is not configured on this deploy, so no article can be started.";
     const gate = await writerGate(project.id);
-    if (!gate.allowed) return `plan inactive: ${gate.reason}.`;
+    // "could not read" is a blip, not a lapsed plan (billing.ts planGate).
+    if (!gate.allowed) return gate.reason.startsWith("could not read") ? PLAN_READ_ERROR : `plan inactive: ${gate.reason}.`;
     // The free tier's durable ledger (free-gate.ts): starts are counted per
     // OWNER across every site they ever had, so deleting and re-adding a site
     // never resets the month or the spacing. Fails closed.
@@ -298,6 +304,7 @@ export async function writerStartGate(project: Project, opts: { gated?: boolean 
     }
   }
   const plan = await projectPlan(project.id);
+  if (plan.readError) return PLAN_READ_ERROR;
   // A covered paid site whose share of the pool is 0 this month (the owner
   // gave the pool to other sites by hand, or the ramp holds it): not a
   // lapsed plan, so it must not read as one.

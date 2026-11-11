@@ -198,19 +198,28 @@ export async function resumeWriter(projectId: string): Promise<void> {
     .from("projects")
     .update({ writer_paused_at: null, writer_pause_reason: null, writer_resumed_at: resumedAt })
     .eq("id", projectId)
-    .select("slug")
+    .select("slug, owner_user_id")
     .maybeSingle();
   if (error && /writer_resumed_at/.test(error.message)) {
     ({ data, error } = await db()
       .from("projects")
       .update({ writer_paused_at: null, writer_pause_reason: null })
       .eq("id", projectId)
-      .select("slug")
+      .select("slug, owner_user_id")
       .maybeSingle());
   }
   if (error) throw new Error(`could not resume the writer: ${error.message}`);
   const slug = (data as { slug: string } | null)?.slug;
   if (!slug) return;
+  // Multi-site plans: a paused site held no share of its owner's pool (the
+  // rebalance gives a paused site's articles to its siblings). Rebalance
+  // now, so a resumed site has a share the same day rather than after the
+  // next daily pass. Never throws (site-shares.ts).
+  const ownerId = (data as { owner_user_id?: string | null } | null)?.owner_user_id;
+  if (ownerId) {
+    const { rebalanceOwnerShares } = await import("@/lib/site-shares");
+    await rebalanceOwnerShares(ownerId);
+  }
   // Articles that finished while the Dispatcher was paused held at the
   // publish job (job-handlers/publish.ts); send them on now. Waiting for
   // review stays waiting - that one is the owner's Publish, not ours.

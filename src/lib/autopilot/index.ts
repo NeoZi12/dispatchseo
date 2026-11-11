@@ -62,7 +62,16 @@ export type AutopilotPass = {
   hadError?: boolean;
 };
 
-export async function runAutopilotPass(project: Project, now = new Date()): Promise<AutopilotPass> {
+export type AutopilotPassOptions = {
+  /** Runs the scheduler step (the only one that starts an article). The
+   *  autopilot cron passes a per-OWNER queue here, so one owner's sites
+   *  never read the shared monthly pool as unused in the same instant,
+   *  while every other step of every pass still runs in parallel. Absent =
+   *  call it directly. */
+  schedule?: <T>(fn: () => Promise<T>) => Promise<T>;
+};
+
+export async function runAutopilotPass(project: Project, now = new Date(), opts: AutopilotPassOptions = {}): Promise<AutopilotPass> {
   if (writerMode(project) !== "hosted") return { skipped: "not a hosted project" };
   // A dry-run deploy answers every model call with canned text. Its articles
   // and "approved" ideas must never reach a real customer's site, so the
@@ -79,9 +88,9 @@ export async function runAutopilotPass(project: Project, now = new Date()): Prom
   // article: the queue usually still holds ideas. It is reported, loudly, and
   // the scheduler runs anyway.
   let research: ResearchOutcome | { error: string } | undefined;
-  // Weekly - or every four weeks on a niche whose last two runs each kept at
-  // most one idea (math.ts researchEveryMs): a dry site's weekly run bought
-  // the same empty Labs rows again. A read error reads as "still finding
+  // Weekly - or every four weeks on a niche whose last two runs each kept
+  // nothing (math.ts researchEveryMs): such a site's weekly run bought the
+  // same empty Labs rows again. A read error reads as "still finding
   // things", which is the weekly run as before.
   const researchState = await readResearchState(project.id);
   const stale = !project.last_research_at || now.getTime() - Date.parse(project.last_research_at) >= researchEveryMs(researchState);
@@ -95,7 +104,9 @@ export async function runAutopilotPass(project: Project, now = new Date()): Prom
   // the platform account). And it only goes ahead while research is still
   // finding things (math.ts earlyResearchAllowed): on a thin niche the judge
   // rejects nearly every candidate, so paperbot's short queue bought ten runs
-  // in 30 days for a handful of kept ideas. The weekly run is never gated.
+  // in 30 days for a handful of kept ideas. The regular run is not gated by
+  // that; it only slows to four-weekly once the last two runs kept nothing
+  // (researchEveryMs above).
   const floorOn =
     !project.last_research_at ||
     now.getTime() - Date.parse(project.last_research_at) >= EARLY_RESEARCH_FLOOR_DAYS * DAY_MS;
@@ -121,7 +132,8 @@ export async function runAutopilotPass(project: Project, now = new Date()): Prom
   const promoted = await projectPlan(project.id)
     .then((plan) => promoteBacklog(project.id, plan.articlesPerWeek))
     .catch(() => 0);
-  const scheduler = await runScheduler(project, now, { researchedThisRun: researched });
+  const schedule = () => runScheduler(project, now, { researchedThisRun: researched });
+  const scheduler = await (opts.schedule ? opts.schedule(schedule) : schedule());
 
   const skips = [
     research && "skipped" in research ? research.skipped : "",

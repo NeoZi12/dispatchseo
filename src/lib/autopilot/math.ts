@@ -770,7 +770,8 @@ export function backlogNeeded(liveIdeaCount: number, target = BACKLOG_TARGET): n
  *  (paperbot: 267 of 278 in 30 days), so a short queue used to re-buy eight
  *  seeds of Labs data every other day for one or two kept ideas. When the
  *  last two runs each kept at most one idea, the early run waits for the
- *  weekly one; the weekly run is never gated here. */
+ *  regular one. The regular run is not gated here; researchEveryMs below
+ *  slows IT to four-weekly only when the last two runs kept nothing. */
 export const EARLY_RESEARCH_FLOOR_DAYS = 4;
 export const EARLY_RESEARCH_MIN_RECENT_ADDED = 2;
 export function earlyResearchAllowed(s: BackoffState): boolean {
@@ -784,15 +785,20 @@ export function earlyResearchAllowed(s: BackoffState): boolean {
 export const RESEARCH_EVERY_MS = 6.5 * DAY_MS;
 /** ...and this long on a niche that keeps coming back empty. */
 export const SLOW_RESEARCH_EVERY_MS = 28 * DAY_MS;
+/** The last two research runs (at least two exist) each kept NO idea at
+ *  all: the niche has nothing winnable left for now. Narrower than
+ *  !earlyResearchAllowed (at most one each), which only holds back the
+ *  early runs - a run that keeps one idea a week is still worth its week. */
+export function researchComingBackEmpty(s: BackoffState): boolean {
+  return s.recent_added.length >= 2 && s.recent_added[0] === 0 && s.recent_added[1] === 0;
+}
 /** How long until a site's next regular research run (multi-site plans,
- *  2026-11-11). Weekly while research is still finding things; every four
- *  weeks once the last two runs each kept at most one idea
- *  (earlyResearchAllowed), because re-buying the same Labs rows on a thin
- *  niche every week changes nothing - and a site that keeps coming back dry
- *  is exactly the one the pool split hands fewer articles. Read by the daily
+ *  2026-11-11). Weekly as before; every four weeks only once the last two
+ *  runs each kept nothing (researchComingBackEmpty), because re-buying the
+ *  same empty Labs rows every week changes nothing. Read by the daily
  *  pass's "stale" check and the scheduler's "researched recently". */
 export function researchEveryMs(s: BackoffState): number {
-  return earlyResearchAllowed(s) ? RESEARCH_EVERY_MS : SLOW_RESEARCH_EVERY_MS;
+  return researchComingBackEmpty(s) ? SLOW_RESEARCH_EVERY_MS : RESEARCH_EVERY_MS;
 }
 export function backlogShort(liveIdeaCount: number, articlesPerWeek: number): boolean {
   return liveIdeaCount < Math.max(4, BACKLOG_REFILL_WEEKS * Math.max(0, Math.floor(articlesPerWeek)));

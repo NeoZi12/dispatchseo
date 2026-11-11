@@ -4,7 +4,7 @@ import { db } from "./db";
 import { isCloudMode } from "./cloud";
 import { captureServer } from "./posthog-server";
 import { REASON_LABELS, type CancellationReason } from "./cancellation-reasons";
-import { paceFor, resolveShares } from "./site-shares-core";
+import { paceFor, sharesForPool } from "./site-shares-core";
 
 // Polar billing for CLOUD_MODE (Neo's 2026-07-22 decision: Polar as merchant
 // of record). One subscriptions row per user (migration 0031), upserted by
@@ -910,12 +910,14 @@ export async function writerGate(projectId: string): Promise<{ allowed: true; fr
 }
 
 /** One of an owner's sites as the plan arithmetic needs it: coverage order,
- *  the monthly share (0090) and the operator's per-site override (0070). */
+ *  the monthly share (0090), the operator's per-site override (0070) and who
+ *  writes its articles (0066). */
 export type OwnedSite = {
   id: string;
   monthly_share: number | null;
   share_mode: string | null;
   writer_weekly_quota: number | null;
+  writer_mode: string | null;
   created_at: string | null;
 };
 
@@ -926,21 +928,25 @@ const ownedSitesMemo = cache(() => new Map<string, Promise<{ rows: OwnedSite[]; 
 
 /** The owner's sites, oldest first (the order coverage is decided in), with
  *  the read error kept apart from "none" for the gates that must refuse on
- *  it. A DB that hasn't run 0090 (or 0070) reads the ids alone: every share
- *  then reads as "not allocated yet". */
+ *  it. A DB that hasn't run 0090 reads the pre-0090 shape (every share then
+ *  "not allocated yet", an even split); one older still reads the ids alone,
+ *  and every site then reads as outside the pool (no writer_mode). */
 export async function readOwnedSites(ownerId: string): Promise<{ rows: OwnedSite[]; error: string | null }> {
   const memo = ownedSitesMemo();
   const hit = memo.get(ownerId);
   if (hit) return hit;
   const read = (async (): Promise<{ rows: OwnedSite[]; error: string | null }> => {
     const q = (cols: string) => db().from("projects").select(cols).eq("owner_user_id", ownerId).order("created_at", { ascending: true });
-    let res = await q("id, monthly_share, share_mode, writer_weekly_quota, created_at");
-    if (res.error && /does not exist|could not find/i.test(res.error.message)) res = await q("id, created_at");
+    const missing = (e: { message: string } | null) => Boolean(e && /does not exist|could not find/i.test(e.message));
+    let res = await q("id, monthly_share, share_mode, writer_weekly_quota, writer_mode, created_at");
+    if (missing(res.error)) res = await q("id, writer_weekly_quota, writer_mode, created_at");
+    if (missing(res.error)) res = await q("id, created_at");
     const rows = ((res.data ?? []) as unknown as Array<Partial<OwnedSite> & { id: string }>).map((r) => ({
       id: r.id,
       monthly_share: typeof r.monthly_share === "number" ? r.monthly_share : null,
       share_mode: r.share_mode ?? null,
       writer_weekly_quota: typeof r.writer_weekly_quota === "number" ? r.writer_weekly_quota : null,
+      writer_mode: r.writer_mode ?? null,
       created_at: r.created_at ?? null,
     }));
     if (res.error || !rows.length) memo.delete(ownerId);
@@ -960,11 +966,19 @@ async function ownedProjectsOldestFirst(ownerId: string): Promise<string[]> {
   return (await readOwnedSites(ownerId)).rows.map((r) => r.id);
 }
 
-/** Does a site run outside the plan's pool? The operator's per-site weekly
- *  number (0070) replaces the plan's pace for that site altogether, so it
- *  takes no share and is not counted against the owner's pool. */
-export function outsidePool(site: { writer_weekly_quota?: number | null }): boolean {
-  return quotaOf(site.writer_weekly_quota) !== null;
+/** Does a site run outside the plan's pool? Two kinds do, and both take no
+ *  share and are not counted against the owner's month:
+ *   - the operator's per-site weekly number (0070), which replaces the
+ *     plan's pace for that site altogether;
+ *   - a site whose articles are not written by the hosted writer
+ *     (writer_mode other than 'hosted': the owner's own agent, or a DB
+ *     without the column). It cannot use a share, so holding one would
+ *     only take articles from its hosted siblings; it keeps the tier's pace
+ *     with no month gate, as before multi-site plans.
+ *  writer_mode is required on purpose: a caller that forgets to read it
+ *  must not silently put every site inside the pool. */
+export function outsidePool(site: { writer_weekly_quota?: number | null; writer_mode: string | null | undefined }): boolean {
+  return quotaOf(site.writer_weekly_quota) !== null || site.writer_mode !== "hosted";
 }
 
 // Is this project covered by its owner's current plan? Crons call this per
@@ -983,10 +997,14 @@ export async function planGate(
   if (!ownerId) return { allowed: true };
   // Independent reads, so they go together: one round trip instead of two
   // on the path every hosted page's report walks.
-  const [sub, owned] = await Promise.all([getSubscription(ownerId), ownedProjectsOldestFirst(ownerId)]);
+  const [sub, owned] = await Promise.all([getSubscription(ownerId), readOwnedSites(ownerId)]);
   if (!isActive(sub)) return { allowed: false, reason: "subscription inactive" };
+  // Same rule as the owner read above: sites we could not read are not
+  // "beyond the limit". writerStartGate maps this "could not read" to its
+  // try-again sentence.
+  if (owned.error) return { allowed: false, reason: `could not read the owner's sites (${owned.error})` };
   const limit = sitesLimitOf(sub!);
-  const covered = owned.slice(0, limit);
+  const covered = owned.rows.map((r) => r.id).slice(0, limit);
   if (!covered.includes(projectId)) {
     return { allowed: false, reason: `beyond the plan's ${limit}-site limit` };
   }
@@ -1082,6 +1100,10 @@ export type ProjectPlan = {
   spacingDays?: number;
   articlesPerMonth: number | null;
   poolPerMonth: number | null;
+  /** Set when the owner's sites could not be read, so the site's share is
+   *  unknown: every number above is a placeholder (0), and a start must
+   *  refuse rather than act on it. */
+  readError?: string;
 };
 
 export const projectPlan = cache(async (
@@ -1113,13 +1135,19 @@ export const projectPlan = cache(async (
   if (override !== null) return { tier, status: sub.status, articlesPerWeek: override, ...noPool };
   // The site's share of the owner's pool, among the sites the plan covers
   // (the oldest sitesLimitOf of them, as planGate decides). A site outside
-  // coverage gets 0 - planGate already refuses it. Sites on the operator's
-  // override take no share (outsidePool).
+  // coverage gets 0 - planGate already refuses it. One pooled site alone
+  // gets the whole pool, whatever its stored number (sharesForPool).
   const pool = articlesPerMonthFor(tier);
-  const { rows } = await readOwnedSites(ownerId);
+  const { rows, error } = await readOwnedSites(ownerId);
+  // A failed read is not "no sites": it must never read as a share of 0.
+  if (error) return { tier, status: sub.status, articlesPerWeek: 0, articlesPerMonth: null, poolPerMonth: null, readError: error };
+  const me = rows.find((r) => r.id === projectId);
+  // A site the hosted writer does not write for (writer_mode not 'hosted')
+  // sits outside the pool: the tier's pace, no month gate, as before.
+  if (me && outsidePool(me)) return { tier, status: sub.status, articlesPerWeek: articlesPerWeekFor(tier), ...noPool };
   const covered = rows.slice(0, sitesLimitOf(sub));
   const share = covered.some((r) => r.id === projectId)
-    ? (resolveShares(pool, covered.filter((r) => !outsidePool(r))).get(projectId) ?? 0)
+    ? (sharesForPool(pool, covered.filter((r) => !outsidePool(r))).get(projectId) ?? 0)
     : 0;
   return { tier, status: sub.status, articlesPerMonth: share, poolPerMonth: pool, ...paceFor(share) };
 });

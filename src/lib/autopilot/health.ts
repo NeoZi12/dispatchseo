@@ -118,7 +118,9 @@ export async function siteHealthProblems(project: Project, skips: string[], now:
   const plan = await projectPlan(project.id).catch(() => null);
   const normal = new Set(["quota met", "spacing", ...MONTH_SKIPS]);
   const monthUsed = skips.some((s) => MONTH_SKIPS.includes(s));
-  const noShare = plan?.poolPerMonth != null && plan.articlesPerMonth === 0;
+  // A plan read error is neither "no share" nor a reason to stay quiet
+  // forever: it carries no pool, so it simply reads the two-week rule.
+  const noShare = !plan?.readError && plan?.poolPerMonth != null && plan.articlesPerMonth === 0;
   if (!monthUsed && !noShare && noArticleAlarm({ connectedAt, lastArticleAt: await lastArticleStartedAt(project.id), now, spacingDays: plan?.spacingDays })) {
     const why = skips.find((s) => s && !normal.has(s));
     problems.push(`no article has started in ${noArticleAlarmDays(plan?.spacingDays)} days${why ? ` (${why})` : ""}`);
