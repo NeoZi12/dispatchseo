@@ -169,6 +169,7 @@ export default async function WebsitesPage({ searchParams }: { searchParams: Pro
       // The per-site switches only mean something for a site we write for
       // that the plan covers and whose setup is done.
       controllable: writerMode(p) === "hosted" && covered && !settingUp,
+      isLastSite: mine.length === 1,
       lastSiteWhileSubscribed: mine.length === 1 && active,
     };
   });
@@ -367,7 +368,7 @@ function SplitBoard({
                 <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-[3px]" style={{ background: s.hue! }} />
                 <span className="truncate text-ink">{s.domain}</span>
                 <span className="tabular-nums text-ink-faint">
-                  {Math.min(s.used ?? 0, s.share ?? 0)} of {s.share}
+                  {s.share} a month, {Math.min(s.used ?? 0, s.share ?? 0)} used
                 </span>
               </li>
             ))}
@@ -379,8 +380,20 @@ function SplitBoard({
                 </span>
               </li>
             ) : null}
-            <li className="text-ink-faint sm:ml-auto">Starts again on {resets}</li>
           </ul>
+          {/* What the bar is, said once: a box is an article. */}
+          <p className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 border-t border-line-soft pt-3 text-[12.5px] text-ink-faint">
+            <span>Each box is one article.</span>
+            <span className="flex items-center gap-1.5">
+              <span aria-hidden="true" className="h-2.5 w-2.5 rounded-[3px] bg-ink-muted" />
+              Bright: already used this month
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span aria-hidden="true" className="h-2.5 w-2.5 rounded-[3px] bg-ink-muted/25 ring-1 ring-inset ring-ink-muted/40" />
+              Faded: still to come
+            </span>
+            <span className="sm:ml-auto">Starts again on {resets}</span>
+          </p>
         </>
       ) : null}
     </div>

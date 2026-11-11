@@ -76,7 +76,7 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
     kind: "improved",
     text: "Paid plans now publish more articles a month and cover more websites, at the same prices: Starter 5 articles a month on 1 website, Growth 15 on 1 to 3 websites, Scale 30 on 1 to 5 websites. Use one site and it gets all of them. Add more and we split them for you.",
   },
-  { kind: "new", text: "Settings has a Websites page for every site on your plan. Each site shows its articles for the month, and you can switch it between Autopilot and Manual review, pause it, or set its share of your plan's articles. Add a website while your plan has room, or remove one, from the same page." },
+  { kind: "new", text: "Settings has a Websites page for every site on your plan. Each site says how many articles a month it gets and how many it has used. Pick Autopilot or Manual review for it, let us share your plan's articles between your websites or set the number yourself, pause it, or remove it. Add a website while your plan has room." },
   { kind: "improved", text: "Settings is easier to get around. Open it and the sidebar becomes the settings menu: General, Google and Advanced for your site, then Billing, Log out, Feedback and Docs. The arrow at the top takes you back to your dashboard. Settings itself is shorter: your site, how articles go live, your Google connection, and your search market." },
   { kind: "improved", text: "The site switcher moved to the bottom left of the sidebar, and Settings now sits right under your site's screens." },
   { kind: "improved", text: "Your overview now says when your next article is due, right above your latest articles: the day, and how many days away it is." },

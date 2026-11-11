@@ -9,13 +9,15 @@ import { cx, FOCUS_RING } from "@/components/ui/styles";
 import { BTN_PRIMARY, BTN_SECONDARY } from "@/components/setup-stage/primitives";
 
 // The Websites page's moving parts (page.tsx has the data and the why): the
-// header with its Add website panel, and one CARD per site. The card's head
-// is the "Your top posts" shape - name and a quiet status line on the left,
-// fixed right-hand numbers over tiny labels, the share as the one coloured
-// figure. Under it, in view rather than behind a click, the site's controls
-// as rows (the Settings row shape): how its articles go live, its share of
-// the month, pause, and remove. An account holds five sites at most, so
-// nothing needs hiding, and the thing an owner came to change is on screen.
+// header with its Add website panel, and one CARD per site. Everything on a
+// card is said in a whole phrase, because the short labels it first shipped
+// with ("Started", "This month", "How articles go live") read as riddles to
+// the owner himself (2026-11-11): the head says "14 articles a month" and
+// "6 used so far this month"; under it, in view rather than behind a click,
+// two questions answered by picking one of two cards with an icon and a
+// sentence each (Publishing: Autopilot or Manual review; Articles a month:
+// Automatic or Custom), then the pause switch, then Remove, which asks in a
+// pop-up. An account holds five sites at most, so nothing needs hiding.
 
 export type SiteCard = {
   slug: string;
@@ -47,6 +49,8 @@ export type SiteCard = {
   ownerPaused: boolean;
   /** Whether the publishing and pause switches apply to this site. */
   controllable: boolean;
+  /** The only site on the account: removing it leaves none. */
+  isLastSite: boolean;
 };
 
 /** Smaller cut of the setup's purple primary, for buttons inside a card. */
@@ -258,8 +262,8 @@ function SiteCardView({ card: c, index }: { card: SiteCard; index: number }) {
       className={cx("arrive-up overflow-hidden rounded-2xl border bg-surface", muted ? "border-line-soft/70" : "border-line-soft")}
       style={{ "--at": "200ms", "--i": index, "--step": "70ms" } as React.CSSProperties}
     >
-      {/* Head: who it is, how it's doing, and its number. */}
-      <div className="flex items-center gap-4 px-5 py-5 sm:gap-5 sm:px-6">
+      {/* Head: who it is, how it's doing, and its number - as a phrase. */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-4 px-5 py-5 sm:px-6">
         <span className={cx("flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-line-soft bg-surface-2", muted && "opacity-50 grayscale")}>
           <SiteIcon domain={c.domain} className="h-7 w-7" />
         </span>
@@ -275,19 +279,21 @@ function SiteCardView({ card: c, index }: { card: SiteCard; index: number }) {
             </span>
           </p>
         </div>
-        {/* Started this month: its own fixed column, the same two-line shape
-            as the share beside it so the labels share a baseline. */}
-        <div className="hidden w-20 shrink-0 text-center sm:block">
-          <p className="text-[1.25rem] font-semibold leading-8 tabular-nums text-ink-muted">{used ?? "-"}</p>
-          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wider text-ink-faint">Started</p>
-        </div>
-        <div className="w-[6.5rem] shrink-0 text-right">
-          <p className={cx("text-[2rem] font-semibold leading-8 tracking-tight tabular-nums", c.hue ? "" : "text-ink-muted")} style={c.hue ? { color: c.hue } : undefined}>
-            {c.share ?? "-"}
-          </p>
-          <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wider text-ink-faint">This month</p>
-          <p className="text-[11px] font-medium uppercase tracking-wider text-ink-faint sm:hidden">{used ?? "-"} started</p>
-        </div>
+        {c.share != null ? (
+          <div className="shrink-0 sm:text-right">
+            <p className="flex items-baseline gap-2 sm:justify-end">
+              <span className={cx("text-[2rem] font-semibold leading-none tracking-tight tabular-nums", c.hue ? "" : "text-ink-muted")} style={c.hue ? { color: c.hue } : undefined}>
+                {c.share}
+              </span>
+              <span className="text-[14px] font-medium text-ink">{c.share === 1 ? "article a month" : "articles a month"}</span>
+            </p>
+            {used != null ? (
+              <p className="mt-1.5 text-[13px] text-ink-muted">
+                <span className="tabular-nums text-ink">{Math.min(used, Math.max(c.share, used))}</span> used so far this month
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {c.line ? (
@@ -317,37 +323,95 @@ function SiteCardView({ card: c, index }: { card: SiteCard; index: number }) {
         {c.controllable ? <PublishModeRow card={c} /> : null}
         {c.editable ? <ShareControl card={c} /> : null}
         {c.controllable ? <PauseRow card={c} /> : null}
-        {c.removable ? <RemoveSite card={c} /> : null}
+        <RemoveSite card={c} />
       </div>
     </li>
   );
 }
 
-/** One control row inside a site card. */
+/** One control row inside a site card: the question and one plain line,
+ *  then the control - beside it (a switch) or under it (the choices). */
 function ControlRow({ title, description, children, below }: { title: string; description?: React.ReactNode; children?: React.ReactNode; below?: React.ReactNode }) {
   return (
-    <div className="px-5 py-4 sm:px-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+    <div className="px-5 py-5 sm:px-6">
+      <div className="flex items-center justify-between gap-6">
         <div className="min-w-0">
-          <p className="text-[14.5px] font-medium text-ink">{title}</p>
-          {description ? <p className="mt-0.5 text-[13px] leading-relaxed text-ink-muted">{description}</p> : null}
+          <p className="text-[15px] font-semibold tracking-tight text-ink">{title}</p>
+          {description ? <p className="mt-1 text-[13.5px] leading-relaxed text-ink-muted">{description}</p> : null}
         </div>
         {children ? <div className="flex shrink-0 items-center gap-3">{children}</div> : null}
       </div>
-      {below ? <div className="mt-3.5">{below}</div> : null}
+      {below ? <div className="mt-4">{below}</div> : null}
     </div>
   );
 }
 
-/** Two or three choices in one track; the chosen one is the raised chip. */
-const SEG_TRACK = "flex rounded-lg bg-canvas/70 p-0.5 ring-1 ring-line-soft";
-function segClass(on: boolean): string {
-  return cx(
-    "rounded-md px-3.5 py-1.5 text-[13px] font-medium transition-colors disabled:cursor-default",
-    on ? "bg-surface-3 text-ink shadow-sm shadow-black/30" : "text-ink-faint hover:text-ink",
-    FOCUS_RING,
+/** One of two answers to a row's question: an icon, its name, and what it
+ *  means in one sentence. The chosen one is outlined in the accent and
+ *  ticked; the icon keeps its own colour (no tile behind it). */
+function Choice({
+  on,
+  icon,
+  tone,
+  title,
+  children,
+  ...rest
+}: { on: boolean; icon: React.ReactNode; tone: string; title: string; children: React.ReactNode } & Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "title">) {
+  return (
+    <button
+      {...rest}
+      className={cx(
+        "flex w-full items-start gap-3 rounded-xl border px-4 py-3.5 text-left transition-colors disabled:cursor-default",
+        on ? "border-accent/55 bg-accent/[0.08] shadow-[inset_0_0_0_1px_rgba(167,139,250,0.18)]" : "border-line-soft bg-surface-2/40 hover:border-line hover:bg-surface-2",
+        FOCUS_RING,
+      )}
+    >
+      <span aria-hidden="true" className={cx("mt-0.5 shrink-0", on ? tone : "text-ink-faint")}>
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className={cx("block text-[14.5px] font-medium", on ? "text-ink" : "text-ink-muted")}>{title}</span>
+        <span className="mt-0.5 block text-[13px] leading-relaxed text-ink-muted">{children}</span>
+      </span>
+      <span aria-hidden="true" className={cx("mt-0.5 grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full border", on ? "border-accent bg-accent text-canvas" : "border-line")}>
+        {on ? (
+          <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m3.5 8.5 3 3 6-7" />
+          </svg>
+        ) : null}
+      </span>
+    </button>
   );
 }
+
+const ICON = "h-5 w-5";
+/** The same bolt and eye as the publishing menu on Overview and Articles. */
+const BOLT = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={ICON}>
+    <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z" />
+  </svg>
+);
+const EYE = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={ICON}>
+    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+/** Scales: we share the plan out. */
+const SPLIT = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={ICON}>
+    <path d="M12 3v18M7 21h10M5 7h14" />
+    <path d="M5 7l-3 7a3.5 3.5 0 0 0 6 0L5 7zM19 7l-3 7a3.5 3.5 0 0 0 6 0l-3-7z" />
+  </svg>
+);
+/** Sliders: you set the number. */
+const DIAL = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={ICON}>
+    <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
+    <circle cx="15" cy="7" r="2" />
+    <circle cx="9" cy="17" r="2" />
+  </svg>
+);
 
 /* --------------------------------------------------- publishing and pause */
 
@@ -358,27 +422,30 @@ function PublishModeRow({ card: c }: { card: SiteCard }) {
   const label = useId();
   return (
     <ControlRow
-      title="How articles go live"
-      description={c.publishMode === "review" ? "Each article waits for you to press Publish." : "Each article goes live as soon as it's ready."}
-      below={state && !state.ok ? <DispatcherLine tone="warn">{state.message}</DispatcherLine> : undefined}
-    >
-      <form action={formAction} className={cx(SEG_TRACK, pending && "opacity-60")} role="group" aria-labelledby={label}>
-        <span id={label} className="sr-only">
-          How articles go live for {c.domain}
-        </span>
-        <input type="hidden" name="slug" value={c.slug} />
-        {(
-          [
-            ["auto", "Autopilot"],
-            ["review", "Manual review"],
-          ] as const
-        ).map(([value, text]) => (
-          <button key={value} type="submit" name="mode" value={value} aria-pressed={c.publishMode === value} disabled={pending || c.publishMode === value} className={segClass(c.publishMode === value)}>
-            {text}
-          </button>
-        ))}
-      </form>
-    </ControlRow>
+      title="Publishing"
+      description="What happens when an article is finished."
+      below={
+        <>
+          <form action={formAction} className={cx("grid gap-3 sm:grid-cols-2", pending && "opacity-60")} role="group" aria-labelledby={label}>
+            <span id={label} className="sr-only">
+              Publishing for {c.domain}
+            </span>
+            <input type="hidden" name="slug" value={c.slug} />
+            <Choice type="submit" name="mode" value="auto" on={c.publishMode === "auto"} aria-pressed={c.publishMode === "auto"} disabled={pending || c.publishMode === "auto"} icon={BOLT} tone="text-ok" title="Autopilot">
+              It goes live on your site by itself. You don&apos;t have to do anything.
+            </Choice>
+            <Choice type="submit" name="mode" value="review" on={c.publishMode === "review"} aria-pressed={c.publishMode === "review"} disabled={pending || c.publishMode === "review"} icon={EYE} tone="text-warn" title="Manual review">
+              It waits for you. We email you, you read it, and you press Publish.
+            </Choice>
+          </form>
+          {state && !state.ok ? (
+            <div className="mt-3">
+              <DispatcherLine tone="warn">{state.message}</DispatcherLine>
+            </div>
+          ) : null}
+        </>
+      }
+    />
   );
 }
 
@@ -388,14 +455,14 @@ function PauseRow({ card: c }: { card: SiteCard }) {
   const on = !c.ownerPaused;
   return (
     <ControlRow
-      title="Writing"
-      description={on ? "Turn off to stop new articles for this site. Nothing is deleted." : "Off. No new articles until you turn it back on."}
+      title="Keep writing for this website"
+      description={on ? "Switch off to pause it. Nothing already published is touched." : "Paused. No new articles for this website until you switch it back on."}
       below={state && !state.ok ? <DispatcherLine tone="warn">{state.message}</DispatcherLine> : undefined}
     >
       <form action={formAction} className="flex items-center gap-3">
         <input type="hidden" name="slug" value={c.slug} />
         <input type="hidden" name="paused" value={on ? "1" : "0"} />
-        <span className="text-[13px] font-medium tabular-nums text-ink-muted">{pending ? "Saving" : on ? "On" : "Off"}</span>
+        <span className={cx("text-[13.5px] font-medium", on ? "text-ink" : "text-ink-muted")}>{pending ? "Saving" : on ? "On" : "Paused"}</span>
         <button
           type="submit"
           role="switch"
@@ -441,8 +508,8 @@ function ShareControl({ card: c }: { card: SiteCard }) {
           </output>
           <StepButton label="One more" disabled={n >= max} onClick={() => setN((v) => Math.min(max, v + 1))} glyph="M8 4v8M4 8h8" />
         </div>
-        <p className="min-w-0 flex-1 text-[13px] leading-relaxed text-ink-muted">
-          From 1 to {max}.
+        <p className="min-w-0 flex-1 text-[13.5px] leading-relaxed text-ink-muted">
+          <span className="font-medium text-ink">{n === 1 ? "article a month" : "articles a month"}</span> for this website. You can pick from 1 to {max}.
           {c.safeMax != null ? (
             <>
               {" "}
@@ -459,21 +526,40 @@ function ShareControl({ card: c }: { card: SiteCard }) {
       <input type="hidden" name="mode" value={mode} />
       <input type="hidden" name="share" value={n} />
       <ControlRow
-        title="Articles this month"
-        description={mode === "auto" ? "Split for you across your websites. New ones get fewer until Google trusts them." : "Set by you. The rest of your plan is split across your other websites."}
+        title="Articles a month"
+        description={
+          <>
+            How many articles we write for this website every month{c.pool != null ? <>, out of the {c.pool} on your plan</> : null}.
+          </>
+        }
         below={
-          stepper || dirty || (state && !state.ok) ? (
-            <div className="space-y-3">
-              {stepper}
-              {dirty ? (
-                <button type="submit" disabled={pending || full} className={BTN_PRIMARY_SM}>
-                  {pending ? <Spinner /> : null}
-                  {pending ? "Saving" : "Save"}
-                </button>
-              ) : null}
-              {state && !state.ok ? <DispatcherLine tone="warn">{state.message}</DispatcherLine> : null}
+          <div className="space-y-4">
+            <div role="radiogroup" aria-labelledby={group} className="grid gap-3 sm:grid-cols-2">
+              <span id={group} className="sr-only">
+                Articles a month for {c.domain}
+              </span>
+              <Choice type="button" role="radio" aria-checked={mode === "auto"} on={mode === "auto"} onClick={() => setMode("auto")} icon={SPLIT} tone="text-accent" title="Automatic">
+                We share your plan&apos;s articles between your websites for you.
+                {c.mode === "auto" && c.share != null ? (
+                  <>
+                    {" "}
+                    Right now this one gets <span className="font-medium tabular-nums text-ink">{c.share}</span>.
+                  </>
+                ) : null}
+              </Choice>
+              <Choice type="button" role="radio" aria-checked={mode === "custom"} on={mode === "custom"} onClick={() => setMode("custom")} icon={DIAL} tone="text-accent" title="Custom">
+                You choose the number for this website yourself.
+              </Choice>
             </div>
-          ) : undefined
+            {stepper}
+            {dirty ? (
+              <button type="submit" disabled={pending || full} className={BTN_PRIMARY_SM}>
+                {pending ? <Spinner /> : null}
+                {pending ? "Saving" : "Save"}
+              </button>
+            ) : null}
+            {state && !state.ok ? <DispatcherLine tone="warn">{state.message}</DispatcherLine> : null}
+          </div>
         }
       >
         {state?.ok && !dirty ? (
@@ -484,16 +570,6 @@ function ShareControl({ card: c }: { card: SiteCard }) {
             Saved
           </span>
         ) : null}
-        <div role="radiogroup" aria-labelledby={group} className={SEG_TRACK}>
-          <span id={group} className="sr-only">
-            Articles this month for {c.domain}
-          </span>
-          {(["auto", "custom"] as const).map((m) => (
-            <button key={m} type="button" role="radio" aria-checked={mode === m} onClick={() => setMode(m)} className={segClass(mode === m)}>
-              {m === "auto" ? "Auto" : "Custom"}
-            </button>
-          ))}
-        </div>
       </ControlRow>
     </form>
   );
@@ -517,35 +593,87 @@ function StepButton({ label, disabled, onClick, glyph }: { label: string; disabl
 
 /* ---------------------------------------------------------------- remove */
 
+/** Remove asks in a pop-up, so the question can't be missed or half-read
+ *  in a busy card - above all for the last website, where the answer leaves
+ *  the account with none (owner, 2026-11-11). */
 function RemoveSite({ card: c }: { card: SiteCard }) {
   const [open, setOpen] = useState(false);
-  if (!open) {
+  if (!c.removable) {
+    // Only the install's home project (projects.ts DEFAULT_PROJECT_ID): the
+    // database's own default row, which deleteProject refuses. No customer
+    // site is ever this one.
     return (
-      <div className="flex items-center justify-between gap-4 px-5 py-3.5 sm:px-6">
-        <p className="text-[13px] text-ink-faint">Done with this site?</p>
-        <button type="button" onClick={() => setOpen(true)} className={cx("rounded-md text-[13.5px] font-medium text-danger/90 transition-colors hover:text-danger", FOCUS_RING)}>
-          Remove website
-        </button>
+      <div className="px-5 py-3.5 sm:px-6">
+        <p className="text-[13px] text-ink-faint">This is DispatchSEO&apos;s home site on this install, so it can&apos;t be removed.</p>
       </div>
     );
   }
   return (
-    <div className="space-y-3 bg-danger/[0.04] px-5 py-5 sm:px-6">
-      <p className="text-[14.5px] font-medium text-ink">Remove {c.domain}</p>
-      <p className="text-[13px] leading-relaxed text-ink-muted">{c.removeNote}</p>
-      <DeleteProjectForm
-        slug={c.slug}
-        domain={c.domain}
-        repo={c.repo}
-        hosted={c.hosted}
-        lastSiteWhileSubscribed={c.lastSiteWhileSubscribed}
-        submitLabel="Remove website"
-        pendingLabel="Removing..."
-        returnTo="/settings/websites"
-      />
-      <button type="button" onClick={() => setOpen(false)} className={cx("rounded-md text-[13px] font-medium text-ink-faint hover:text-ink", FOCUS_RING)}>
-        Keep it
+    <div className="flex items-center justify-between gap-4 px-5 py-3.5 sm:px-6">
+      <p className="text-[13px] text-ink-faint">Done with this website?</p>
+      <button type="button" onClick={() => setOpen(true)} className={cx("rounded-md text-[13.5px] font-medium text-danger/90 transition-colors hover:text-danger", FOCUS_RING)}>
+        Remove website
       </button>
+      {open ? <RemoveDialog card={c} onClose={() => setOpen(false)} /> : null}
     </div>
+  );
+}
+
+function RemoveDialog({ card: c, onClose }: { card: SiteCard; onClose: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const title = useId();
+  // A real modal <dialog>: the browser traps focus, Escape closes it, and
+  // the rest of the page is inert behind the backdrop.
+  // No close() on cleanup: closing fires the dialog's own close event, which
+  // is onClose, so a development double-run of this effect would shut the
+  // pop-up the instant it opened. Unmounting takes it off the screen anyway.
+  useEffect(() => {
+    const d = ref.current;
+    if (d && !d.open) d.showModal();
+  }, []);
+  return (
+    <dialog
+      ref={ref}
+      aria-labelledby={title}
+      onClose={onClose}
+      // A click on the backdrop lands on the dialog element itself.
+      onClick={(e) => {
+        if (e.target === ref.current) onClose();
+      }}
+      className="m-auto w-[min(32rem,calc(100vw-2rem))] rounded-2xl border border-line bg-surface p-0 text-ink shadow-2xl shadow-black/70 backdrop:bg-black/70 backdrop:backdrop-blur-[2px]"
+    >
+      <div className="space-y-4 p-6">
+        <div className="flex items-start gap-3.5">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-line-soft bg-surface-2">
+            <SiteIcon domain={c.domain} className="h-6 w-6" />
+          </span>
+          <div className="min-w-0">
+            <h2 id={title} className="text-[17px] font-semibold tracking-tight text-ink">
+              Remove {c.domain}?
+            </h2>
+            <p className="mt-1 text-[13.5px] leading-relaxed text-ink-muted">{c.removeNote}</p>
+          </div>
+        </div>
+        {c.isLastSite ? (
+          <DispatcherLine tone="warn">
+            This is your last website. Once you remove it, you&apos;ll have no websites on DispatchSEO, and nothing gets written until you add one.
+          </DispatcherLine>
+        ) : null}
+        <p className="text-[13px] leading-relaxed text-ink-muted">The articles it already used this month still count toward your plan, so removing a website and adding it again doesn&apos;t give you more.</p>
+        <DeleteProjectForm
+          slug={c.slug}
+          domain={c.domain}
+          repo={c.repo}
+          hosted={c.hosted}
+          lastSiteWhileSubscribed={c.lastSiteWhileSubscribed}
+          submitLabel="Remove website"
+          pendingLabel="Removing..."
+          returnTo="/settings/websites"
+        />
+        <button type="button" onClick={onClose} className={cx("rounded-md text-[13.5px] font-medium text-ink-muted transition-colors hover:text-ink", FOCUS_RING)}>
+          Keep this website
+        </button>
+      </div>
+    </dialog>
   );
 }
