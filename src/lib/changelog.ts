@@ -80,6 +80,7 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   { kind: "improved", text: "Settings is easier to get around. Open it and the sidebar becomes the settings menu: General, Google and Advanced for your site, then Billing, Log out, Feedback and Docs. The arrow at the top takes you back to your dashboard. Settings itself is shorter: your site, how articles go live, your Google connection, and your search market." },
   { kind: "improved", text: "The site switcher moved to the bottom left of the sidebar, and Settings now sits right under your site's screens." },
   { kind: "improved", text: "Your overview now says when your next article is due, right above your latest articles: the day, and how many days away it is." },
+  { kind: "improved", text: "On the free plan, once this month's free articles are out, your overview says so and shows when the next one goes out." },
   { kind: "fixed", text: "If you connect a GitHub repository that doesn't build your site, setup now notices on sites made with Next.js too, and switches to the right repository when you've shared it. Before, those sites could connect the wrong one and articles never reached the site." },
   {
     kind: "improved",
