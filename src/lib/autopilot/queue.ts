@@ -110,7 +110,7 @@ export async function getHostedQueue(
   // Whatever of the row the caller holds spares the plan and usage reads
   // below their own single-row lookups (billing.ts projectHint).
   primeProjectHint(project);
-  const cols = "id, title, primary_keyword, keyword_volume, keyword_difficulty, queue_position, created_at";
+  const cols = "id, title, primary_keyword, keyword_volume, keyword_difficulty, queue_position, created_at, source";
   // The month's room hangs off the plan (only a pooled plan has one), so it
   // starts the moment the plan is known, beside the reads below.
   const planRead = projectPlan(project.id);

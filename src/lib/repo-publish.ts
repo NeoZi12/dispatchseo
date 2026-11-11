@@ -806,6 +806,19 @@ export async function fetchPullRequest(
   if (!token) return null;
   const res = await gh(token, "GET", `/repos/${project.github_repo}/pulls/${number}`);
   if (res.status !== 200 || !res.json) return null;
+  // Only ever a pull request of OURS: every branch this server opens is
+  // dispatchseo/..., in the repo itself. The number is stored on our side,
+  // and a project pointed at a different repo since (a manual change, or the
+  // automatic switch to the right repo) makes it name somebody else's pull
+  // request there - one the lander would then merge, rebuild or push to.
+  // Unreadable is what every caller already handles (it throws and retries).
+  const head = res.json.head as { ref?: string; repo?: { full_name?: string } | null } | undefined;
+  const base = res.json.base as { repo?: { full_name?: string } | null } | undefined;
+  const sameRepo = (head?.repo?.full_name ?? "").toLowerCase() === (base?.repo?.full_name ?? "").toLowerCase();
+  if (!String(head?.ref ?? "").startsWith("dispatchseo/") || !sameRepo) {
+    console.warn(`[repo-publish] ${project.slug}: pull request #${number} in ${project.github_repo} is not one of ours (${head?.ref ?? "no head"}); left alone`);
+    return null;
+  }
   return {
     number,
     html_url: String(res.json.html_url ?? ""),

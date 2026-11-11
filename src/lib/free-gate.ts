@@ -349,14 +349,33 @@ export async function sendInactivityWarnings(limit = 100): Promise<number> {
       const { data: u } = await db().auth.admin.getUserById(row.owner_user_id);
       const to = u?.user?.email;
       if (!to) continue;
+      // Only an owner whose free site is actually writing: the oldest site
+      // (the one the free plan covers), written by us, set up, and not
+      // paused already. Someone who signed up and never launched, or who
+      // cancelled a paid plan, has no articles that could "pause", and got
+      // this email anyway.
       const { data: site } = await db()
         .from("projects")
-        .select("domain")
+        .select("domain, writer_mode, setup_connected_at, writer_paused_at")
         .eq("owner_user_id", row.owner_user_id)
         .order("created_at", { ascending: true })
         .limit(1)
         .maybeSingle();
-      const domain = (site as { domain?: string } | null)?.domain ?? "your site";
+      const first = site as { domain?: string; writer_mode?: string | null; setup_connected_at?: string | null; writer_paused_at?: string | null } | null;
+      if (!first?.domain || first.writer_mode !== "hosted" || !first.setup_connected_at || first.writer_paused_at) continue;
+      const domain = first.domain;
+      // Claim the warning BEFORE sending: two jobs runs in the same minute
+      // (Vercel's and the GitHub backup) both read this row as unwarned, and
+      // the stamp used to come after the send, so both sent. A send that
+      // then fails gives the claim back for the next run.
+      const { data: claimed } = await db()
+        .from("owner_activity")
+        .update({ pause_warned_at: new Date().toISOString() })
+        .eq("owner_user_id", row.owner_user_id)
+        .is("pause_warned_at", null)
+        .select("owner_user_id");
+      if (!claimed?.length) continue;
+      const release = () => db().from("owner_activity").update({ pause_warned_at: null }).eq("owner_user_id", row.owner_user_id);
       const pauseOn = new Date(new Date(row.last_seen_at).getTime() + FREE_IDLE_DAYS * 86_400_000).toLocaleDateString("en-US", { month: "long", day: "numeric" });
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
@@ -375,11 +394,14 @@ export async function sendInactivityWarnings(limit = 100): Promise<number> {
         }),
         signal: AbortSignal.timeout(15_000),
       });
-      if (!res.ok) continue;
-      await db().from("owner_activity").update({ pause_warned_at: new Date().toISOString() }).eq("owner_user_id", row.owner_user_id).is("pause_warned_at", null);
+      if (!res.ok) {
+        await release();
+        continue;
+      }
       warned++;
     } catch {
-      // Next run tries again.
+      // Next run tries again. (A throw after the claim leaves it claimed:
+      // an owner who is not warned is never paused, the safe side.)
     }
   }
   return warned;

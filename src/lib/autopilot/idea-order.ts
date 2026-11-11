@@ -28,6 +28,8 @@ export type RankableIdea = {
   keyword_difficulty?: number | string | null;
   queue_position?: number | null;
   created_at?: string | null;
+  /** "owner" = a topic the owner asked for by hand ("Write about this"). */
+  source?: string | null;
 };
 
 const num = (v: number | string | null | undefined): number | null => {
@@ -49,8 +51,12 @@ export function ideaScore(i: RankableIdea): number {
 
 /** The pick order. An explicit queue_position still comes first: the
  *  hosted Queue page has no drag, so a position is the operator's or the
- *  agent's deliberate reorder_queue call, and that order is kept. Everything
- *  unpositioned follows by score, best first; an equal score goes to the
+ *  agent's deliberate reorder_queue call, and that order is kept. Next, a
+ *  topic the owner asked for by hand, oldest first: they typed it because
+ *  they want it written, and by score alone it sank under every research
+ *  idea (one DataForSEO cannot measure scores 0, and research keeps
+ *  refilling the queue, so on a small plan it was never written at all).
+ *  Everything else follows by score, best first; an equal score goes to the
  *  older idea. */
 export function compareIdeas(a: RankableIdea, b: RankableIdea): number {
   const pa = a.queue_position ?? null;
@@ -58,6 +64,10 @@ export function compareIdeas(a: RankableIdea, b: RankableIdea): number {
   if (pa != null && pb != null && pa !== pb) return pa - pb;
   if (pa != null && pb == null) return -1;
   if (pa == null && pb != null) return 1;
+  const oa = a.source === "owner";
+  const ob = b.source === "owner";
+  if (oa !== ob) return oa ? -1 : 1;
+  if (oa && ob) return String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""));
   const byScore = ideaScore(b) - ideaScore(a);
   if (byScore !== 0) return byScore;
   return String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""));

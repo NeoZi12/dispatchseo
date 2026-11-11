@@ -50,5 +50,8 @@ export async function GET(req: Request): Promise<Response> {
   const hdrs = await headers();
   const origin = `${hdrs.get("x-forwarded-proto") ?? "https"}://${hdrs.get("host")}`;
   const err = await connectProject(`${origin}/api/oauth/google/callback`, code, detailed.slug);
-  redirect(err ? landing(returnTo, `error=${encodeURIComponent(err)}`) : landing(returnTo, "connected=1"));
+  // Setup shows the site this consent was for, not whichever unfinished
+  // site is newest (an owner can have two in setup at once).
+  const site = returnTo === "onboarding" ? `&site=${encodeURIComponent(detailed.slug)}` : "";
+  redirect(err ? landing(returnTo, `error=${encodeURIComponent(err)}${site}`) : landing(returnTo, `connected=1${site}`));
 }

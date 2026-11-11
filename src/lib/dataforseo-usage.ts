@@ -174,13 +174,28 @@ async function ownedProjectIds(ownerId: string): Promise<string[]> {
 
 // Sum of every platform-billed project's spend since `sinceDay` (inclusive).
 async function platformCostSinceMicrousd(sinceDay: string): Promise<number> {
-  const { data, error } = await db()
-    .from("dataforseo_usage")
-    .select("cost_microusd")
-    .gte("day", sinceDay)
-    .gt("cost_microusd", 0);
-  if (error || !data) return 0;
-  return (data as Array<{ cost_microusd: number }>).reduce((sum, r) => sum + (r.cost_microusd ?? 0), 0);
+  // Read in pages: one request returns 1,000 rows at most, and a month of
+  // usage (a row per project, endpoint and day) passes that well before the
+  // month ends - the ceiling was then summing whichever 1,000 rows came
+  // back and could never trip. A page that cannot be read ends the sum with
+  // what was counted so far (as before: a read error here never blocks).
+  const PAGE = 1000;
+  let sum = 0;
+  for (let from = 0; from < 200 * PAGE; from += PAGE) {
+    const { data, error } = await db()
+      .from("dataforseo_usage")
+      .select("cost_microusd")
+      .gte("day", sinceDay)
+      .gt("cost_microusd", 0)
+      .order("day", { ascending: true })
+      .order("project_id", { ascending: true })
+      .order("endpoint", { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error || !data) break;
+    sum += (data as Array<{ cost_microusd: number }>).reduce((a, r) => a + (r.cost_microusd ?? 0), 0);
+    if (data.length < PAGE) break;
+  }
+  return sum;
 }
 
 // The account-wide gate. Cloud only - self-host has no shared account to

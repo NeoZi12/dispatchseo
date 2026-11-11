@@ -542,7 +542,7 @@ function PrimaryAction({ a, slug, paused }: { a: AutopilotArticle; slug: string;
   }
   if (a.status === "needs_setup") {
     return (
-      <Link href="/settings?section=publishing" className={buttonClass("primary", "lg")}>
+      <Link href="/settings#publishing" className={buttonClass("primary", "lg")}>
         Choose where articles go
       </Link>
     );

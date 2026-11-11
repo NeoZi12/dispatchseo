@@ -690,6 +690,62 @@ export async function createSiteAfterSignIn(userId: string): Promise<void> {
   }
 }
 
+// ---- a second site on an account GitHub already knows ------------------------
+
+/** Give a new site the GitHub installation one of its owner's other sites
+ *  already has, so its GitHub step is "pick the repository", not "install
+ *  the app". A GitHub App is installed once per GitHub ACCOUNT, and for an
+ *  account that already has it GitHub shows its settings page instead of the
+ *  install flow: it may send no sign-in code back, or nothing at all when
+ *  the owner changes nothing, so a second site could never finish the step
+ *  (found 2026-11-11). Sharing the id with another of the SAME owner's
+ *  sites is what tenant-guard's "already mine" rule allows; repository
+ *  access is still read live from GitHub on every use.
+ *
+ *  Only ever fills an empty pointer, only on a site still in setup with no
+ *  repository yet, and only from the signed-in owner's own sites
+ *  (scopedProjects). `preferredId` names the installation GitHub just sent
+ *  the owner back from, when the caller knows it; otherwise the newest wins
+ *  (an owner with two GitHub accounts can still pick the other one from the
+ *  step's "Open GitHub"). Returns the id it set, or null. Never throws.
+ *
+ *  Never for a site that already HAS a repository: its "reconnect GitHub"
+ *  card means that repository lost its installation, and a sibling's
+ *  installation may not cover it - the card would turn green over a site
+ *  that still cannot publish (security review, 2026-11-11). */
+export async function inheritGithubInstallation(
+  project: Pick<Project, "id" | "github_installation_id" | "owner_user_id" | "github_repo" | "setup_connected_at">,
+  preferredId?: number,
+): Promise<number | null> {
+  try {
+    if (!isCloudMode() || project.github_installation_id || project.github_repo || project.setup_connected_at) return null;
+    // The site must be the signed-in owner's own. Asked of the row, not of
+    // scopedProjects: that list is read once per request, and a site made a
+    // moment ago in this same request is not in it yet.
+    const user = await currentUser();
+    if (!user || !project.owner_user_id || project.owner_user_id !== user.id) return null;
+    const mine = await scopedProjects();
+    const donors = mine
+      .filter((p) => p.id !== project.id && p.github_installation_id)
+      .sort((a, b) => ((a.github_app_installed_at ?? "") < (b.github_app_installed_at ?? "") ? 1 : -1));
+    const donor = (preferredId != null ? donors.find((p) => p.github_installation_id === preferredId) : undefined) ?? (preferredId != null ? undefined : donors[0]);
+    if (!donor?.github_installation_id) return null;
+    const { data, error } = await db()
+      .from("projects")
+      .update({ github_installation_id: donor.github_installation_id, github_app_installed_at: new Date().toISOString() })
+      .eq("id", project.id)
+      // The row's own owner again, in the write itself: whatever object a
+      // future caller hands in, this can only ever touch the caller's site.
+      .eq("owner_user_id", user.id)
+      .is("github_installation_id", null)
+      .select("id");
+    if (error || !data?.length) return null;
+    return donor.github_installation_id;
+  } catch {
+    return null;
+  }
+}
+
 // ---- users ------------------------------------------------------------------
 
 /** The signed-in user's project still in setup (hosted, unstamped), newest
@@ -734,7 +790,7 @@ export type SetupState = {
  *  deployment with billing, until one of these is true: a plan is live, or
  *  this browser chose the free plan there (a "free" pick, only honoured
  *  while the free plan is open). A paid pick only preselects its card. */
-export async function resolveSetupStage(urlPick: PaidPlanPick | null = null): Promise<SetupState> {
+export async function resolveSetupStage(urlPick: PaidPlanPick | null = null, siteSlug: string | null = null): Promise<SetupState> {
   const user = await currentUser();
   const site = await readSetupSite();
   const freeOpen = freeSignupsOpen();
@@ -753,7 +809,12 @@ export async function resolveSetupStage(urlPick: PaidPlanPick | null = null): Pr
   const [sub, mine] = await Promise.all([getSubscription(user.id), scopedProjects()]);
   // Newest first; one still being set up wins over finished ones.
   const sorted = [...mine].filter((p) => p.id !== DEFAULT_PROJECT_ID).sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
-  const project = sorted.find((p) => !p.setup_connected_at) ?? sorted[0] ?? null;
+  // A site named in the URL (/onboarding?site=<slug>, the Websites page's
+  // "Finish setup" and GitHub's way back) wins while it is still in setup:
+  // with two unfinished sites, the owner finishes the one they clicked, not
+  // whichever was added last. Only ever one of the caller's own sites.
+  const named = siteSlug ? sorted.find((p) => p.slug === siteSlug && !p.setup_connected_at) : undefined;
+  const project = named ?? sorted.find((p) => !p.setup_connected_at) ?? sorted[0] ?? null;
   const active = isActive(sub);
   // The plan step is still to do: billing is on, no plan is live, and the
   // free plan was not chosen on it.

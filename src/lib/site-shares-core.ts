@@ -27,7 +27,16 @@ export function paceFor(month: number): { articlesPerWeek: number; spacingDays?:
   };
 }
 
-export type StoredShare = { id: string; monthly_share: number | null | undefined; share_mode?: string | null };
+export type StoredShare = {
+  id: string;
+  monthly_share: number | null | undefined;
+  share_mode?: string | null;
+  /** The site cannot write right now (paused, or its setup isn't finished):
+   *  it holds 0 whatever is stored, so its siblings can use the pool. The
+   *  stored number is left alone - a Custom site gets it back the day it
+   *  can write again. Absent = it can write. */
+  idle?: boolean;
+};
 
 /**
  * Each covered site's share as stored, made safe to act on. `sites` = the
@@ -36,13 +45,18 @@ export type StoredShare = { id: string; monthly_share: number | null | undefined
  * the next rebalance rewrites the shares); the sites with no share yet split
  * what remains after every stored share evenly, the remainder to the oldest.
  * Sum never exceeds the pool, nothing is negative, and one site with no
- * share gets the whole pool.
+ * share gets the whole pool. An idle site (paused, setup unfinished) holds 0
+ * and is not one of "the sites with no share yet".
  */
 export function resolveShares(pool: number, sites: StoredShare[]): Map<string, number> {
   const out = new Map<string, number>();
   let left = Math.max(0, Math.floor(pool));
   const unset: string[] = [];
   for (const s of sites) {
+    if (s.idle) {
+      out.set(s.id, 0);
+      continue;
+    }
     const stored = s.monthly_share;
     if (stored == null || !Number.isFinite(stored)) {
       unset.push(s.id);
@@ -73,6 +87,35 @@ export function resolveShares(pool: number, sites: StoredShare[]): Map<string, n
 export function sharesForPool(pool: number, sites: StoredShare[]): Map<string, number> {
   if (sites.length === 1) return new Map([[sites[0].id, Math.max(0, Math.floor(pool))]]);
   return resolveShares(pool, sites);
+}
+
+/**
+ * The pace a pooled site runs at TODAY, from what its month still owes it.
+ * paceFor spaces a share evenly over a 30-day month with no slack: 15 a
+ * month is one every 2 days from the 1st, so one skipped day (no idea ready,
+ * a research day, a short February) lost that article for good, and the
+ * owner got 14 of the 15 they pay for. Here the days between starts shrink,
+ * never below one day and never above the plan's own spacing, when the
+ * articles left need it: floor(days left in the month / articles left).
+ * While catching up, the week's count may go up to one a day, so the weekly
+ * number cannot hold back an article the month still owes. The month gate
+ * holds the exact number either way.
+ *
+ * One start a day is the engine's ceiling (the scheduler runs once a day),
+ * so 30 a month on ONE site still needs a start on every day of a 30-day
+ * month; this cannot add a second start to a day.
+ *
+ * `dayOfMonth` 1-based and `daysInMonth`, both UTC. `quota` 0 (no plan, the
+ * index brake) and a used-up share pass through untouched.
+ */
+export function catchUpPace(i: { share: number; used: number; dayOfMonth: number; daysInMonth: number; spacingDays: number; quota: number }): { spacingDays: number; quota: number } {
+  const same = { spacingDays: i.spacingDays, quota: i.quota };
+  const left = Math.floor(i.share) - Math.max(0, Math.floor(i.used));
+  if (!(i.quota > 0) || !(left > 0) || !(i.spacingDays > 1)) return same;
+  const daysLeft = Math.max(1, Math.floor(i.daysInMonth) - Math.floor(i.dayOfMonth) + 1);
+  const needed = Math.max(1, Math.floor(daysLeft / left));
+  if (needed >= i.spacingDays) return same;
+  return { spacingDays: needed, quota: Math.max(i.quota, 7) };
 }
 
 export type AutoShareSite = {
@@ -171,8 +214,11 @@ export function autoShares(input: { pool: number; sites: AutoShareSite[] }): { s
 /** A covered site that cannot write this month - paused, or setup not
  *  finished - may take nothing from the pool: its articles go to the
  *  siblings. (One site alone still gets the whole pool: sharesForPool.) */
-export function safeMaxForSite(site: { paused: boolean; setupDone: boolean }, rampSafeMax: number): number {
-  return site.paused || !site.setupDone ? 0 : rampSafeMax;
+export function safeMaxForSite(site: { paused: boolean; setupDone: boolean; canPublish?: boolean }, rampSafeMax: number): number {
+  // canPublish false: the site has nowhere to send an article (its repo or
+  // WordPress was disconnected), and the scheduler skips it every day - a
+  // share held there is articles the owner pays for and nobody writes.
+  return site.paused || !site.setupDone || site.canPublish === false ? 0 : rampSafeMax;
 }
 
 /** The ramp's weekly ceiling as a monthly cap: one a week -> 4 a month, two

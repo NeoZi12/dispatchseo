@@ -1709,7 +1709,7 @@ const mcpHandler = createMcpHandler(
         }
         // On the site, or on its way there: a discard here would only hide
         // it from our records. Taking a live article down is remove_article.
-        if (["published", "removing", "finished"].includes(status)) {
+        if (["published", "removing", "finished", "removed"].includes(status)) {
           return fail("That article is on your site (or on its way there). To take it down, use remove_article.");
         }
         const { data, error } = await db()
@@ -2913,8 +2913,10 @@ const mcpHandler = createMcpHandler(
                 "add them in Settings.",
           );
         }
-        // Bundled cloud DataForSEO: check_serp is rate-limited per project,
-        // not metered against the cost budget (a live SERP lookup is cheap
+        // Bundled cloud DataForSEO: check_serp is rate-limited per account
+        // (the project's owner; per project only where there is no owner),
+        // since one plan covers up to 5 sites and a per-site cap multiplied
+        // one owner's share of the shared daily ceiling. Not metered against the cost budget (a live SERP lookup is cheap
         // and interactive - the real spend guard is platformBudgetGate,
         // enforced up in credsForProject). Only applies when this call is
         // actually billed to the platform account; BYO and self-host projects
@@ -2922,7 +2924,7 @@ const mcpHandler = createMcpHandler(
         const billedToPlatform = provider.kind === "dataforseo" && provider.creds.billedTo === "platform";
         // Atomic claim, same as keyword_ideas: the old read-then-record check
         // let a parallel burst past the cap.
-        if (billedToPlatform && !(await rateLimitHit(rateLimitKey("serp", p.id), CHECK_SERP_DAILY_CAP, 86400))) {
+        if (billedToPlatform && !(await rateLimitHit(rateLimitKey("serp", p.owner_user_id ?? p.id), CHECK_SERP_DAILY_CAP, 86400))) {
           return fail(
             "Daily check_serp cap reached (30/day on the shared DataForSEO plan) - resets at UTC " +
               "midnight. Use track_keywords for anything worth ongoing monitoring (the rank cron " +
@@ -3226,10 +3228,14 @@ const mcpHandler = createMcpHandler(
         // Atomic claim (rate_limit_hit, migration 0080), not read-then-record:
         // parallel calls used to all read "under the cap" before any of them
         // recorded, so a burst sailed past it. recordKeywordIdeasCall below
-        // stays for the usage accounting.
-        if (!(await rateLimitHit(rateLimitKey("kwi", p.id), KEYWORD_IDEAS_DAILY_CAP, 86400))) {
+        // stays for the usage accounting. Counted per account (the owner,
+        // else the project): a plan covers up to 5 sites, and a per-site cap
+        // gave one owner 5 times the allowance against the shared ceiling.
+        // Only where we pay: a site on its own DataForSEO account keeps its
+        // own count.
+        if (!(await rateLimitHit(rateLimitKey("kwi", creds.billedTo === "platform" ? (p.owner_user_id ?? p.id) : p.id), KEYWORD_IDEAS_DAILY_CAP, 86400))) {
           return fail(
-            `You have used today's ${KEYWORD_IDEAS_DAILY_CAP} keyword_ideas calls for this site; it resets at UTC midnight. ` +
+            `You have used today's ${KEYWORD_IDEAS_DAILY_CAP} keyword_ideas calls for this account; it resets at UTC midnight. ` +
               "Work with the ideas you already have, or use check_serp and suggest_keywords, which are not capped this way.",
           );
         }
@@ -5269,7 +5275,8 @@ const mcpHandler = createMcpHandler(
           "the quality gate and queues it to publish - no customer-side AI involved. Pass a " +
           "suggestion_id from get_suggestions (approved guides), or a bare keyword. With " +
           "neither, the oldest approved guide idea is written. On an autopilot site it takes the " +
-          "weekly article slot (refused past the weekly quota or the spacing between articles). Returns the run " +
+          "one of this site's articles for the month (refused past the site's monthly share, the plan's " +
+          "monthly total, or the spacing between articles). Returns the run " +
           "id; follow it with get_writer_runs.",
         inputSchema: {
           suggestion_id: z.string().uuid().optional().describe("An approved guide idea to write."),
@@ -5583,10 +5590,13 @@ const mcpHandler = createMcpHandler(
           // refuses - the ceiling is the whole point of the check.
           const now = await siteShareReport(p.id).catch(() => null);
           if (!now) return fail("Could not read this site's share just now, so it was not changed. Try again in a minute.");
-          const most = (now.share ?? 0) + (now.held ?? 0);
+          // Its own number as stored: a paused or unfinished Custom site reads
+          // a share of 0 for now, and must still be able to keep or lower it.
+          const own = now.sites.find((x) => x.slug === p.slug)?.custom ?? now.share ?? 0;
+          const most = own + (now.held ?? 0);
           if (articles_per_month! > most) {
             return fail(
-              `Over MCP this site can be set to ${most} articles a month at most: its current ${now.share ?? 0} plus the ${now.held ?? 0} no site is using. ` +
+              `Over MCP this site can be set to ${most} articles a month at most: its current ${own} plus the ${now.held ?? 0} no site is using. ` +
                 "To move articles from another of the account's sites, the owner changes the split in Settings > Websites.",
             );
           }

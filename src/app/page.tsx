@@ -540,7 +540,7 @@ export default async function LandingPage({
           <div className="faq-list">
             <details open>
               <summary>Is it really free?</summary>
-              <div className="a">Yes. Every site gets 2 articles a month for free, with no card and no end date. Free articles carry a small DispatchSEO badge. The paid plans publish {articlesPerMonthFor("starter")}, {articlesPerMonthFor("growth")} or {articlesPerMonthFor("scale")} articles a month, without the badge.</div>
+              <div className="a">Yes. Your first website gets 2 articles a month for free, with no card and no end date. Free articles carry a small DispatchSEO badge. The paid plans publish {articlesPerMonthFor("starter")}, {articlesPerMonthFor("growth")} or {articlesPerMonthFor("scale")} articles a month, without the badge.</div>
             </details>
             <details>
               <summary>What do I need to get started?</summary>

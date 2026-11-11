@@ -4,6 +4,7 @@ import {
   articlesPerMonthFor,
   forgetOwnedSites,
   getSubscription,
+  idleSite,
   isActive,
   outsidePool,
   polarConfigured,
@@ -86,6 +87,20 @@ async function siteSafeMax(projectId: string, plan: Pick<RampPlan, "poolPerMonth
   return { safeMax: safeMaxFor(verdict), reason: verdict.reason };
 }
 
+/** Does this site have somewhere to send an article (the scheduler's own
+ *  test, job-handlers/draft-status publishRoute)? Loaded on demand: that
+ *  module pulls in the publishing code, which this one must not import at
+ *  the top. Anything that cannot be answered counts as "yes" - a failed
+ *  read is no evidence to take a site's articles away. */
+async function canPublishNow(projectId: string): Promise<boolean> {
+  try {
+    const [{ publishRoute }, project] = await Promise.all([import("./job-handlers/draft-status"), getProjectById(projectId)]);
+    return !project || publishRoute(project) !== "blocked";
+  } catch {
+    return true;
+  }
+}
+
 /** Research keeps coming back empty for this site: no live ideas
  *  (approved, or waiting in the backlog) AND its research history says
  *  research is not finding things (the last two runs each kept at most one
@@ -143,11 +158,21 @@ export async function rebalanceOwnerShares(
           const order = Date.parse(r.site_launched_at ?? r.created_at ?? "") || 0;
           if (isCustomRow(r)) {
             pinned.add(r.id);
+            // A Custom site that cannot write (paused, setup unfinished)
+            // keeps its stored number for the day it can, and holds only
+            // what it already used this month: the rest goes to its
+            // siblings, the same as an automatic site's would. projectPlan
+            // reads it as 0 meanwhile (StoredShare.idle).
+            if (idleSite(r)) {
+              const usedIdle = await weekUsageSince(r.id, since);
+              if (usedIdle.readError) throw new Error(`could not count ${r.slug}'s month: ${usedIdle.readError}`);
+              return { id: r.id, share_mode: "custom", monthly_share: Math.min(r.monthly_share ?? 0, usedIdle.count), safeMax: Infinity, dry: false, order };
+            }
             return { id: r.id, share_mode: "custom", monthly_share: r.monthly_share, safeMax: Infinity, dry: false, order };
           }
           // The month gate's own per-site count (the site's quota bucket), so
           // a share is never cut below what the site already used.
-          const [inputsRead, dry, used] = await Promise.all([rampInputs(r.id, rampSinceDay(now)), isDry(r), weekUsageSince(r.id, since)]);
+          const [inputsRead, dry, used, canPublish] = await Promise.all([rampInputs(r.id, rampSinceDay(now)), isDry(r), weekUsageSince(r.id, since), canPublishNow(r.id)]);
           if (used.readError) throw new Error(`could not count ${r.slug}'s month: ${used.readError}`);
           if (!inputsRead) {
             // Keep the stored number. With none stored, the slowest safe cap
@@ -164,7 +189,9 @@ export async function rebalanceOwnerShares(
           // brake stopped (safeMax 0) cannot write: its articles go to the
           // siblings this month.
           const ramp = safeMaxFor(rampWeighting(inputsRead, RAMP_PROBE_QUOTA, now));
-          const safeMax = safeMaxForSite({ paused: Boolean(r.writer_paused_at), setupDone: Boolean(r.setup_connected_at) }, ramp);
+          // Nowhere to publish (the scheduler's own "setup incomplete" skip)
+          // counts too (canPublishNow).
+          const safeMax = safeMaxForSite({ paused: Boolean(r.writer_paused_at), setupDone: Boolean(r.setup_connected_at), canPublish }, ramp);
           return { id: r.id, share_mode: r.share_mode, monthly_share: r.monthly_share, safeMax, dry, used: used.count, order };
         }),
       );
@@ -181,11 +208,11 @@ export async function rebalanceOwnerShares(
         const next = result.shares.get(r.id) ?? 0;
         // Only while the site is still automatic: an owner's Custom set in
         // the same instant wins.
-        const { error: wErr } = await db()
-          .from("projects")
-          .update({ monthly_share: next })
-          .eq("id", r.id)
-          .eq("share_mode", r.share_mode ?? "auto");
+        // And only over the number this pass read: two passes for one owner
+        // can overlap (a pause in the middle of the daily run), and the one
+        // that read first must not write its older answer over the newer.
+        const write = db().from("projects").update({ monthly_share: next }).eq("id", r.id).eq("share_mode", r.share_mode ?? "auto");
+        const { error: wErr } = await (r.monthly_share == null ? write.is("monthly_share", null) : write.eq("monthly_share", r.monthly_share));
         if (wErr) {
           failed.push(`${r.slug}: ${wErr.message}`);
           return;
@@ -317,7 +344,10 @@ export type SiteShareReport = {
   held: number;
   /** Every site of the owner, oldest first. Siblings by slug, domain and
    *  numbers only. */
-  sites: Array<{ slug: string; domain: string; share: number | null; mode: ShareMode; covered: boolean; usedThisMonth: number }>;
+  /** `custom`: the number the owner set by hand, as stored - a Custom site
+   *  that is paused or still in setup holds a share of 0 meanwhile, and
+   *  gets this back when it can write. Null for an automatic site. */
+  sites: Array<{ slug: string; domain: string; share: number | null; custom: number | null; mode: ShareMode; covered: boolean; usedThisMonth: number }>;
 };
 
 /** One site's month in the owner's plan, for the Websites page and the
@@ -340,7 +370,7 @@ export async function siteShareReport(projectId: string, now = new Date()): Prom
   // one site is the owner's oldest (billing.ts writerGate).
   const limit = isActive(sub) ? sitesLimitOf(sub!) : 1;
   const coveredRows = rows.slice(0, limit);
-  const resolved = pool != null ? sharesForPool(pool, coveredRows.filter((r) => !outsidePool(r))) : new Map<string, number>();
+  const resolved = pool != null ? sharesForPool(pool, coveredRows.filter((r) => !outsidePool(r)).map((r) => ({ ...r, idle: idleSite(r) }))) : new Map<string, number>();
   const held = pool != null ? Math.max(0, pool - [...resolved.values()].reduce((a, b) => a + b, 0)) : 0;
   const [siteCounts, ownerMonth] = await Promise.all([
     Promise.all(rows.map((r) => usageFor([r.id], since))),
@@ -362,6 +392,7 @@ export async function siteShareReport(projectId: string, now = new Date()): Prom
         slug: r.slug,
         domain: r.domain ?? "",
         share: pool == null || outsidePool(r) ? null : covered ? (resolved.get(r.id) ?? 0) : 0,
+        custom: modeOf(r) === "custom" && typeof r.monthly_share === "number" ? r.monthly_share : null,
         mode: modeOf(r),
         covered,
         usedThisMonth: siteCounts[i].count,

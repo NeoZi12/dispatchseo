@@ -2125,6 +2125,17 @@ export async function chooseGithubRepo(
   if (!repos.some((r) => r.full_name === repo)) {
     return { error: "That repository is not part of your DispatchSEO installation." };
   }
+  // A site still in setup cannot take the repository another of the owner's
+  // sites is built from: with one GitHub installation shared between sites
+  // it is in the list, and setup's "is this the site's code" check lets an
+  // unclear answer through, so articles for this site would be merged into
+  // the other one's repo. A finished site keeps the freedom it had.
+  if (!project.setup_connected_at) {
+    const { scopedProjects } = await import("@/lib/active-project");
+    if ((await scopedProjects()).some((p) => p.id !== project.id && p.github_repo === repo)) {
+      return { error: "That repository already belongs to another of your websites. Pick the one this website is built from." };
+    }
+  }
   // A new repo invalidates the blog-switch PR pointer (its number means nothing in the new repo).
   const { error } = await db()
     .from("projects")
@@ -2786,12 +2797,15 @@ export async function discardDraft(draftId: string): Promise<DraftActionState> {
   const LIVE = "That article is on your site (or on its way there). To take it down, use Remove on its page.";
   const { data: current } = await db().from("article_drafts").select("status").eq("id", draftId).maybeSingle();
   const status = (current as { status: string } | null)?.status;
-  if (status === "published" || status === "removing") return { error: LIVE };
+  // "finished" is live on WordPress already (only the check is pending) or
+  // has its pull request open; "removed" must stay removed, or the page's
+  // "gone" answer to Google turns into "not found".
+  if (status === "published" || status === "removing" || status === "finished" || status === "removed") return { error: LIVE };
   const { data: changed, error } = await db()
     .from("article_drafts")
     .update({ status: "discarded", updated_at: new Date().toISOString() })
     .eq("id", draftId)
-    .not("status", "in", "(published,removing)")
+    .not("status", "in", "(published,removing,finished,removed)")
     .select("id");
   if (error) return { error: "We could not discard that one. Try again in a moment." };
   if (!changed?.length) return { error: LIVE };

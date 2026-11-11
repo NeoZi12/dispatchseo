@@ -933,6 +933,10 @@ export type OwnedSite = {
   writer_weekly_quota: number | null;
   writer_mode: string | null;
   created_at: string | null;
+  /** Cannot write right now: a hosted site that is paused or whose setup
+   *  isn't finished (site-shares-core StoredShare.idle). Only set when the
+   *  columns were read; an older database never reads as idle. */
+  idle?: boolean;
 };
 
 // Per-request memo of the read, positive results only (same contract as
@@ -952,22 +956,32 @@ export async function readOwnedSites(ownerId: string): Promise<{ rows: OwnedSite
   const read = (async (): Promise<{ rows: OwnedSite[]; error: string | null }> => {
     const q = (cols: string) => db().from("projects").select(cols).eq("owner_user_id", ownerId).order("created_at", { ascending: true });
     const missing = (e: { message: string } | null) => Boolean(e && /does not exist|could not find/i.test(e.message));
-    let res = await q("id, monthly_share, share_mode, writer_weekly_quota, writer_mode, created_at");
+    let res = await q("id, monthly_share, share_mode, writer_weekly_quota, writer_mode, created_at, writer_paused_at, setup_connected_at");
+    const full = !res.error;
+    if (missing(res.error)) res = await q("id, monthly_share, share_mode, writer_weekly_quota, writer_mode, created_at");
     if (missing(res.error)) res = await q("id, writer_weekly_quota, writer_mode, created_at");
     if (missing(res.error)) res = await q("id, created_at");
-    const rows = ((res.data ?? []) as unknown as Array<Partial<OwnedSite> & { id: string }>).map((r) => ({
+    type Read = Partial<OwnedSite> & { id: string; writer_paused_at?: string | null; setup_connected_at?: string | null };
+    const rows = ((res.data ?? []) as unknown as Read[]).map((r): OwnedSite => ({
       id: r.id,
       monthly_share: typeof r.monthly_share === "number" ? r.monthly_share : null,
       share_mode: r.share_mode ?? null,
       writer_weekly_quota: typeof r.writer_weekly_quota === "number" ? r.writer_weekly_quota : null,
       writer_mode: r.writer_mode ?? null,
       created_at: r.created_at ?? null,
+      ...(full ? { idle: idleSite(r) } : {}),
     }));
     if (res.error || !rows.length) memo.delete(ownerId);
     return { rows, error: res.error?.message ?? null };
   })();
   memo.set(ownerId, read);
   return read;
+}
+
+/** A hosted site that cannot write right now: paused, or its setup isn't
+ *  finished. It holds none of the owner's pool (site-shares-core). */
+export function idleSite(r: { writer_mode?: string | null; writer_paused_at?: string | null; setup_connected_at?: string | null }): boolean {
+  return r.writer_mode === "hosted" && (Boolean(r.writer_paused_at) || !r.setup_connected_at);
 }
 
 /** Drop the memoized read after a write to the owner's shares, so the rest

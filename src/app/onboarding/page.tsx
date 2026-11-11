@@ -145,6 +145,9 @@ type OnboardingParams = {
   checkout?: string;
   plan?: string;
   interval?: string;
+  /** The site whose setup to show, when the owner has more than one
+   *  unfinished (the Websites page's "Finish setup", GitHub's way back). */
+  site?: string;
 };
 
 const NOTICES: Record<string, string> = {
@@ -268,7 +271,7 @@ async function folderSiteFit(projectId: string): Promise<{ fit: "ok" | "cant"; a
 async function cloudSetupFlow(params: OnboardingParams) {
   if (process.env.SETUP_PATH_LEGACY === "1") return null;
   if (params.gh === "pick_project" && params.installation_id) return null;
-  const s = await resolveSetupStage(parsePlanPick(params.plan, params.interval));
+  const s = await resolveSetupStage(parsePlanPick(params.plan, params.interval), typeof params.site === "string" ? params.site.slice(0, 120) : null);
   if (s.legacy) return null;
   // "Add a site" from an owner whose sites are all set up: the Websites page,
   // which adds it the way the first was made and sends them back here for
@@ -372,7 +375,11 @@ async function cloudSetupFlow(params: OnboardingParams) {
   let repos: string[] | null = null;
   if (stage === "github" && s.project?.github_installation_id) {
     try {
-      repos = (await listInstallationRepos(s.project.github_installation_id)).map((r) => r.full_name);
+      // Not the repositories this owner's other sites are built from: on a
+      // shared installation the first site's repo is in the list (often the
+      // only one), and picking it would send this site's articles there.
+      const taken = new Set((await scopedProjects()).filter((p) => p.id !== s.project!.id && p.github_repo).map((p) => p.github_repo as string));
+      repos = (await listInstallationRepos(s.project.github_installation_id)).map((r) => r.full_name).filter((r) => !taken.has(r));
     } catch {
       repos = null;
     }

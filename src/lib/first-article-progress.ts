@@ -134,18 +134,18 @@ export async function firstArticleProgress(
   if (target === "hosted" && project.hosted_key) {
     if (project.hosted_rewrite_live_at) blog = "done";
     else if (pr === "manual") {
-      stuck.blog = { text: "Your host needs one forwarding rule we can't add for you.", href: "/settings?section=publishing", linkLabel: "See the rule" };
+      stuck.blog = { text: "Your host needs one forwarding rule we can't add for you.", href: "/settings#publishing", linkLabel: "See the rule" };
     } else if (blogError) {
       stuck.blog = pr
         ? { text: "GitHub wouldn't let us merge the one small change to your site. Merge it and your blog is on.", href: pr, linkLabel: "Merge it" }
-        : { text: "We couldn't make the one small change to your site yet.", href: "/settings?section=publishing", linkLabel: "Do it in Settings" };
+        : { text: "We couldn't make the one small change to your site yet.", href: "/settings#publishing", linkLabel: "Do it in Settings" };
     } else if (launchRan && pr) {
       stuck.blog = project.auto_merge
         ? { text: "Waiting for your site to deploy." }
         : { text: "Merge the one small change we opened in your repo and your blog is on.", href: pr, linkLabel: "Merge it" };
     }
   } else if (blogError) {
-    stuck.blog = { text: "We couldn't switch your blog on yet.", href: "/settings?section=publishing", linkLabel: "Do it in Settings" };
+    stuck.blog = { text: "We couldn't switch your blog on yet.", href: "/settings#publishing", linkLabel: "Do it in Settings" };
   } else if (launchState === "done" && target === "github" && project.github_repo) {
     blog = "done"; // the site's own blog: articles go next to its posts
   }

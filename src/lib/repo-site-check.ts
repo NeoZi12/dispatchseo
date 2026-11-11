@@ -133,7 +133,12 @@ async function repoPaths(token: string, repo: string): Promise<{ paths: string[]
   const info = await githubApi(token, "GET", `/repos/${repo}`);
   if (info.status !== 200) return null;
   const branch = String(info.json?.default_branch ?? "");
-  if (Number(info.json?.size ?? -1) === 0 || !branch) return { paths: [], empty: true, truncated: false };
+  // Not GitHub's `size`: it is only recalculated about hourly and reads 0
+  // for a repo that was created and pushed minutes ago, which is exactly
+  // when a new owner connects it - their site's repo was then judged empty
+  // and refused as the wrong one. The tree below says what is really there
+  // (409 = no commits yet).
+  if (!branch) return { paths: [], empty: true, truncated: false };
   const tree = await githubApi(token, "GET", `/repos/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`);
   if (tree.status === 409) return { paths: [], empty: true, truncated: false };
   if (tree.status !== 200) return null;
@@ -153,7 +158,13 @@ export async function findSiteRepo(project: Project): Promise<Project | null> {
   if (!project.github_installation_id || !project.domain) return null;
   try {
     const { listInstallationRepos } = await import("@/lib/github-app");
-    const repos = (await listInstallationRepos(project.github_installation_id)).map((r) => r.full_name).filter((r) => r !== project.github_repo).slice(0, 15);
+    // Never a repository another site is built from: with one installation
+    // shared between an owner's sites, a second site started from a copy of
+    // the first one's code "matched" the first site's repo, and its articles
+    // would have been merged there.
+    const { data: bound } = await db().from("projects").select("github_repo").not("github_repo", "is", null).neq("id", project.id);
+    const taken = new Set(((bound ?? []) as { github_repo: string | null }[]).map((r) => r.github_repo).filter(Boolean) as string[]);
+    const repos = (await listInstallationRepos(project.github_installation_id)).map((r) => r.full_name).filter((r) => r !== project.github_repo && !taken.has(r)).slice(0, 15);
     if (!repos.length) return null;
     const root = new URL(`${siteRoot(project)}/`);
     const host = project.domain.replace(/^www\./, "");

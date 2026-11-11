@@ -16,7 +16,7 @@ import {
   type PublishMode,
   type SiteVerdict,
 } from "@/components/setup-stage/scenes";
-import { railFor, type SceneId } from "@/components/setup-stage/primitives";
+import { BTN_SECONDARY, railFor, type SceneId } from "@/components/setup-stage/primitives";
 import { cleanDomain, isValidDomain } from "@/lib/domain";
 import { cx, FOCUS_RING } from "@/components/ui/styles";
 import { checkSite, chooseFreePlan, choosePublishMode, createSite, overrideSiteCheck, pickSetupRepo, startEmailSignIn, startOAuthSignIn } from "./setup-actions";
@@ -190,7 +190,7 @@ export function SetupClient(props: {
     if (scene === "account") setSay(notice ?? (sentTo ? "Open the link and I'll take it from there." : "One click and you're in."));
     if (scene === "checkout") setSay(notice ?? (props.planMenu?.free ? "Pick a plan. Free is a real plan." : "Pick a plan, then I take it from there."));
     if (scene === "publishing") setSay(notice ?? "Most people let me publish. Your call.");
-    if (scene === "github") setSay(notice ?? (props.ghError ? "GitHub didn't finish. Let's try that again." : props.repos && props.repos.length > 1 ? "Which of these is your site?" : "Three clicks. I'll show you each one."));
+    if (scene === "github") setSay(notice ?? (props.ghError ? "GitHub didn't finish. Let's try that again." : props.repos ? (props.repos.length > 0 ? "Which of these is your site?" : "I can't see your site's repository yet.") : "Three clicks. I'll show you each one."));
     if (scene === "google") setSay(notice ?? (props.googleError ? "Google didn't finish. One more try?" : "Last step. Two clicks."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scene]);
@@ -290,7 +290,39 @@ export function SetupClient(props: {
     router.refresh();
   }
 
-  const showRepos = scene === "github" && props.repos && props.repos.length > 1;
+  // GitHub opens in a new tab so the guide stays in this one to look back at
+  // (owner, 2026-11-08). When the person comes back here, the page re-asks
+  // the server which step it is on; GitHub's own tab lands on the next step
+  // too.
+  //
+  // "noopener" must NOT be passed as a window.open feature: with it the spec
+  // makes window.open return null even when the tab opened, so this would
+  // read as "blocked" and also navigate this tab away from the guide. Open
+  // normally, then cut the opener link by hand.
+  function openGithub() {
+    if (!props.slug) return;
+    const url = `/api/github/install/start?slug=${encodeURIComponent(props.slug)}`;
+    const tab = window.open(url, "_blank");
+    if (tab) {
+      try {
+        tab.opener = null;
+      } catch {
+        // Cross-origin already: nothing to cut.
+      }
+      setGithubTabOpen(true);
+      return;
+    }
+    // A popup blocker ate it: go there in this tab instead.
+    setBusy(true);
+    window.location.href = url;
+  }
+
+  // The repository list shows whenever GitHub has told us what we can see
+  // and the site has no repository yet. Also for one repository or none: a
+  // first install with exactly one attaches it on the way back and never
+  // stops here, so a short list at this step is a second site looking at
+  // the first site's installation, and it has to choose (or add) its own.
+  const showRepos = scene === "github" && props.repos != null;
 
   return (
     <SetupStageShell scene={scene} done={Math.max(0, steps.findIndex((x) => x.id === scene))} say={say} hop={hop} steps={steps}>
@@ -401,40 +433,16 @@ export function SetupClient(props: {
         <GithubScene
           busy={busy}
           error={props.ghError ?? error}
-          onContinue={() => {
-            if (!props.slug) return;
-            // GitHub opens in a new tab so the guide stays in this one to
-            // look back at (owner, 2026-11-08). When the person comes back
-            // here, the page re-asks the server which step it is on; GitHub's
-            // own tab lands on the next step too.
-            //
-            // "noopener" must NOT be passed as a window.open feature: with it
-            // the spec makes window.open return null even when the tab
-            // opened, so this would read as "blocked" and also navigate this
-            // tab away from the guide. Open normally, then cut the opener
-            // link by hand.
-            const url = `/api/github/install/start?slug=${encodeURIComponent(props.slug)}`;
-            const tab = window.open(url, "_blank");
-            if (tab) {
-              try {
-                tab.opener = null;
-              } catch {
-                // Cross-origin already: nothing to cut.
-              }
-              setGithubTabOpen(true);
-              return;
-            }
-            // A popup blocker ate it: go there in this tab instead.
-            setBusy(true);
-            window.location.href = url;
-          }}
+          onContinue={openGithub}
         />
       ) : null}
 
       {showRepos ? (
         <section className="rounded-3xl border border-line bg-surface p-6 sm:p-8">
           <h2 className="text-[22px] font-semibold tracking-tight text-ink">Which one is your site?</h2>
-          <p className="mt-1 text-[15px] text-ink-muted">GitHub gave us access to more than one repository. Pick the one {domain} is built from.</p>
+          <p className="mt-1 text-[15px] text-ink-muted">
+            {props.repos!.length > 0 ? `Pick the repository ${domain ?? "your site"} is built from.` : `We can't see any repository on your GitHub yet. Give us access to the one ${domain ?? "your site"} is built from.`}
+          </p>
           <ul className="mt-5 grid gap-2">
             {props.repos!.map((r) => (
               <li key={r}>
@@ -449,7 +457,15 @@ export function SetupClient(props: {
               </li>
             ))}
           </ul>
-          {error ? <p className="mt-4 rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-[14px] text-ink">{error}</p> : null}
+          {(error ?? props.ghError) ? <p className="mt-4 rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-[14px] text-ink">{error ?? props.ghError}</p> : null}
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-line-soft pt-5">
+            <p className="text-[14px] text-ink-muted">
+              {props.repos!.length > 0 ? "Not in the list? " : ""}Add it on GitHub, then come back to this tab.
+            </p>
+            <button type="button" disabled={busy} onClick={openGithub} className={cx(BTN_SECONDARY, "px-4 py-2.5 text-[14px]")}>
+              Open GitHub
+            </button>
+          </div>
         </section>
       ) : null}
 

@@ -101,8 +101,15 @@ export async function runLaunchJob(job: Job): Promise<void> {
   // plan's state, not a fault. A gate that could not READ the plan is a
   // blip, not a verdict: that one throws, so the job retries (the launch's
   // idempotency key never queues a second one, so a quiet skip is final).
-  const { writerGate } = await import("@/lib/billing");
+  const { writerGate, getSubscriptionOrThrow, isActive } = await import("@/lib/billing");
+  // The gate reads the plan through getSubscription, which answers "no
+  // plan" on a read error - and a paying owner's site would then be skipped
+  // here for good. Ask once in the form that throws, so a blip retries; and
+  // a gate that says "inactive" about a plan this read saw live was a blip
+  // inside the gate, so that retries too.
+  const sub = project.owner_user_id ? await getSubscriptionOrThrow(project.owner_user_id) : null;
   const gate = await writerGate(project.id);
+  if (!gate.allowed && isActive(sub) && /inactive/i.test(gate.reason)) throw new Error(`plan: read as inactive while the subscription is live (${gate.reason})`);
   if (!gate.allowed && gate.reason.startsWith("could not read")) throw new Error(`plan: ${gate.reason}`);
   if (!gate.allowed) {
     console.info(`[launch] ${project.slug}: skipped, setup incomplete (${gate.reason})`);

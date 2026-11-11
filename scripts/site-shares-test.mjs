@@ -14,6 +14,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   autoShares,
+  catchUpPace,
   customShareLimit,
   monthGateVerdict,
   paceFor,
@@ -32,7 +33,7 @@ registerHooks({
     return next(spec, ctx);
   },
 });
-const { researchComingBackEmpty, researchEveryMs, RESEARCH_EVERY_MS, SLOW_RESEARCH_EVERY_MS } = await import("../src/lib/autopilot/math.ts");
+const { cadence, weekStartUtc, researchComingBackEmpty, researchEveryMs, RESEARCH_EVERY_MS, SLOW_RESEARCH_EVERY_MS } = await import("../src/lib/autopilot/math.ts");
 
 let failed = 0;
 let passed = 0;
@@ -224,6 +225,74 @@ eq(monthGateVerdict({ share: 0, pool: 15, siteCount: 0, ownerCount: 3 }), null, 
 // --- the Custom stepper's upper bound ---
 eq(customShareLimit(15, 4), 11, "custom limit = pool minus other customs");
 eq(customShareLimit(5, 9), 0, "custom limit never goes negative");
+
+// --- an idle site (paused, setup unfinished) holds nothing ---
+eq(asObj(resolveShares(15, [{ id: "a", monthly_share: null }, { id: "b", monthly_share: null, idle: true }])), { b: 0, a: 15 }, "idle: a site in setup takes none of an unset split");
+eq(asObj(resolveShares(15, [{ id: "a", monthly_share: 5 }, { id: "b", monthly_share: null, idle: true }])), { a: 5, b: 0 }, "idle: it does not take what an older stored share left either");
+eq(asObj(resolveShares(15, [{ id: "a", monthly_share: 10, share_mode: "custom", idle: true }, { id: "b", monthly_share: 12 }])), { a: 0, b: 12 }, "idle: a paused Custom site holds 0, so its sibling's share is not clamped");
+eq(asObj(sharesForPool(15, [{ id: "a", monthly_share: 3, idle: true }])), { a: 15 }, "idle: one site alone still reads the whole pool");
+eq(safeMaxForSite({ paused: false, setupDone: true, canPublish: false }, Infinity), 0, "a site with nowhere to publish takes nothing");
+eq(safeMaxForSite({ paused: false, setupDone: true }, 9), 9, "canPublish absent = it can");
+
+// --- catching up on the month ---
+eq(catchUpPace({ share: 15, used: 0, dayOfMonth: 1, daysInMonth: 30, spacingDays: 2, quota: 4 }), { spacingDays: 2, quota: 4 }, "catch-up: on schedule, the plan's own pace");
+eq(catchUpPace({ share: 15, used: 1, dayOfMonth: 4, daysInMonth: 30, spacingDays: 2, quota: 4 }), { spacingDays: 1, quota: 7 }, "catch-up: a skipped day shortens the wait");
+eq(catchUpPace({ share: 15, used: 0, dayOfMonth: 1, daysInMonth: 28, spacingDays: 2, quota: 4 }), { spacingDays: 1, quota: 7 }, "catch-up: February starts closer together");
+eq(catchUpPace({ share: 30, used: 3, dayOfMonth: 9, daysInMonth: 30, spacingDays: 1, quota: 7 }), { spacingDays: 1, quota: 7 }, "catch-up: never closer than a day apart");
+eq(catchUpPace({ share: 5, used: 5, dayOfMonth: 20, daysInMonth: 30, spacingDays: 6, quota: 2 }), { spacingDays: 6, quota: 2 }, "catch-up: a used-up share is left alone");
+eq(catchUpPace({ share: 15, used: 2, dayOfMonth: 20, daysInMonth: 30, spacingDays: 2, quota: 0 }), { spacingDays: 2, quota: 0 }, "catch-up: the index brake's 0 stays 0");
+eq(catchUpPace({ share: 9, used: 8, dayOfMonth: 5, daysInMonth: 30, spacingDays: 3, quota: 3 }), { spacingDays: 3, quota: 3 }, "catch-up: ahead of schedule never slows below the plan's spacing");
+
+// A whole month through cadence(), the way the scheduler runs it: one pass a
+// day, and the listed days skipped (no idea ready, a research day).
+function monthRun({ share, year, month, skip = [], catchUp = true }) {
+  const base = paceFor(share);
+  const days = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  let used = 0;
+  let last = null;
+  const starts = [];
+  for (let d = 1; d <= days; d++) {
+    if (used >= share) break;
+    const now = new Date(Date.UTC(year, month, d, 5, 30));
+    if (skip.includes(d)) continue;
+    const weekStart = weekStartUtc(now).getTime();
+    const countThisWeek = starts.filter((t) => t >= weekStart).length;
+    const pace = catchUp
+      ? catchUpPace({ share, used, dayOfMonth: d, daysInMonth: days, spacingDays: base.spacingDays, quota: base.articlesPerWeek })
+      : { spacingDays: base.spacingDays, quota: base.articlesPerWeek };
+    const v = cadence({ now, quota: pace.quota, spacingDays: pace.spacingDays, countThisWeek, lastStartedAt: last });
+    if (v.write) {
+      used++;
+      last = now.toISOString();
+      starts.push(now.getTime());
+    }
+  }
+  return used;
+}
+eq(monthRun({ share: 15, year: 2027, month: 1, catchUp: false }), 14, "before: Growth on one site got 14 of 15 in a 28-day February");
+eq(monthRun({ share: 15, year: 2027, month: 3, skip: [5, 6, 7, 20], catchUp: false }) < 15, true, "before: skipped days cost Growth on one site an article");
+eq(monthRun({ share: 15, year: 2027, month: 3, skip: [5] }), 15, "Growth on one site: a skipped day is made up");
+eq(monthRun({ share: 15, year: 2027, month: 3, skip: [5, 6, 7, 20] }), 15, "Growth on one site: four skipped days are made up");
+eq(monthRun({ share: 15, year: 2027, month: 1 }), 15, "Growth on one site: all 15 in a 28-day February");
+eq(monthRun({ share: 5, year: 2027, month: 3, skip: [1, 2, 13] }), 5, "Starter: skipped days are made up");
+eq(monthRun({ share: 9, year: 2027, month: 3, skip: [4, 10, 11] }), 9, "a share of 9: skipped days are made up");
+eq(monthRun({ share: 30, year: 2027, month: 3 }), 30, "Scale on one site: 30 in a 30-day month with no skipped day");
+eq(monthRun({ share: 30, year: 2027, month: 3, skip: [5] }), 29, "Scale on one site: one start a day is the ceiling, so a skipped day is not made up");
+
+// --- the queue order: a topic the owner asked for comes before research ideas ---
+const { sortIdeas } = await import("../src/lib/autopilot/idea-order.ts");
+const order = (rows) => sortIdeas(rows).map((r) => r.id);
+eq(
+  order([
+    { id: "big", keyword_volume: 1300, keyword_difficulty: 0, created_at: "2026-11-01" },
+    { id: "owner-unmeasured", keyword_volume: null, keyword_difficulty: null, source: "owner", created_at: "2026-11-05" },
+    { id: "owner-small", keyword_volume: 40, keyword_difficulty: 10, source: "owner", created_at: "2026-11-03" },
+    { id: "pinned", keyword_volume: 10, keyword_difficulty: 80, queue_position: 0, created_at: "2026-11-06" },
+  ]),
+  ["pinned", "owner-small", "owner-unmeasured", "big"],
+  "queue order: pinned first, then the owner's topics oldest first, then research by score",
+);
+eq(order([{ id: "a", keyword_volume: 590, keyword_difficulty: 0 }, { id: "b", keyword_volume: 720, keyword_difficulty: 9 }]), ["a", "b"], "queue order: research ideas still go by score");
 
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

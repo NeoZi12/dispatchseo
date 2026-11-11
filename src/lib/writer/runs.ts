@@ -149,14 +149,20 @@ async function recordIfFree(project: { id: string; domain: string | null }, run:
   if (!gate.allowed || !gate.free) return null;
   const ownerId = await ownerUserIdForProject(project.id);
   if (!ownerId) return "the free plan needs an owner account";
-  const { recordFreeStart } = await import("@/lib/free-gate");
+  const { recordFreeStart, refundFreeStart } = await import("@/lib/free-gate");
   const startId = await recordFreeStart(ownerId, run.project_id, project.domain);
   // The run remembers its own ledger row, so a refund (failRun) can never
   // touch another start's row. Nothing else has written to this run yet
   // (pick is queued after this returns), so a plain write is safe.
   const outputs = { ...run.stage_outputs, free_start_id: startId };
   const { error: stampError } = await db().from("writer_runs").update({ stage_outputs: outputs }).eq("id", run.id);
-  if (stampError) return `could not record the free article: ${stampError.message}`;
+  if (stampError) {
+    // The ledger row is written and the run does not know it: a later
+    // failRun could not hand it back, and the owner would be one free
+    // article short for nothing. Hand it back here.
+    await refundFreeStart(startId, run.project_id).catch(() => undefined);
+    return `could not record the free article: ${stampError.message}`;
+  }
   run.stage_outputs = outputs;
   // Check-then-record is not atomic, so look again AFTER recording: two
   // starts racing through the gate both see the other here and both refuse

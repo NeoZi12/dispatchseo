@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import type { Project } from "@/lib/projects";
+import { writerMode, type Project } from "@/lib/projects";
+import { isCloudMode } from "@/lib/cloud";
 import type { AutopilotArticle, AutopilotReport } from "@/lib/autopilot/report";
 import { ArticleList } from "@/components/ui/article-list";
 import { ArticleRowsSkeleton } from "@/components/ui/skeleton";
@@ -31,7 +32,7 @@ import { setupGaps } from "../mode";
 import { TOPIC_LIMITS } from "@/lib/autopilot/controls";
 import type { CronHealth } from "@/lib/cron-alerts";
 import { siteIssueLine } from "@/lib/autopilot/friendly";
-import { articlesPerMonthFor, FREE_ARTICLES_PER_MONTH, priceLabel, TIER_LIMITS } from "@/lib/billing";
+import { articlesPerMonthFor, FREE_ARTICLES_PER_MONTH, freeSpacingDays, priceLabel, TIER_LIMITS } from "@/lib/billing";
 import type { OperatorSite } from "@/lib/autopilot/operator";
 import { OperatorIssue } from "./operator-issue";
 import { repoMismatchOf } from "@/lib/site-root";
@@ -93,11 +94,21 @@ function messageOf(r: AutopilotReport, gaps: ReturnType<typeof setupGaps>, proje
       link: { href: "/api/github/install/start?slug=" + encodeURIComponent(project.slug), label: "Connect your site's repository" },
     };
   }
+  // A site still in setup gets a share of 0 until it connects, so without
+  // this it would read as "this site gets no articles, change the split".
+  // The real reason is the unfinished setup, and that is where to send them.
+  if (inSetup(project)) {
+    return {
+      title: `${project.domain} isn't set up yet.`,
+      sub: "Finish its setup and I start writing for it.",
+      link: { href: `/onboarding?site=${encodeURIComponent(project.slug)}`, label: "Finish setup" },
+    };
+  }
   if (r.articles.some((a) => a.status === "needs_setup")) {
     return {
       title: "An article is finished, with nowhere to publish.",
       sub: "Choose where articles go and it goes out straight away.",
-      link: { href: "/settings?section=publishing", label: "Choose where articles go" },
+      link: { href: "/settings#publishing", label: "Choose where articles go" },
     };
   }
   if (r.plan.articlesPerWeek === 0) {
@@ -111,6 +122,24 @@ function messageOf(r: AutopilotReport, gaps: ReturnType<typeof setupGaps>, proje
     // A live plan with a pool gives this site 0 for one of two reasons,
     // and neither is a lapsed plan (multi-site plans, 2026-11-11).
     const m = r.thisMonth;
+    // 0 because the site cannot write, not because of the split: an
+    // unfinished setup says so (also for an older site with a repo and
+    // Google but no setup stamp, which the top check leaves alone), and a
+    // paused site falls through to its own "I'm paused" message below.
+    if (m.pool != null && m.covered === true && isCloudMode() && writerMode(project) === "hosted" && !project.setup_connected_at) {
+      return {
+        title: `${project.domain} isn't set up yet.`,
+        sub: "Finish its setup and I start writing for it.",
+        link: { href: `/onboarding?site=${encodeURIComponent(project.slug)}`, label: "Finish setup" },
+      };
+    }
+    if (m.pool != null && m.covered === true && r.paused) {
+      return {
+        title: `I'm paused, since ${shortDate(r.paused.at)}.`,
+        sub: `${r.paused.reason} Nothing is written or published until you resume.`,
+        resume: true,
+      };
+    }
     if (m.pool != null && m.covered === true) {
       return {
         title: "This site gets no articles this month.",
@@ -149,7 +178,7 @@ function messageOf(r: AutopilotReport, gaps: ReturnType<typeof setupGaps>, proje
     if (cap) {
       return {
         title: `That's your ${cap.share} free articles for ${monthNameOf(Date.now())}.`,
-        sub: `The next one goes out on ${nextMonthLabel(Date.now())}. Starter writes ${STARTER_PER_MONTH} a month, so I'd keep going instead of waiting.`,
+        sub: `The next one goes out on ${nextFreeLabel(r, Date.now())}. Starter writes ${STARTER_PER_MONTH} a month, so I'd keep going instead of waiting.`,
         link: { href: "/billing#plans", label: "See plans" },
       };
     }
@@ -167,12 +196,16 @@ function messageOf(r: AutopilotReport, gaps: ReturnType<typeof setupGaps>, proje
  *  is split between sites; the free plan's number; and only where there is
  *  no monthly number at all (self-host, the operator's override) the pace
  *  as a month. Null when there is nothing to promise. */
-function monthLineOf(r: AutopilotReport): React.ReactNode {
+function monthLineOf(r: AutopilotReport, project: Project): React.ReactNode {
   const m = r.thisMonth;
   const used = `${m.used} started so far.`;
   if (m.share != null) {
     if (m.share <= 0) {
-      if (m.pool == null || m.covered !== true) return null;
+      // In setup the share is 0 only until it connects; the dispatcher's
+      // "Finish setup" message says why, not "change the split".
+      // Paused or unfinished: the share is 0 because the site cannot write,
+      // and the dispatcher's message says which.
+      if (m.pool == null || m.covered !== true || inSetup(project) || r.paused || (isCloudMode() && writerMode(project) === "hosted" && !project.setup_connected_at)) return null;
       return (
         <>
           None of your plan&apos;s {m.pool} articles go to this site this month.{" "}
@@ -205,11 +238,40 @@ function freeCapOf(r: AutopilotReport): { share: number; used: number } | null {
   return { share, used: r.thisMonth.used };
 }
 
+/** A cloud hosted site whose setup isn't finished: it gets no articles (a
+ *  share of 0) until it connects, which is not a split the owner chose. */
+function inSetup(project: Project): boolean {
+  // "Still a step to do" as setup itself asks it (setup-flow.ts
+  // resolveSetupStage): no repo yet, or no Google yet. A site with both and
+  // no stamp is an older site from before the stamp existed - sending that
+  // one to setup would launch it a second time.
+  return isCloudMode() && writerMode(project) === "hosted" && !project.setup_connected_at && (!project.github_repo || !project.gsc_oauth_refresh_token);
+}
+
 const monthNameOf = (now: number) => new Date(now).toLocaleString("en-US", { month: "long", timeZone: "UTC" });
-/** The 1st of next month, when the free month resets (UTC, like the gate). */
-function nextMonthLabel(now: number): string {
+/** When the next free article can start: the 1st of next month (the month
+ *  resets in UTC, like the gate), or later when the spacing since the last
+ *  free start runs past it (free-gate.ts freeStartAllowed). A start late in
+ *  the month pushes the next one into the following month's first weeks.
+ *  The last start is read from this site's writer articles (createdAt: the
+ *  run's start, or the draft's creation once written, which trails it by
+ *  the writing time). Free covers one site, so that is the owner's start. */
+function nextFreeLabel(r: AutopilotReport, now: number): string {
   const d = new Date(now);
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)).toLocaleString("en-US", { month: "long", day: "numeric", timeZone: "UTC" });
+  const firstOfNext = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
+  let last = 0;
+  for (const a of r.articles) {
+    if (a.source !== "writer") continue;
+    const t = Date.parse(a.createdAt);
+    if (Number.isFinite(t) && t > last) last = t;
+  }
+  // The daily pass runs at 05:30 UTC: a wait that ends later in the day is
+  // really tomorrow's article, so the date never promises a day early.
+  const spaced = last ? last + freeSpacingDays() * DAY : 0;
+  const spacedDay = spaced ? Math.floor(spaced / DAY) * DAY : 0;
+  const spacedRun = spaced && spaced - spacedDay > 5.5 * 60 * 60 * 1000 ? spacedDay + DAY : spacedDay;
+  const next = Math.max(firstOfNext, spacedRun);
+  return new Date(next).toLocaleString("en-US", { month: "long", day: "numeric", timeZone: "UTC" });
 }
 
 /** What the dispatcher is doing at its desk: the scene says the state. */
@@ -376,8 +438,10 @@ export async function HostedReport({
     writing: inProgress(r.articles).length,
     waiting: r.articles.filter((a) => ARTICLE_STATUS[a.status].attention).length,
   };
-  const monthLine = monthLineOf(r);
-  const freeCap = freeCapOf(r);
+  const monthLine = monthLineOf(r, project);
+  // Paused, the dispatcher's own "I'm paused" says why nothing goes out; a
+  // coffee-break date on top would promise an article that won't come.
+  const freeCap = r.paused ? null : freeCapOf(r);
   const pauseControl = r.paused ? (
     <ActionForm action={resumeAutopilot} slug={project.slug} submitLabel="Resume Dispatcher" size="sm" className="[&_p:empty]:hidden" />
   ) : (
@@ -467,7 +531,12 @@ export async function HostedReport({
           <h2 id="latest-title" className="arrive-up text-xl font-semibold tracking-tight text-ink" style={at(860)}>
             Latest articles
           </h2>
-          {nextAt ? <NextArticleLine at={nextAt} now={now} /> : null}
+          {/* No date while the free month is used up (the card below has
+              the real one) or while setup blocks publishing: either way the
+              promised article wouldn't go out that day. */}
+          {nextAt && !freeCap && !gaps.some((g) => !g.done && g.blocksPublishing) ? (
+            <NextArticleLine at={nextAt} now={now} review={project.publish_mode === "review"} />
+          ) : null}
           <Suspense fallback={<ArticleRowsSkeleton rows={latest.length} />}>
             <LatestRows projectId={project.id} articles={latest} liveCount={liveCount} />
           </Suspense>
@@ -503,7 +572,7 @@ export async function HostedReport({
             ) : null}
           </p>
         </div>
-        {freeCap ? <FreeCapCard share={freeCap.share} used={freeCap.used} now={now} /> : null}
+        {freeCap ? <FreeCapCard share={freeCap.share} used={freeCap.used} next={nextFreeLabel(r, now)} now={now} /> : null}
         <MonthBoard cards={month.cards} today={month.today} at={940} />
       </section>
 
@@ -558,14 +627,15 @@ export async function HostedReport({
  *  (typing when it's close, coffee while it waits), one line in its voice,
  *  and a tear-off calendar page with the day. Colour lives in the glow and
  *  the calendar's band, never in a tile around an icon (owner, 2026-11-11). */
-function NextArticleLine({ at: iso, now }: { at: string; now: number }) {
+function NextArticleLine({ at: iso, now, review }: { at: string; now: number; review: boolean }) {
   const days = Math.floor(Date.parse(iso) / 86_400_000) - Math.floor(now / 86_400_000);
   const d = new Date(iso);
   const soon = days <= 1;
   const title =
     days <= 0 ? "Your next article starts today" : days === 1 ? "Your next article starts tomorrow" : `Your next article is on ${dayDate(iso, now)}`;
   const say = soon
-    ? "I'm lining it up now: research, writing, a check of every fact, then it goes live on your site."
+    ? // Review mode holds every finished article for the owner's Publish.
+      `I'm lining it up now: research, writing, a check of every fact, then ${review ? "it waits for your OK" : "it goes live on your site"}.`
     : `That's ${days} days away. Until then I keep your topic queue fresh and watch how Google treats what's live.`;
   return (
     <div
@@ -604,7 +674,7 @@ function NextArticleLine({ at: iso, now }: { at: string; now: number }) {
  *  colour in the glow, the ticks and the button, never a tinted tile. The
  *  copy promises only the plan's monthly number, never a count for the rest
  *  of this month - how many more fit depends on the day they upgrade. */
-function FreeCapCard({ share, used, now }: { share: number; used: number; now: number }) {
+function FreeCapCard({ share, used, next, now }: { share: number; used: number; next: string; now: number }) {
   const slots = Math.max(STARTER_PER_MONTH, share);
   const filled = Math.min(used, share);
   return (
@@ -628,7 +698,7 @@ function FreeCapCard({ share, used, now }: { share: number; used: number; now: n
               That&apos;s your {share} free articles for {monthNameOf(now)}.
             </p>
             <p className="mt-1 text-[13.5px] leading-relaxed text-ink-muted">
-              I&apos;m on a coffee break until {nextMonthLabel(now)}. Starter writes {STARTER_PER_MONTH} a month, so I&apos;d keep going.
+              I&apos;m on a coffee break until {next}. Starter writes {STARTER_PER_MONTH} a month, so I&apos;d keep going.
             </p>
 
             {/* Starter's month as slots: the free ones done, the rest locked. */}

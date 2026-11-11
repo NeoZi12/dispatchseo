@@ -73,6 +73,20 @@ export async function assertInstallationClaimable(
   throw new Error("Not found");
 }
 
+// Is this installation already attached to a site the CALLER owns? Then the
+// binding was established before, through the gates above, and GitHub coming
+// back without a sign-in code (it sends none when an already-installed app's
+// repository list is changed) is not a reason to refuse the same owner's
+// next site. False on a single-owner install's unrestricted set is fine:
+// self-host never reaches the App callback. A failed read is "no".
+export async function installationAlreadyMine(installationId: number): Promise<boolean> {
+  const owned = await ownedProjectIds();
+  if (!owned || !Number.isFinite(installationId)) return false;
+  const { data, error } = await db().from("projects").select("id").eq("github_installation_id", installationId);
+  if (error) return false;
+  return ((data ?? []) as Array<{ id: string }>).some((row) => owned.has(row.id));
+}
+
 // Bulk variant: every id must resolve AND be owned - a partially-foreign
 // batch is rejected whole rather than silently filtered.
 export async function assertRowsOwned(

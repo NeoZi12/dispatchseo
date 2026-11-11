@@ -254,7 +254,7 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
     ids.length
       ? db()
           .from("suggestions")
-          .select("id, project_id, title, primary_keyword, keyword_volume, keyword_difficulty, spec, status, created_at, queue_position")
+          .select("id, project_id, title, primary_keyword, keyword_volume, keyword_difficulty, spec, status, created_at, queue_position, source")
           .in("project_id", ids)
           .eq("type", "guide")
           .limit(2000)

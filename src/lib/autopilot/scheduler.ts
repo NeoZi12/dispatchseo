@@ -10,10 +10,10 @@ import { startWriterRun, suggestionIdsInFlight } from "@/lib/writer/runs";
 import { rewriteLiveCached } from "@/lib/hosted-rewrite";
 import { hostedPath } from "@/lib/hosted-blog";
 import { publishTarget, writerMode, type Project } from "@/lib/projects";
-import { cadence, researchEveryMs } from "./math";
+import { cadence, DAY_MS, researchEveryMs, utcDay } from "./math";
 import { generateSiteProfile } from "./profile";
 import { keywordDataBlocked, runResearch, type ResearchOutcome } from "./research";
-import { monthAllowance, weekUsage } from "./usage";
+import { monthAllowanceWithCount, paceToday, weekUsage } from "./usage";
 import { readResearchState } from "@/lib/keyword-research-cache";
 import { rampFor } from "./ramp";
 import { pauseWriter } from "./pause";
@@ -70,6 +70,19 @@ async function setNextArticleAt(projectId: string, at: Date | null): Promise<voi
  * article" date, so a mid-week plan upgrade takes effect from the date
  * already shown (usually the following Monday), not instantly.
  */
+/** The date to store in next_article_at for a site on a pooled plan: never
+ *  later than tomorrow. The column is a claim marker (claimSlot only takes a
+ *  slot that is unset or due); the real spacing is asked again on every
+ *  pass from the last start (cadence). Stored at the plan's even spacing, a
+ *  date two or six days out stopped a site that had since fallen behind
+ *  from catching up (usage.ts paceToday) on the days in between. Sites
+ *  without a pool keep the date as it is. */
+function claimMarker(plan: { poolPerMonth?: number | null }, at: Date, now: Date): Date {
+  if (plan.poolPerMonth == null) return at;
+  const tomorrow = utcDay(now).getTime() + DAY_MS;
+  return at.getTime() > tomorrow ? new Date(tomorrow) : at;
+}
+
 async function claimSlot(project: Project, now: Date, next: Date): Promise<boolean> {
   const { data, error } = await db()
     .from("projects")
@@ -211,15 +224,18 @@ export async function runScheduler(
   // stranded the site there even when its share rose the same day - a new
   // site joining, a sibling paused, an owner's Custom change. Each daily
   // pass asks the month gate again instead; the date rides in the outcome.
-  const month = await monthAllowance(project, plan, now);
+  const { gate: month, siteCount } = await monthAllowanceWithCount(project, plan, now);
   if (month && "readError" in month) return { skipped: `this month's usage could not be read (${month.readError})`, next_article_at: project.next_article_at, profile: profileOutcome };
   if (month) {
     return { skipped: month.reason, next_article_at: month.nextAt.toISOString(), profile: profileOutcome };
   }
   const usage = await weekUsage(project.id, now);
-  const verdict = cadence({ now, quota: ramp.quota, spacingDays: plan.spacingDays, countThisWeek: usage.count, lastStartedAt: usage.lastStartedAt });
+  // A pooled site behind on its month may start sooner than its even
+  // spacing (usage.ts paceToday), so a skipped day costs the owner nothing.
+  const pace = paceToday(plan, ramp.quota, siteCount, now);
+  const verdict = cadence({ now, quota: pace.quota, spacingDays: pace.spacingDays, countThisWeek: usage.count, lastStartedAt: usage.lastStartedAt });
   if (!verdict.write) {
-    await setNextArticleAt(project.id, verdict.nextAt);
+    await setNextArticleAt(project.id, verdict.nextAt ? claimMarker(plan, verdict.nextAt, now) : null);
     return { skipped: verdict.reason, next_article_at: verdict.nextAt?.toISOString() ?? null, profile: profileOutcome };
   }
 
@@ -246,7 +262,7 @@ export async function runScheduler(
   }
 
   const previous = project.next_article_at;
-  if (!(await claimSlot(project, now, verdict.nextAfter))) {
+  if (!(await claimSlot(project, now, claimMarker(plan, verdict.nextAfter, now)))) {
     // Two causes, told apart so the run log does not cry "race" for the
     // common one: next_article_at was already in the future when this pass
     // read it (set while the old plan's quota was met - a mid-week upgrade
@@ -333,10 +349,13 @@ export async function startHostedRunClaimed(
   const plan = await projectPlan(project.id);
   const ramp = await rampFor(project.id, plan, now);
   const usage = await weekUsage(project.id, now);
-  const verdict = cadence({ now, quota: ramp.quota, spacingDays: plan.spacingDays, countThisWeek: usage.count, lastStartedAt: usage.lastStartedAt });
+  // The same pace the gate above used, so the two can never disagree.
+  const { siteCount } = await monthAllowanceWithCount(project, plan, now);
+  const pace = paceToday(plan, ramp.quota, siteCount, now);
+  const verdict = cadence({ now, quota: pace.quota, spacingDays: pace.spacingDays, countThisWeek: usage.count, lastStartedAt: usage.lastStartedAt });
   if (!verdict.write) return { refused: "This site's next article can't start yet (weekly quota or spacing between articles)." };
   const previous = project.next_article_at;
-  let q = db().from("projects").update({ next_article_at: verdict.nextAfter.toISOString() }).eq("id", project.id);
+  let q = db().from("projects").update({ next_article_at: claimMarker(plan, verdict.nextAfter, now).toISOString() }).eq("id", project.id);
   q = previous ? q.eq("next_article_at", previous) : q.is("next_article_at", null);
   const { data, error } = await q.select("id").maybeSingle();
   if (error) throw new Error(`could not claim the article slot: ${error.message}`);

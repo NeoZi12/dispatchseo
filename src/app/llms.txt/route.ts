@@ -38,8 +38,8 @@ site starts on the free plan; paid plans publish more articles a month.
 
 ## Key facts
 
-- Free plan: 2 fact-checked articles per month, published for you, with your
-  Google Search Console stats. No card, no end date. Free articles carry a
+- Free plan: 2 fact-checked articles per month, 1 website, published for you,
+  with your Google Search Console stats. No card, no end date. Free articles carry a
   small DispatchSEO badge.
 - Paid plans, billed monthly: Starter ${priceLabel(TIER_LIMITS.starter.price)}
   (${ARTICLES_PER_MONTH.starter} articles per month, 1 website), Growth ${priceLabel(TIER_LIMITS.growth.price)} (${ARTICLES_PER_MONTH.growth} articles per month,

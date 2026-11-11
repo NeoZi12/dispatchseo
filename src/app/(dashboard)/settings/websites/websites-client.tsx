@@ -38,6 +38,9 @@ export type SiteCard = {
   editable: boolean;
   /** The most a Custom share may be (pool minus the other sites' customs). */
   customMax: number;
+  /** The Custom number as the owner set it; a paused or unfinished site's
+   *  `share` reads 0 while this keeps the number it returns to. */
+  customShare: number | null;
   pool: number | null;
   removable: boolean;
   removeNote: string;
@@ -130,7 +133,7 @@ function AddWebsiteForm({ onCancel }: { onCancel: () => void }) {
   const id = useId();
   useEffect(() => input.current?.focus(), []);
   // The refusal is about the address it was given; typing a new one clears it.
-  const shown = state && state.domain === normalize(domain) ? state : null;
+  const shown = state && (!state.domain || state.domain === normalize(domain)) ? state : null;
 
   return (
     // overflow-clip, not overflow-hidden: the glow below hangs 4rem past the
@@ -372,7 +375,7 @@ function SiteRow({ card: c }: { card: SiteCard }) {
                 tone={c.status === "uncovered" ? "warn" : "info"}
                 action={
                   c.status === "setup" ? (
-                    <a href="/onboarding" className={BTN_PRIMARY_SM}>
+                    <a href={`/onboarding?site=${encodeURIComponent(c.slug)}`} className={BTN_PRIMARY_SM}>
                       Finish setup
                     </a>
                   ) : c.status === "uncovered" ? (
@@ -565,9 +568,10 @@ function ShareControl({ card: c }: { card: SiteCard }) {
   const [state, formAction, pending] = useActionState<SiteShareState, FormData>(saveSiteShare, null);
   const [mode, setMode] = useState<"auto" | "custom">(c.mode);
   const max = Math.max(0, c.customMax);
-  const start = Math.min(Math.max(1, c.share ?? 1), Math.max(1, max));
+  const saved = c.customShare ?? c.share;
+  const start = Math.min(Math.max(1, saved ?? 1), Math.max(1, max));
   const [n, setN] = useState(start);
-  const dirty = mode !== c.mode || (mode === "custom" && n !== (c.share ?? 0));
+  const dirty = mode !== c.mode || (mode === "custom" && n !== (saved ?? 0));
   const group = useId();
   const full = mode === "custom" && max < 1;
 

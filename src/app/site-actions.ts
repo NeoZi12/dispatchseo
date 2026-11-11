@@ -22,7 +22,8 @@ import { dashboardAuth } from "@/lib/auth-gate";
 import { PROJECT_COOKIE, scopedProjects } from "@/lib/active-project";
 import { getProjectBySlug } from "@/lib/projects";
 import { assertProjectOwned } from "@/lib/tenant-guard";
-import { createHostedProjectForUser, isProjectDomain, normalizeProjectDomain, probeSite } from "@/lib/setup-flow";
+import { createHostedProjectForUser, inheritGithubInstallation, isProjectDomain, normalizeProjectDomain, probeSite } from "@/lib/setup-flow";
+import { getSubscription, isActive, polarConfigured, sitesRemaining } from "@/lib/billing";
 import { rebalanceOwnerShares, setSiteShare, type SetSiteShareInput } from "@/lib/site-shares";
 import { setPublishMode } from "@/lib/article-review";
 import { pauseWriter, resumeWriter } from "@/lib/autopilot/pause";
@@ -75,6 +76,23 @@ export async function addWebsite(_prev: AddWebsiteState, fd: FormData): Promise<
   // nobody adding real sites gets near it (the largest plan covers 5, and
   // the first comes through setup). The operator is exempt, and a ledger
   // outage lets the add through rather than blocking a paying customer.
+  // No room on the plan is said before the day's count is touched (a stale
+  // tab, a direct post): createHostedProjectForUser refuses it again below,
+  // in the same words.
+  if (polarConfigured()) {
+    const sub = await getSubscription(user.id);
+    const room = isActive(sub) ? (sitesRemaining(sub, mine.length) ?? 1) : mine.length === 0 ? 1 : 0;
+    if (room <= 0) {
+      if (sub?.status === "past_due") return { error: "Your last payment didn't go through. Update it on the Billing page, then add your website.", domain };
+      return {
+        error: isActive(sub)
+          ? "Your plan's websites are all in use. Upgrade on the Billing page to add another."
+          : "The free plan covers 1 website. Pick a plan on the Billing page to add more.",
+        domain,
+      };
+    }
+  }
+
   if (!isOperator(user.id) && !(await rateLimitHit(rateLimitKey("add-website", user.id), ADD_WEBSITE_DAILY_LIMIT, 86_400, { failOpen: true }))) {
     return { error: "That's a lot of websites for one day. You can add another one tomorrow.", domain };
   }
@@ -90,6 +108,12 @@ export async function addWebsite(_prev: AddWebsiteState, fd: FormData): Promise<
   // the rest). Found 2026-11-11 on a test account: 15 a month became 8 for
   // the working site and 7 for one that could not write yet. Never throws.
   await rebalanceOwnerShares(user.id);
+
+  // The owner's GitHub account already has the app from an earlier site:
+  // this one takes that installation, so its GitHub step is "pick your
+  // repository" instead of an install GitHub will not run twice. Never
+  // throws; without it the step's own button does the same.
+  await inheritGithubInstallation(made.project);
 
   // Setup reads the newest unfinished site (resolveSetupStage); the cookie
   // makes it the active one on the dashboard as well.

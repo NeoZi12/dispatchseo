@@ -323,7 +323,7 @@ async function pick(c: Ctx, exclude: string[] = [], spent = 0): Promise<void> {
     const busy = [...(await suggestionIdsInFlight(project.id)), ...exclude];
     let q = db()
       .from("suggestions")
-      .select("id, title, primary_keyword, rationale, keyword_volume, keyword_difficulty, queue_position, created_at")
+      .select("id, title, primary_keyword, rationale, keyword_volume, keyword_difficulty, queue_position, created_at, source")
       .eq("project_id", project.id)
       .eq("type", "guide")
       .eq("status", "approved")

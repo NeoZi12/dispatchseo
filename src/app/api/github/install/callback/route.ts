@@ -4,7 +4,8 @@ import { NextResponse } from "next/server";
 import { requireDashboard } from "@/lib/auth-gate";
 import { verifyState } from "@/lib/gsc-oauth";
 import { getProjectBySlug } from "@/lib/projects";
-import { assertInstallationClaimable, assertProjectOwned, ownedProjectIds } from "@/lib/tenant-guard";
+import { assertInstallationClaimable, assertProjectOwned, installationAlreadyMine, ownedProjectIds } from "@/lib/tenant-guard";
+import { inheritGithubInstallation, pendingSetupProject } from "@/lib/setup-flow";
 import {
   callerControlsInstallation,
   getInstallation,
@@ -15,6 +16,7 @@ import {
   userAuthConfigured,
 } from "@/lib/github-app";
 import { db } from "@/lib/db";
+import { scopedProjects } from "@/lib/active-project";
 import { isCloudMode } from "@/lib/cloud";
 
 // GitHub redirects here after the App install/update flow. With "Request user
@@ -124,6 +126,22 @@ export async function GET(req: Request): Promise<Response> {
         // site's real repo after the dashboard said the connected one is
         // empty or wrong. Connect it and release the held article now.
         await healReposForInstallation(installationId).catch(() => 0);
+        // A site of theirs still in setup: this trip to GitHub was its
+        // "add my repository" step (GitHub sends no state back from its
+        // settings page). Give it the installation if it has none, and go
+        // back to its setup, where the repository list is read fresh -
+        // /dashboard would show that site's empty Home and the step undone.
+        const pending = await pendingSetupProject().catch(() => null);
+        // Only a site that is waiting on exactly this: no repository yet,
+        // and no installation or this same one. A change made for another
+        // site (the wrong-repo card of a finished one) goes to the dashboard
+        // as before, not into an old unfinished site's setup.
+        if (pending && !pending.github_repo && (!pending.github_installation_id || pending.github_installation_id === installationId)) {
+          // This installation, not "the newest": it is the one GitHub just
+          // sent them back from, and it is already theirs (checked above).
+          if (!pending.github_installation_id) await inheritGithubInstallation(pending, installationId);
+          redirect(`/onboarding?gh=pick_repo&site=${encodeURIComponent(pending.slug)}`);
+        }
         redirect("/dashboard");
       }
       // Nothing of the caller's is bound to it - fall through and let the
@@ -170,7 +188,15 @@ export async function GET(req: Request): Promise<Response> {
         );
       }
       const proven = await provenCaller();
-      if (!proofCode ? requireInstallProof() : !proven) {
+      // No code, but the installation is already attached to a site this
+      // caller owns: the owner is adding a repository for their NEXT site,
+      // and GitHub sends no sign-in code for a change to an app that is
+      // already installed. Their ownership of it was established when the
+      // first site was bound, and the signed state proves they own this
+      // one, so nothing new is granted. A code that is present and fails
+      // still refuses.
+      const alreadyMine = !proofCode && (await installationAlreadyMine(installationId));
+      if (alreadyMine ? false : !proofCode ? requireInstallProof() : !proven) {
         redirect(`/onboarding?gh=error&msg=${encodeURIComponent("We could not confirm that this GitHub installation belongs to you. Install the app from this page's button so we can verify it, rather than from github.com directly.")}`);
       }
       // installation_id is an enumerable integer from the query string; state
@@ -195,7 +221,7 @@ export async function GET(req: Request): Promise<Response> {
       if (!installation || installation.suspended) {
         redirect("/onboarding?gh=error&msg=install-not-found");
       }
-      if (!proven && !installationClaimable(installation)) {
+      if (!proven && !alreadyMine && !installationClaimable(installation)) {
         redirect("/onboarding?gh=error&msg=install-not-found");
       }
 
@@ -209,7 +235,14 @@ export async function GET(req: Request): Promise<Response> {
       // Never overwrite a repo already chosen: a later App reinstall/update
       // (e.g. granting a different single repo) must not silently repoint an
       // already-connected project - same guard as attachGithubInstallation.
-      if (repos.length === 1 && !project.github_repo) patch.github_repo = repos[0].full_name;
+      // And never a repo that is already another of this owner's sites: on
+      // a shared installation the one repository listed can be the FIRST
+      // site's, and the second site must pick its own.
+      const takenBySibling = new Set(
+        (await scopedProjects()).filter((p) => p.id !== project.id && p.github_repo).map((p) => p.github_repo as string),
+      );
+      const attach = repos.length === 1 && !project.github_repo && !takenBySibling.has(repos[0].full_name);
+      if (attach) patch.github_repo = repos[0].full_name;
 
       const { error } = await db().from("projects").update(patch).eq("id", project.id);
       if (error) redirect("/onboarding?gh=error&msg=save-failed");
@@ -217,7 +250,8 @@ export async function GET(req: Request): Promise<Response> {
       // one picks up the right one now that it is shared.
       if (project.github_repo) await healReposForInstallation(installationId).catch(() => 0);
 
-      redirect(repos.length === 1 ? "/onboarding?gh=installed" : "/onboarding?gh=pick_repo");
+      const site = `&site=${encodeURIComponent(project.slug)}`;
+      redirect(attach || project.github_repo ? `/onboarding?gh=installed${site}` : `/onboarding?gh=pick_repo${site}`);
     }
 
     // No usable state: installed straight from github.com (or the signed

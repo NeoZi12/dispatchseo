@@ -262,8 +262,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <RepoCleanupBanner repo={repoNotice.repo} warnings={repoNotice.warnings} />
         ) : hosted ? (
           // The card replaces the bar while it shows: it already says what
-          // is left, step by step.
-          hostedGap.length && !showFirstArticle ? (
+          // is left, step by step. A cloud site still in setup has nothing in
+          // Settings to fix yet: the bar sends the owner back to its setup.
+          billing && active && !active.setup_connected_at && (!active.github_repo || !active.gsc_oauth_refresh_token) ? (
+            <HostedSetupBar title={`${active.domain} isn't connected yet`} href={`/onboarding?site=${encodeURIComponent(active.slug)}`} remaining={1} />
+          ) : hostedGap.length && !showFirstArticle ? (
             <HostedSetupBar title={hostedGap[0].title} href={hostedGap[0].href} remaining={hostedGap.length} />
           ) : null
         ) : billing ? (

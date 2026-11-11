@@ -535,7 +535,7 @@ async function ideaSummary(projectId: string): Promise<Omit<AutopilotReport["ide
   const [{ data: rows, error: rowsError }, { data: busy, error: busyError }] = await Promise.all([
     db()
       .from("suggestions")
-      .select("id, title, rationale, keyword_volume, keyword_difficulty, queue_position, created_at")
+      .select("id, title, rationale, keyword_volume, keyword_difficulty, queue_position, created_at, source")
       .eq("project_id", projectId)
       .eq("type", "guide")
       .eq("status", "approved")

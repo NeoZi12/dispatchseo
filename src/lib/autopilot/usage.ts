@@ -4,7 +4,7 @@ import { isCloudMode } from "@/lib/cloud";
 import { outsidePool, ownerUserIdForProject, polarConfigured, projectHint, projectPlan, readOwnedSites, writerGate, type ProjectPlan } from "@/lib/billing";
 import { writerMode, type Project } from "@/lib/projects";
 import { missingCredentials } from "@/lib/writer/models";
-import { monthGateVerdict, type MonthGateReason } from "@/lib/site-shares-core";
+import { catchUpPace, monthGateVerdict, type MonthGateReason } from "@/lib/site-shares-core";
 import { cadence, monthStartUtc, nextMonthStartUtc, weekStartUtc, spacingDaysFor } from "./math";
 import { rampFor } from "./ramp";
 
@@ -97,7 +97,13 @@ export async function usageFor(ids: string[], since: string): Promise<WeekUsage>
         .in("project_id", ids)
         .eq("client_kind", CLIENT_KIND)
         .gte("created_at", since)
-        .not("status", "in", "(rejected,discarded)"),
+        // An article the owner dropped ("Don't publish", a discard, a pull
+        // request closed without merging) still counts: it was written, and
+        // handing the slot back let a review-mode owner read each finished
+        // article, drop it, and get another - three times a plan's articles
+        // for the price of one (audit, 2026-11-11). Only a draft our own
+        // quality gate turned down ("rejected") is not the owner's article.
+        .neq("status", "rejected"),
       // Runs with no draft: still writing (holds a slot), or failed after
       // pick (spent a slot). Runs that produced a draft are counted above.
       db()
@@ -218,13 +224,43 @@ export async function monthAllowance(
   plan: Pick<ProjectPlan, "articlesPerMonth" | "poolPerMonth">,
   now: Date,
 ): Promise<MonthAllowance | null> {
-  if (plan.articlesPerMonth == null || plan.poolPerMonth == null) return null;
+  return (await monthAllowanceWithCount(project, plan, now)).gate;
+}
+
+/** monthAllowance, plus the site's own count for the month when it was
+ *  read (null with no pool or on a read error): what paceToday needs, from
+ *  the one read. */
+export async function monthAllowanceWithCount(
+  project: Pick<Project, "id"> & { owner_user_id?: string | null },
+  plan: Pick<ProjectPlan, "articlesPerMonth" | "poolPerMonth">,
+  now: Date,
+): Promise<{ gate: MonthAllowance | null; siteCount: number | null }> {
+  if (plan.articlesPerMonth == null || plan.poolPerMonth == null) return { gate: null, siteCount: null };
   const ownerId = project.owner_user_id ?? (await ownerUserIdForProject(project.id));
-  if (!ownerId) return null;
+  if (!ownerId) return { gate: null, siteCount: null };
   const usage = await monthUsage(project.id, ownerId, now);
-  if ("readError" in usage) return { readError: usage.readError };
+  if ("readError" in usage) return { gate: { readError: usage.readError }, siteCount: null };
   const reason = monthGateVerdict({ share: plan.articlesPerMonth, pool: plan.poolPerMonth, ...usage });
-  return reason ? { reason, nextAt: nextMonthStartUtc(now), share: plan.articlesPerMonth, pool: plan.poolPerMonth } : null;
+  return {
+    gate: reason ? { reason, nextAt: nextMonthStartUtc(now), share: plan.articlesPerMonth, pool: plan.poolPerMonth } : null,
+    siteCount: usage.siteCount,
+  };
+}
+
+/** The week's quota and the days between starts to give cadence() today. A
+ *  pooled site that is behind on its month may start sooner than its plan's
+ *  even spacing, so a skipped day does not cost the owner an article
+ *  (site-shares-core catchUpPace). Everything without a pool - free,
+ *  self-host, the operator's override - passes through unchanged. */
+export function paceToday(
+  plan: Pick<ProjectPlan, "articlesPerMonth" | "poolPerMonth" | "spacingDays">,
+  quota: number,
+  siteCount: number | null,
+  now: Date,
+): { quota: number; spacingDays: number | undefined } {
+  if (plan.poolPerMonth == null || plan.articlesPerMonth == null || siteCount == null || plan.spacingDays == null) return { quota, spacingDays: plan.spacingDays };
+  const daysInMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate();
+  return catchUpPace({ share: plan.articlesPerMonth, used: siteCount, dayOfMonth: now.getUTCDate(), daysInMonth, spacingDays: plan.spacingDays, quota });
 }
 
 /** When the site's plan (its owner's sites, its share) could not be read:
@@ -319,11 +355,12 @@ export async function writerStartGate(project: Project, opts: { gated?: boolean 
     if (ramp.stage === "pause") return `This site is held: ${ramp.reason}.`;
     // The month before the week: the share and the pool are the plan's
     // numbers, the week's quota and spacing only pace them.
-    const month = await monthAllowance(project, plan, now);
+    const { gate: month, siteCount } = await monthAllowanceWithCount(project, plan, now);
     if (month && "readError" in month) return `This month's usage could not be read (${month.readError}), so no article starts until it can; try again in a minute.`;
     if (month) return monthGateSentence(month);
-    const verdict = cadence({ now, quota: ramp.quota, spacingDays: plan.spacingDays, countThisWeek: usage.count, lastStartedAt: usage.lastStartedAt });
-    const spacing = plan.spacingDays ?? spacingDaysFor(plan.articlesPerWeek);
+    const pace = paceToday(plan, ramp.quota, siteCount, now);
+    const verdict = cadence({ now, quota: pace.quota, spacingDays: pace.spacingDays, countThisWeek: usage.count, lastStartedAt: usage.lastStartedAt });
+    const spacing = pace.spacingDays ?? spacingDaysFor(plan.articlesPerWeek);
     if (!verdict.write) {
       const when = verdict.nextAt ? ` The next one can start ${verdict.nextAt.toISOString().slice(0, 10)}.` : "";
       return verdict.reason === "quota met"

@@ -165,6 +165,10 @@ export async function failStaleAgentRuns(now: Date): Promise<string[]> {
     .eq("status", "running")
     // ->>since, not ->: a cleared marker is JSON null, which is not SQL NULL.
     .not("stage_outputs->waiting_on_agent->>since", "is", null)
+    // Oldest waits first: with more than 50 parked, an unordered page could
+    // keep returning fresh ones and never reach the stale run. `since` is an
+    // ISO timestamp, so text order is time order.
+    .order("stage_outputs->waiting_on_agent->>since", { ascending: true })
     .limit(50);
   if (error) throw new Error(`could not read runs waiting on the subscription writer: ${error.message}`);
   const rows = (data ?? []) as { id: string; project_id: string }[];

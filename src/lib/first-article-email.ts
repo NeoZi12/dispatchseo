@@ -32,7 +32,10 @@ export async function notifyFirstArticleLive(
       .from("article_drafts")
       .select("id", { count: "exact", head: true })
       .eq("project_id", project.id)
-      .eq("status", "published")
+      // An article the owner later took down was still the first: without
+      // these two, removing the only live article made the next one "your
+      // first article is live" all over again.
+      .in("status", ["published", "removing", "removed"])
       .neq("id", article.draftId);
     // Unsure whether this is the first: stay quiet rather than email twice.
     if (error || (count ?? 0) > 0) return "skipped";

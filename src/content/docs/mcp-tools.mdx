@@ -1979,8 +1979,9 @@ or nothing (the oldest approved guide idea is written). Returns the
 slot runs on its fallback). Refuses when the idea is not this site's
 approved guide, when a run is already on it, or when the site is at its
 cap (2 runs in flight, 3 starts per UTC day). On a hosted (autopilot)
-site it also takes the weekly slot the daily scheduler uses, atomically:
-it refuses past the plan's weekly quota or the spacing between articles, while the
+site it also takes one of this site's articles for the month, atomically:
+it refuses past the site's monthly share, the plan's monthly total, or the
+spacing between articles, while the
 platform's keyword data budget is spent, and when another start for the
 site won the same moment. On a plan whose articles are shared between the
 owner's sites, only one manual start per account goes through in any ten

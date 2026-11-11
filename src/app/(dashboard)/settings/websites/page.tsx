@@ -9,6 +9,7 @@ import {
   FREE_ARTICLES_PER_MONTH,
   getSubscription,
   isActive,
+  isFreePlan,
   polarConfigured,
   sitesLimitOf,
   sitesRemaining,
@@ -46,16 +47,16 @@ export const maxDuration = 60;
 const HUES = ["#a78bfa", "#e879f9", "#818cf8", "#f472b6", "#c084fc"];
 
 /** The ramp's reason, said per month. The ramp phrases its reasons per week
- *  (autopilot/math.ts rampVerdict); this page counts months only. */
+ *  (autopilot/math.ts rampVerdict); this page counts months only. Only paid
+ *  sites reach this, and paid plans have no slow start, so no line here may
+ *  say a new or young site gets fewer articles. */
 function slowerLine(reason: string | null, n: number): string {
   const r = reason ?? "";
   const per = `${n} ${n === 1 ? "article" : "articles"} a month`;
   if (/search console/i.test(r)) return `I'm keeping it to ${per} until Google Search Console starts sending its numbers.`;
-  if (/new site/i.test(r)) return `New sites start slower while Google gets to know them, so it gets ${per} for now.`;
-  if (/second month/i.test(r)) return `It's in its second month, so it gets ${per} for now. More comes as Google trusts it.`;
   if (/could not be read/i.test(r)) return `I couldn't read its history just now, so it gets ${per} to be safe.`;
   if (/index/i.test(r)) return `I'm keeping it to ${per} until Google indexes more of its articles.`;
-  return `It gets ${per} for now while Google gets to know it.`;
+  return `I'm keeping it to ${per} for now.`;
 }
 
 /** What removing the site does to its articles, said before the click. */
@@ -85,9 +86,13 @@ export default async function WebsitesPage({ searchParams }: { searchParams: Pro
 
   const billed = polarConfigured();
   const active = isActive(sub);
-  const free = billed && !active;
-  const tier: Tier | null = active ? (sub!.status === "trialing" ? "starter" : sub!.tier) : null;
-  const limit = active ? sitesLimitOf(sub!) : billed ? 1 : null;
+  // A card that failed (past_due) is still a paid plan, not the free one:
+  // isFreePlan says no to it, so it keeps its own numbers and each site
+  // says why nothing is being written.
+  const pastDue = billed && sub?.status === "past_due";
+  const free = billed && !active && (!sub || isFreePlan(sub));
+  const tier: Tier | null = active || pastDue ? (sub!.status === "trialing" ? "starter" : sub!.tier) : null;
+  const limit = active || pastDue ? sitesLimitOf(sub!) : billed ? 1 : null;
   const room = sitesRemaining(sub, mine.length);
   const canAdd = room === null || room > 0;
 
@@ -116,12 +121,17 @@ export default async function WebsitesPage({ searchParams }: { searchParams: Pro
     const inSplit = covered && !outside && share != null;
     const otherCustom = (head?.sites ?? [])
       .filter((s) => s.slug !== p.slug && s.covered && s.mode === "custom" && s.share != null)
-      .reduce((a, s) => a + (s.share ?? 0), 0);
+      // The number set by hand, not today's share: a paused Custom site
+      // holds 0 for now and takes its number back when it writes again.
+      .reduce((a, s) => a + (s.custom ?? s.share ?? 0), 0);
     const settingUp = writerMode(p) === "hosted" && !p.setup_connected_at;
 
     let status: SiteCard["status"] = "writing";
     let line: string | null = null;
-    if (!covered) {
+    if (pastDue) {
+      status = "paused";
+      line = "Your last payment didn't go through, so nothing is written until it's updated.";
+    } else if (!covered) {
       status = "uncovered";
       line = `Your plan covers your ${limit === 1 ? "oldest website" : `${limit} oldest websites`}, so I'm holding this one. Remove a website or upgrade, and I'll pick it up.`;
     } else if (settingUp) {
@@ -133,11 +143,12 @@ export default async function WebsitesPage({ searchParams }: { searchParams: Pro
     } else if (r?.safeMax === 0) {
       status = "paused";
       line = "Google has indexed too few of its older articles, so I've paused it. It picks up again on its own once Google catches up.";
-    } else if (!free && r?.safeMax != null) {
+    } else if (!free && writerMode(p) === "hosted" && r?.safeMax != null) {
       // Paid plans have no slow start any more, so this is only the safe
       // fallback when a site's history couldn't be read. A free site keeps
       // the ramp's number in the report, but it gets the free plan's 2 a
-      // month whatever that says, so it never reads as "slower" here.
+      // month whatever that says, so it never reads as "slower" here. An
+      // agent-mode site's own coding agent sets its pace, not this ramp.
       status = "slower";
       line = slowerLine(r.reason, r.safeMax);
     } else if (inSplit && share === 0 && pool != null) {
@@ -158,6 +169,7 @@ export default async function WebsitesPage({ searchParams }: { searchParams: Pro
       // no share to change.
       editable: pool != null && inSplit,
       customMax: pool != null ? customShareLimit(pool, otherCustom) : 0,
+      customShare: sib?.custom ?? null,
       pool,
       removable: p.id !== DEFAULT_PROJECT_ID,
       removeNote: removeNote(p),
@@ -178,10 +190,15 @@ export default async function WebsitesPage({ searchParams }: { searchParams: Pro
   const owned = mine.length;
   const sitesFigure = limit == null ? `${owned}` : owned > limit ? `${limit} of ${owned}` : `${owned} of ${limit}`;
   const sitesLabel = limit == null ? (owned === 1 ? "website" : "websites") : owned > limit ? "websites covered" : limit === 1 ? "website" : "websites";
-  const poolFigure = free ? FREE_ARTICLES_PER_MONTH : pool;
+  // Past due reports no pool (nothing is written), so show what the plan buys.
+  const poolFigure = free ? FREE_ARTICLES_PER_MONTH : pastDue ? (pool ?? articlesPerMonthFor(tier)) : pool;
   const upgradable = tier !== "scale";
 
-  const headerAction = canAdd ? null : free ? null : upgradable ? (
+  const headerAction = canAdd ? null : free ? null : pastDue ? (
+    <a href="/billing" className={buttonClass("secondary", "md")}>
+      Update payment
+    </a>
+  ) : upgradable ? (
     <a href="/billing" className={buttonClass("secondary", "md")}>
       Upgrade for more websites
     </a>

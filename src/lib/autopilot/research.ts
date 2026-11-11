@@ -1725,7 +1725,17 @@ async function existingTopics(projectId: string): Promise<{ keywords: Set<string
       // when research queued that exact keyword, 2026-11-10). A slug of two
       // to six words is an exact-match keyword; headings are near-dup texts.
       if (typeof p?.url === "string") {
-        const slug = decodeURIComponent(p.url.replace(/[?#].*$/, "").replace(/\/+$/, "").split("/").pop() ?? "")
+        // A stray "%" or a Latin-1 escape in a crawled address makes
+        // decodeURIComponent throw, and that used to fail the whole research
+        // run for the site, every day: the raw slug is good enough then.
+        const rawSlug = p.url.replace(/[?#].*$/, "").replace(/\/+$/, "").split("/").pop() ?? "";
+        let decodedSlug = rawSlug;
+        try {
+          decodedSlug = decodeURIComponent(rawSlug);
+        } catch {
+          // keep the raw slug
+        }
+        const slug = decodedSlug
           .replace(/\.[a-z0-9]{2,5}$/i, "")
           .replace(/[-_]+/g, " ")
           .trim();
