@@ -105,8 +105,10 @@ const site = (id, extra = {}) => ({ id, share_mode: "auto", monthly_share: null,
   eq({ ...asObj(r.shares), held: r.held }, { b: 4, a: 9, c: 2, held: 0 }, "(b) pool 15, capped 9 / custom 4 / dry -> 9/4/2, held 0");
 }
 {
+  // Changed 2026-11-11 (owner: "give me 30 articles"): the ramp only
+  // weights the split, so one new site capped 4 still gets the pool.
   const r = autoShares({ pool: 30, sites: [site("a", { safeMax: 4 })] });
-  eq({ ...asObj(r.shares), held: r.held }, { a: 4, held: 26 }, "(c) pool 30, one site capped 4 -> 4, held 26");
+  eq({ ...asObj(r.shares), held: r.held }, { a: 30, held: 0 }, "(c) pool 30, one new site capped 4 -> 30, held 0");
 }
 {
   const r = autoShares({ pool: 5, sites: [site("a"), site("b"), site("c")] });
@@ -154,18 +156,40 @@ const site = (id, extra = {}) => ({ id, share_mode: "auto", monthly_share: null,
   eq({ ...asObj(r.shares), held: r.held }, { a: 2, b: 13, held: 0 }, "1d: a paused site keeps what it already used, nothing more");
 }
 
-// --- the dry remainder (fix 1e): held only when no site may safely take it ---
+// --- the whole pool is always handed out (owner, 2026-11-11) ---
 {
-  const r = autoShares({ pool: 15, sites: [site("a", { safeMax: 4 }), site("b", { dry: true })] });
-  eq({ ...asObj(r.shares), held: r.held }, { a: 4, b: 11, held: 0 }, "1e: articles the dry cap held back go to the dry site");
+  const r = autoShares({ pool: 30, sites: [site("a", { safeMax: 9 }), site("b", { safeMax: 9 }), site("c", { share_mode: "custom", monthly_share: 4 })] });
+  eq({ ...asObj(r.shares), held: r.held }, { c: 4, a: 13, b: 13, held: 0 }, "pool 30, ramp caps 9 / 9 and a custom 4 -> 13 / 13 / 4, held 0");
 }
 {
-  const r = autoShares({ pool: 15, sites: [site("a", { safeMax: 4 }), site("b", { dry: true, safeMax: 4 })] });
-  eq({ ...asObj(r.shares), held: r.held }, { a: 4, b: 4, held: 7 }, "1e: the dry remainder still respects the safe maximum");
+  const r = autoShares({ pool: 30, sites: [site("a"), site("b", { safeMax: 9 }), site("c", { safeMax: 4 })] });
+  const [a, b, c] = ["a", "b", "c"].map((k) => r.shares.get(k));
+  eq(sum(r.shares) === 30 && r.held === 0, true, "pool 30, caps Infinity / 9 / 4 -> all 30 handed out");
+  eq(a > b && b > c, true, `caps Infinity / 9 / 4 -> the oldest gets the most, the newest the least (${a} / ${b} / ${c})`);
+}
+{
+  const r = autoShares({ pool: 30, sites: [site("a", { safeMax: 4 }), site("b", { dry: true })] });
+  eq({ ...asObj(r.shares), held: r.held }, { a: 28, b: 2, held: 0 }, "a dry site takes leftovers only after the non-dry sites");
 }
 {
   const r = autoShares({ pool: 15, sites: [site("a", { dry: true }), site("b", { dry: true }), site("c", { safeMax: 4 })] });
-  eq({ ...asObj(r.shares), held: r.held }, { a: 6, b: 5, c: 4, held: 0 }, "1e: the dry remainder goes round-robin, oldest first");
+  eq({ ...asObj(r.shares), held: r.held }, { a: 2, b: 2, c: 11, held: 0 }, "leftovers go to the site that is not dry");
+}
+{
+  const r = autoShares({ pool: 15, sites: [site("a", { dry: true }), site("b", { dry: true, safeMax: 4 })] });
+  eq({ ...asObj(r.shares), held: r.held }, { a: 8, b: 7, held: 0 }, "with only dry sites, they take the leftovers round-robin, oldest first");
+}
+{
+  const r = autoShares({ pool: 15, sites: [site("a", { safeMax: 0 }), site("b", { safeMax: 0 }), site("c", { share_mode: "custom", monthly_share: 4 })] });
+  eq({ ...asObj(r.shares), held: r.held }, { c: 4, a: 0, b: 0, held: 11 }, "every auto site paused -> held is what the customs leave");
+}
+{
+  const r = autoShares({ pool: 15, sites: [site("a", { share_mode: "custom", monthly_share: 6 })] });
+  eq({ ...asObj(r.shares), held: r.held }, { a: 6, held: 9 }, "customs with no auto site to take the rest -> held");
+}
+{
+  const r = autoShares({ pool: 15, sites: [site("a", { safeMax: 4, canWrite: false }), site("b", { safeMax: 4 })] });
+  eq({ ...asObj(r.shares), held: r.held }, { a: 4, b: 11, held: 0 }, "a site that cannot write gets no leftovers past its cap");
 }
 
 // --- one pooled site always gets the whole pool (fix 1b) ---

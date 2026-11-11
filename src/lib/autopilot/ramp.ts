@@ -4,9 +4,10 @@ import { projectHint } from "@/lib/billing";
 import { DAY_MS, rampQuota, type RampVerdict } from "./math";
 
 // The ramp and index-rate brake (math.ts rampQuota), fed from the database.
-// Every caller of cadence() asks this for the week's ceiling. A read that
-// fails is not evidence: it answers with the plan's number capped at 1, the
-// slowest safe pace, never with "full speed".
+// Every caller of cadence() asks this for the week's ceiling. On a paid
+// pooled plan only the index brake's pause applies (rampVerdict). Elsewhere a
+// read that fails is not evidence: it answers with the plan's number capped
+// at 1, the slowest safe pace, never with "full speed".
 
 const CLIENT_KIND = "dispatchseo-writer";
 
@@ -18,17 +19,52 @@ export function rampSinceDay(now: Date): string {
   return new Date(now.getTime() - 14 * DAY_MS).toISOString().slice(0, 10);
 }
 
-export async function rampFor(projectId: string, planQuota: number, now = new Date()): Promise<RampVerdict> {
-  if (planQuota <= 0) return { quota: 0, stage: "full", reason: null };
-  return rampVerdict(await rampInputs(projectId, rampSinceDay(now)), planQuota, now);
+/** The plan facts the ramp needs: the weekly pace it would cap, and
+ *  whether that pace is a paid pool's (billing.ts projectPlan). */
+export type RampPlan = { articlesPerWeek: number; poolPerMonth?: number | null };
+
+/** A paid pooled plan (poolPerMonth set: a live subscription's share). */
+export function isPaidPool(plan: RampPlan): boolean {
+  return plan.poolPerMonth != null;
 }
 
-/** The week's ceiling from inputs already read. Null inputs = the reads
- *  failed: the plan's number capped at 1, never full speed. */
-export function rampVerdict(inputs: RampInputs | null, planQuota: number, now: Date): RampVerdict {
+export async function rampFor(projectId: string, plan: RampPlan, now = new Date()): Promise<RampVerdict> {
+  if (plan.articlesPerWeek <= 0) return { quota: 0, stage: "full", reason: null };
+  return rampVerdict(await rampInputs(projectId, rampSinceDay(now)), plan, now);
+}
+
+/**
+ * The week's ceiling from inputs already read - THE one place the paid rule
+ * lives (owner, 2026-11-11: "If I'm on a 30-article-a-month plan, give me 30
+ * articles"). On a paid pooled plan the ramp no longer slows a site: its
+ * quota is the plan's weekly pace in full and no ramp reason is shown. The
+ * one stop that stays is the "pause" stage - most of a site's older articles
+ * still not indexed by Google - which halts it with its reason, as before.
+ * The ramp's other stages only WEIGHT the split between an owner's sites
+ * (site-shares.ts, rampWeighting below). A failed read on a paid pool is no
+ * evidence of a pause, so it runs at the plan's pace.
+ *
+ * Free, self-host, unbilled and the operator's override keep the full ramp.
+ * There, null inputs = the reads failed: the plan's number capped at 1,
+ * never full speed.
+ */
+export function rampVerdict(inputs: RampInputs | null, plan: RampPlan, now: Date): RampVerdict {
+  const planQuota = plan.articlesPerWeek;
   if (planQuota <= 0) return { quota: 0, stage: "full", reason: null };
+  if (isPaidPool(plan)) {
+    const v = inputs ? rampQuota({ planQuota, now, ...inputs }) : null;
+    return v?.stage === "pause" ? v : { quota: planQuota, stage: "full", reason: null };
+  }
   if (!inputs) return { quota: Math.min(planQuota, 1), stage: "ramp-1", reason: "one a week while the site's history could not be read" };
   return rampQuota({ planQuota, now, ...inputs });
+}
+
+/** The full, unpaid ramp at a probe quota: how far along a site is (ramp-1,
+ *  ramp-2, awaiting-index, brake, no-gsc, pause, full), for WEIGHTING the
+ *  automatic split between an owner's sites (site-shares-core.ts
+ *  safeMaxFor). Never a runtime limit on a paid site - rampVerdict is. */
+export function rampWeighting(inputs: RampInputs, probeQuota: number, now: Date): RampVerdict {
+  return rampQuota({ planQuota: probeQuota, now, ...inputs });
 }
 
 /** The ramp's reads, apart from the verdict so the queue can start them

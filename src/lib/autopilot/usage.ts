@@ -315,7 +315,7 @@ export async function writerStartGate(project: Project, opts: { gated?: boolean 
   if (writerMode(project) === "hosted" && !opts.gated) {
     const usage = await weekUsage(project.id, now);
     if (usage.readError) return `This week's usage could not be read (${usage.readError}), so no article starts until it can; try again in a minute.`;
-    const ramp = await rampFor(project.id, plan.articlesPerWeek, now);
+    const ramp = await rampFor(project.id, plan, now);
     if (ramp.stage === "pause") return `This site is held: ${ramp.reason}.`;
     // The month before the week: the share and the pool are the plan's
     // numbers, the week's quota and spacing only pace them.

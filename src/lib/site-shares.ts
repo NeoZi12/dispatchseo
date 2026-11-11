@@ -14,7 +14,7 @@ import {
 } from "./billing";
 import { getProjectById, type Project } from "./projects";
 import { earlyResearchAllowed, monthStartUtc } from "./autopilot/math";
-import { rampInputs, rampSinceDay, rampVerdict } from "./autopilot/ramp";
+import { rampInputs, rampSinceDay, rampVerdict, rampWeighting, type RampPlan } from "./autopilot/ramp";
 import { monthUsage, usageFor, weekUsageSince } from "./autopilot/usage";
 import { readResearchState } from "./keyword-research-cache";
 import { autoShares, customShareLimit, RAMP_PROBE_QUOTA, safeMaxFor, safeMaxForSite, sharesForPool, type AutoShareSite, type ShareMode } from "./site-shares-core";
@@ -72,10 +72,13 @@ async function ownerPool(ownerId: string): Promise<{ tier: Tier; pool: number; s
   return { tier, pool: articlesPerMonthFor(tier), sitesLimit: sitesLimitOf(sub!) };
 }
 
-/** The ramp's ceiling for a site as a monthly cap, with its reason. A read
- *  failure is rampVerdict's slowest safe answer (one a week -> 4). */
-async function siteSafeMax(projectId: string, now: Date): Promise<{ safeMax: number; reason: string | null }> {
-  const verdict = rampVerdict(await rampInputs(projectId, rampSinceDay(now)), RAMP_PROBE_QUOTA, now);
+/** The most a site can take this month as the RUNTIME sees it, with the
+ *  reason. Through rampVerdict, so a paid pooled site reads "no cap" (null)
+ *  unless the index brake paused it (0, with its reason); free, self-host
+ *  and unbilled keep the ramp's monthly cap. A read failure off a paid pool
+ *  is rampVerdict's slowest safe answer (one a week -> 4). */
+async function siteSafeMax(projectId: string, plan: Pick<RampPlan, "poolPerMonth">, now: Date): Promise<{ safeMax: number; reason: string | null }> {
+  const verdict = rampVerdict(await rampInputs(projectId, rampSinceDay(now)), { articlesPerWeek: RAMP_PROBE_QUOTA, poolPerMonth: plan.poolPerMonth }, now);
   return { safeMax: safeMaxFor(verdict), reason: verdict.reason };
 }
 
@@ -149,9 +152,13 @@ export async function rebalanceOwnerShares(
               ? { id: r.id, share_mode: "custom", monthly_share: r.monthly_share, safeMax: Infinity, dry: false, order }
               : { id: r.id, share_mode: "auto", monthly_share: null, safeMax: 4, dry, used: used.count, order };
           }
-          // A paused site, or one whose setup isn't finished, cannot write:
-          // its articles go to the siblings this month.
-          const ramp = safeMaxFor(rampVerdict(inputsRead, RAMP_PROBE_QUOTA, now));
+          // The ramp WEIGHTS the split (older, better-indexed sites first);
+          // it no longer limits a paid site at run time (ramp.ts), and
+          // autoShares hands every leftover to the sites that can write.
+          // A paused site, one whose setup isn't finished, or one the index
+          // brake stopped (safeMax 0) cannot write: its articles go to the
+          // siblings this month.
+          const ramp = safeMaxFor(rampWeighting(inputsRead, RAMP_PROBE_QUOTA, now));
           const safeMax = safeMaxForSite({ paused: Boolean(r.writer_paused_at), setupDone: Boolean(r.setup_connected_at) }, ramp);
           return { id: r.id, share_mode: r.share_mode, monthly_share: r.monthly_share, safeMax, dry, used: used.count, order };
         }),
@@ -288,9 +295,12 @@ export type SiteShareReport = {
    *  share of the pool, the free plan's 2, or null with no monthly number. */
   share: number | null;
   mode: ShareMode;
-  /** The ramp's monthly cap for this site; null = none (full speed). */
+  /** The most this site can take this month; null = no cap. On a paid
+   *  pooled plan always null, except 0 when the index brake stopped the
+   *  site. Free and self-host keep the ramp's monthly cap. */
   safeMax: number | null;
-  /** Why the ramp limits it, as a sentence; null when it doesn't. */
+  /** Why it is capped, as a sentence; null when it isn't. On a paid pooled
+   *  plan only the index brake's reason. */
   reason: string | null;
   /** Articles counted against this site's month so far (published, in
    *  progress, and failed after the topic was picked). */
@@ -312,9 +322,9 @@ export async function siteShareReport(projectId: string, now = new Date()): Prom
   if (!project) throw new Error("unknown project");
   const since = monthStartUtc(now).toISOString();
   const ownerId = project.owner_user_id ?? null;
-  const [plan, ramp, siteUsage, sub, shareRows] = await Promise.all([
-    projectPlan(projectId),
-    siteSafeMax(projectId, now),
+  const plan = await projectPlan(projectId);
+  const [ramp, siteUsage, sub, shareRows] = await Promise.all([
+    siteSafeMax(projectId, plan, now),
     weekUsageSince(projectId, since),
     ownerId ? getSubscription(ownerId) : Promise.resolve(null),
     ownerId ? readShareRows(ownerId) : Promise.resolve({ rows: [] as ShareRow[], error: null }),

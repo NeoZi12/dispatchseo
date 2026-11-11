@@ -89,6 +89,10 @@ export type AutoShareSite = {
    *  the pool allows: a share cut under the used count would only strand
    *  the site until the 1st. Absent = 0. */
   used?: number;
+  /** Can this site write this month at all (not paused, setup finished,
+   *  not stopped by the index brake)? Only such sites take the leftovers.
+   *  Absent = safeMax > 0, which is how the rebalance encodes all three. */
+  canWrite?: boolean;
 };
 
 /** The most a "dry" site gets automatically: articles nobody can find
@@ -105,11 +109,16 @@ export const DRY_SITE_MAX = 2;
  *      while the pool lasts.
  *   5. Then +1 round-robin, oldest first, to auto sites under their cap,
  *      until the pool is spent or every site is capped.
- *   6. Still some left, and a site was held back ONLY by the dry cap: the
- *      rest goes round-robin to those sites, within their safe maximum. A
- *      dry niche is a reason to give a site less, never to leave articles
- *      nobody takes.
- *   7. Whatever is left is HELD: no site may safely take it this month.
+ *   6. The whole pool is always handed out (owner, 2026-11-11: "If I'm on
+ *      a 30-article-a-month plan, give me 30 articles"). Whatever is still
+ *      left goes round-robin, oldest first, to every auto site that can
+ *      write, past its safe maximum: non-dry sites first, then dry sites if
+ *      any remain. Steps 3-5 are what give older, better-indexed sites more;
+ *      this step is what makes the pool deliverable. (A paid site's run-time
+ *      pace no longer follows the ramp - autopilot/ramp.ts rampVerdict.)
+ *   7. Whatever is left is HELD: only when no auto site can write at all
+ *      (every one paused, unfinished or stopped by the index brake), or
+ *      custom shares leave articles and there is no auto site to take them.
  * A custom site with no number stored counts as auto.
  */
 export function autoShares(input: { pool: number; sites: AutoShareSite[] }): { shares: Map<string, number>; held: number } {
@@ -153,7 +162,9 @@ export function autoShares(input: { pool: number; sites: AutoShareSite[] }): { s
     }
   };
   roundRobin(auto, (s) => cap.get(s.id) ?? 0);
-  roundRobin(auto.filter((s) => s.dry), safe);
+  const writes = auto.filter((s) => s.canWrite ?? safe(s) > 0);
+  roundRobin(writes.filter((s) => !s.dry), () => Infinity);
+  roundRobin(writes.filter((s) => s.dry), () => Infinity);
   return { shares, held: left };
 }
 

@@ -192,8 +192,9 @@ export async function runScheduler(
   // The owner's sites could not be read, so the site's share is unknown:
   // wait for tomorrow's pass quietly rather than act on a guessed 0.
   if (plan.readError) return { skipped: `this site's plan could not be read (${plan.readError})`, next_article_at: project.next_article_at, profile: profileOutcome };
-  // The ramp and index-rate brake cap the plan's weekly number (ramp.ts).
-  const ramp = await rampFor(project.id, plan.articlesPerWeek, now);
+  // The ramp and index-rate brake cap the plan's weekly number (ramp.ts);
+  // on a paid pool only the brake's pause does.
+  const ramp = await rampFor(project.id, plan, now);
   if (ramp.stage === "pause") {
     await pauseWriter(project.id, `Auto-paused: ${ramp.reason}. More pages on a site Google is not indexing will not help - check Search Console's Pages report, then resume.`, { auto: true, slug: project.slug, rule: "low-index" });
     return { skipped: `paused: ${ramp.reason}`, next_article_at: null };
@@ -315,7 +316,7 @@ export async function startHostedRunClaimed(
   const dfsBlocked = await keywordDataBlocked(project);
   if (dfsBlocked) return { refused: `Not now: ${dfsBlocked}.` };
   const plan = await projectPlan(project.id);
-  const ramp = await rampFor(project.id, plan.articlesPerWeek, now);
+  const ramp = await rampFor(project.id, plan, now);
   const usage = await weekUsage(project.id, now);
   const verdict = cadence({ now, quota: ramp.quota, spacingDays: plan.spacingDays, countThisWeek: usage.count, lastStartedAt: usage.lastStartedAt });
   if (!verdict.write) return { refused: "This site's next article can't start yet (weekly quota or spacing between articles)." };

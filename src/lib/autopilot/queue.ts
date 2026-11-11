@@ -147,8 +147,9 @@ export async function getHostedQueue(
   const queued = sortIdeas(((approvedRes.data ?? []) as Row[]).filter((r) => !taken.has(r.id)));
 
   const paused = Boolean(project.writer_paused_at);
-  // The projection uses the same ceiling the scheduler will (ramp.ts).
-  const quota = rampVerdict(ramp, plan.articlesPerWeek, now).quota;
+  // The projection uses the same ceiling the scheduler will (ramp.ts; a
+  // paid pool runs at its full pace unless the index brake paused it).
+  const quota = rampVerdict(ramp, plan, now).quota;
   let starts: Date[] = [];
   if (!paused && quota > 0) {
     const floor = project.next_article_at ? new Date(project.next_article_at) : null;
