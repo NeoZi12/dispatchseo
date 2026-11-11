@@ -136,7 +136,11 @@ export default async function WebsitesPage({ searchParams }: { searchParams: Pro
     } else if (r?.safeMax === 0) {
       status = "paused";
       line = "Google has indexed too few of its older articles, so I've paused it. It picks up again on its own once Google catches up.";
-    } else if (r?.safeMax != null) {
+    } else if (!free && r?.safeMax != null) {
+      // Paid plans have no slow start any more, so this is only the safe
+      // fallback when a site's history couldn't be read. A free site keeps
+      // the ramp's number in the report, but it gets the free plan's 2 a
+      // month whatever that says, so it never reads as "slower" here.
       status = "slower";
       line = slowerLine(r.reason, r.safeMax);
     } else if (inSplit && share === 0 && pool != null) {
@@ -153,7 +157,6 @@ export default async function WebsitesPage({ searchParams }: { searchParams: Pro
       status,
       outside,
       line,
-      safeMax: r?.safeMax ?? null,
       // Free has no split to set; a site outside coverage or the split has
       // no share to change.
       editable: pool != null && inSplit,

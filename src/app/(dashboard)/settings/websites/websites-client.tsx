@@ -33,7 +33,6 @@ export type SiteCard = {
   outside: boolean;
   /** The dispatcher's sentence about this site, when there is one. */
   line: string | null;
-  safeMax: number | null;
   editable: boolean;
   /** The most a Custom share may be (pool minus the other sites' customs). */
   customMax: number;
@@ -510,12 +509,6 @@ function ShareControl({ card: c }: { card: SiteCard }) {
         </div>
         <p className="min-w-0 flex-1 text-[13.5px] leading-relaxed text-ink-muted">
           <span className="font-medium text-ink">{n === 1 ? "article a month" : "articles a month"}</span> for this website. You can pick from 1 to {max}.
-          {c.safeMax != null ? (
-            <>
-              {" "}
-              Safe for this site right now: <span className="font-medium tabular-nums text-ink">{c.safeMax}</span>. Set more and the rest waits for it.
-            </>
-          ) : null}
         </p>
       </div>
     );
