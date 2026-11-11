@@ -19,7 +19,7 @@ Package manager is **pnpm**. There is no lint or test script — `pnpm build`
 (which runs `tsc` via `next build`) is the type/build check.
 
 ```bash
-pnpm dev      # next dev on localhost:3000
+pnpm dev      # next dev on localhost:3000 (first checks main vs origin: scripts/dev-sync.mjs)
 pnpm build    # production build + typecheck (use this to verify changes)
 pnpm start    # serve the production build
 
