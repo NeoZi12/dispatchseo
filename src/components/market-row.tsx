@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { setMarket } from "@/app/actions";
 import { MARKETS, marketFor } from "@/lib/market";
+import { buttonClass } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 
 // The search-market row on Settings. Every project starts at US/English,
 // which quietly measures the wrong Google for any site whose audience
@@ -13,10 +15,14 @@ export function MarketRow({
   locationCode,
   languageCode,
   slug,
+  hosted = false,
 }: {
   locationCode: number;
   languageCode: string;
   slug: string;
+  /** The hosted Settings look: a full row (name and one line on the left,
+   *  designed dropdowns on the right) for a card of rows. */
+  hosted?: boolean;
 }) {
   const [location, setLocation] = useState(locationCode);
   const [language, setLanguage] = useState(languageCode);
@@ -50,6 +56,39 @@ export function MarketRow({
         setError(e instanceof Error ? e.message : "Save failed");
       }
     });
+  }
+
+  if (hosted) {
+    return (
+      <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+        <div className="min-w-0">
+          <p className="text-[14.5px] font-medium text-ink">Search market</p>
+          <p className="mt-0.5 text-[13px] leading-relaxed text-ink-muted">The Google country and language your keywords and rankings are measured in.</p>
+          {error ? <p className="mt-1.5 text-[13px] text-danger">{error}</p> : null}
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Select aria-label="Country" className="w-44" value={location} onChange={(e) => pickLocation(Number(e.target.value))} disabled={pending}>
+            {MARKETS.map((m) => (
+              <option key={m.location_code} value={m.location_code}>
+                {m.label}
+              </option>
+            ))}
+          </Select>
+          <Select aria-label="Language" className="w-36" value={language} onChange={(e) => setLanguage(e.target.value)} disabled={pending}>
+            {languages.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.label}
+              </option>
+            ))}
+          </Select>
+          {dirty ? (
+            <button type="button" onClick={save} disabled={pending} className={buttonClass("primary", "sm")}>
+              {pending ? "Saving…" : "Save"}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
   }
 
   return (

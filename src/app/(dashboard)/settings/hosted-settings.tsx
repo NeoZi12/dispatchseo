@@ -19,49 +19,56 @@ import { DeleteAccountForm } from "@/components/delete-account";
 import { DEFAULT_PROJECT_ID } from "@/lib/projects";
 import type { AutopilotReport } from "@/lib/autopilot/report";
 import { BRAND_LIMITS } from "@/lib/autopilot/controls";
-import { ownerFactsOf, OWNER_FACT_CHARS, OWNER_FACTS_MAX } from "@/lib/content-prefs";
+import { ownerFactsOf } from "@/lib/content-prefs";
 import { ActionForm } from "@/components/ui/action-form";
 import { buttonClass } from "@/components/ui/button";
 import { ChipsInput } from "@/components/ui/chips-input";
+import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { OnAir } from "@/components/ui/on-air";
 import { PageHeading } from "@/components/ui/page-heading";
 import { SiteIcon } from "@/components/ui/site-icon";
 import { StatusPill } from "@/components/ui/status-pill";
 import { cx, FOCUS_RING } from "@/components/ui/styles";
-import { Textarea } from "@/components/ui/textarea";
 import { ForwardingHelp, LookForm } from "./hosted-blog-card";
-import { MoreLinkAnchor, moreLinks } from "./more-links";
-import { saveVoice } from "./voice-action";
+import { MoreLinkAnchor, moreLinks, OutArrow } from "./more-links";
 import { authorOf, loadReport } from "../mode";
 import { PublishModeMenu } from "@/components/publish-mode-switch";
 import { countAwaitingReview } from "@/lib/article-review";
 
-// Settings for a hosted-writer project, laid out like Polar's: a slim list
-// of sections on the left, the chosen one on the right (?section=, one URL
-// each), and inside it settings as ROWS - the setting's name and one muted
-// line on the left, its control on the right - in one card, hairlines
-// between. Long text and chip fields sit full width under their name.
-// Destructive actions live in their own card at the end of Advanced.
+// Settings for a hosted-writer project, laid out like Polar's: the sidebar
+// turns into the settings menu (nav.tsx SettingsMenu), each entry opens one
+// pane here (?section=, one URL each; the ids must match HOSTED_SECTIONS
+// there), and a pane is one or more GROUPS - a small title, then a card of
+// ROWS: the setting's name and one muted line on the left, its control on
+// the right, hairlines between. Destructive actions are their own group at
+// the end of Advanced.
 //
-// Only what an owner must be able to change (owner, 2026-10-24), cut again
-// on 2026-11-09: Site, Publishing, Google, Advanced. Under those, the list
-// carries Billing, Feedback and Docs as links to their own pages - they left
-// the sidebar for here on 2026-11-11 (more-links.tsx), and Billing replaced
-// the old Plan pane, which was only ever a button to it. Publishing always
-// holds the one choice made in setup (go live on their own, or wait for the
-// owner's review); where articles go shows there only while it needs a hand. Gone from this page, still reachable over MCP: the writing
-// rules and blocked topics (set_tone, set_blocked_topics - writing is the
-// product's job now, not a setting; "Facts only you know" stays under Site),
-// the author byline, and the tagline / long description.
+// Only what an owner must be able to change (owner, 2026-10-24), cut on
+// 2026-11-09 and again on 2026-11-11 to three panes:
+//   General  - the site, and how and where its articles go out. Where they
+//              go shows only while it needs a hand.
+//   Google   - the Search Console connection.
+//   Advanced - search market, launch date, disconnecting and deleting.
+// Billing, Feedback and Docs are pages of their own in the same menu.
+//
+// Gone from this page on 2026-11-11 (owner: "we don't really need that"):
+// "What your site is", "Topics it covers" and "Facts only you know". Setup
+// reads the site and fills the first two; writing is the product's job, not
+// a setting. The values still feed the writer. ONE exception, and it is
+// load-bearing: a site setup could not read (a bot wall, a login) has no
+// description at all, and research and the writer both need one. For that
+// site only, General opens with "Describe your site" (DescribeSite) - the
+// Home card and first-article-progress link straight to it - and it goes
+// away once saved. Also not here: the writing rules, blocked topics, the
+// author byline, the tagline and the long description.
 
 type Controls = AutopilotReport["controls"];
 
 const SECTIONS = [
-  { id: "site", title: "Site", description: "What your site is. The writer reads this before every article." },
-  { id: "publishing", title: "Publishing", description: "Where finished articles go. Something here needs you." },
-  { id: "google", title: "Google", description: "Where the clicks and searches in your report come from. Read-only." },
-  { id: "advanced", title: "Advanced", description: "Set when you added the site, plus disconnecting and deleting." },
+  { id: "site", title: "General", description: "Your site, and how its articles go out." },
+  { id: "google", title: "Google", description: "Where the clicks and searches in your report come from." },
+  { id: "advanced", title: "Advanced", description: "Set once when you added the site. Disconnecting and deleting are here too." },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
 
@@ -114,73 +121,63 @@ export async function HostedSettings({
   // The Plan pane is gone; anything still pointing at it means Billing.
   if (section === "plan" && isCloudMode()) redirect("/billing");
   const sections = SECTIONS;
+  // Publishing is part of General now; the stuck-state links that still say
+  // ?section=publishing fall through to it here, like any unknown id.
   const active: SectionId = sections.find((x) => x.id === section)?.id ?? "site";
-  const found = SECTIONS.find((x) => x.id === active)!;
-  // With nothing to fix, Publishing is just the review choice.
-  const meta = active === "publishing" && !publishingOpen ? { ...found, description: "When finished articles go live." } : found;
+  const meta = SECTIONS.find((x) => x.id === active)!;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8">
-      <PageHeading className="arrive-up" title="Settings" />
-      <div className="grid gap-6 md:grid-cols-[12rem_minmax(0,1fr)] md:gap-10">
-        {/* Sections: a sticky list on desktop, a row of chips on a phone. */}
-        <nav aria-label="Settings sections" className="arrive-up md:sticky md:top-20 md:self-start" style={at(40)}>
-          <ul className="flex flex-wrap gap-1.5 md:flex-col md:gap-0.5">
-            {sections.map((x) => (
-              <li key={x.id}>
-                <Link
-                  href={x.id === "site" ? "/settings" : `/settings?section=${x.id}`}
-                  scroll={false}
-                  aria-current={x.id === active ? "page" : undefined}
-                  className={cx(
-                    "block rounded-lg px-3 py-2 text-[14px] transition-colors",
-                    x.id === active ? "bg-surface-2 font-medium text-ink" : "text-ink-muted hover:bg-surface hover:text-ink",
-                    "max-md:border max-md:border-line-soft",
-                    FOCUS_RING,
-                  )}
-                >
-                  {x.title}
-                </Link>
-              </li>
-            ))}
-            {/* Pages of their own, not panes: Billing, Feedback, Docs. A
-                hairline sets them apart on desktop; on a phone they are the
-                last chips in the row. */}
-            <li aria-hidden="true" className="hidden md:my-2 md:block md:h-px md:bg-line-soft" />
-            {moreLinks().map((link) => (
-              <li key={link.href}>
-                <MoreLinkAnchor
-                  link={link}
-                  className={cx(
-                    "flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-[14px] text-ink-muted transition-colors hover:bg-surface hover:text-ink",
-                    "max-md:border max-md:border-line-soft",
-                    FOCUS_RING,
-                  )}
-                />
-              </li>
-            ))}
-          </ul>
-        </nav>
+    <div className="mx-auto max-w-3xl space-y-7">
+      {/* Phones only. From md up the sidebar itself is the settings menu
+          (nav.tsx SettingsMenu), so the page is one column with the whole
+          width for the setting. On a phone the sidebar is a drawer, and the
+          panes are worth keeping one tap away. */}
+      <nav aria-label="Settings sections" className="arrive-up md:hidden">
+        <ul className="flex flex-wrap gap-1.5">
+          {sections.map((x) => (
+            <li key={x.id}>
+              <Link
+                href={x.id === "site" ? "/settings" : `/settings?section=${x.id}`}
+                scroll={false}
+                aria-current={x.id === active ? "page" : undefined}
+                className={cx(
+                  "block rounded-lg border px-3 py-2 text-[14px] transition-colors",
+                  x.id === active ? "border-line bg-surface-2 font-medium text-ink" : "border-line-soft text-ink-muted hover:bg-surface hover:text-ink",
+                  FOCUS_RING,
+                )}
+              >
+                {x.title}
+              </Link>
+            </li>
+          ))}
+          {/* Pages of their own, not panes: Billing, Feedback, Docs. */}
+          {moreLinks().map((link) => (
+            <li key={link.href}>
+              <MoreLinkAnchor
+                link={link}
+                className={cx("flex items-center gap-2 rounded-lg border border-line-soft px-3 py-2 text-[14px] text-ink-muted transition-colors hover:bg-surface hover:text-ink", FOCUS_RING)}
+              />
+            </li>
+          ))}
+        </ul>
+      </nav>
 
-        <section aria-labelledby="section-title" className="min-w-0 space-y-5" key={active}>
-          <div className="arrive-up" style={at(80)}>
-            <h2 id="section-title" className="text-[1.4rem] font-semibold tracking-tight text-ink">
-              {meta.title}
-            </h2>
-            <p className="mt-1 text-[14px] text-ink-muted">{meta.description}</p>
-          </div>
-          <div className="arrive-up space-y-5" style={at(140)}>
-            {active === "site" ? <SiteSection project={project} /> : null}
-            {active === "publishing" ? (
+      {/* key: a new pane arrives like a new page, not a patched one. */}
+      <div className="space-y-6" key={active}>
+        <PageHeading className="arrive-up" style={at(40)} title={meta.title} description={meta.description} />
+        <div className="arrive-up space-y-5" style={at(100)}>
+            {active === "site" ? (
               <>
-                {publishingOpen ? <PublishingSection project={project} /> : null}
-                <PublishModeForm project={project} />
+                <SiteSection project={project} />
+                <Group title="Publishing" description={publishingOpen ? "Something here needs you before articles can go out." : "When finished articles go live."}>
+                  {publishingOpen ? <PublishingSection project={project} /> : null}
+                  <PublishModeForm project={project} />
+                </Group>
               </>
             ) : null}
             {active === "google" ? <GoogleSection project={project} /> : null}
             {active === "advanced" ? <AdvancedSection project={project} account={account} /> : null}
-          </div>
-        </section>
+        </div>
       </div>
     </div>
   );
@@ -246,6 +243,20 @@ function Row({ title, description, children, full = false }: { title: string; de
   );
 }
 
+/** A titled set of cards inside a pane, Polar-style: a small heading and one
+ *  muted line, then the card(s) of rows. */
+function Group({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-3 pt-3">
+      <div>
+        <h2 className="text-[15px] font-semibold tracking-tight text-ink">{title}</h2>
+        {description ? <p className="mt-0.5 text-[13px] text-ink-muted">{description}</p> : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
 /** Save row at the foot of a form card. */
 const SAVE_ROW = "[&>div:last-child]:justify-end [&>div:last-child]:px-5 [&>div:last-child]:pb-4";
 
@@ -253,52 +264,51 @@ const SAVE_ROW = "[&>div:last-child]:justify-end [&>div:last-child]:px-5 [&>div:
 
 async function SiteSection({ project }: { project: Project }) {
   const { c } = await controlsFor(project);
+  // No description means setup couldn't read the site; see the header note.
+  const undescribed = !c.brand.short.trim() || c.brand.categories.length === 0;
   return (
+    <>
+    {undescribed ? <DescribeSite project={project} brand={c.brand} /> : null}
     <Rows>
-      <Row title="Site name" description="Set when you added the site.">
-        <span className="inline-flex items-center gap-2.5 text-[14px] text-ink">
-          <SiteIcon domain={project.domain} className="h-6 w-6" />
-          {c.brand.name || project.name}
+      <div className="flex items-center gap-4 px-5 py-5">
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-line-soft bg-surface-2">
+          <SiteIcon domain={project.domain} className="h-7 w-7" />
         </span>
-      </Row>
-      <Row title="Domain">
-        <a href={`https://${project.domain}`} target="_blank" rel="noopener noreferrer" className="text-[14px] text-ink-muted underline decoration-line underline-offset-[3px] hover:text-ink">
-          {project.domain}
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[16px] font-semibold tracking-tight text-ink">{c.brand.name || project.name}</p>
+          <p className="mt-0.5 truncate text-[13px] text-ink-muted">{project.domain}</p>
+        </div>
+        <a href={`https://${project.domain}`} target="_blank" rel="noopener noreferrer" className={buttonClass("secondary", "sm", "shrink-0")}>
+          Visit site
+          <OutArrow className="h-3.5 w-3.5 opacity-70" />
         </a>
-      </Row>
-      {/* The tagline and long description ride along unchanged: the action
-          saves every field it's given, and a missing one saves as empty. */}
-      <ActionForm action={saveBrand} slug={project.slug} submitLabel="Save site details" size="sm" className={SAVE_ROW} hidden={{ tagline: c.brand.tagline, long: c.brand.long }}>
+      </div>
+    </Rows>
+    </>
+  );
+}
+
+/** Only for a site setup couldn't read: the two things research and the
+ *  writer can't start without. The tagline and long description ride along
+ *  unchanged (the action saves every field it's given). */
+function DescribeSite({ project, brand }: { project: Project; brand: Controls["brand"] }) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-violet-400/25 bg-surface">
+      <div className="border-b border-line-soft bg-[radial-gradient(120%_140%_at_0%_0%,rgba(139,92,246,0.16),transparent_60%)] px-5 py-4">
+        <h2 className="text-[15px] font-semibold tracking-tight text-ink">Describe your site</h2>
+        <p className="mt-0.5 text-[13px] leading-relaxed text-ink-muted">We couldn&apos;t read your homepage. Tell us what the site is and your first article starts from that.</p>
+      </div>
+      <ActionForm action={saveBrand} slug={project.slug} submitLabel="Save and start" size="sm" className={SAVE_ROW} hidden={{ tagline: brand.tagline, long: brand.long }}>
         <div className="divide-y divide-line-soft">
           <Row title="What your site is" description={`A sentence or two, ${BRAND_LIMITS.short} characters at most.`} full>
-            <Textarea id="brand-short" name="short" aria-label="What your site is" defaultValue={c.brand.short} maxLength={BRAND_LIMITS.short} rows={3} required />
+            <Textarea id="brand-short" name="short" aria-label="What your site is" defaultValue={brand.short} maxLength={BRAND_LIMITS.short} rows={3} required />
           </Row>
-          <Row title="Topics it covers" description={`Research looks for articles inside these. Up to ${BRAND_LIMITS.categories}.`} full>
-            <ChipsInput id="brand-categories" name="categories" defaultValue={c.brand.categories} max={BRAND_LIMITS.categories} maxLength={BRAND_LIMITS.category} placeholder="Add a topic and press Enter" />
+          <Row title="Topics it covers" description={`We look for articles inside these. Up to ${BRAND_LIMITS.categories}.`} full>
+            <ChipsInput id="brand-categories" name="categories" defaultValue={brand.categories} max={BRAND_LIMITS.categories} maxLength={BRAND_LIMITS.category} placeholder="Add a topic and press Enter" />
           </Row>
         </div>
       </ActionForm>
-      {/* The one writing input that changes what the articles say. The voice
-          rules and blocked topics (saveVoice saves all three) ride along
-          unchanged; both stay reachable over MCP. */}
-      <ActionForm action={saveVoice} slug={project.slug} submitLabel="Save facts" size="sm" className={SAVE_ROW} hidden={{ tone: c.tone, topics: JSON.stringify(c.blockedTopics) }}>
-        <Row
-          title="Facts only you know"
-          description={`Prices, years, numbers, how you work - one per line, up to ${OWNER_FACTS_MAX}. Every article works one in; it's what sets your articles apart from everyone else's.`}
-          full
-        >
-          <Textarea
-            id="owner-facts"
-            name="facts"
-            aria-label="Facts only you know"
-            defaultValue={c.ownerFacts.join("\n")}
-            maxLength={OWNER_FACTS_MAX * (OWNER_FACT_CHARS + 1)}
-            rows={4}
-            placeholder={"Flat $95 call-out fee anywhere in the city.\nFamily-run since 1998, three licensed plumbers.\nMost disposal jams are fixed in under 30 minutes."}
-          />
-        </Row>
-      </ActionForm>
-    </Rows>
+    </div>
   );
 }
 
@@ -444,14 +454,11 @@ function AdvancedSection({ project, account }: { project: Project; account: { em
   return (
     <>
       <Rows>
-        <div className="px-5 py-1.5">
-          <MarketRow locationCode={project.location_code} languageCode={project.language_code} slug={project.slug} />
-        </div>
-        <div className="px-5 py-1.5">
-          <SiteLaunchedRow current={project.site_launched_at ?? project.created_at} slug={project.slug} />
-        </div>
+        <MarketRow locationCode={project.location_code} languageCode={project.language_code} slug={project.slug} hosted />
+        <SiteLaunchedRow current={project.site_launched_at ?? project.created_at} slug={project.slug} hosted />
       </Rows>
 
+      <Group title="Danger zone" description="These can't be undone.">
       <Rows danger>
         {project.github_repo ? (
           <Row title="Disconnect the repo" description="Articles stop going to it. Nothing in the repo changes." full>
@@ -477,6 +484,7 @@ function AdvancedSection({ project, account }: { project: Project; account: { em
           </Row>
         ) : null}
       </Rows>
+      </Group>
     </>
   );
 }

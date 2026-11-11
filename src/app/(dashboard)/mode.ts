@@ -110,7 +110,7 @@ export function setupGaps(s: SetupFacts): SetupGap[] {
             // and research and the writer both need the profile.
             key: "profile",
             title: "Describe your site",
-            detail: "We couldn't read your homepage; describe your site in Settings > Site and the first article starts from that.",
+            detail: "We couldn't read your homepage; describe your site in Settings and the first article starts from that.",
             href: "/settings",
             done: false,
             blocksPublishing: false,

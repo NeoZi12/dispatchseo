@@ -100,9 +100,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // pause, lib/free-gate.ts). After the response, at most one write a day.
   if (billing && user) after(() => touchOwnerActivity(user.id));
   const notice = planNotice(sub);
-  // Which plan this account is on, shown on the Settings row of the sidebar (and
-  // the mobile drawer) so the tier is legible from every screen instead of only
-  // from /billing. Free-standing from the banner above: that one only appears
+  // Which plan this account is on, shown on the Billing row of the sidebar's
+  // settings menu (and the mobile drawer's), so the tier is legible without
+  // opening /billing. A free site also gets the sidebar's upgrade card. Free-standing from the banner above: that one only appears
   // when something is WRONG, and "which plan am I on" is a question people ask
   // when everything is fine.
   const badge = planBadge(sub);
@@ -188,42 +188,46 @@ export default async function DashboardLayout({ children }: { children: React.Re
           "--dispatcher-body": activeAgent.mascot.body,
         } as React.CSSProperties)
       : undefined;
+  // The site picker lives at the foot of the sidebar (and of the phone
+  // drawer), Polar-style, not in the topbar (owner, 2026-11-11). Built once
+  // here, where its props are, and handed to both as a slot.
+  const switcher = active ? (
+    <ProjectSwitcher
+      projects={projects.map((p) => ({ slug: p.slug, name: p.name, domain: p.domain }))}
+      activeSlug={active.slug}
+      cloud={billing}
+      sitesRemaining={sitesLeft}
+      githubCostRequired={githubCost.required}
+      // Self-host and the operator always get the add row (and
+      // its dialog); a customer gets it while the plan has room
+      // for another site (Growth 3, Scale 5), and it takes them
+      // to the Websites page, where a site is added the way the
+      // first one was (createHostedProjectForUser).
+      canAddSite={!billing || owner || (sitesLeft ?? 0) > 0}
+      addHref={billing && !owner ? "/settings/websites?add=1" : null}
+      placement="sidebar"
+    />
+  ) : null;
   return (
     <div className="flex min-h-screen bg-canvas text-ink" style={dispatcherTint}>
       {/* Arrival pace: full on first load, quick on in-app navigation. */}
       <ArrivalMode />
       {user && <PostHogIdentify userId={user.id} email={user.email} />}
-      <Sidebar billing={billing} hasProject={active != null} plan={navPlan} free={free} waiting={showFirstArticle} mode={hosted ? "hosted" : "agent"} owner={owner} />
+      <Sidebar billing={billing} hasProject={active != null} plan={navPlan} free={free} waiting={showFirstArticle} mode={hosted ? "hosted" : "agent"} owner={owner} switcher={switcher} />
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* One row on every size. Desktop keeps the three-up grid (switcher /
-            centered title / mode). Mobile can't: at 390px the centered title
-            landed on top of the project domain, so it drops out there - the
-            page's own h1 already names the screen - and the hamburger takes
-            its place on the left. The wordmark also goes; the mark alone links
-            home and the drawer carries the full brand. */}
+        {/* One row on every size. Desktop keeps the three-up grid (empty /
+            centered title / mode); the site picker that used to sit on the
+            left is at the foot of the sidebar now. On a phone the centered
+            title drops out - the page's own h1 already names the screen - and
+            the hamburger takes the left. The wordmark also goes; the mark
+            alone links home and the drawer carries the full brand. */}
         <header className="sticky top-0 z-20 border-b border-line-soft bg-canvas/90 backdrop-blur">
           <div className="flex h-14 items-center gap-2 px-4 sm:px-6 md:grid md:grid-cols-[1fr_auto_1fr]">
             <div className="flex min-w-0 flex-1 items-center gap-1.5 md:flex-none md:gap-2">
-              <MobileNav billing={billing} hasProject={active != null} plan={navPlan} free={free} waiting={showFirstArticle} mode={hosted ? "hosted" : "agent"} owner={owner} />
+              <MobileNav billing={billing} hasProject={active != null} plan={navPlan} free={free} waiting={showFirstArticle} mode={hosted ? "hosted" : "agent"} owner={owner} switcher={switcher} />
               <Link href="/dashboard" className="shrink-0 md:hidden" aria-label="DispatchSEO home">
                 <DispatchMark className="h-7 w-auto" />
               </Link>
-              {active && (
-                <ProjectSwitcher
-                  projects={projects.map((p) => ({ slug: p.slug, name: p.name, domain: p.domain }))}
-                  activeSlug={active.slug}
-                  cloud={billing}
-                  sitesRemaining={sitesLeft}
-                  githubCostRequired={githubCost.required}
-                  // Self-host and the operator always get the add row (and
-                  // its dialog); a customer gets it while the plan has room
-                  // for another site (Growth 3, Scale 5), and it takes them
-                  // to the Websites page, where a site is added the way the
-                  // first one was (createHostedProjectForUser).
-                  canAddSite={!billing || owner || (sitesLeft ?? 0) > 0}
-                  addHref={billing && !owner ? "/settings/websites?add=1" : null}
-                />
-              )}
             </div>
             <div className="hidden md:block">
               <PageTitle mode={hosted ? "hosted" : "agent"} />

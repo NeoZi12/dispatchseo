@@ -136,7 +136,7 @@ export default async function SettingsPage({
           title="Settings"
           hint="Add a site to configure it. Your account details are below either way."
         />
-        {/* Billing, Feedback, Docs - no longer rows in the sidebar. */}
+        {/* Billing, Feedback, Docs, on a phone (the sidebar's settings menu has them on desktop). */}
         <MoreLinksRow />
         {auth.user ? <AccountSection email={auth.user.email} /> : null}
         <section className="space-y-3">
@@ -244,9 +244,9 @@ export default async function SettingsPage({
     <div className="mx-auto max-w-xl space-y-8">
       <PageHeader
         title="Project settings"
-        hint={`Everything DispatchSEO knows about ${project.name}. Switch projects from the header to manage a different one.`}
+        hint={`Everything DispatchSEO knows about ${project.name}. Switch sites at the bottom of the sidebar to manage a different one.`}
       />
-      {/* Billing, Feedback, Docs - no longer rows in the sidebar. */}
+      {/* Billing, Feedback, Docs, on a phone (the sidebar's settings menu has them on desktop). */}
       <MoreLinksRow />
 
       {auth.user ? <AccountSection email={auth.user.email} /> : null}

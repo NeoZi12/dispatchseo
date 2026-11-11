@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { posthogReset } from "@/lib/posthog-client";
 import { DispatchMark } from "@/components/logo";
+import { CardMascot } from "@/components/card-mascot";
 import { FOCUS_RING } from "@/components/ui/styles";
 
 // Vercel-style navigation: an icon sidebar on desktop (Sidebar), a slide-out
@@ -167,6 +168,56 @@ function WhatsNewIcon({ className }: IconProps) {
   );
 }
 
+function DocsIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M4 4.5h6a2 2 0 0 1 2 2v13a1.6 1.6 0 0 0-1.6-1.6H4z" />
+      <path d="M20 4.5h-6a2 2 0 0 0-2 2v13a1.6 1.6 0 0 1 1.6-1.6H20z" />
+    </svg>
+  );
+}
+
+// A speech bubble with a spark: this is where you say something.
+function FeedbackIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z" />
+      <path d="M12 8.5v5" />
+      <path d="M9.5 11h5" />
+    </svg>
+  );
+}
+
+function BillingIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <path d="M2 10h20" />
+      <path d="M6 15h4" />
+    </svg>
+  );
+}
+
+// Sliders: the knobs you set once and leave.
+function AdvancedIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
+      <circle cx="15" cy="7" r="2" />
+      <circle cx="9" cy="17" r="2" />
+    </svg>
+  );
+}
+
+function BackIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M19 12H5" />
+      <path d="M11 6l-6 6 6 6" />
+    </svg>
+  );
+}
+
 function SettingsIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
@@ -256,6 +307,7 @@ const GROUPS: NavGroup[] = [
       // an in-progress dashboard page to it is a bad trade. Docs used to sit
       // here too; it lives in Settings now (settings/more-links.tsx).
       { href: "/changelog", label: "What's new", Icon: WhatsNewIcon, external: true },
+      { href: "/settings", label: "Settings", Icon: SettingsIcon },
     ],
   },
 ];
@@ -284,6 +336,9 @@ const HOSTED_GROUPS: NavGroup[] = [
       { href: "/analytics", label: "Analytics", Icon: AnalyticsIcon },
       // Interactive tool pages - shown to the operator only (NavGroups).
       { href: "/tools", label: "Tools", Icon: ToolsIcon },
+      // Last in the list, right under the site's screens (owner,
+      // 2026-11-11), not pinned to the foot: that spot is the site picker's.
+      { href: "/settings", label: "Settings", Icon: SettingsIcon },
     ],
   },
 ];
@@ -299,11 +354,53 @@ const HOSTED_LINKS: NavLink[] = HOSTED_GROUPS.flatMap((g) => g.links);
 
 const SETTINGS: NavLink = { href: "/settings", label: "Settings", Icon: SettingsIcon };
 
-// Billing, Feedback and Docs are reached from Settings, not from rows of
-// their own here (owner, 2026-11-11: the sidebar is for the site's screens).
-// The list lives in settings/more-links.tsx. While one of those pages is
-// open the Settings row stays lit, since that is where you came from.
+// Settings is a second face of the sidebar, the way Polar's dashboard does it
+// (owner, 2026-11-11): open Settings and the site's screens make way for the
+// settings menu, with a back arrow at the top. One menu to learn, the whole
+// page width for the setting itself, and room for the account-level pages -
+// Billing, Feedback, Docs, Log out - that used to crowd the foot of the
+// sidebar. The sidebar is in this face on every route listed here.
 const UNDER_SETTINGS = ["/settings", "/billing", "/feedback"];
+
+// One row of the settings menu. `section` marks a pane of the hosted Settings
+// page (/settings?section=<id>; "site" is the bare URL), so the row can tell
+// whether it is the one on screen - the pathname alone is the same for all
+// four. Keep the ids in step with SECTIONS in settings/hosted-settings.tsx.
+type SettingsLink = NavLink & { section?: string; plan?: boolean };
+type SettingsGroup = { label: string; links: SettingsLink[]; logout?: boolean };
+
+const HOSTED_SECTIONS: SettingsLink[] = [
+  // General holds the site and its publishing; an old ?section=publishing
+  // link is not in SECTION_IDS, so it lights General, which is where it lands.
+  { href: "/settings", label: "General", Icon: SettingsIcon, section: "site" },
+  { href: "/settings?section=google", label: "Google", Icon: SearchConsoleIcon, section: "google" },
+  { href: "/settings?section=advanced", label: "Advanced", Icon: AdvancedIcon, section: "advanced" },
+];
+const SECTION_IDS = new Set(HOSTED_SECTIONS.map((l) => l.section));
+
+function settingsGroups({ mode, hasProject, billing }: { mode: NavMode; hasProject: boolean; billing: boolean }): SettingsGroup[] {
+  // Agent-mode Settings is one long page, and so is the page of an account
+  // with no site yet: a single row each.
+  const site: SettingsLink[] = !hasProject ? [] : mode === "hosted" ? HOSTED_SECTIONS : [{ href: "/settings", label: "Project", Icon: SettingsIcon }];
+  const account: SettingsLink[] = [
+    ...(hasProject ? [] : [{ href: "/settings", label: "Account", Icon: SettingsIcon }]),
+    // Cloud only - self-host has nothing to bill.
+    ...(billing ? [{ href: "/billing", label: "Billing", Icon: BillingIcon, plan: true }] : []),
+  ];
+  const help: SettingsLink[] = [
+    { href: "/feedback", label: "Feedback", Icon: FeedbackIcon },
+    // A new tab: reading a doc is a side quest, and losing a half-filled
+    // Settings form to it is a bad trade.
+    { href: "/docs", label: "Docs", Icon: DocsIcon, external: true },
+  ];
+  const groups: SettingsGroup[] = [
+    { label: "Site", links: site },
+    // Log out closes the Account group, on every kind of install.
+    { label: "Account", links: account, logout: true },
+    { label: "Help", links: help },
+  ];
+  return groups.filter((g) => g.links.length > 0 || g.logout);
+}
 
 // The operator's cross-tenant analytics (/owner). Only an id in
 // OPERATOR_USER_IDS gets the row (the layout decides, via isOperator); the
@@ -318,14 +415,13 @@ function OwnerIcon({ className }: IconProps) {
 }
 const OWNER: NavLink = { href: "/owner", label: "Owner", Icon: OwnerIcon };
 
-// The current plan, as a pill on the Settings row.
+// The current plan, as a pill on the Billing row of the settings menu.
 //
-// It rides that row rather than sitting in the topbar for two reasons: the
-// topbar already carries the project switcher, the page title, the agent
-// switch and the mode switch, and at 390px it has nothing left to give; and
-// the plan is ACCOUNT state, which is what the bottom group of the sidebar is
-// - Settings, Log out - while everything above it is one site's data.
-// Settings is one click from Billing, the page that can change it.
+// It rides that row rather than sitting in the topbar because the topbar
+// already carries the project switcher, the page title, the agent switch and
+// the mode switch, and at 390px it has nothing left to give. Clicking through
+// lands on the page that can change it. A free site doesn't wait for someone
+// to open Settings to say so: UpgradeCard says it at the foot of the sidebar.
 //
 // A trial reads as emerald because it is time-boxed and worth noticing; a
 // healthy plan stays neutral so it informs without competing with the nav; a
@@ -368,24 +464,37 @@ function isActive(href: string, pathname: string) {
 const ROW = { normal: "gap-3 px-3 py-2 text-[14px]", big: "gap-3.5 px-3.5 py-2.5 text-[15.5px]" };
 const ICON = { normal: "h-[18px] w-[18px]", big: "h-[22px] w-[22px]" };
 
+// The row itself, Polar-style: the current page is a raised card (a hairline
+// border, a lighter fill, a soft shadow) rather than a bar in the margin.
+// Every row carries a border, transparent when idle, so nothing shifts by a
+// pixel when the card arrives.
+const ROW_BASE = "flex items-center rounded-lg border transition-colors";
+const ROW_IDLE = "border-transparent text-ink-muted hover:bg-surface hover:text-ink";
+const ROW_ACTIVE = "border-line bg-surface-2 font-medium text-ink shadow-[0_1px_2px_rgba(0,0,0,0.45)]";
+
 function SidebarLink({
   link,
   pathname,
   trailing,
   big = false,
-  alsoActiveOn,
+  active: activeOverride,
+  onNavigate,
 }: {
   link: NavLink;
   pathname: string;
   big?: boolean;
-  // Right-aligned adornment for the row - the plan pill on Settings today.
-  // Only honored on internal links; the external ones already end in their
-  // own open-in-new-tab arrow.
+  // Right-aligned adornment for the row - a lock, the plan pill. Only honored
+  // on internal links; the external ones already end in their own
+  // open-in-new-tab arrow.
   trailing?: React.ReactNode;
-  // Other routes this row counts as the current page for (UNDER_SETTINGS).
-  alsoActiveOn?: string[];
+  // For rows whose "current page" the pathname can't decide (the panes of
+  // Settings share one pathname).
+  active?: boolean;
+  // Fires on click. The phone drawer closes on a pathname change, which a
+  // move between two panes of Settings never is.
+  onNavigate?: () => void;
 }) {
-  const active = isActive(link.href, pathname) || Boolean(alsoActiveOn?.some((href) => isActive(href, pathname)));
+  const active = activeOverride ?? isActive(link.href, pathname);
   // External: a plain <a> in a new tab. No <Link> (nothing to prefetch off the
   // dashboard's router) and no active state - you never "are" on this page
   // while looking at the sidebar, since it lives in another tab.
@@ -395,7 +504,7 @@ function SidebarLink({
         href={link.href}
         target="_blank"
         rel="noopener noreferrer"
-        className={`flex items-center rounded-lg ${ROW[big ? "big" : "normal"]} text-ink-muted transition-colors hover:bg-surface hover:text-ink ${FOCUS_RING}`}
+        className={`${ROW_BASE} ${ROW[big ? "big" : "normal"]} ${ROW_IDLE} ${FOCUS_RING}`}
       >
         <link.Icon className={`${ICON[big ? "big" : "normal"]} shrink-0 text-ink-faint`} />
         {link.label}
@@ -417,12 +526,9 @@ function SidebarLink({
   return (
     <Link
       href={link.href}
+      onClick={onNavigate}
       aria-current={active ? "page" : undefined}
-      className={`relative flex items-center rounded-lg ${ROW[big ? "big" : "normal"]} transition-colors ${FOCUS_RING} ${
-        active
-          ? "bg-surface-2 font-medium text-ink before:absolute before:inset-y-2 before:-left-3 before:w-0.5 before:rounded-full before:bg-accent"
-          : "text-ink-muted hover:bg-surface hover:text-ink"
-      }`}
+      className={`${ROW_BASE} ${ROW[big ? "big" : "normal"]} ${FOCUS_RING} ${active ? ROW_ACTIVE : ROW_IDLE}`}
     >
       <link.Icon className={`${ICON[big ? "big" : "normal"]} shrink-0 ${active ? "text-accent" : "text-ink-faint"}`} />
       {link.label}
@@ -450,7 +556,7 @@ function LogoutLink({ big = false }: { big?: boolean }) {
         // in that case, and reset() on it throws, which would break logout.
         posthogReset();
       }}
-      className={`flex items-center rounded-lg ${ROW[big ? "big" : "normal"]} text-ink-muted transition-colors hover:bg-surface hover:text-ink ${FOCUS_RING}`}
+      className={`${ROW_BASE} ${ROW[big ? "big" : "normal"]} ${ROW_IDLE} ${FOCUS_RING}`}
     >
       <LogoutIcon className={`${ICON[big ? "big" : "normal"]} shrink-0 text-ink-faint`} />
       Log out
@@ -501,9 +607,9 @@ function LockMark() {
 // available". Self-host keeps it - there the one user is the operator.
 // While a new hosted site's first article is being written (the layout's
 // first-article card is up), the sidebar is Overview only: the other screens
-// are greyed and say so on hover (owner, 2026-11-09). Settings (and Billing
-// inside it) stays open below - cancelling, changing the plan, and the account are the
-// only things there are to do.
+// are greyed and say so on hover (owner, 2026-11-09). Settings stays open,
+// and its whole menu with it - cancelling, changing the plan, and the
+// account are the only things there are to do.
 const WAIT_NOTE = "We're setting up your dashboard. Nothing left for you to do but wait.";
 
 function WaitingLink({ link, big }: { link: NavLink; big: boolean }) {
@@ -512,7 +618,7 @@ function WaitingLink({ link, big }: { link: NavLink; big: boolean }) {
       role="link"
       aria-disabled="true"
       tabIndex={0}
-      className={`group relative flex cursor-not-allowed select-none items-center rounded-lg ${ROW[big ? "big" : "normal"]} text-ink-faint/60 ${FOCUS_RING}`}
+      className={`group relative flex cursor-not-allowed select-none items-center rounded-lg border border-transparent ${ROW[big ? "big" : "normal"]} text-ink-faint/60 ${FOCUS_RING}`}
     >
       <link.Icon className={`${ICON[big ? "big" : "normal"]} shrink-0 text-ink-faint/40`} />
       {link.label}
@@ -536,7 +642,7 @@ function NavGroups({ mode, pathname, free = false, tools = true, waiting = false
             <p className={`px-3 pb-1.5 text-[12px] font-medium text-ink-faint ${i > 0 ? "pt-6" : ""}`}>{group.label}</p>
           ) : null}
           {group.links.map((l) =>
-            waiting && mode === "hosted" && l.href !== "/dashboard" ? (
+            waiting && mode === "hosted" && l.href !== "/dashboard" && l.href !== "/settings" ? (
               <WaitingLink key={l.href} link={l} big />
             ) : (
               <SidebarLink
@@ -554,31 +660,132 @@ function NavGroups({ mode, pathname, free = false, tools = true, waiting = false
   );
 }
 
-// Account-level rows, pinned under the scroll area so they can never be
-// clipped off the bottom of a short screen.
-function PinnedLinks({
+// A free site's plan, said once at the foot of the sidebar with the way up
+// (Polar keeps its own "plans" card in the same spot). The dispatcher sits on
+// the card's edge with his headset on, the way he sits on the Growth card on
+// the landing page (card-mascot.tsx; the blink is .dash-mascot in
+// globals.css). billing.ts isFreePlan decides who is free; the layout passes
+// it down as `free`.
+function UpgradeCard() {
+  return (
+    // mt: room for him above the card, so he never covers the row above.
+    <div className="relative mb-3 mt-10">
+      <CardMascot className="dash-mascot pointer-events-none absolute -top-[41px] right-4 z-10 h-12 w-12 drop-shadow-[0_5px_8px_rgba(0,0,0,0.5)]" />
+      <div className="rounded-2xl border border-violet-400/20 bg-surface bg-[radial-gradient(130%_100%_at_100%_0%,rgba(139,92,246,0.24),transparent_62%)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <p className="text-[12px] font-medium text-violet-300">Free plan</p>
+        <p className="mt-1 text-[15.5px] font-semibold leading-tight tracking-tight text-ink">2 articles a month</p>
+        <p className="mt-1.5 text-[12.5px] leading-snug text-ink-muted">A plan brings more every month, plus your queue and analytics.</p>
+        <Link
+          href="/billing"
+          className={`mt-3.5 flex h-9 items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-[#6d28d9] to-[#9333ea] text-[13px] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_8px_18px_-8px_rgba(124,58,237,0.8)] transition hover:brightness-110 ${FOCUS_RING}`}
+        >
+          See plans
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5" aria-hidden="true">
+            <path d="M5 12h14M13 6l6 6-6 6" />
+          </svg>
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+// The foot of the sidebar, pinned under the scroll area so it can never be
+// clipped off the bottom of a short screen: the site picker, Polar-style
+// (the layout builds it and passes it in as `switcher`). Above it, on the
+// site's screens only, a free site's upgrade card and the operator's row.
+function SidebarFoot({
   mode,
   pathname,
-  plan,
   owner,
+  upgrade,
+  switcher,
+  inSettings,
 }: {
   mode: NavMode;
   pathname: string;
-  plan: PlanChip | null;
   owner: boolean;
+  upgrade: boolean;
+  switcher: React.ReactNode;
+  inSettings: boolean;
 }) {
+  const showUpgrade = upgrade && !inSettings;
+  const showOwner = owner && !inSettings;
+  if (!showUpgrade && !showOwner && !switcher) return null;
   return (
     <div className="flex shrink-0 flex-col gap-0.5 border-t border-line-soft px-3 py-3">
-      {owner ? <SidebarLink link={OWNER} pathname={pathname} big={mode === "hosted"} /> : null}
-      <SidebarLink
-        link={SETTINGS}
-        pathname={pathname}
-        big={mode === "hosted"}
-        alsoActiveOn={UNDER_SETTINGS}
-        trailing={plan ? <PlanPill plan={plan} /> : undefined}
-      />
-      <LogoutLink big={mode === "hosted"} />
+      {showUpgrade ? <UpgradeCard /> : null}
+      {showOwner ? <SidebarLink link={OWNER} pathname={pathname} big={mode === "hosted"} /> : null}
+      {switcher ? <div className={showOwner ? "mt-2" : ""}>{switcher}</div> : null}
     </div>
+  );
+}
+
+type SettingsMenuProps = {
+  mode: NavMode;
+  pathname: string;
+  hasProject: boolean;
+  billing: boolean;
+  plan: PlanChip | null;
+  onNavigate?: () => void;
+};
+
+// The settings face of the sidebar: the way back, then the menu in groups.
+function SettingsMenuList({ mode, pathname, hasProject, billing, plan, onNavigate, section }: SettingsMenuProps & { section: string | null }) {
+  const big = mode === "hosted";
+  // The pane on screen: an unknown or missing ?section= is the first one,
+  // the same fallback the page itself makes.
+  const pane = section && SECTION_IDS.has(section) ? section : "site";
+  // The bare page only: a route under /settings is a page of its own.
+  const onSettings = pathname === "/settings";
+  return (
+    <>
+      {hasProject ? (
+        <Link
+          href="/dashboard"
+          title="Back to your dashboard"
+          className={`${ROW_BASE} ${ROW[big ? "big" : "normal"]} border-transparent font-semibold text-ink hover:bg-surface ${FOCUS_RING}`}
+        >
+          <BackIcon className={`${ICON[big ? "big" : "normal"]} shrink-0 text-ink-muted`} />
+          Settings
+          <span className="sr-only">, back to your dashboard</span>
+        </Link>
+      ) : (
+        // No site: there is no dashboard to go back to, so it's a title.
+        <p className={`flex items-center ${ROW[big ? "big" : "normal"]} font-semibold text-ink`}>Settings</p>
+      )}
+      {settingsGroups({ mode, hasProject, billing }).map((group) => (
+        <div key={group.label} className={`flex flex-col ${big ? "gap-1" : "gap-0.5"}`}>
+          <p className="px-3 pb-1.5 pt-5 text-[12px] font-medium text-ink-faint">{group.label}</p>
+          {group.links.map((l) => (
+            <SidebarLink
+              key={l.href}
+              link={l}
+              pathname={pathname}
+              big={big}
+              onNavigate={onNavigate}
+              active={l.external ? undefined : l.href.startsWith("/settings") ? onSettings && (l.section ? l.section === pane : true) : undefined}
+              trailing={l.plan && plan ? <PlanPill plan={plan} /> : undefined}
+            />
+          ))}
+          {group.logout ? <LogoutLink big={big} /> : null}
+        </div>
+      ))}
+      {hasProject ? null : <NoSiteNote />}
+    </>
+  );
+}
+
+function SettingsMenuFromUrl(props: SettingsMenuProps) {
+  return <SettingsMenuList {...props} section={useSearchParams().get("section")} />;
+}
+
+// useSearchParams wants a Suspense boundary above it; until it resolves, the
+// menu shows with the first pane marked, which is what a bare /settings is.
+function SettingsMenu(props: SettingsMenuProps) {
+  return (
+    <Suspense fallback={<SettingsMenuList {...props} section={null} />}>
+      <SettingsMenuFromUrl {...props} />
+    </Suspense>
   );
 }
 
@@ -590,7 +797,10 @@ export function Sidebar({
   owner = false,
   free = false,
   waiting = false,
+  switcher = null,
 }: {
+  /** The site picker, for the foot of the sidebar (the layout builds it). */
+  switcher?: React.ReactNode;
   /** The first article is still being written: only Overview is open (WaitingLink). */
   waiting?: boolean;
   /** The active site is on the free tier: its locked screens carry a lock. */
@@ -606,6 +816,7 @@ export function Sidebar({
   plan?: PlanChip | null;
 }) {
   const pathname = usePathname();
+  const inSettings = UNDER_SETTINGS.some((href) => isActive(href, pathname));
   return (
     <aside className={`sticky top-0 hidden h-screen ${mode === "hosted" ? "w-64" : "w-60"} shrink-0 flex-col border-r border-line-soft bg-canvas md:flex`}>
       <div className="flex h-14 shrink-0 items-center px-4">
@@ -619,12 +830,21 @@ export function Sidebar({
         </Link>
       </div>
       {/* The groups scroll on short viewports (min-h-0 lets flex actually
-          shrink this); Settings lives OUTSIDE the scroll area so it can
-          never be clipped off the bottom of the screen. */}
+          shrink this); the foot lives OUTSIDE the scroll area so the site
+          picker can never be clipped off the bottom of the screen. */}
       <nav className={`min-h-0 flex-1 overflow-y-auto px-3 pb-3 ${mode === "hosted" ? "pt-5" : "pt-3"}`}>
-        {hasProject ? <NavGroups mode={mode} pathname={pathname} free={free} tools={owner || !billing} waiting={waiting} /> : <NoSiteNote />}
+        {inSettings ? (
+          <SettingsMenu mode={mode} pathname={pathname} hasProject={hasProject} billing={billing} plan={plan} />
+        ) : hasProject ? (
+          <NavGroups mode={mode} pathname={pathname} free={free} tools={owner || !billing} waiting={waiting} />
+        ) : (
+          <>
+            <NoSiteNote />
+            <SidebarLink link={SETTINGS} pathname={pathname} big={mode === "hosted"} />
+          </>
+        )}
       </nav>
-      <PinnedLinks mode={mode} pathname={pathname} plan={plan} owner={owner} />
+      <SidebarFoot mode={mode} pathname={pathname} owner={owner} upgrade={billing && free && !waiting} switcher={switcher} inSettings={inSettings} />
     </aside>
   );
 }
@@ -643,7 +863,9 @@ export function MobileNav({
   owner = false,
   free = false,
   waiting = false,
+  switcher = null,
 }: {
+  switcher?: React.ReactNode;
   /** The first article is still being written: only Overview is open (WaitingLink). */
   waiting?: boolean;
   free?: boolean;
@@ -655,6 +877,7 @@ export function MobileNav({
   plan?: PlanChip | null;
 }) {
   const pathname = usePathname();
+  const inSettings = UNDER_SETTINGS.some((href) => isActive(href, pathname));
   const [open, setOpen] = useState(false);
   // The overlay is portaled to <body>, so it can't render during SSR.
   const [mounted, setMounted] = useState(false);
@@ -726,12 +949,21 @@ export function MobileNav({
                 <CloseIcon className="h-5 w-5" />
               </button>
             </div>
-            {/* Same groups as the desktop sidebar, and Settings likewise pinned
+            {/* Same groups as the desktop sidebar, and the foot likewise pinned
                 outside the scroll area so it can't be clipped off the bottom. */}
             <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 pt-1">
-              {hasProject ? <NavGroups mode={mode} pathname={pathname} free={free} tools={owner || !billing} waiting={waiting} /> : <NoSiteNote />}
+              {inSettings ? (
+                <SettingsMenu mode={mode} pathname={pathname} hasProject={hasProject} billing={billing} plan={plan} onNavigate={() => setOpen(false)} />
+              ) : hasProject ? (
+                <NavGroups mode={mode} pathname={pathname} free={free} tools={owner || !billing} waiting={waiting} />
+              ) : (
+                <>
+                  <NoSiteNote />
+                  <SidebarLink link={SETTINGS} pathname={pathname} big={mode === "hosted"} />
+                </>
+              )}
             </nav>
-            <PinnedLinks mode={mode} pathname={pathname} plan={plan} owner={owner} />
+            <SidebarFoot mode={mode} pathname={pathname} owner={owner} upgrade={billing && free && !waiting} switcher={switcher} inSettings={inSettings} />
           </div>
         </div>,
             document.body,

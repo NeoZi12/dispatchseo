@@ -8,15 +8,17 @@ export function PageHeading({
   meta,
   actions,
   className = "",
+  style,
 }: {
   title: React.ReactNode;
   description?: React.ReactNode;
   meta?: React.ReactNode;
   actions?: React.ReactNode;
   className?: string;
+  style?: React.CSSProperties;
 }) {
   return (
-    <header className={cx("flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between", className)}>
+    <header style={style} className={cx("flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between", className)}>
       <div className="min-w-0">
         <h1 className="text-[1.75rem] font-semibold leading-tight tracking-tight text-ink">{title}</h1>
         {meta ? <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] text-ink-muted">{meta}</div> : null}

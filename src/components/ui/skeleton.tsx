@@ -616,19 +616,21 @@ export function ToolsPageSkeleton() {
   );
 }
 
-/** Settings: the sub-nav and a section of rows. */
+/** Settings: the pane's title and a card of rows (the section chips show on a phone only). */
 export function SettingsPageSkeleton() {
   return (
-    <div className="mx-auto max-w-5xl space-y-8">
-      <Line className="h-8 w-32" />
-      <div className="grid gap-6 md:grid-cols-[12rem_minmax(0,1fr)] md:gap-10">
-        <div className="flex flex-wrap gap-1.5 md:flex-col md:gap-2">
-          {Array.from({ length: 6 }, (_, i) => (
-            <Line key={i} className="h-9 w-24 rounded-lg md:w-full" />
-          ))}
+    <div className="mx-auto max-w-3xl space-y-7">
+      <div className="flex flex-wrap gap-1.5 md:hidden">
+        {Array.from({ length: 6 }, (_, i) => (
+          <Line key={i} className="h-9 w-24 rounded-lg" />
+        ))}
+      </div>
+      <div className="space-y-6">
+        <div>
+          <Line className="h-8 w-36" />
+          <Line className="mt-3 h-4 w-80 max-w-full" />
         </div>
         <div className="space-y-5">
-          <SectionTitle wide="w-24" />
           <div className="divide-y divide-line-soft rounded-xl border border-line-soft bg-surface">
             {[false, false, true, true].map((full, i) => (
               <div key={i} className={cx("px-5 py-4", full ? "space-y-3" : "flex items-center justify-between gap-6")}>

@@ -12,8 +12,10 @@ import { useAddSiteParam } from "@/components/add-site-param";
 // the dialog opens on a few of them a month. Client-only, as a portal is.
 const AddSiteDialog = dynamic(() => import("@/components/add-site-dialog").then((m) => m.AddSiteDialog), { ssr: false });
 
-// Vercel-style project picker in the header: the current project's domain with
-// a chevron, a dropdown listing every project, and Add project at the bottom.
+// The site picker. It sits at the foot of the sidebar and of the phone drawer
+// (placement="sidebar": the site's name and domain, a menu that opens upward);
+// the layout builds it and nav.tsx gives it the slot. A dropdown lists every
+// project, with Add project at the bottom.
 // Selecting writes the dash_project cookie (server action) and refreshes so
 // every screen re-renders scoped to the new project.
 
@@ -65,6 +67,7 @@ export function ProjectSwitcher({
   githubCostRequired = false,
   canAddSite = true,
   addHref = null,
+  placement = "topbar",
 }: {
   projects: SwitcherProject[];
   activeSlug: string;
@@ -95,7 +98,13 @@ export function ProjectSwitcher({
   // Set = the add row and ?add=1 go there and the dialog never mounts; the
   // dialog (createProjectCore) stays for self-host and the operator.
   addHref?: string | null;
+  // Where the picker sits. "sidebar" is the foot of the sidebar (and of the
+  // phone drawer): a full-width row with the site's name and domain, and a
+  // menu that opens UPWARD and scrolls, since there is no room below it and
+  // an account can hold several sites. "topbar" is the old header chip.
+  placement?: "topbar" | "sidebar";
 }) {
+  const inSidebar = placement === "sidebar";
   const router = useRouter();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -158,23 +167,36 @@ export function ProjectSwitcher({
           <div className="dispatch-sweep h-full w-1/3 rounded-r-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)]" />
         </div>
       ) : null}
-      <div ref={ref} className="relative flex min-w-0 items-center gap-1.5">
+      <div ref={ref} className={inSidebar ? "relative w-full" : "relative flex min-w-0 items-center gap-1.5"}>
       {/* Separator after the brand - the brand only renders in the topbar on
           mobile (desktop shows it in the sidebar), so hide the slash on md+. */}
-      <span aria-hidden="true" className="text-neutral-700 md:hidden">
-        /
-      </span>
+      {inSidebar ? null : (
+        <span aria-hidden="true" className="text-neutral-700 md:hidden">
+          /
+        </span>
+      )}
       <button
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={pending}
-        className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1.5 text-xs text-neutral-400 transition-colors hover:bg-neutral-900 hover:text-neutral-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-400 disabled:opacity-50"
+        className={
+          inSidebar
+            ? `flex w-full min-w-0 items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-400 disabled:opacity-50 ${open ? "border-line bg-surface-2" : "border-line-soft bg-surface hover:border-line hover:bg-surface-2"}`
+            : "flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1.5 text-xs text-neutral-400 transition-colors hover:bg-neutral-900 hover:text-neutral-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-400 disabled:opacity-50"
+        }
       >
-        {active ? <Favicon domain={active.domain} name={active.name} size="sm" /> : null}
-        {/* The domain is the one flexible thing in the mobile topbar - it
-            truncates so a long one can't push the mode switch off-screen. */}
-        <span className="truncate">{active?.domain ?? "select project"}</span>
+        {active ? <Favicon domain={active.domain} name={active.name} size={inSidebar ? "md" : "sm"} /> : null}
+        {inSidebar ? (
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[13.5px] font-medium leading-tight text-ink">{active?.name ?? "Select a site"}</span>
+            {active ? <span className="mt-0.5 block truncate text-[12px] leading-tight text-ink-faint">{active.domain}</span> : null}
+          </span>
+        ) : (
+          // The domain is the one flexible thing in the mobile topbar - it
+          // truncates so a long one can't push the mode switch off-screen.
+          <span className="truncate">{active?.domain ?? "select project"}</span>
+        )}
         {pending ? (
           <svg
             aria-hidden="true"
@@ -203,7 +225,11 @@ export function ProjectSwitcher({
       {open ? (
         <div
           role="menu"
-          className="absolute left-0 top-full z-30 mt-2 w-64 rounded-xl border border-neutral-800 bg-neutral-900 p-1 shadow-xl shadow-black/40"
+          className={
+            inSidebar
+              ? "absolute bottom-full left-0 z-30 mb-2 max-h-[min(26rem,70vh)] w-full overflow-y-auto rounded-xl border border-neutral-800 bg-neutral-900 p-1 shadow-xl shadow-black/40"
+              : "absolute left-0 top-full z-30 mt-2 w-64 rounded-xl border border-neutral-800 bg-neutral-900 p-1 shadow-xl shadow-black/40"
+          }
         >
           {projects.map((p) => {
             const isActive = p.slug === active?.slug;

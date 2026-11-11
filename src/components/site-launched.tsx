@@ -3,12 +3,14 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { detectLaunchDate, setSiteLaunchedAt } from "@/app/actions";
+import { buttonClass } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 // The launch-date row on Settings. Migration 0015 backfills the date from
 // created_at (when the project joined DispatchSEO), which undercounts any
 // site that existed before - this row is where the owner corrects it so the
 // site-age readout (Journey) reflects the real age.
-export function SiteLaunchedRow({ current, slug }: { current: string; slug: string }) {
+export function SiteLaunchedRow({ current, slug, hosted = false }: { current: string; slug: string; /** The hosted Settings look: a full row for a card of rows. */ hosted?: boolean }) {
   const initial = current.slice(0, 10);
   const [value, setValue] = useState(initial);
   const [pending, startTransition] = useTransition();
@@ -58,6 +60,39 @@ export function SiteLaunchedRow({ current, slug }: { current: string; slug: stri
         setError(e instanceof Error ? e.message : "Save failed");
       }
     });
+  }
+
+  if (hosted) {
+    return (
+      <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+        <div className="min-w-0">
+          <p className="text-[14.5px] font-medium text-ink">Site launched</p>
+          <p className="mt-0.5 text-[13px] leading-relaxed text-ink-muted">Sets where you are on the SEO timeline. Detect finds it from Google and web archive history.</p>
+          {error ? <p className="mt-1.5 text-[13px] text-danger">{error}</p> : null}
+          {note ? <p className="mt-1.5 text-[13px] text-ink-muted">{note}</p> : null}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Input
+            type="date"
+            aria-label="Site launched"
+            value={value}
+            max={new Date().toISOString().slice(0, 10)}
+            onChange={(e) => setValue(e.target.value)}
+            disabled={pending}
+            className="w-44 [color-scheme:dark]"
+          />
+          {dirty ? (
+            <button type="button" onClick={save} disabled={pending} className={buttonClass("primary", "sm")}>
+              {pending ? "Saving…" : "Save"}
+            </button>
+          ) : (
+            <button type="button" onClick={detect} disabled={pending} className={buttonClass("secondary", "sm")}>
+              {pending ? "Detecting…" : "Detect"}
+            </button>
+          )}
+        </div>
+      </div>
+    );
   }
 
   return (

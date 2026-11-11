@@ -745,3 +745,14 @@ html[data-nav] .arrive-wipe {
     @apply flex h-6 items-center px-1 text-[13px] tabular-nums;
   }
 }
+
+
+/* The dispatcher sitting on the edge of a dashboard card (card-mascot.tsx;
+   the sidebar's free-plan card). He sits still; his eyes shut for a moment
+   every few seconds. The landing page has the same blink scoped to .ld. */
+.dash-mascot { image-rendering: pixelated; }
+.dash-mascot .cm-eyes-open { animation: dash-blink-open 4.2s steps(1, end) infinite; }
+.dash-mascot .cm-eyes-shut { opacity: 0; animation: dash-blink-shut 4.2s steps(1, end) infinite; }
+@keyframes dash-blink-open { 0%, 93% { opacity: 1; } 94%, 97% { opacity: 0; } 98% { opacity: 1; } }
+@keyframes dash-blink-shut { 0%, 93% { opacity: 0; } 94%, 97% { opacity: 1; } 98% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .dash-mascot g { animation: none !important; } }

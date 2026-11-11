@@ -151,7 +151,7 @@ export type AutopilotReport = {
     rewritePrUrl: string | null;
     /** The crawl gave up on the site (a bot wall, a login, a site that
      *  answers nothing to a server) and no profile exists: only the owner
-     *  can describe the site now (Settings > Site). */
+     *  can describe the site now (Settings > General). */
     siteUnreadable: boolean;
     /** Google has not read the site's sitemap in 14+ days (or ever); we
      *  resubmitted it. needsAccess: the resubmit was refused - the owner must

@@ -72,11 +72,12 @@ export type ChangelogEntry = {
 // into a new CHANGELOG entry when it's time to cut a release. Nothing reads
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
-  { kind: "improved", text: "A shorter sidebar. Billing, Feedback and Docs moved into Settings, so the sidebar holds only your site's screens. Your plan badge now sits on the Settings row." },
   {
     kind: "improved",
     text: "Paid plans now publish more articles a month and cover more websites, at the same prices: Starter 5 articles a month on 1 website, Growth 15 on 1 to 3 websites, Scale 30 on 1 to 5 websites. Use one site and it gets all of them. Add more and we split them for you.",
   },
+  { kind: "improved", text: "Settings is easier to get around. Open it and the sidebar becomes the settings menu: General, Google and Advanced for your site, then Billing, Log out, Feedback and Docs. The arrow at the top takes you back to your dashboard. Settings itself is shorter: your site, how articles go live, your Google connection, and your search market." },
+  { kind: "improved", text: "The site switcher moved to the bottom left of the sidebar, and Settings now sits right under your site's screens." },
   { kind: "improved", text: "Your overview now says when your next article is due, right above your latest articles: the day, and how many days away it is." },
   { kind: "fixed", text: "If you connect a GitHub repository that doesn't build your site, setup now notices on sites made with Next.js too, and switches to the right repository when you've shared it. Before, those sites could connect the wrong one and articles never reached the site." },
   {
@@ -224,13 +225,6 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "improved",
     text: "Every dashboard page opens faster. The same facts were being read several times per page, one after another; they are now read once, together, and the pages download less code.",
-  },
-  {
-    kind: "new",
-    text:
-      "Settings > Writing has a new box: facts only you know. Your prices, your years in business, how " +
-      "you work - one per line. Every article works one of them in, which is what separates your " +
-      "articles from everyone else's on the same question.",
   },
   {
     kind: "improved",

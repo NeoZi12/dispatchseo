@@ -175,7 +175,7 @@ export default async function BillingPage({
         ) : (
           <>
             {/* No live plan = the free tier (billing.ts isFreePlan), which is
-                what the Free pill on the sidebar's Settings row says too. */}
+                what the Free pill on the settings menu's Billing row says too. */}
             <p className="text-[1.25rem] font-semibold tracking-tight text-ink">You&apos;re on the free plan</p>
             <p className="mt-2 text-[15px] text-ink-muted">Pick a plan below for more articles a month, keyword research, rankings and advanced analytics.</p>
           </>
