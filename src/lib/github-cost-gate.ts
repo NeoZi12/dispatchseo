@@ -58,6 +58,19 @@ export async function githubCostGate(
   if (ownedCount < FREE_SITES) return { required: false };
   const sub = known !== undefined ? known : await getSubscription(userId);
   if (!isActive(sub)) return { required: false };
+  // Only sites that run the GitHub pipeline spend the owner's Actions
+  // minutes. A hosted-writer site (writer_mode 'hosted', every cloud site
+  // since 2026-10-23) runs no workflow in their repo, so an account of them
+  // is not the problem this asks about - and with Growth and Scale covering
+  // three and five sites (2026-11-11), asking it there would stand a GitHub
+  // billing question in front of every paid owner's third site. A read
+  // error (or a DB before 0066) keeps the old rule and asks.
+  const { count: pipelineSites, error: pipelineErr } = await db()
+    .from("projects")
+    .select("id", { count: "exact", head: true })
+    .eq("owner_user_id", userId)
+    .or("writer_mode.is.null,writer_mode.neq.hosted");
+  if (!pipelineErr && (pipelineSites ?? 0) < FREE_SITES) return { required: false };
   // Column ABSENT (0048 not applied) is not the same as column null. Migrations
   // here are applied by hand, so a deploy can land first - and gating on a
   // column that cannot be written would put every owner on a step whose answer
