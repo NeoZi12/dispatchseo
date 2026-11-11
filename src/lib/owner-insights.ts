@@ -1,5 +1,8 @@
 import { db } from "./db";
 import { windows, type Range } from "./owner-analytics";
+// Circular with owner-visitors (it imports aiReferrer from here); both sides
+// only call the other inside functions, so load order does not matter.
+import { channelOf } from "./owner-visitors";
 
 // The two "outside world" panels of /owner:
 //   - AI: which AI crawlers read dispatchseo.com, which read it live because a
@@ -105,6 +108,15 @@ export function engineOfSnapshot(engine: string): EngineKey {
 // pulls only the handful of rows that can be an AI assistant.
 const AI_REFERRER_HOSTS = ["chatgpt.com", "chat.openai.com", "perplexity.ai", "claude.ai", "gemini.google.com", "bard.google.com", "copilot.microsoft.com", "you.com", "phind.com", "deepseek.com", "grok.com"];
 
+// An AI app often tags its link instead of sending a referrer (ChatGPT adds
+// utm_source=chatgpt.com and no Referer at all), so the same read has to pull
+// tagged visits too. channelOf() decides; this only narrows the rows.
+const AI_VISIT_FILTER = [
+  ...AI_REFERRER_HOSTS.map((h) => `referrer.ilike.%${h}%`),
+  ...AI_REFERRER_HOSTS.map((h) => `utm_source.ilike.%${h}%`),
+  ...["chatgpt", "openai", "perplexity"].map((t) => `utm_source.ilike.${t}%`),
+].join(",");
+
 export type EngineRow = {
   key: EngineKey;
   name: string;
@@ -181,17 +193,17 @@ export async function aiReport(range: Range, productProjectId: string | null, no
       .order("at", { ascending: false })
       .limit(1500),
     db().from("web_visits").select("at").eq("bot", true).order("at", { ascending: true }).limit(1),
-    // Human visits whose referrer can be an AI assistant, this range and the
-    // one before (aiReferrer() does the exact match below).
+    // Human visits whose referrer or tag can be an AI assistant, this range
+    // and the one before (channelOf() does the exact match below).
     db()
       .from("web_visits")
-      .select("at, referrer")
+      .select("at, referrer, utm_source, utm_medium")
       .eq("bot", false)
       .in("kind", ["beacon", "import"])
       .eq("area", "site")
       .gte("at", ISO(w.prevFrom))
       .lt("at", ISO(w.to))
-      .or(AI_REFERRER_HOSTS.map((h) => `referrer.ilike.%${h}%`).join(","))
+      .or(AI_VISIT_FILTER)
       .limit(5000),
     productProjectId
       ? db()
@@ -276,9 +288,12 @@ export async function aiReport(range: Range, productProjectId: string | null, no
   let people = 0;
   let prevPeople = 0;
   const fromIso = ISO(w.from);
-  for (const r of (refRes.data ?? []) as Array<{ at: string; referrer: string | null }>) {
-    const name = aiReferrer(String(r.referrer ?? ""));
-    if (!name) continue;
+  for (const r of (refRes.data ?? []) as Array<{ at: string; referrer: string | null; utm_source: string | null; utm_medium: string | null }>) {
+    // The same call the Visitors table makes, so the two pages cannot disagree
+    // about who an AI sent.
+    const channel = channelOf(r.referrer, r.utm_source, r.utm_medium);
+    if (channel.kind !== "ai") continue;
+    const name = channel.name;
     const day = r.at.slice(0, 10);
     if (r.at >= fromIso) {
       people += 1;
