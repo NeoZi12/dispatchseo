@@ -11,15 +11,19 @@ import { SignalGlyph } from "@/components/ui/on-air";
 // menu with the two choices, each a radio row with its plain-English line
 // always showing. One click saves.
 //
-// Type and hairlines only (owner, 2026-11-11): no icons in coloured squares
-// or circles, no pill. The radio mark is the one indicator, violet because
-// it is the current choice.
+// Each choice wears its own colour icon - green bolt, amber eye - drawn
+// bare, never inside a tinted square or circle (owner, 2026-11-11: icons and
+// colour yes, boxes around them no). A violet tick marks the current one.
 //
 // On Overview (the header's status row), Articles (next to the page title)
 // and Settings > Publishing. Setup asks the same question with its own two
 // cards (setup-stage/scenes.tsx PublishModeCards).
 
-// The status trigger's review-mode glyph.
+const BOLT = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+    <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z" />
+  </svg>
+);
 const EYE = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
     <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
@@ -27,15 +31,19 @@ const EYE = (
   </svg>
 );
 
-const OPTIONS: { value: PublishMode; label: string; plain: string }[] = [
+const OPTIONS: { value: PublishMode; label: string; icon: React.ReactNode; tone: string; plain: string }[] = [
   {
     value: "auto",
     label: "Autopilot",
+    icon: BOLT,
+    tone: "text-ok",
     plain: "Each article goes live on your site the moment it's written and checked. You don't have to do anything.",
   },
   {
     value: "review",
     label: "Manual review",
+    icon: EYE,
+    tone: "text-warn",
     plain: "Each article waits for you. We email you, you read it, change anything you like, and press Publish.",
   },
 ];
@@ -169,7 +177,10 @@ export function PublishModeMenu({
             Publishing<span className="sr-only">:</span>
           </span>
           <span aria-hidden="true" className="h-3.5 w-px bg-line" />
-          <span className="whitespace-nowrap pl-2.5 pr-1.5 font-medium text-ink">{current.label}</span>
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap pl-2.5 pr-1.5 font-medium text-ink">
+            <span className={cx("[&_svg]:h-3.5 [&_svg]:w-3.5", current.tone)}>{current.icon}</span>
+            {current.label}
+          </span>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={cx("mr-2 h-3.5 w-3.5 text-ink-faint transition-transform motion-reduce:transition-none", open ? "rotate-180" : "")} aria-hidden="true">
             <path d="m6 9 6 6 6-6" />
           </svg>
@@ -204,18 +215,19 @@ export function PublishModeMenu({
                   onClick={() => pick(o.value)}
                   className="group flex w-full gap-3 rounded-lg px-2.5 py-2.5 text-left transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/50"
                 >
-                  {/* The radio mark: the one indicator in the menu. */}
-                  <span
-                    aria-hidden="true"
-                    className={cx(
-                      "mt-[3px] grid h-4 w-4 shrink-0 place-items-center rounded-full border-[1.5px] transition-colors motion-reduce:transition-none",
-                      on ? "border-accent" : "border-ink-faint/45 group-hover:border-ink-faint",
-                    )}
-                  >
-                    <span className={cx("h-[7px] w-[7px] rounded-full bg-accent transition-transform duration-150 motion-reduce:transition-none", on ? "scale-100" : "scale-0")} />
+                  {/* The choice's own colour icon, bare - no tile around it. */}
+                  <span aria-hidden="true" className={cx("mt-px shrink-0 [&_svg]:h-[18px] [&_svg]:w-[18px]", o.tone)}>
+                    {o.icon}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className={cx("block text-[14px] font-medium leading-snug transition-colors", on ? "text-ink" : "text-ink-muted group-hover:text-ink")}>{o.label}</span>
+                    <span className="flex items-center gap-2">
+                      <span className={cx("flex-1 text-[14px] font-medium leading-snug transition-colors", on ? "text-ink" : "text-ink-muted group-hover:text-ink")}>{o.label}</span>
+                      {on ? (
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0 text-accent" aria-hidden="true">
+                          <path d="M5 12.5l4.5 4.5L19 7.5" />
+                        </svg>
+                      ) : null}
+                    </span>
                     <span className="mt-1 block text-[12.5px] leading-relaxed text-ink-faint">{o.plain}</span>
                   </span>
                 </button>

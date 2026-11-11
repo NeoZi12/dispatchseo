@@ -8,7 +8,7 @@ import { loadGlances } from "../articles/article-data";
 import type { HostedQueue } from "@/lib/autopilot/queue";
 import type { OverviewData } from "./overview-data";
 import { pauseAutopilot, resumeAutopilot, suggestTopicAction } from "@/app/autopilot-actions";
-import type { DispatcherMood } from "@/components/pixel-dispatcher";
+import { PixelReporter, type DispatcherMood } from "@/components/pixel-dispatcher";
 import { ActionForm } from "@/components/ui/action-form";
 import { Badge } from "@/components/ui/badge";
 import { buttonClass } from "@/components/ui/button";
@@ -477,31 +477,46 @@ export async function HostedReport({
   );
 }
 
-/** The next article as the empty slot the list fills next: dashed, like the
- *  month board's queued topics, with the rows' own shape (a title, a faint
- *  date line) and the countdown as a right-aligned number over a tiny label,
- *  like Your top posts. The violet light that passes through it three times
- *  is the house "slot about to fill" (globals.css dispatch-shimmer-soft). */
+/** The next article, told by the dispatcher: the clay agent at its desk
+ *  (typing when it's close, coffee while it waits), one line in its voice,
+ *  and a tear-off calendar page with the day. Colour lives in the glow and
+ *  the calendar's band, never in a tile around an icon (owner, 2026-11-11). */
 function NextArticleLine({ at: iso, now }: { at: string; now: number }) {
   const days = Math.floor(Date.parse(iso) / 86_400_000) - Math.floor(now / 86_400_000);
-  const when = dayDate(iso, now);
+  const d = new Date(iso);
+  const soon = days <= 1;
+  const title =
+    days <= 0 ? "Your next article starts today" : days === 1 ? "Your next article starts tomorrow" : `Your next article is on ${dayDate(iso, now)}`;
+  const say = soon
+    ? "I'm lining it up now: research, writing, a check of every fact, then it goes live on your site."
+    : `That's ${days} days away. Until then I keep your topic queue fresh and watch how Google treats what's live.`;
   return (
     <div
-      className="arrive-up dispatch-shimmer-soft relative flex items-center gap-4 overflow-hidden rounded-xl border border-dashed border-line px-4 py-3.5 sm:px-5"
+      className="arrive-up relative isolate flex items-center gap-3 overflow-hidden rounded-2xl border border-line bg-surface py-3 pl-2 pr-4 sm:gap-5 sm:py-3.5 sm:pl-3 sm:pr-6"
       style={at(880)}
     >
-      <p className="min-w-0 flex-1">
-        <span className="block text-[15px] font-medium text-ink-muted">Your next article</span>
-        <span className="mt-1 block text-[13px] text-ink-faint">
-          Starts <span className="font-medium tabular-nums text-ink">{when}</span>
-        </span>
-      </p>
-      {days >= 2 ? (
-        <p className="shrink-0 text-right">
-          <span className="block text-[1.375rem] font-semibold leading-7 tracking-tight tabular-nums text-ink">{days}</span>
-          <span className="mt-0.5 block text-[11px] font-medium uppercase tracking-wider text-ink-faint">Days to go</span>
-        </p>
-      ) : null}
+      {/* One soft violet glow behind the dispatcher. */}
+      <div aria-hidden="true" className="pointer-events-none absolute -left-16 top-1/2 -z-10 h-56 w-72 -translate-y-1/2 rounded-full bg-accent-strong/15 blur-3xl" />
+      <div className="relative shrink-0">
+        <PixelReporter mood={soon ? "working" : "idle"} steam={!soon} decorative className="w-[108px] sm:w-[150px]" />
+        <span aria-hidden="true" className="absolute inset-x-2 -bottom-1 h-1.5 rounded-[50%] bg-black/40 blur-[3px]" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-balance text-[16px] font-semibold leading-snug tracking-tight text-ink sm:text-[17px]">{title}</p>
+        <p className="mt-1 text-[13.5px] leading-relaxed text-ink-muted">{say}</p>
+      </div>
+      {/* The tear-off calendar page: month band, the day, its weekday. */}
+      <div aria-hidden="true" className="relative hidden shrink-0 rotate-[3deg] transition-transform duration-300 hover:rotate-0 motion-reduce:transition-none sm:block">
+        <span className="absolute -top-1 left-[18px] z-10 h-2.5 w-1.5 rounded-full bg-ink-faint/70" />
+        <span className="absolute -top-1 right-[18px] z-10 h-2.5 w-1.5 rounded-full bg-ink-faint/70" />
+        <div className="w-[76px] overflow-hidden rounded-xl border border-line bg-surface-2 text-center shadow-xl shadow-black/40">
+          <div className="bg-gradient-to-b from-accent to-accent-strong py-1 text-[11px] font-bold tracking-[0.16em] text-white">
+            {d.toLocaleString("en-US", { month: "short", timeZone: "UTC" }).toUpperCase()}
+          </div>
+          <div className="pt-2 text-[30px] font-semibold leading-none tracking-tight tabular-nums text-ink">{d.getUTCDate()}</div>
+          <div className="pb-2 pt-1 text-[11px] font-medium text-ink-faint">{d.toLocaleString("en-US", { weekday: "short", timeZone: "UTC" })}</div>
+        </div>
+      </div>
     </div>
   );
 }
