@@ -13,6 +13,7 @@ import { rewriteLiveCached } from "@/lib/hosted-rewrite";
 import { normalizeTheme } from "@/lib/hosted-theme";
 import { HostedBlogCard } from "./hosted-blog-card";
 import { HostedSettings } from "./hosted-settings";
+import { MoreLinksRow } from "./more-links";
 import { writerMode } from "../mode";
 import { backendBaseUrl } from "@/lib/pipeline-pack";
 import { isCloudMode } from "@/lib/cloud";
@@ -127,6 +128,8 @@ export default async function SettingsPage({
           title="Settings"
           hint="Add a site to configure it. Your account details are below either way."
         />
+        {/* Billing, Feedback, Docs - no longer rows in the sidebar. */}
+        <MoreLinksRow />
         {auth.user ? <AccountSection email={auth.user.email} /> : null}
         <section className="space-y-3">
           <SectionTitle sub="nothing to configure until a site exists">Site settings</SectionTitle>
@@ -235,6 +238,8 @@ export default async function SettingsPage({
         title="Project settings"
         hint={`Everything DispatchSEO knows about ${project.name}. Switch projects from the header to manage a different one.`}
       />
+      {/* Billing, Feedback, Docs - no longer rows in the sidebar. */}
+      <MoreLinksRow />
 
       {auth.user ? <AccountSection email={auth.user.email} /> : null}
 

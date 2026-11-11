@@ -20,6 +20,7 @@ import { CancelPlanButton, KeepPlanButton } from "@/components/cancel-plan";
 import { buttonClass } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { PageHeading } from "@/components/ui/page-heading";
+import { BackToSettings } from "../settings/more-links";
 import { StatusPill, type StatusTone } from "@/components/ui/status-pill";
 import { cx } from "@/components/ui/styles";
 
@@ -92,7 +93,11 @@ export default async function BillingPage({
 
   return (
     <div className="mx-auto max-w-3xl space-y-12">
-      <PageHeading className="arrive-up" title="Billing" />
+      {/* Reached from Settings now, not from a sidebar row of its own. */}
+      <div className="arrive-up space-y-3">
+        <BackToSettings />
+        <PageHeading title="Billing" />
+      </div>
 
       {success ? (
         <Callout
@@ -162,7 +167,7 @@ export default async function BillingPage({
         ) : (
           <>
             {/* No live plan = the free tier (billing.ts isFreePlan), which is
-                what the sidebar's Free pill says too. */}
+                what the Free pill on the sidebar's Settings row says too. */}
             <p className="text-[1.25rem] font-semibold tracking-tight text-ink">You&apos;re on the free plan</p>
             <p className="mt-2 text-[15px] text-ink-muted">Pick a plan below for weekly articles, keyword research, rankings and advanced analytics.</p>
           </>

@@ -167,27 +167,6 @@ function WhatsNewIcon({ className }: IconProps) {
   );
 }
 
-function DocsIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
-      <path d="M4 4.5h6a2 2 0 0 1 2 2v13a1.6 1.6 0 0 0-1.6-1.6H4z" />
-      <path d="M20 4.5h-6a2 2 0 0 0-2 2v13a1.6 1.6 0 0 1 1.6-1.6H20z" />
-    </svg>
-  );
-}
-
-// A speech bubble with a spark: this is where you say something, and it's the
-// one nav item that's an invitation rather than a screen full of your data.
-function FeedbackIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
-      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z" />
-      <path d="M12 8.5v5" />
-      <path d="M9.5 11h5" />
-    </svg>
-  );
-}
-
 function SettingsIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
@@ -273,9 +252,9 @@ const GROUPS: NavGroup[] = [
       { href: "/automations", label: "Automations", Icon: AutomationsIcon },
       { href: "/instructions", label: "Instructions", Icon: InstructionsIcon },
       { href: "/google", label: "Search Console", Icon: SearchConsoleIcon },
-      // Opens in a new tab like What's new: reading a doc is a side quest, and
-      // losing an in-progress dashboard page to it is a bad trade.
-      { href: "/docs", label: "Docs", Icon: DocsIcon, external: true },
+      // Opens in a new tab: reading the changelog is a side quest, and losing
+      // an in-progress dashboard page to it is a bad trade. Docs used to sit
+      // here too; it lives in Settings now (settings/more-links.tsx).
       { href: "/changelog", label: "What's new", Icon: WhatsNewIcon, external: true },
     ],
   },
@@ -320,28 +299,11 @@ const HOSTED_LINKS: NavLink[] = HOSTED_GROUPS.flatMap((g) => g.links);
 
 const SETTINGS: NavLink = { href: "/settings", label: "Settings", Icon: SettingsIcon };
 
-// Pinned to the bottom next to Settings rather than dropped into a GROUP, for
-// two reasons: it is about the product, not about this site (every GROUP above
-// is one of your site's screens), and the groups are hidden entirely for an
-// account with no site yet - which is exactly the person most likely to have
-// something to tell us.
-const FEEDBACK: NavLink = { href: "/feedback", label: "Feedback", Icon: FeedbackIcon };
-// Hosted mode has no System group, so Docs joins the pinned rows.
-const DOCS: NavLink = { href: "/docs", label: "Docs", Icon: DocsIcon, external: true };
-
-function BillingIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
-      <rect x="2" y="5" width="20" height="14" rx="2" />
-      <path d="M2 10h20" />
-      <path d="M6 15h4" />
-    </svg>
-  );
-}
-
-// Cloud deployments only - self-host has nothing to bill. The layout decides
-// (isCloudMode is server-side) and passes `billing` down.
-const BILLING: NavLink = { href: "/billing", label: "Billing", Icon: BillingIcon };
+// Billing, Feedback and Docs are reached from Settings, not from rows of
+// their own here (owner, 2026-11-11: the sidebar is for the site's screens).
+// The list lives in settings/more-links.tsx. While one of those pages is
+// open the Settings row stays lit, since that is where you came from.
+const UNDER_SETTINGS = ["/settings", "/billing", "/feedback"];
 
 // The operator's cross-tenant analytics (/owner). Only an id in
 // OPERATOR_USER_IDS gets the row (the layout decides, via isOperator); the
@@ -356,14 +318,14 @@ function OwnerIcon({ className }: IconProps) {
 }
 const OWNER: NavLink = { href: "/owner", label: "Owner", Icon: OwnerIcon };
 
-// The current plan, as a pill on the Billing row.
+// The current plan, as a pill on the Settings row.
 //
 // It rides that row rather than sitting in the topbar for two reasons: the
 // topbar already carries the project switcher, the page title, the agent
 // switch and the mode switch, and at 390px it has nothing left to give; and
 // the plan is ACCOUNT state, which is what the bottom group of the sidebar is
-// - Feedback, Billing, Settings, Log out - while everything above it is one
-// site's data. Clicking through lands on the page that can change it.
+// - Settings, Log out - while everything above it is one site's data.
+// Settings is one click from Billing, the page that can change it.
 //
 // A trial reads as emerald because it is time-boxed and worth noticing; a
 // healthy plan stays neutral so it informs without competing with the nav; a
@@ -411,16 +373,19 @@ function SidebarLink({
   pathname,
   trailing,
   big = false,
+  alsoActiveOn,
 }: {
   link: NavLink;
   pathname: string;
   big?: boolean;
-  // Right-aligned adornment for the row - the plan pill on Billing today. Only
-  // honored on internal links; the external ones already end in their own
-  // open-in-new-tab arrow.
+  // Right-aligned adornment for the row - the plan pill on Settings today.
+  // Only honored on internal links; the external ones already end in their
+  // own open-in-new-tab arrow.
   trailing?: React.ReactNode;
+  // Other routes this row counts as the current page for (UNDER_SETTINGS).
+  alsoActiveOn?: string[];
 }) {
-  const active = isActive(link.href, pathname);
+  const active = isActive(link.href, pathname) || Boolean(alsoActiveOn?.some((href) => isActive(href, pathname)));
   // External: a plain <a> in a new tab. No <Link> (nothing to prefetch off the
   // dashboard's router) and no active state - you never "are" on this page
   // while looking at the sidebar, since it lives in another tab.
@@ -495,8 +460,8 @@ function LogoutLink({ big = false }: { big?: boolean }) {
 
 // Every link in GROUPS resolves through getActiveProject(), which redirects to
 // the wizard when the account owns nothing. Rendering them anyway gives a
-// sidebar full of controls that silently teleport you to step 1. Settings and
-// Billing both survive a zero-project account, so those stay.
+// sidebar full of controls that silently teleport you to step 1. Settings
+// survives a zero-project account (and Billing with it), so that stays.
 function NoSiteNote() {
   return (
     <p className="px-3 py-3 text-sm leading-relaxed text-ink-faint">
@@ -536,8 +501,8 @@ function LockMark() {
 // available". Self-host keeps it - there the one user is the operator.
 // While a new hosted site's first article is being written (the layout's
 // first-article card is up), the sidebar is Overview only: the other screens
-// are greyed and say so on hover (owner, 2026-11-09). Billing and Settings
-// stay open below - cancelling, changing the plan, and the account are the
+// are greyed and say so on hover (owner, 2026-11-09). Settings (and Billing
+// inside it) stays open below - cancelling, changing the plan, and the account are the
 // only things there are to do.
 const WAIT_NOTE = "We're setting up your dashboard. Nothing left for you to do but wait.";
 
@@ -594,25 +559,24 @@ function NavGroups({ mode, pathname, free = false, tools = true, waiting = false
 function PinnedLinks({
   mode,
   pathname,
-  billing,
   plan,
   owner,
 }: {
   mode: NavMode;
   pathname: string;
-  billing: boolean;
   plan: PlanChip | null;
   owner: boolean;
 }) {
   return (
     <div className="flex shrink-0 flex-col gap-0.5 border-t border-line-soft px-3 py-3">
       {owner ? <SidebarLink link={OWNER} pathname={pathname} big={mode === "hosted"} /> : null}
-      {mode === "hosted" ? <SidebarLink link={DOCS} pathname={pathname} big /> : null}
-      <SidebarLink link={FEEDBACK} pathname={pathname} big={mode === "hosted"} />
-      {billing ? (
-        <SidebarLink link={BILLING} pathname={pathname} big={mode === "hosted"} trailing={plan ? <PlanPill plan={plan} /> : undefined} />
-      ) : null}
-      <SidebarLink link={SETTINGS} pathname={pathname} big={mode === "hosted"} />
+      <SidebarLink
+        link={SETTINGS}
+        pathname={pathname}
+        big={mode === "hosted"}
+        alsoActiveOn={UNDER_SETTINGS}
+        trailing={plan ? <PlanPill plan={plan} /> : undefined}
+      />
       <LogoutLink big={mode === "hosted"} />
     </div>
   );
@@ -660,7 +624,7 @@ export function Sidebar({
       <nav className={`min-h-0 flex-1 overflow-y-auto px-3 pb-3 ${mode === "hosted" ? "pt-5" : "pt-3"}`}>
         {hasProject ? <NavGroups mode={mode} pathname={pathname} free={free} tools={owner || !billing} waiting={waiting} /> : <NoSiteNote />}
       </nav>
-      <PinnedLinks mode={mode} pathname={pathname} billing={billing} plan={plan} owner={owner} />
+      <PinnedLinks mode={mode} pathname={pathname} plan={plan} owner={owner} />
     </aside>
   );
 }
@@ -767,7 +731,7 @@ export function MobileNav({
             <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 pt-1">
               {hasProject ? <NavGroups mode={mode} pathname={pathname} free={free} tools={owner || !billing} waiting={waiting} /> : <NoSiteNote />}
             </nav>
-            <PinnedLinks mode={mode} pathname={pathname} billing={billing} plan={plan} owner={owner} />
+            <PinnedLinks mode={mode} pathname={pathname} plan={plan} owner={owner} />
           </div>
         </div>,
             document.body,

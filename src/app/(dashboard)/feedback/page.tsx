@@ -3,6 +3,7 @@ import { isCloudMode } from "@/lib/cloud";
 import { isFeedbackAdmin, listFeedback, type FeedbackItem } from "@/lib/feedback";
 import { FeedbackBoard, FeedbackSoloForm } from "@/components/feedback-board";
 import { PageHeader } from "@/components/ui";
+import { BackToSettings } from "../settings/more-links";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,7 @@ export default async function FeedbackPage() {
   if (!isCloudMode()) {
     return (
       <div className="mx-auto max-w-2xl space-y-6">
+        <BackToSettings />
         <PageHeader
           title="Feedback"
           hint="Missing something? Tell the people who build DispatchSEO - it goes straight to them."
@@ -41,6 +43,7 @@ export default async function FeedbackPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
+      <BackToSettings />
       <PageHeader
         title="Feedback"
         hint="Ask for what's missing, and vote on what everyone else asked for. The most wanted things get built first."

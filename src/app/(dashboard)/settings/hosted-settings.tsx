@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import type { Project } from "@/lib/projects";
 import { db } from "@/lib/db";
 import { publishTarget } from "@/lib/projects";
@@ -30,6 +31,7 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { cx, FOCUS_RING } from "@/components/ui/styles";
 import { Textarea } from "@/components/ui/textarea";
 import { ForwardingHelp, LookForm } from "./hosted-blog-card";
+import { MoreLinkAnchor, moreLinks } from "./more-links";
 import { saveVoice } from "./voice-action";
 import { authorOf, loadReport } from "../mode";
 import { PublishModeMenu } from "@/components/publish-mode-switch";
@@ -43,7 +45,10 @@ import { countAwaitingReview } from "@/lib/article-review";
 // Destructive actions live in their own card at the end of Advanced.
 //
 // Only what an owner must be able to change (owner, 2026-10-24), cut again
-// on 2026-11-09: Site, Publishing, Google, Plan, Advanced. Publishing always
+// on 2026-11-09: Site, Publishing, Google, Advanced. Under those, the list
+// carries Billing, Feedback and Docs as links to their own pages - they left
+// the sidebar for here on 2026-11-11 (more-links.tsx), and Billing replaced
+// the old Plan pane, which was only ever a button to it. Publishing always
 // holds the one choice made in setup (go live on their own, or wait for the
 // owner's review); where articles go shows there only while it needs a hand. Gone from this page, still reachable over MCP: the writing
 // rules and blocked topics (set_tone, set_blocked_topics - writing is the
@@ -56,7 +61,6 @@ const SECTIONS = [
   { id: "site", title: "Site", description: "What your site is. The writer reads this before every article." },
   { id: "publishing", title: "Publishing", description: "Where finished articles go. Something here needs you." },
   { id: "google", title: "Google", description: "Where the clicks and searches in your report come from. Read-only." },
-  { id: "plan", title: "Plan", description: "What you're on. Change or cancel it on Billing." },
   { id: "advanced", title: "Advanced", description: "Set when you added the site, plus disconnecting and deleting." },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
@@ -107,7 +111,9 @@ export async function HostedSettings({
   const { count: parked } = await db().from("article_drafts").select("id", { count: "exact", head: true }).eq("project_id", project.id).eq("status", "blocked_setup");
   const publishingOpen =
     (target === "github" && !project.github_repo) || target === "manual" || target === "wordpress" || (target === "hosted" && !(await rewriteLiveCached(project))) || (parked ?? 0) > 0;
-  const sections = SECTIONS.filter((x) => x.id !== "plan" || isCloudMode());
+  // The Plan pane is gone; anything still pointing at it means Billing.
+  if (section === "plan" && isCloudMode()) redirect("/billing");
+  const sections = SECTIONS;
   const active: SectionId = sections.find((x) => x.id === section)?.id ?? "site";
   const found = SECTIONS.find((x) => x.id === active)!;
   // With nothing to fix, Publishing is just the review choice.
@@ -137,6 +143,22 @@ export async function HostedSettings({
                 </Link>
               </li>
             ))}
+            {/* Pages of their own, not panes: Billing, Feedback, Docs. A
+                hairline sets them apart on desktop; on a phone they are the
+                last chips in the row. */}
+            <li aria-hidden="true" className="hidden md:my-2 md:block md:h-px md:bg-line-soft" />
+            {moreLinks().map((link) => (
+              <li key={link.href}>
+                <MoreLinkAnchor
+                  link={link}
+                  className={cx(
+                    "flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-[14px] text-ink-muted transition-colors hover:bg-surface hover:text-ink",
+                    "max-md:border max-md:border-line-soft",
+                    FOCUS_RING,
+                  )}
+                />
+              </li>
+            ))}
           </ul>
         </nav>
 
@@ -156,7 +178,6 @@ export async function HostedSettings({
               </>
             ) : null}
             {active === "google" ? <GoogleSection project={project} /> : null}
-            {active === "plan" ? <PlanSection project={project} /> : null}
             {active === "advanced" ? <AdvancedSection project={project} account={account} /> : null}
           </div>
         </section>
@@ -375,23 +396,6 @@ function GoogleSection({ project }: { project: Project }) {
             {project.gsc_site_url ? "Manage" : "Connect"}
           </Link>
         </span>
-      </Row>
-    </Rows>
-  );
-}
-
-async function PlanSection({ project }: { project: Project }) {
-  const { plan } = await controlsFor(project);
-  const tier = plan?.tier && plan.tier !== "none" ? plan.tier.charAt(0).toUpperCase() + plan.tier.slice(1) : null;
-  return (
-    <Rows>
-      <Row
-        title={tier ? `${tier} plan` : "No plan yet"}
-        description={tier && plan && plan.articlesPerWeek > 0 ? `${plan.articlesPerWeek} ${plan.articlesPerWeek === 1 ? "article" : "articles"} a week` : "Pick one to start publishing."}
-      >
-        <Link href="/billing" className={buttonClass("secondary", "sm")}>
-          {tier ? "Manage plan" : "Pick a plan"}
-        </Link>
       </Row>
     </Rows>
   );

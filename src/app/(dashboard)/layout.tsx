@@ -100,7 +100,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // pause, lib/free-gate.ts). After the response, at most one write a day.
   if (billing && user) after(() => touchOwnerActivity(user.id));
   const notice = planNotice(sub);
-  // Which plan this account is on, shown on the Billing row of the sidebar (and
+  // Which plan this account is on, shown on the Settings row of the sidebar (and
   // the mobile drawer) so the tier is legible from every screen instead of only
   // from /billing. Free-standing from the banner above: that one only appears
   // when something is WRONG, and "which plan am I on" is a question people ask

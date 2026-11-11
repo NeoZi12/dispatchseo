@@ -72,6 +72,7 @@ export type ChangelogEntry = {
 // into a new CHANGELOG entry when it's time to cut a release. Nothing reads
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
+  { kind: "improved", text: "A shorter sidebar. Billing, Feedback and Docs moved into Settings, so the sidebar holds only your site's screens. Your plan badge now sits on the Settings row." },
   { kind: "improved", text: "Your overview now says when your next article is due, right above your latest articles: the day, and how many days away it is." },
   { kind: "fixed", text: "If you connect a GitHub repository that doesn't build your site, setup now notices on sites made with Next.js too, and switches to the right repository when you've shared it. Before, those sites could connect the wrong one and articles never reached the site." },
   {
