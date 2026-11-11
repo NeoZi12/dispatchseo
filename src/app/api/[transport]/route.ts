@@ -2291,6 +2291,14 @@ const mcpHandler = createMcpHandler(
         if (isCloudMode()) {
           const plan = await projectPlan(p.id).catch(() => null);
           if (plan?.status !== "unbilled") {
+            // The ceiling below is a count read before the write, so two
+            // batches sent at the same instant would both see room. One batch
+            // at a time per site closes that: the tool is meant to be called
+            // once with the whole list, so a legitimate caller never notices.
+            // A limiter that cannot answer lets the call through.
+            if (!(await rateLimitHit(rateLimitKey("track-keywords", p.id), 1, 5, { failOpen: true }))) {
+              return fail("Another batch of keywords for this site is being saved right now. Send the next one in a few seconds.");
+            }
             const free = isFreePlan(plan);
             const cap = free ? TRACKED_KEYWORDS_FREE : TRACKED_KEYWORDS_PAID;
             const { count, error: countErr } = await db()
