@@ -489,6 +489,20 @@ export async function applySubscriptionState(state: {
     err.pgCode = error.code;
     throw err;
   }
+  // Multi-site plans: the plan row decides the pool and how many sites it
+  // covers, so the owner's split is redone the moment it changes (an upgrade
+  // from 15 to 30 would otherwise leave 15 unassigned until the next daily
+  // pass; a first purchase stores the first site's share before a second
+  // site can be added beside it). Read back rather than rebuilt from `row`:
+  // an unknown product keeps the stored tier. Best effort - the plan is
+  // saved either way, and the daily pass repeats this.
+  try {
+    const { data: saved } = await db().from("subscriptions").select("*").eq("user_id", state.userId).maybeSingle();
+    const { rebalanceOwnerShares } = await import("./site-shares");
+    await rebalanceOwnerShares(state.userId, new Date(), normalize(saved));
+  } catch (e) {
+    console.warn(`[billing] shares not rebalanced after a plan change: ${e instanceof Error ? e.message : String(e)}`);
+  }
   // The pending-cancel case has to be tested BEFORE the status test, because a
   // subscription cancelled at period end is still `active` - so the plain
   // status mapping filed every cancellation as an ACTIVATION, exactly

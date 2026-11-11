@@ -175,9 +175,18 @@ export async function pauseWriter(
     .update({ writer_paused_at: new Date().toISOString(), writer_pause_reason: text })
     .eq("id", projectId)
     .is("writer_paused_at", null)
-    .select("slug")
+    .select("slug, owner_user_id")
     .maybeSingle();
   if (error) throw new Error(`could not pause the writer: ${error.message}`);
+  // Multi-site plans: a paused site holds none of its owner's articles, so
+  // the split is redone now and its siblings get them today, not after the
+  // next daily pass (resumeWriter does the same in the other direction).
+  // Only when this call did the pausing. Never throws (site-shares.ts).
+  const ownerId = (data as { owner_user_id?: string | null } | null)?.owner_user_id;
+  if (ownerId) {
+    const { rebalanceOwnerShares } = await import("@/lib/site-shares");
+    await rebalanceOwnerShares(ownerId);
+  }
   if (!data || !opts.auto) return;
   const slug = opts.slug ?? (data as { slug: string }).slug;
   const job = `autopilot-pause--${slug}`;

@@ -23,7 +23,7 @@ import { PROJECT_COOKIE, scopedProjects } from "@/lib/active-project";
 import { getProjectBySlug } from "@/lib/projects";
 import { assertProjectOwned } from "@/lib/tenant-guard";
 import { createHostedProjectForUser, isProjectDomain, normalizeProjectDomain, probeSite } from "@/lib/setup-flow";
-import { setSiteShare, type SetSiteShareInput } from "@/lib/site-shares";
+import { rebalanceOwnerShares, setSiteShare, type SetSiteShareInput } from "@/lib/site-shares";
 import { setPublishMode } from "@/lib/article-review";
 import { pauseWriter, resumeWriter } from "@/lib/autopilot/pause";
 
@@ -82,6 +82,14 @@ export async function addWebsite(_prev: AddWebsiteState, fd: FormData): Promise<
   const made = await createHostedProjectForUser(user.id, domain);
   if (!("ok" in made)) return { error: made.error, domain };
   if (!made.created) return { error: "That website is already connected.", domain };
+
+  // The split is redone now, not at tomorrow's daily pass: a site still in
+  // setup must hold none of the plan's articles, and until this runs the
+  // stored numbers can hand it some (a first site whose share was never
+  // stored splits evenly with it; one stored under a smaller plan leaves it
+  // the rest). Found 2026-11-11 on a test account: 15 a month became 8 for
+  // the working site and 7 for one that could not write yet. Never throws.
+  await rebalanceOwnerShares(user.id);
 
   // Setup reads the newest unfinished site (resolveSetupStage); the cookie
   // makes it the active one on the dashboard as well.

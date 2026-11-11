@@ -10,6 +10,7 @@ import {
   projectPlan,
   readOwnedSites,
   sitesLimitOf,
+  type Subscription,
   type Tier,
 } from "./billing";
 import { getProjectById, type Project } from "./projects";
@@ -64,9 +65,12 @@ async function readShareRows(ownerId: string): Promise<{ rows: ShareRow[]; error
 
 /** The owner's live plan and its pool, or null when there is no pool to
  *  split: self-host, billing unconfigured, or no live subscription. */
-async function ownerPool(ownerId: string): Promise<{ tier: Tier; pool: number; sitesLimit: number } | null> {
+async function ownerPool(ownerId: string, freshSub?: Subscription | null): Promise<{ tier: Tier; pool: number; sitesLimit: number } | null> {
   if (!isCloudMode() || !polarConfigured()) return null;
-  const sub = await getSubscription(ownerId);
+  // freshSub: a plan row the caller has JUST written (billing.ts
+  // applySubscriptionState); getSubscription's per-request memo may still
+  // hold the row as it was before that write.
+  const sub = freshSub !== undefined ? freshSub : await getSubscription(ownerId);
   if (!isActive(sub)) return null;
   const tier: Tier = sub!.status === "trialing" ? "starter" : sub!.tier;
   return { tier, pool: articlesPerMonthFor(tier), sitesLimit: sitesLimitOf(sub!) };
@@ -113,9 +117,10 @@ const isCustomRow = (r: { share_mode: string | null; monthly_share: number | nul
 export async function rebalanceOwnerShares(
   ownerId: string,
   now = new Date(),
+  freshSub?: Subscription | null,
 ): Promise<{ shares: Record<string, number>; held: number } | null> {
   try {
-    const plan = await ownerPool(ownerId);
+    const plan = await ownerPool(ownerId, freshSub);
     if (!plan) return null;
     const { rows, error } = await readShareRows(ownerId);
     if (error) throw new Error(error);
