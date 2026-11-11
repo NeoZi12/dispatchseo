@@ -294,9 +294,15 @@ async function queuedCount(runId: string): Promise<number> {
   return count ?? 0;
 }
 
-async function resumeIfSettled(projectId: string, runId: string): Promise<void> {
+export async function resumeIfSettled(projectId: string, runId: string): Promise<void> {
   if ((await queuedCount(runId)) === 0) await resumeRun(projectId, runId);
 }
+
+/** Batch-lane runs parked longer than this are failed as infra (health.ts
+ *  failStaleBatchRuns). A batch expires at 24h and its poller gives up at
+ *  26h; a run still parked after that has lost its poller. */
+export const BATCH_STALE_HOURS = 30;
+export const BATCH_STALE_REASON = "the batch writer never came back for this article";
 
 /**
  * Re-queue a parked run's stage. The key carries a resume counter because

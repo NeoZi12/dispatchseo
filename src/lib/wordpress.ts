@@ -854,7 +854,10 @@ export async function updatePost(
  */
 export async function deletePost(creds: WordPressCredentials, postId: number): Promise<{ ok: true } | WordPressFailure> {
   const res = await wpFetch(creds, `/wp-json/wp/v2/posts/${postId}`, { method: "DELETE" });
-  if (!res.ok) return { ok: false, reason: res.reason, message: res.message };
+  // WordPress's own error body rides along: the owner's Remove tells "this
+  // post is already gone" (its code) from "the REST route is broken" (both
+  // 404s), and only the first may count as removed (article-owner.ts).
+  if (!res.ok) return { ok: false, reason: res.reason, message: res.message, body: res.body };
   return { ok: true };
 }
 

@@ -129,6 +129,7 @@ export async function runFinishJob(job: Job): Promise<void> {
     sources: { url: string; title?: string }[] | null;
     status: string;
     validation: unknown;
+    approved_at?: string | null;
   };
 
   // ALLOWLIST, not a blocklist: only a draft that is actually on its way to
@@ -139,6 +140,11 @@ export async function runFinishJob(job: Job): Promise<void> {
   // blocklist here once let a pending finish job resurrect a draft the owner
   // had discarded minutes after submitting it.
   if (row.status !== "submitted" && row.status !== "accepted") return;
+  // Accepted BY THE OWNER (their Publish, article-review.ts): it was finished
+  // already - approval needs the rendered article - and is on its way out.
+  // A re-run of a finish job that died after parking it for review would
+  // otherwise park it again and email again (2026-11-11).
+  if (row.status === "accepted" && row.approved_at) return;
   if (dryDraftBlocked(row.validation)) return parkDryDraft(row.id, row.validation);
 
   const now = new Date().toISOString();
@@ -205,7 +211,9 @@ export async function runFinishJob(job: Job): Promise<void> {
   // connected (the publish job's parkForReviewIfDue).
   const review = publishes && reviewsArticles(project) && canPublishNow(project);
 
-  const { error } = await db()
+  // Compare-and-swap on the status read above: a discard, or the owner's
+  // Publish, that landed while this rendered wins, and this run stops.
+  const { data: saved, error } = await db()
     .from("article_drafts")
     .update({
       // The structured data rides WITH the html rather than in a column of
@@ -220,8 +228,11 @@ export async function runFinishJob(job: Job): Promise<void> {
       status: route === "blocked" ? "blocked_setup" : review ? REVIEW_STATUS : "accepted",
       updated_at: now,
     })
-    .eq("id", row.id);
+    .eq("id", row.id)
+    .eq("status", row.status)
+    .select("id");
   if (error) throw new Error(`could not save the finished article: ${error.message}`);
+  if (!saved?.length) return;
 
   // Parked for the owner: tell them, and stop. Best-effort (the dashboard
   // shows it either way), and only after the write, so the email never

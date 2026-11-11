@@ -232,6 +232,17 @@ async function verifyRepoArticle(job: Job, draftId: string): Promise<void> {
     // a repo-route PR is ever merged by us - never at open time, so a failing
     // build cannot be merged before its checks have spoken.
     const auto = effectiveAutomations(project).auto_merge;
+    // Paused (the owner's Pause, or the automatic one after a Search Console
+    // collapse): nothing new reaches the site, so the lander keeps the pull
+    // request open and this chain looks again until the owner resumes. An
+    // article the owner approved by hand still goes out - their Publish is
+    // the go-ahead (the same rule as publish.ts). Read on its own, only when
+    // paused, as publish.ts does: a database without 0089 must still verify.
+    let held = false;
+    if (auto && project.writer_paused_at) {
+      const { data: gate } = await db().from("article_drafts").select("approved_at").eq("id", draftId).eq("project_id", project.id).maybeSingle();
+      held = !(gate as { approved_at?: string | null } | null)?.approved_at;
+    }
     // A store publish that conflicts (another one merged into the same spot
     // first) is written again from a fresh read of the branch, once.
     if (job.payload.store && pr.mergeable_state === "dirty") {
@@ -246,7 +257,7 @@ async function verifyRepoArticle(job: Job, draftId: string): Promise<void> {
     // that passes when run again, a red check that stays red with our
     // article taken out, a branch the repo wants brought up to date, a repo
     // with squash merging switched off.
-    const land = await landPullRequest(project, pr, landMemo(job.payload), { merge: auto });
+    const land = await landPullRequest(project, pr, landMemo(job.payload), { merge: auto && !held });
     if (land.outcome === "merged") {
       // A merge that WORKED is followed up in minutes rather than at the
       // next round: the page is a deploy away.
@@ -254,7 +265,11 @@ async function verifyRepoArticle(job: Job, draftId: string): Promise<void> {
       return;
     }
     const stuck = land.outcome === "wait" ? land.stuck : undefined;
-    if (stuck === "red" && job.payload.store) {
+    // Not while held: with merging off the lander calls a red build "red"
+    // without checking whether the red is the site's own, and abandoning
+    // here marks the site's blog store unusable for good over a pause. The
+    // chain looks again, and after a resume the lander checks it properly.
+    if (stuck === "red" && job.payload.store && !held) {
       // A store publish (blog-store.ts) whose build stays red is closed and
       // the article goes to the hosted blog - never a comment asking the
       // owner to fix an entry we wrote into their post list.
@@ -271,10 +286,14 @@ async function verifyRepoArticle(job: Job, draftId: string): Promise<void> {
       console.warn(`[verify] ${project.slug}: PR #${pr.number} is stuck (${stuck}) after everything automatic was tried`);
       patch.buildNotified = true;
     }
-    if ((!deadline || now < deadline) && round < MAX_ROUNDS) {
+    if (held || ((!deadline || now < deadline) && round < MAX_ROUNDS)) {
       // A refused merge is answered by asking again on the next round, not
       // by failing a job the owner would be emailed about.
       const wait = (land.outcome === "wait" ? land.afterMs : null) ?? (auto && round < AUTO_EARLY_ROUNDS ? AUTO_EARLY_RETRY_MS : AWAITING_MERGE_RETRY_MS);
+      // A round spent waiting out a pause is not a round the pull request
+      // had to merge in: the deadline moves with it, or a long pause ended
+      // the chain and left the article unmerged after the resume.
+      if (held && deadline && Number.isFinite(Date.parse(deadline))) patch.deadline = new Date(Date.parse(deadline) + wait).toISOString();
       await rearm(job, draftId, round, new Date(nowDate.getTime() + wait), patch);
     }
     return;

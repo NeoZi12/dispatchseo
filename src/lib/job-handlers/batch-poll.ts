@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { enqueue, type Job } from "@/lib/jobs";
 import { batchResult, batchStatus } from "@/lib/writer/models";
-import { closeRunTasks, failBatchTask, settleTask, TASK_COLS, type TaskRow } from "@/lib/writer/agent-tasks";
+import { closeRunTasks, failBatchTask, resumeIfSettled, settleTask, TASK_COLS, type TaskRow } from "@/lib/writer/agent-tasks";
 import { failRun, getWriterRun } from "@/lib/writer/runs";
 
 // The batch lane's waker (0075, operator-only). A batch-lane stage submits
@@ -43,7 +43,18 @@ export async function runBatchPollJob(job: Job): Promise<void> {
     .eq("status", "queued");
   if (error) throw new Error(`could not read the run's batch tasks (is migration 0075 applied?): ${error.message}`);
   const tasks = (data ?? []) as BatchTask[];
-  if (!tasks.length) return; // all settled: the resume job owns the run now
+  if (!tasks.length) {
+    // All settled. Normally the last settle queued the resume job and
+    // cleared the marker. A run STILL parked on this stage here means that
+    // settle marked its task done and then died before the resume (a
+    // database error in the ledger write, a killed handler): nothing else
+    // would ever wake it, and it held its idea and one of the site's two
+    // running slots for good. Queue the resume now (same idempotency key as
+    // the one a slow settle would use, so there is never a second).
+    const parked = run.stage_outputs.waiting_on_batch as { stage?: string } | null | undefined;
+    if (parked && parked.stage === run.stage) await resumeIfSettled(job.project_id, runId);
+    return;
+  }
 
   let pending = false;
   for (const task of tasks) {

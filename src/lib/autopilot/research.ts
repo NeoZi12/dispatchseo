@@ -492,6 +492,28 @@ export async function runResearch(project: Project, now = new Date(), opts: RunR
   const { profile, fromDb, error: profileError } = await loadSiteProfile(project);
   if (profileError) return { skipped: `could not read the site profile: ${profileError}` };
   if (!fromDb) return { skipped: "no site profile yet" };
+  // The budget and the shared ceilings, asked again before each FURTHER
+  // round of paid lookups, not only once when the run starts: every site
+  // researches in the same minute of the daily pass, so all of them passed
+  // the daily ceiling before any had recorded a cent, and together went
+  // well over it. Only where we pay (a site on its own account has no
+  // budget here), never for the shadow route, and a gate that cannot be
+  // read does not stop a run that is already under way.
+  // Set when the budget or a shared ceiling cut this run short. A run that
+  // was cut and added nothing is NOT recorded as an empty niche below: the
+  // cut comes from what every site spent that minute, and two such mornings
+  // would slow this site's research to every four weeks and cap its share
+  // of the plan for a reason that has nothing to do with its keywords.
+  let budgetCut = false;
+  const overBudget = async (): Promise<boolean> => {
+    if (shadow || creds.billedTo !== "platform") return false;
+    const over = await platformBudgetGate(project.id).then(
+      (g) => !g.allowed,
+      () => false,
+    );
+    if (over) budgetCut = true;
+    return over;
+  };
 
   const stamp = async () => {
     if (shadow) return;
@@ -808,6 +830,7 @@ export async function runResearch(project: Project, now = new Date(), opts: RunR
   let fallback: { seeds: string[]; candidates: number; kept: number; passed: number; usd: number } | undefined;
   for (let at = round1.length; v2 && !judgeError && !skipExpansion && at < seeds.length; at += V2_SEEDS_PER_ROUND) {
     if (passed.length >= Math.max(1, visibleNeeded) || batches >= seedCalls || dataforseoUsd >= WIDER_STOP_USD) break;
+    if (await overBudget()) break;
     const list = seeds.slice(at, at + V2_SEEDS_PER_ROUND);
     const before = { usd: dataforseoUsd, passed: passed.length };
     const ex = await expand(list, "seeds");
@@ -884,6 +907,7 @@ export async function runResearch(project: Project, now = new Date(), opts: RunR
           if (passed.length >= Math.max(1, visibleNeeded)) break;
           if (batches >= judgeCap) { widerStop = "judge calls used up"; break; }
           if (dataforseoUsd >= WIDER_STOP_USD) { widerStop = `keyword data spend reached $${dataforseoUsd.toFixed(3)}`; break; }
+          if (await overBudget()) { widerStop = "the keyword data budget or the day's ceiling was reached"; break; }
           // Sized so neither cap can be crossed even if every call in the
           // batch is billed: the Labs-call allowance, and the run's ceiling
           // after a worst-case KD lookup.
@@ -1072,13 +1096,16 @@ export async function runResearch(project: Project, now = new Date(), opts: RunR
   // The per-project memory (keyword-research-cache.ts): dead seeds are not
   // expanded or proposed again for 30 days, and two runs in a row that add
   // nothing put rung 4 into back-off.
+  const cutEmpty = budgetCut && added.length === 0;
   if (!shadow) {
     await Promise.all([
       markDeadSeeds(project.id, deadSeeds, loc, lang),
-      writeResearchState(project.id, nextBackoffState(backoff, added.length, now.getTime(), RESEARCH_EVERY_MS)),
+      cutEmpty ? Promise.resolve() : writeResearchState(project.id, nextBackoffState(backoff, added.length, now.getTime(), RESEARCH_EVERY_MS)),
     ]);
   }
-  await stamp();
+  // No date either for a run the budget cut before it found anything: the
+  // next morning's pass tries again with the day's allowance fresh.
+  if (!cutEmpty) await stamp();
   // Thin = rung 1 came up short from a small pool and the ladder had to
   // widen (or there was no pool at all). A big market that merely spent its
   // judge calls on rung 1 never widens, so it is never called thin.

@@ -971,8 +971,11 @@ export async function readOwnedSites(ownerId: string): Promise<{ rows: OwnedSite
       created_at: r.created_at ?? null,
       ...(full ? { idle: idleSite(r) } : {}),
     }));
+    // In COVERAGE order (coverageOrder): every reader below takes the first
+    // sitesLimitOf rows as "the sites the plan covers".
+    const ordered = full ? coverageOrder(rows) : rows;
     if (res.error || !rows.length) memo.delete(ownerId);
-    return { rows, error: res.error?.message ?? null };
+    return { rows: ordered, error: res.error?.message ?? null };
   })();
   memo.set(ownerId, read);
   return read;
@@ -984,6 +987,19 @@ export function idleSite(r: { writer_mode?: string | null; writer_paused_at?: st
   return r.writer_mode === "hosted" && (Boolean(r.writer_paused_at) || !r.setup_connected_at);
 }
 
+/** The order a plan's coverage is decided in: the sites that can write
+ *  first, then the ones that cannot (paused, setup unfinished), each group
+ *  oldest first. Coverage is the first sitesLimitOf rows. Oldest-first alone
+ *  meant an owner who downgraded with an old PAUSED site kept that one
+ *  covered and their working site "beyond the plan's limit": they paid for
+ *  a plan that wrote nothing until they deleted the paused site (audit,
+ *  2026-11-11). Within a plan's site limit the order changes nothing. */
+export function coverageOrder<T extends { idle?: boolean; created_at?: string | null }>(rows: T[]): T[] {
+  return [...rows].sort(
+    (a, b) => Number(Boolean(a.idle)) - Number(Boolean(b.idle)) || String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")),
+  );
+}
+
 /** Drop the memoized read after a write to the owner's shares, so the rest
  *  of the request (a server action's re-render) sees the new numbers. */
 export function forgetOwnedSites(ownerId: string): void {
@@ -991,7 +1007,10 @@ export function forgetOwnedSites(ownerId: string): void {
 }
 
 async function ownedProjectsOldestFirst(ownerId: string): Promise<string[]> {
-  return (await readOwnedSites(ownerId)).rows.map((r) => r.id);
+  // By age alone, not coverage order: this names the FREE plan's one site,
+  // which stays the owner's oldest whatever is paused.
+  const rows = [...(await readOwnedSites(ownerId)).rows].sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")));
+  return rows.map((r) => r.id);
 }
 
 /** Does a site run outside the plan's pool? Two kinds do, and both take no

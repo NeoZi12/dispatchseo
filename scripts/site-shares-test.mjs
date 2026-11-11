@@ -294,5 +294,20 @@ eq(
 );
 eq(order([{ id: "a", keyword_volume: 590, keyword_difficulty: 0 }, { id: "b", keyword_volume: 720, keyword_difficulty: 9 }]), ["a", "b"], "queue order: research ideas still go by score");
 
+// --- which sites a plan covers: the ones that can write come first ---
+const { coverageOrder } = await import("../src/lib/billing.ts").catch(() => ({ coverageOrder: null }));
+if (coverageOrder) {
+  eq(
+    coverageOrder([
+      { id: "old-paused", idle: true, created_at: "2026-01-01" },
+      { id: "working", idle: false, created_at: "2026-06-01" },
+      { id: "in-setup", idle: true, created_at: "2026-03-01" },
+      { id: "older-working", created_at: "2026-02-01" },
+    ]).map((r) => r.id),
+    ["older-working", "working", "old-paused", "in-setup"],
+    "coverage: writing sites first (oldest first), then the ones that cannot write",
+  );
+}
+
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

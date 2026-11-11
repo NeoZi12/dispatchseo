@@ -75,7 +75,9 @@ export type LandResult =
 
 export type Redo = () => Promise<{ prNumber: number } | { gone: true } | null>;
 
-const CLEAN = new Set(["clean", "has_hooks"]);
+/** Exported for the forwarding pull request's merge (hosted-rewrite.ts),
+ *  which must wait for the same word before it merges. */
+export const CLEAN = new Set(["clean", "has_hooks"]);
 /** The jobs cron runs every five minutes. Both waits land on the NEXT run:
  *  a wait of exactly five minutes falls due seconds after that run started
  *  and is only picked up by the one after, ten minutes on. */
@@ -119,7 +121,10 @@ export async function landPullRequest(
     m.quick = (m.quick ?? 0) + 1;
     return wait(SOON_MS);
   };
-  const merge = async (): Promise<LandResult> => ((await mergePr(project, seen.number)).ok ? { outcome: "merged", memo: m } : wait(null));
+  // Pinned to the head this look judged (pr, re-read below when GitHub had
+  // not worked the state out yet): a push in between makes GitHub refuse
+  // with 409, which is a plain "not merged, look again", never an unchecked merge.
+  const merge = async (): Promise<LandResult> => ((await mergePr(project, seen.number, pr.head_sha)).ok ? { outcome: "merged", memo: m } : wait(null));
 
   let pr = seen;
   let state = String(pr.mergeable_state ?? "unknown");

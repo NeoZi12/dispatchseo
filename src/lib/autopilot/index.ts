@@ -114,7 +114,15 @@ export async function runAutopilotPass(project: Project, now = new Date(), opts:
     stale || !floorOn
       ? false
       : (await queueShort(project, now)) && earlyResearchAllowed(researchState);
-  if (stale || short) {
+  // Research belongs to the morning pass. The later passes of the day
+  // (the autopilot cron's 13:30 and 21:30 runs) exist to start an article
+  // the morning could not; a research run that FAILED in the morning leaves
+  // no date stamped, and running it again twice more the same day re-bought
+  // every site's keyword lookups during an outage and spent the shared
+  // daily ceiling those afternoon starts need. A site that has never been
+  // researched is the exception: it must not wait for tomorrow.
+  const retryPass = now.getUTCHours() >= 12 && Boolean(project.last_research_at);
+  if ((stale || short) && !retryPass) {
     try {
       research = await runResearch(project, now);
     } catch (e) {
@@ -132,7 +140,7 @@ export async function runAutopilotPass(project: Project, now = new Date(), opts:
   const promoted = await projectPlan(project.id)
     .then((plan) => promoteBacklog(project.id, plan.articlesPerWeek))
     .catch(() => 0);
-  const schedule = () => runScheduler(project, now, { researchedThisRun: researched });
+  const schedule = () => runScheduler(project, now, { researchedThisRun: researched, retryPass });
   const scheduler = await (opts.schedule ? opts.schedule(schedule) : schedule());
 
   const skips = [

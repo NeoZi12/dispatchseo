@@ -3,7 +3,8 @@ import { db } from "@/lib/db";
 import { effectiveAutomations, publishTarget, type Project } from "@/lib/projects";
 import { renderDraftForRoute } from "@/lib/job-handlers/finish";
 import { buildExcerpt, buildSchema, schemaScript, yamlDoubleQuote } from "@/lib/article-render";
-import { CREDIT_LINE_AT_END, creditLine, DESCRIPTION_KEYS, fetchPullRequest, fileStem, githubApi, parseFrontmatter, relativizeOwnLinks, scoreContentDirs } from "@/lib/repo-publish";
+import { CREDIT_LINE_AT_END, creditLine, DESCRIPTION_KEYS, fetchPullRequest, fileStem, githubApi, parseFrontmatter, relativizeOwnLinks } from "@/lib/repo-publish";
+import { fetchProjectUrl } from "@/lib/url-guard";
 import { articleSignature } from "@/lib/article-signature";
 import { tokenForRef } from "@/lib/github";
 import { creditParts, hostedBase, siteOrigin } from "@/lib/hosted-blog";
@@ -251,8 +252,15 @@ async function pendingPr(project: Project, draftId: string, kind: "edit" | "remo
     .eq("kind", "owner-pr")
     .is("finished_at", null)
     .contains("payload", { draftId, kind })
-    .limit(1);
-  const payload = (data?.[0] as { payload?: { prNumber?: number; previous?: Previous; previousPrUrl?: string | null; land?: { probe?: { from?: string } | null } } } | undefined)?.payload;
+    .limit(20);
+  // Two can be unfinished at once (2026-11-11): a newer edit's watcher, and
+  // an older one whose pull request was closed or merged but which has not
+  // looked yet. GitHub numbers only go up, so the highest is the current one.
+  type P = { prNumber?: number; previous?: Previous; previousPrUrl?: string | null; land?: { probe?: { from?: string } | null } };
+  const payload = ((data ?? []) as { payload?: P }[])
+    .map((d) => d.payload)
+    .filter((x): x is P => Boolean(x?.prNumber))
+    .sort((a, b) => Number(b.prNumber) - Number(a.prNumber))[0];
   if (!payload?.prNumber) return null;
   // While the checks are being run without the change (pr-landing.ts), the
   // branch head holds the site's own text for a few minutes; the owner's
@@ -269,7 +277,16 @@ async function pendingPr(project: Project, draftId: string, kind: "edit" | "remo
 async function pendingEditPr(project: Project, row: Pick<Row, "id" | "slug">): Promise<PendingPr | null> {
   const branch = editBranch(row);
   const watched = await pendingPr(project, row.id, "edit", branch);
-  if (watched) return watched;
+  if (watched) {
+    // The watcher looks every two hours on a manual-merge site, so its pull
+    // request may already be closed or merged (2026-11-11): reading that old
+    // branch and calling the save "joined" opened a second pull request
+    // nobody watched. Only an open one is pending; otherwise the edit starts
+    // from the default branch, which is what is live. Unreadable (GitHub
+    // down) keeps the old answer - the watcher finds out on its own.
+    const pr = await fetchPullRequest(project, watched.prNumber);
+    if (!pr || pr.state === "open") return watched;
+  }
   const token = await tokenForRef(project);
   if (!token || !project.github_repo) return null;
   const owner = project.github_repo.split("/")[0];
@@ -303,6 +320,18 @@ async function readRepoFile(project: Project, path: string, ref?: string): Promi
   return { ok: true, sha: String(file.json.sha), text, frontmatter: m[1], body, hadH1: LEADING_H1.test(body) };
 }
 
+/** The article as the site has it: the default branch's file, in the row's
+ *  terms. What the row must go back to when it may hold text that never went
+ *  live - an orphaned pull request's, or one closed before its watcher
+ *  looked (2026-11-11). Null when the file can't be read. */
+async function liveVersion(project: Project, row: Row, file?: Extract<RepoFile, { ok: true }>): Promise<Previous | null> {
+  const f = file ?? (await readRepoFile(project, row.repo_path!));
+  if (!f.ok) return null;
+  const fm = parseFrontmatter(f.text);
+  const descKey = DESCRIPTION_KEYS.find((k) => k in fm.values);
+  return { title: fm.values.title?.trim() || row.title, meta_description: descKey ? fm.values[descKey] : row.meta_description, markdown: f.body };
+}
+
 export type EditInput = {
   title?: string;
   metaDescription?: string;
@@ -331,11 +360,15 @@ export async function editArticle(project: Project, draftId: string, input: Edit
   // pull request's branch when there is one, so edits stack.
   let file: Extract<RepoFile, { ok: true }> | null = null;
   let pending: PendingPr | null = null;
+  // A watcher is still queued but its pull request is no longer open: the
+  // row may hold that pull request's text, which never went live.
+  let endedWatcher = false;
   if (route === "repo") {
     if (!project.github_repo || !row.repo_path) {
       return { ok: false, error: `We don't know where this article's file is in your repo, so it can't be edited from here. ${ON_GITHUB}` };
     }
     pending = await pendingEditPr(project, row);
+    if (!pending) endedWatcher = Boolean(await pendingPr(project, row.id, "edit"));
     const read = await readRepoFile(project, row.repo_path, pending?.branch);
     if (!read.ok) return read;
     if (input.expectedFileSha && input.expectedFileSha !== read.sha) {
@@ -426,13 +459,19 @@ export async function editArticle(project: Project, draftId: string, input: Edit
   // The watcher: merges on Auto once the checks pass, and puts the old text
   // back if the pull request is closed instead (job-handlers/owner-pr.ts).
   // An edit joining an already-watched pull request keeps that watcher (its
-  // "previous" is the text that is live); an orphaned one gets a new watcher.
-  if (!pending || pending.orphan) {
-    const previous: Previous = pending?.orphan ? { title: row.title, meta_description: row.meta_description, markdown: row.markdown } : { title: row.title, meta_description: row.meta_description, markdown: row.markdown };
+  // "previous" is the text that is live); any other pull request - a new
+  // one, an orphaned one, or a different number than the one we joined -
+  // gets a watcher of its own. Its "previous" is the row only when the row
+  // is known to be live; otherwise the default branch's file (2026-11-11:
+  // an orphan's row held its never-merged text, and a row whose pull request
+  // was closed before its watcher looked holds that one's).
+  const joined = Boolean(pending) && change.prNumber === pending!.prNumber;
+  if (!joined || pending!.orphan) {
+    const rowText: Previous = { title: row.title, meta_description: row.meta_description, markdown: row.markdown };
+    const previous = pending || endedWatcher ? ((await liveVersion(project, row, pending ? undefined : file!)) ?? rowText) : rowText;
     await watchPr(project, row.id, change.prNumber, { kind: "edit", previous, ...(pending?.orphan ? { rearmed: Date.now() } : {}) });
   }
   const auto = effectiveAutomations(project).auto_merge;
-  const joined = Boolean(pending);
   return {
     ok: true,
     pending: true,
@@ -562,11 +601,19 @@ export async function removeArticle(project: Project, draftId: string): Promise<
     const postId = row.wp_post_id;
     const r = await guarded(row, now, async () => {
       const w = await deletePost(creds, postId);
-      return w.ok ? w : { ok: false as const, error: `WordPress didn't remove it: ${w.message}` };
+      if (w.ok) return { ok: true as const, gone: false };
+      // Already trashed or deleted in wp-admin (2026-11-11): what the owner
+      // asked for is true already, so record it instead of refusing forever.
+      // Only WordPress's own word about THIS post counts - a bare 404 is a
+      // broken REST route (permalinks), which says nothing about the post.
+      const code = (w.body as { code?: unknown } | undefined)?.code;
+      if (code === "rest_post_invalid_id" || code === "rest_already_trashed") return { ok: true as const, gone: true };
+      return { ok: false as const, error: `WordPress didn't remove it: ${w.message}` };
     });
     if (!r.ok) return r;
     await record(row.id, { status: "removed" });
     await afterRemoval(project, row);
+    if (r.gone) return { ok: true, message: "Removed. The post was already gone from your WordPress site, so it's marked removed here too." };
     return { ok: true, message: "Removed. The post is in your WordPress trash, where you can still restore it." };
   }
 
@@ -575,15 +622,21 @@ export async function removeArticle(project: Project, draftId: string): Promise<
     return { ok: false, error: "We don't know where this article's file is in your repo, so it can't be removed from here. Delete the file on GitHub instead." };
   }
   const pendingEdit = await pendingEditPr(project, row);
+  // The text the row goes back to: an open edit's watcher knows it; an
+  // orphaned edit, or one whose pull request closed before its watcher
+  // looked, leaves the row holding text that never went live - the file on
+  // the default branch is what is (2026-11-11).
+  const live = pendingEdit?.previous ?? (pendingEdit || (await pendingPr(project, row.id, "edit")) ? await liveVersion(project, row) : null);
   if (!(await claim(row, now))) return STALE;
   const change = await guarded(row, now, () => repoChange(project, row, { kind: "remove", title: row.title, closeEditPr: pendingEdit?.prNumber ?? null }));
+  if (!change.ok && change.gone) return removeGoneFile(project, row, pendingEdit?.prNumber ?? null);
   if (!change.ok) return change;
   // Live until the pull request merges: "removing", with its PR where the
   // article page can show it. The publish PR's address moves to the watcher's
   // payload and comes back if the removal is closed instead. An edit that
   // was waiting on its own PR is closed above; its text never reached the
   // site, so the row gets the text that did.
-  await record(row.id, { status: "removing", pr_url: change.prUrl, ...(pendingEdit?.previous ?? {}) });
+  await record(row.id, { status: "removing", pr_url: change.prUrl, ...(live ?? {}) });
   await watchPr(project, row.id, change.prNumber, { kind: "remove", previousPrUrl: row.pr_url });
   const auto = effectiveAutomations(project).auto_merge;
   return {
@@ -619,8 +672,11 @@ export async function adoptPage(project: Project, pageId: string): Promise<{ ok:
   if (!token) return { ok: false, error: "Your GitHub connection isn't available right now. Check it in Settings, then try again." };
 
   let stem = "";
+  let urlDirs: string[] = [];
   try {
-    stem = decodeURIComponent(new URL(page.url).pathname.replace(/\/+$/, "").split("/").pop() ?? "");
+    const segs = new URL(page.url).pathname.replace(/\/+$/, "").split("/");
+    stem = decodeURIComponent(segs.pop() ?? "");
+    urlDirs = segs.filter(Boolean).map((s) => decodeURIComponent(s).toLowerCase());
   } catch {
     return { ok: false, error: "This page's address can't be read." };
   }
@@ -634,14 +690,36 @@ export async function adoptPage(project: Project, pageId: string): Promise<{ ok:
   if (!sha) return { ok: false, error: "GitHub didn't answer. Try again in a minute." };
   const tree = await githubApi(token, "GET", `/repos/${repo}/git/trees/${sha}?recursive=1`);
   const paths = ((tree.json?.tree as { path?: string; type?: string }[] | undefined) ?? []).filter((e) => e.type === "blob").map((e) => String(e.path ?? ""));
-  const matches = paths.filter((p) => /\.mdx?$/i.test(p) && fileStem(p.split("/").pop() ?? "").toLowerCase() === stem.toLowerCase());
+  const want = stem.toLowerCase();
+  const matches = paths.filter((p) => {
+    if (!/\.mdx?$/i.test(p)) return false;
+    const parts = p.split("/");
+    const name = parts.pop() ?? "";
+    // A page bundle (x/index.md) is served at .../x just as x.md is.
+    return fileStem(name).toLowerCase() === want || (/^index\.mdx?$/i.test(name) && (parts.pop() ?? "").toLowerCase() === want);
+  });
   if (!matches.length) return { ok: false, error: "We couldn't find this article's file in your repo, so it can't be changed from here." };
-  // Several files share the stem (a draft folder, a translation): the one in
-  // the folder that looks most like where the articles live.
+  // Several files could be this article (a translation, a page bundle next
+  // to a stray copy): only one whose folders agree with the address (/en/blog/x
+  // -> a path through en/ and blog/) is safe to take. Remove deletes this
+  // file through a pull request that may merge on its own, so a guess - the
+  // old "folder with the most articles" tie-break - could take down another
+  // page (2026-11-11). Still not exactly one: refuse.
   let path = matches[0];
+  // One match that is a page bundle (x/index.md) still has to sit under the
+  // address's folders: docs/getting-started/index.md is not the page at
+  // /blog/getting-started, and Remove would have deleted it.
+  if (matches.length === 1 && /(^|\/)index\.mdx?$/i.test(path)) {
+    const dirs = path.toLowerCase().split("/").slice(0, -1);
+    if (!urlDirs.every((d) => dirs.includes(d))) return { ok: false, error: "We couldn't find this article's file in your repo, so it can't be changed from here." };
+  }
   if (matches.length > 1) {
-    const dirs = scoreContentDirs(paths);
-    path = matches.map((m) => ({ m, score: dirs.find((d) => m.startsWith(`${d.dir}/`))?.score ?? 0 })).sort((a, b) => b.score - a.score)[0].m;
+    const agree = matches.filter((m) => {
+      const dirs = m.toLowerCase().split("/").slice(0, -1);
+      return urlDirs.every((d) => dirs.includes(d));
+    });
+    if (agree.length !== 1) return { ok: false, error: `We found more than one file that could be this article, so we didn't touch any: ${matches.join(", ")}.` };
+    path = agree[0];
   }
   const file = await readRepoFile(project, path);
   if (!file.ok) return { ok: false, error: file.error };
@@ -702,6 +780,28 @@ async function settleRemoving(project: Project, row: Row): Promise<OwnerResult> 
   return { ok: true, pending: true, prUrl: pr.html_url, message: "Its removal is waiting on its pull request." };
 }
 
+/** Remove asked for an article whose file is already gone from the default
+ *  branch (deleted on GitHub, 2026-11-11): what the owner wants has happened,
+ *  and refusing left it "live" here forever, still costing rank checks. A
+ *  MOVED file looks the same from GitHub, so it only counts as gone once the
+ *  site agrees - the page answers 404 or 410. */
+async function removeGoneFile(project: Project, row: Row, editPr: number | null): Promise<OwnerResult> {
+  const res = row.published_url ? await fetchProjectUrl(row.published_url, project.domain, { timeoutMs: 8_000, userAgent: "DispatchSEO-liveness-check" }) : null;
+  if (res?.status !== 404 && res?.status !== 410) {
+    return { ok: false, error: "The article's file isn't in your repo any more, but its page still loads (or we couldn't check it). If you moved the file, change it on GitHub instead; if you deleted it, try again once your site has redeployed." };
+  }
+  // An edit still open would bring the file back if merged: close it, as a
+  // normal removal does.
+  if (editPr) {
+    const token = await tokenForRef(project);
+    const closed = token ? await githubApi(token, "PATCH", `/repos/${project.github_repo}/pulls/${editPr}`, { state: "closed" }) : null;
+    if (closed?.status !== 200) return { ok: false, error: "The article's file is already gone from your repo, but we couldn't close its open edit pull request. Try again in a minute." };
+  }
+  if (!(await claim(row, new Date().toISOString(), { status: "removed" }))) return STALE;
+  await afterRemoval(project, row);
+  return { ok: true, message: "Removed. Its file was already gone from your repo and the page no longer loads, so it's marked removed here too." };
+}
+
 /** What follows a removal that has taken effect: the page record goes
  *  (the dashboard's page lists, the liveness probe and the per-page history
  *  key off it), and the article's keyword stops costing rank checks unless
@@ -730,7 +830,8 @@ type RepoChange =
   | { kind: "edit"; title: string; metaDescription: string; markdown: string; file: Extract<RepoFile, { ok: true }> }
   | { kind: "remove"; title: string; closeEditPr: number | null };
 
-type RepoChangeResult = { ok: true; prUrl: string; prNumber: number } | { ok: false; error: string };
+/** `gone`: a removal found no file on the default branch to delete. */
+type RepoChangeResult = { ok: true; prUrl: string; prNumber: number } | { ok: false; error: string; gone?: true };
 
 /** Replace one top-level `key: value` line of a frontmatter block. Null when
  *  the value cannot be swapped in place: a block scalar (`|`, `>`), a value
@@ -802,7 +903,7 @@ async function repoChange(project: Project, row: Row, change: RepoChange): Promi
   } else {
     // The file must still be there to delete (a stale path after a move).
     const head = await gh("GET", `/repos/${repo}/contents/${encodeURI(path)}?ref=${encodeURIComponent(baseBranch)}`);
-    if (head.status === 404) return { ok: false, error: "The article's file isn't in your repo any more - was it moved or deleted on GitHub? Nothing was changed." };
+    if (head.status === 404) return { ok: false, gone: true, error: "The article's file isn't in your repo any more - was it moved or deleted on GitHub? Nothing was changed." };
     if (head.status !== 200) return bad("file read", head.status);
   }
 

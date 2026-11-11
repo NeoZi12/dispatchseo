@@ -1668,6 +1668,9 @@ const mcpHandler = createMcpHandler(
 
         // Pulls an already-scheduled publish forward instead of silently
         // deduping against it - see publishDraftNow.
+        // The owner's go-ahead (see approveDraft in actions.ts): a paused site
+        // holds every article that is not approved, and this is the approval.
+        await db().from("article_drafts").update({ approved_at: new Date().toISOString() }).eq("id", draft.id).eq("project_id", p.id).in("status", ["accepted", "finished"]).is("approved_at", null);
         await publishDraftNow(p.id, draft.id);
         return ok({
           id: draft.id,

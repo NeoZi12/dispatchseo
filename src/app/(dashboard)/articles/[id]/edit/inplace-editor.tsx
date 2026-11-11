@@ -135,7 +135,10 @@ export function InplaceEditor({
   const [state, formAction, pending] = useActionState(saveArticleEdit, null);
   const lastSavedAt = useRef<number | null>(null);
 
-  const bodyOf = (blocks: Block[]) => blocks.map((b) => b.source.trim()).filter(Boolean).join("\n\n");
+  // trimEnd, not trim (2026-11-11): a block's first-line indentation is part
+  // of its source (four spaces = an indented code block on the site's own
+  // renderer), and every save writes this text back to the repo file.
+  const bodyOf = (blocks: Block[]) => blocks.map((b) => b.source.trimEnd()).filter(Boolean).join("\n\n");
   const dirtyVisual = titleRef.current !== savedRef.current.title || meta !== initial.metaDescription || bodyOf(blocksRef.current) !== bodyOf(savedRef.current.blocks);
   // Typing in the HTML tab counts as a change before it reaches the blocks.
   const dirty = dirtyVisual || (tab === "html" && htmlText !== htmlBase);

@@ -5,8 +5,14 @@ import { missingCredentials } from "@/lib/writer/models";
 import { runAutopilotPass } from "@/lib/autopilot";
 import { rebalanceOwnerShares } from "@/lib/site-shares";
 
-// The autopilot's daily pass (vercel.json 05:30 UTC; docker/cron/crontab on
-// self-host). For every project in hosted-writer mode: the auto-pause check,
+// The autopilot's pass (vercel.json 05:30, 13:30 and 21:30 UTC; once a day
+// from docker/cron/crontab on self-host). The two later runs are retries,
+// not extra articles: a site starts at most one article per UTC day (the
+// spacing rule counts whole days from the last start), so they only reach
+// the sites whose morning start did not happen - keyword data that was at
+// its ceiling, a queue research had not refilled yet, a run our side killed
+// and handed back. At one article a day, a plan of 30 on one site has no
+// spare day to make a lost one up in, so the day itself must not be lost. For every project in hosted-writer mode: the auto-pause check,
 // weekly keyword research (immediately for a project never researched), and
 // today's article if the plan's weekly quota and the 2-day spacing allow -
 // see src/lib/autopilot/index.ts for the order and why.

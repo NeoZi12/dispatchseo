@@ -448,9 +448,14 @@ export function dispatchScheduledBuild(
 }
 
 
+/** `sha`: merge only if the branch head is still this commit. The lander
+ *  passes the head it judged, so a push after that look is never merged
+ *  unchecked; GitHub then answers 409 and this returns ok: false, which the
+ *  lander reads as "look again". Without it (dashboard, MCP) nothing changes. */
 export async function mergePr(
   repo: RepoRef,
   number: number,
+  sha?: string,
 ): Promise<{ ok: boolean; message: string }> {
   if (!(await canMerge(repo))) return { ok: false, message: "No GitHub merge token connected" };
   const target = refRepo(repo);
@@ -467,7 +472,7 @@ export async function mergePr(
       res = await fetch(`${API}/repos/${target}/pulls/${number}/merge`, {
         method: "PUT",
         headers: { ...(await headers(repo)), "Content-Type": "application/json" },
-        body: JSON.stringify({ merge_method }),
+        body: JSON.stringify({ merge_method, ...(sha ? { sha } : {}) }),
         // Bound a hung GitHub response so it can't occupy the MCP's 60s budget
         // until the platform kills it. Every sibling call already fails
         // gracefully; so must the one mutation here (it used to throw straight

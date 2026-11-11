@@ -38,8 +38,10 @@ export async function runHostedLiveJob(job: Job): Promise<void> {
   if (project.hosted_rewrite_live_at) return;
 
   // On Auto, a merge GitHub refused the first time (mergeability is often
-  // still computing seconds after a pull request opens) is tried again each
-  // pass until the site answers. Best-effort; the state column says why.
+  // still computing seconds after a pull request opens), or one held back
+  // because the repo's checks had not passed yet (hosted-rewrite.ts
+  // mergeRewritePr), is tried again each pass until the site answers.
+  // Best-effort; the state column says why.
   const pr = project.hosted_rewrite_pr_url;
   const state = project.hosted_rewrite_state ?? "";
   if (project.auto_merge && pr && pr.startsWith("http") && !state.startsWith("merged") && state !== "owner-merge") {

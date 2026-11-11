@@ -4,7 +4,7 @@ import { reportCronRun } from "@/lib/cron-alerts";
 import { writerProvider, type Project } from "@/lib/projects";
 import { consecutivePostPickFailures, FAILURE_STREAK_ALARM, noArticleAlarm, noArticleAlarmDays } from "./math";
 import { BUDGET_SKIP } from "./research";
-import { AGENT_STALE_HOURS, AGENT_STALE_REASON, closeRunTasks, waitingOnAgent } from "@/lib/writer/agent-tasks";
+import { AGENT_STALE_HOURS, AGENT_STALE_REASON, BATCH_STALE_HOURS, BATCH_STALE_REASON, closeRunTasks, waitingOnAgent } from "@/lib/writer/agent-tasks";
 import { failRun, getWriterRun } from "@/lib/writer/runs";
 
 /** The scheduler's month-gate skips (usage.ts monthAllowance): the plan
@@ -194,6 +194,40 @@ export async function failStaleAgentRuns(now: Date): Promise<string[]> {
     // failRun is compare-and-set and marks the object only when it won.
     if ((run.status as string) === "failed") {
       await closeRunTasks(run.id, reason);
+      failed.push(run.id);
+    }
+  }
+  return failed;
+}
+
+/**
+ * The same sweep for the batch lane: a run still parked on a batch after
+ * BATCH_STALE_HOURS has lost its poller (the poll job gives up at 26h and
+ * fails the run itself, so anything older was never going to be collected).
+ * Ended as infra: the article is handed back, not charged to the owner.
+ * Returns the run ids it failed.
+ */
+export async function failStaleBatchRuns(now: Date): Promise<string[]> {
+  const cutoff = new Date(now.getTime() - BATCH_STALE_HOURS * 3_600_000).toISOString();
+  const { data, error } = await db()
+    .from("writer_runs")
+    .select("id, project_id")
+    .eq("status", "running")
+    .not("stage_outputs->waiting_on_batch->>since", "is", null)
+    .lt("stage_outputs->waiting_on_batch->>since", cutoff)
+    .order("stage_outputs->waiting_on_batch->>since", { ascending: true })
+    .limit(50);
+  if (error) throw new Error(`could not read runs waiting on a batch: ${error.message}`);
+  const failed: string[] = [];
+  for (const row of (data ?? []) as { id: string; project_id: string }[]) {
+    const run = await getWriterRun(row.project_id, row.id);
+    const waiting = run ? waitingOnAgent(run) : null;
+    // Re-read: it may have resumed since the select, and a marker left from
+    // an earlier stage is not a wait on this one.
+    if (!run || run.status !== "running" || !waiting || waiting.stage !== run.stage || waiting.since >= cutoff) continue;
+    await failRun(run, BATCH_STALE_REASON, 0, "infra");
+    if ((run.status as string) === "failed") {
+      await closeRunTasks(run.id, BATCH_STALE_REASON);
       failed.push(run.id);
     }
   }

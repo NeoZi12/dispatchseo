@@ -134,7 +134,7 @@ export default async function WebsitesPage({ searchParams }: { searchParams: Pro
       line = "Your last payment didn't go through, so nothing is written until it's updated.";
     } else if (!covered) {
       status = "uncovered";
-      line = `Your plan covers your ${limit === 1 ? "oldest website" : `${limit} oldest websites`}, so I'm holding this one. Remove a website or upgrade, and I'll pick it up.`;
+      line = `Your plan covers ${limit === 1 ? "1 website" : `${limit} websites`}, and you have more than that, so I'm holding this one. Remove a website or upgrade, and I'll pick it up.`;
     } else if (settingUp) {
       status = "setup";
       line = `I start writing for ${p.domain} once its setup is finished.`;

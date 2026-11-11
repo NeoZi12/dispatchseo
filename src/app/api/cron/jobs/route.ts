@@ -122,6 +122,16 @@ export async function GET(req: Request): Promise<Response> {
     hadError = true;
     result.agent_writer = { error: e instanceof Error ? e.message : String(e) };
   }
+  // The batch lane's version of the same sweep: a run parked on a batch
+  // past 30h has lost its poller and is handed back (health.ts
+  // failStaleBatchRuns). A read that fails here is tried again in five
+  // minutes, so it is logged and never fails the tick.
+  try {
+    const staleBatch = await (await import("@/lib/autopilot/health")).failStaleBatchRuns(new Date());
+    if (staleBatch.length) result.batch_writer_failed_stale = staleBatch;
+  } catch (e) {
+    console.warn(`[jobs] batch sweep skipped: ${e instanceof Error ? e.message : String(e)}`);
+  }
   // Once a day (the 09:00 UTC hour; idempotent, so every tick in it is
   // harmless): free owners 55 days unseen get the one "log in to keep your
   // articles coming" email (lib/free-gate.ts). Best-effort.

@@ -3,6 +3,7 @@ import { isCloudMode } from "./cloud";
 import {
   articlesPerMonthFor,
   forgetOwnedSites,
+  coverageOrder,
   getSubscription,
   idleSite,
   isActive,
@@ -52,6 +53,8 @@ type ShareRow = {
   created_at: string | null;
   site_launched_at: string | null;
   last_research_at: string | null;
+  /** Paused or setup unfinished (billing.ts idleSite), set by readShareRows. */
+  idle?: boolean;
 };
 
 async function readShareRows(ownerId: string): Promise<{ rows: ShareRow[]; error: string | null }> {
@@ -61,7 +64,9 @@ async function readShareRows(ownerId: string): Promise<{ rows: ShareRow[]; error
     .eq("owner_user_id", ownerId)
     .order("created_at", { ascending: true });
   if (error) return { rows: [], error: error.message };
-  return { rows: (data ?? []) as unknown as ShareRow[], error: null };
+  // Coverage order, the same one projectPlan and planGate read
+  // (billing.ts coverageOrder): the sites that can write come first.
+  return { rows: coverageOrder(((data ?? []) as unknown as ShareRow[]).map((r) => ({ ...r, idle: idleSite(r) }))), error: null };
 }
 
 /** The owner's live plan and its pool, or null when there is no pool to
@@ -369,7 +374,11 @@ export async function siteShareReport(projectId: string, now = new Date()): Prom
   // Coverage as planGate decides it; without a live plan the free plan's
   // one site is the owner's oldest (billing.ts writerGate).
   const limit = isActive(sub) ? sitesLimitOf(sub!) : 1;
-  const coveredRows = rows.slice(0, limit);
+  // No live plan: the free plan writes for the owner's OLDEST site by age
+  // (billing.ts writerGate), whatever is paused - not the first in coverage
+  // order.
+  const coveredRows = isActive(sub) ? rows.slice(0, limit) : [...rows].sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""))).slice(0, limit);
+  const coveredIds = new Set(coveredRows.map((r) => r.id));
   const resolved = pool != null ? sharesForPool(pool, coveredRows.filter((r) => !outsidePool(r)).map((r) => ({ ...r, idle: idleSite(r) }))) : new Map<string, number>();
   const held = pool != null ? Math.max(0, pool - [...resolved.values()].reduce((a, b) => a + b, 0)) : 0;
   const [siteCounts, ownerMonth] = await Promise.all([
@@ -387,7 +396,7 @@ export async function siteShareReport(projectId: string, now = new Date()): Prom
     ownerUsedThisMonth: ownerMonth && !("readError" in ownerMonth) ? ownerMonth.ownerCount : null,
     held,
     sites: rows.map((r, i) => {
-      const covered = i < limit;
+      const covered = coveredIds.has(r.id);
       return {
         slug: r.slug,
         domain: r.domain ?? "",

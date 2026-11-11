@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import type { Project } from "@/lib/projects";
 import { tokenForRef } from "@/lib/github";
 import { githubApi } from "@/lib/repo-publish";
+import { CLEAN } from "@/lib/pr-landing";
 import { backendBaseUrl } from "@/lib/pipeline-pack";
 import { HOSTED_HEADER, HOSTED_PATHS, hostedBase, hostedPath, siteOrigin } from "@/lib/hosted-blog";
 import { readSiteTheme } from "@/lib/hosted-theme";
@@ -28,6 +29,11 @@ import { randomBytes } from "node:crypto";
 // (checkRewriteLive looks for the marker header the hosted routes send).
 
 const BRANCH = "dispatchseo/hosted-blog";
+/** How long a forwarding pull request that adds code waits for the repo's
+ *  checks before it is merged anyway (mergeRewritePrNow). */
+const CHECKS_GRACE_MS = 15 * 60_000;
+/** Checks still running after this long are not waited for any more. */
+const CHECKS_PENDING_MAX_MS = 2 * 3_600_000;
 
 /** Addressed by the project's random hosted key, never its slug: slugs are
  *  reused after a delete and a stale forwarding rule would then serve the
@@ -280,6 +286,12 @@ export function planRewrite(paths: string[], existing: RepoFiles, backend: strin
       const plan = vercelPlan();
       if (plan) return plan;
     }
+    // A static export (output: "export", GitHub Pages or any plain file
+    // host) has no server to forward from: Next refuses a proxy/middleware
+    // or rewrites with it at build time, so adding either would fail every
+    // deploy of the owner's site from then on. The owner adds the rule on
+    // their host instead.
+    if (/\boutput\s*:\s*["'`]export["'`]/.test(existing.nextConfig?.content ?? "")) return { kind: "manual" };
     if (!nextProxyFile(paths) && !avoid.has("next-proxy")) {
       const src = !paths.some((p) => /^(app|pages)\//.test(p)) && paths.some((p) => /^src\/(app|pages)\//.test(p));
       const ts = has("tsconfig.json");
@@ -363,7 +375,13 @@ export async function switchToHostedBlog(project: Project, opts: { secondPath?: 
     // servesOwnBlog said no just above: a /blog page in the repo, if any,
     // serves no posts, which is what lets the plan remove a template one.
     const pr = await openRewritePr(updated, { blogEmpty: true });
-    if (pr) updated.hosted_rewrite_pr_url = pr.url;
+    if (pr) {
+      updated.hosted_rewrite_pr_url = pr.url;
+      // The state openRewritePr just stored, on the copy the merge reads:
+      // without it the merge saw whatever the row held before (nothing, or
+      // an older plan's kind) and judged the wrong kind of change.
+      updated.hosted_rewrite_state = `opened:${pr.kind}`;
+    }
     // On Auto the owner was promised a blog that switches on by itself, so
     // the forwarding pull request is merged here too (launch.ts does the
     // same for a site the setup launched). Best effort: a refused merge
@@ -385,7 +403,8 @@ export async function switchToHostedBlog(project: Project, opts: { secondPath?: 
 }
 
 /** Does https://<domain>/blog already answer with a real BLOG that is not
- *  ours? 404 or our own marker = free. Unreachable = free on cloud (a new
+ *  ours? 404 or our own marker = free. 401/403/429/5xx = taken, unless a
+ *  random path gets that same answer (see below). Unreachable = free on cloud (a new
  *  site that is not live yet), but NOT on self-host: a backend that cannot
  *  see the site from where it runs (a LAN box) has no business pointing the
  *  site's public /blog at itself.
@@ -404,9 +423,24 @@ export async function servesOwnBlog(project: Project): Promise<boolean> {
   const res = await fetchProjectUrl(`${origin}/blog`, project.domain, init);
   if (!res) return !isCloudMode();
   if (res.headers.get(HOSTED_HEADER) === "1") return false;
-  if (res.status !== 200) return false;
+  const probeUrl = `${origin}/dispatchseo-probe-${randomBytes(6).toString("hex")}`;
+  if (res.status === 404 || res.status === 410) return false;
+  if (res.status !== 200) {
+    // A refusal is not "nothing there": a CMS blog behind bot protection
+    // answers 403 to our check, and reading that as free would forward the
+    // owner's real blog away. But some hosts (S3-style static hosting)
+    // answer 403 to every unknown path, where /blog really is free. A path
+    // that cannot exist tells the two apart: the same answer = the host says
+    // that to anything; a 404 or a page while /blog was refused = /blog is
+    // something real we were kept out of.
+    const refused = res.status === 401 || res.status === 403 || res.status === 429 || res.status >= 500;
+    if (!refused) return false;
+    const probe = await fetchProjectUrl(probeUrl, project.domain, init);
+    if (!probe || probe.status === res.status) return false;
+    return probe.status === 404 || probe.status === 410 || probe.status === 200;
+  }
   const body = await res.text().catch(() => "");
-  const probe = await fetchProjectUrl(`${origin}/dispatchseo-probe-${randomBytes(6).toString("hex")}`, project.domain, init);
+  const probe = await fetchProjectUrl(probeUrl, project.domain, init);
   if (probe && probe.status === 200) {
     const other = await probe.text().catch(() => "");
     const a = body.length;
@@ -607,7 +641,9 @@ const PLAN_WORDS: Record<Exclude<RewritePlan["kind"], "manual">, { title: string
  *  to do. Only our own branch, in the project's own repo, at the exact commit
  *  just read; never the template-removal kind (that deletes the owner's
  *  files and stays theirs to merge). A merge GitHub refuses (branch
- *  protection, a conflict) throws and leaves the PR open. */
+ *  protection, a conflict) throws and leaves the PR open. A branch whose
+ *  checks have not passed yet is left open without a throw; the hosted-live
+ *  watch (job-handlers/hosted-live.ts) calls this again every pass. */
 export async function mergeRewritePr(project: Project, prUrl: string): Promise<void> {
   try {
     await mergeRewritePrNow(project, prUrl);
@@ -644,6 +680,55 @@ async function mergeRewritePrNow(project: Project, prUrl: string): Promise<void>
   const head = state.json.head as { ref?: string; sha?: string; repo?: { full_name?: string } } | undefined;
   if (!same(base?.repo?.full_name) || head?.ref !== BRANCH || !same(head?.repo?.full_name) || !head?.sha) {
     throw new Error("the stored pull request is not our forwarding pull request; left alone");
+  }
+
+  // A forwarding change that adds CODE to the owner's app (a proxy or
+  // middleware file, an edited next.config, a removed template page) gets
+  // the repo's checks a chance to speak before it is merged: merged the
+  // second it opened, a change that breaks their build was on their main
+  // branch before any check had run. A one-line host rule (vercel.json,
+  // _redirects) cannot break a build and merges as it always did.
+  //
+  // What "a chance" means, and why it is not "wait until green":
+  //  - GitHub calls the branch clean (or the repo has no checks): merge.
+  //  - Otherwise wait CHECKS_GRACE_MS from when the pull request opened
+  //    (the hosted-live watch calls this again every five minutes).
+  //  - After that, merge UNLESS the checks can be read and one that passes
+  //    on the base branch fails with our change - the one case where the
+  //    red is known to be ours. Then it stays open; the dashboard's "Merge
+  //    the forwarding pull request" card links it.
+  //  - A check that is red on the owner's own branch too, a state GitHub
+  //    will not explain (the App cannot read checks on most installs,
+  //    repo-publish.ts pullRequestChecks), or checks still running after
+  //    CHECKS_PENDING_MAX_MS: merge, as before. Waiting for green there
+  //    would leave the blog address answering nothing for good on every
+  //    repo with one check that is always red, with no one told.
+  // A state without a readable kind is treated as code.
+  let mergeable = state.json.mergeable_state;
+  if (mergeable == null || mergeable === "unknown") {
+    await new Promise((r) => setTimeout(r, 4000));
+    const again = await githubApi(token, "GET", `/repos/${repo}/pulls/${number}`);
+    // A different head since the first read is not the commit judged above.
+    if (again.status === 200 && (again.json?.head as { sha?: string } | undefined)?.sha === head.sha) mergeable = again.json?.mergeable_state;
+  }
+  const kind = /^opened:([a-z-]+)/.exec(String(project.hosted_rewrite_state ?? ""))?.[1] ?? "";
+  const hostRuleOnly = kind === "vercel" || kind === "netlify";
+  if (!hostRuleOnly && !CLEAN.has(String(mergeable ?? "unknown"))) {
+    const openedAt = Date.parse(String(state.json.created_at ?? ""));
+    const ageMs = Number.isFinite(openedAt) ? Date.now() - openedAt : Number.POSITIVE_INFINITY;
+    // Not a failure: nothing is thrown or written, so the row keeps
+    // "opened:<kind>" (mergedState needs the kind, and launch.ts does not
+    // catch a throw) and the watch asks again on its next pass.
+    if (ageMs < CHECKS_GRACE_MS) return;
+    const { pullRequestChecks } = await import("@/lib/repo-publish");
+    const ours = await pullRequestChecks(project, head.sha).catch(() => null);
+    if (ours?.verdict === "pending" && ageMs < CHECKS_PENDING_MAX_MS) return;
+    if (ours?.verdict === "failed") {
+      const baseSha = (state.json.base as { sha?: string } | undefined)?.sha ?? "";
+      const theirs = baseSha ? await pullRequestChecks(project, baseSha).catch(() => null) : null;
+      const passedBefore = new Set(theirs?.passed ?? []);
+      if (ours.failing.some((f) => passedBefore.has(f.name))) return;
+    }
   }
 
   const merged = await githubApi(token, "PUT", `/repos/${repo}/pulls/${number}/merge`, { merge_method: "squash", sha: head.sha });

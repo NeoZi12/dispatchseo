@@ -148,6 +148,24 @@ async function closePr(project: NonNullable<Awaited<ReturnType<typeof getProject
 async function revert(projectId: string, row: { id: string; published_url: string | null }, p: Payload, now: string): Promise<void> {
   if (p.kind === "edit") {
     if (!p.previous) return;
+    // A newer edit went out on a pull request of its own after this one was
+    // closed or merged but before we looked (a manual-merge site is looked at
+    // every two hours, 2026-11-11): the row holds THAT edit's text, and its
+    // own watcher puts the live text back if it is closed. Ours would undo
+    // it. Finished watchers count too - the newer one may have settled first.
+    // GitHub numbers only go up, so "newer" is a higher number.
+    const { data: others, error } = await db()
+      .from("jobs")
+      .select("payload")
+      .eq("project_id", projectId)
+      .eq("kind", "owner-pr")
+      .contains("payload", { draftId: row.id, kind: "edit" })
+      // Every round is a row of its own: newest first, so a long chain's
+      // history cannot crowd the newer edit out of the page.
+      .order("created_at", { ascending: false })
+      .limit(200);
+    if (error) throw new Error(`could not check for a newer edit: ${error.message}`);
+    if (((others ?? []) as { payload?: { prNumber?: number } }[]).some((o) => Number(o.payload?.prNumber) > Number(p.prNumber))) return;
     await db()
       .from("article_drafts")
       .update({ title: p.previous.title, meta_description: p.previous.meta_description, markdown: p.previous.markdown, updated_at: now })

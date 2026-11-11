@@ -2775,6 +2775,13 @@ export async function approveDraft(draftId: string): Promise<DraftActionState> {
 
   // Pulls an already-scheduled publish forward instead of silently deduping
   // against it - see publishDraftNow.
+  // The owner's own go-ahead, stamped before the publish is queued: a site
+  // that is paused holds every article that is not approved (publish.ts),
+  // so without the stamp "Publish now" on a paused site answered "goes out
+  // within a few minutes" and nothing happened until a resume. Not inside
+  // publishDraftNow: a resume calls that for held drafts, which the owner
+  // did not approve one by one.
+  await db().from("article_drafts").update({ approved_at: new Date().toISOString() }).eq("id", draft.id).in("status", ["accepted", "finished"]).is("approved_at", null);
   await publishDraftNow(draft.project_id, draft.id);
   revalidatePath("/drafts");
   return {

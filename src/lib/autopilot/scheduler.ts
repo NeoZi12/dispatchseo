@@ -136,7 +136,7 @@ async function hasPublishedHostedArticle(projectId: string): Promise<boolean> {
 export async function runScheduler(
   project: Project,
   now = new Date(),
-  opts: { researchedThisRun?: boolean } = {},
+  opts: { researchedThisRun?: boolean; /** A later pass of the day (autopilot/index.ts): start an article, buy no research. */ retryPass?: boolean } = {},
 ): Promise<SchedulerOutcome> {
   if (writerMode(project) !== "hosted") return { skipped: "not a hosted project" };
   // A dry-run deploy writes canned articles; it must never start one for a
@@ -252,7 +252,7 @@ export async function runScheduler(
     // changes nothing until the next regular run (weekly, or every four
     // weeks on a niche that keeps coming back empty - math.ts researchEveryMs).
     const recent = project.last_research_at && now.getTime() - Date.parse(project.last_research_at) < researchEveryMs(await readResearchState(project.id));
-    if (opts.researchedThisRun || recent) {
+    if (opts.researchedThisRun || recent || opts.retryPass) {
       return { skipped: "no ideas", next_article_at: null, profile: profileOutcome };
     }
     research = await runResearch(project, now);

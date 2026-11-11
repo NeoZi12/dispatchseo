@@ -6,6 +6,7 @@ import { markBlockedSetup } from "./draft-status";
 import { dryDraftBlocked, parkDryDraft } from "./dry-guard";
 import { effectiveAutomations, writerMode, type Project } from "@/lib/projects";
 import { isCloudMode } from "@/lib/cloud";
+import { sitePath } from "@/lib/site-root";
 
 // The repo half of the publish job: the article becomes a commit and a pull
 // request in the owner's own repository.
@@ -113,6 +114,15 @@ export async function runRepoPublish(project: Project, draftId: string, opts: { 
       // site's /blog (posts kept in a CMS - dfmsolutions.de, 2026-11-10) can
       // never take this article. The hosted blog then answers at /articles
       // and their /blog is left alone; before this the draft parked for good.
+      //
+      // Never for a site in a folder of its host (a GitHub Pages project
+      // site): the hosted addresses ignore the folder, so its articles would
+      // claim <host>/blog/<slug> - somebody else's site or a 404. launch.ts
+      // launchBlog refuses the same switch; the draft parks as above.
+      if (sitePath(project)) {
+        await markBlockedSetup(draftId);
+        return;
+      }
       const { switchToHostedBlog } = await import("@/lib/hosted-rewrite");
       const switched = await switchToHostedBlog(project, { secondPath: true });
       if (!switched) {

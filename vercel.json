@@ -4,7 +4,7 @@
   "crons": [
     { "path": "/api/cron/daily-ranks", "schedule": "0 4 * * *" },
     { "path": "/api/cron/jobs", "schedule": "*/5 * * * *" },
-    { "path": "/api/cron/autopilot", "schedule": "30 5 * * *" },
+    { "path": "/api/cron/autopilot", "schedule": "30 5,13,21 * * *" },
     { "path": "/api/cron/hourly-gsc", "schedule": "7 */3 * * *" },
     { "path": "/api/cron/serp-collect", "schedule": "37 * * * *" }
   ]
