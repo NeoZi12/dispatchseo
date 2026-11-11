@@ -88,6 +88,14 @@ function AccountSection({ email }: { email: string | null }) {
       <SectionTitle sub="the account this dashboard is signed in to">Account</SectionTitle>
       <div className="divide-y divide-neutral-800/70 rounded-xl bg-neutral-900 px-4 py-1.5 sm:px-5">
         <InfoRow label="Signed in as" value={email ?? "no email on file"} />
+        {/* Every site on the account and how the plan's articles are split
+            between them (settings/websites). Account-level, like this row. */}
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2.5">
+          <span className="text-sm text-neutral-400">Websites</span>
+          <a href="/settings/websites" className="text-sm font-medium text-violet-400 underline underline-offset-2 hover:text-violet-300">
+            Manage your websites
+          </a>
+        </div>
       </div>
     </section>
   );

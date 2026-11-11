@@ -23,12 +23,22 @@ export function DeleteProjectForm({
   // A hosted-writer site: plain wording for the repo note, and no "moving to
   // another install" escape hatch (that is an agent-pipeline concept).
   hosted = false,
+  // The button's words. Settings deletes a "project"; the Websites page
+  // removes a "website" - one action, named the way each page names it.
+  submitLabel = "Delete project",
+  pendingLabel = "Deleting...",
+  // Where the owner lands afterwards. deleteProject honours only the
+  // Websites page; anything else (or nothing) means the dashboard.
+  returnTo,
 }: {
   slug: string;
   domain: string;
   repo?: string | null;
   lastSiteWhileSubscribed?: boolean;
   hosted?: boolean;
+  submitLabel?: string;
+  pendingLabel?: string;
+  returnTo?: "/settings/websites";
 }) {
   const [typed, setTyped] = useState("");
   const [state, formAction, pending] = useActionState<DeleteProjectState, FormData>(
@@ -87,6 +97,7 @@ export function DeleteProjectForm({
         </div>
       ) : null}
       <input type="hidden" name="slug" value={slug} />
+      {returnTo ? <input type="hidden" name="return_to" value={returnTo} /> : null}
       <label className="block space-y-1.5">
         <span className="text-sm text-neutral-400">
           Type <span className="font-mono text-neutral-200">{domain}</span> to confirm
@@ -105,7 +116,7 @@ export function DeleteProjectForm({
         disabled={!armed || pending}
         className="rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-neutral-950 transition-colors hover:bg-red-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-400 disabled:cursor-not-allowed disabled:opacity-40"
       >
-        {pending ? "Deleting..." : "Delete project"}
+        {pending ? pendingLabel : submitLabel}
       </button>
     </form>
   );

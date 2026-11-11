@@ -215,9 +215,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
                   cloud={billing}
                   sitesRemaining={sitesLeft}
                   githubCostRequired={githubCost.required}
-                  // One site per account on every hosted plan, so only the
-                  // operator (and self-host) gets the add row at all.
-                  canAddSite={!billing || owner}
+                  // Self-host and the operator always get the add row (and
+                  // its dialog); a customer gets it while the plan has room
+                  // for another site (Growth 3, Scale 5), and it takes them
+                  // to the Websites page, where a site is added the way the
+                  // first one was (createHostedProjectForUser).
+                  canAddSite={!billing || owner || (sitesLeft ?? 0) > 0}
+                  addHref={billing && !owner ? "/settings/websites?add=1" : null}
                 />
               )}
             </div>

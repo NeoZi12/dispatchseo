@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { switchProject } from "@/app/actions";
 import dynamic from "next/dynamic";
@@ -64,6 +64,7 @@ export function ProjectSwitcher({
   sitesRemaining = null,
   githubCostRequired = false,
   canAddSite = true,
+  addHref = null,
 }: {
   projects: SwitcherProject[];
   activeSlug: string;
@@ -86,9 +87,17 @@ export function ProjectSwitcher({
   // sites" promised something no plan sells. False hides the row, the
   // dialog and the ?add=1 entry point together; the operator (whose own
   // row covers several sites) and self-host (uncapped) keep all three.
+  // Since multi-site plans (2026-11-11) a customer whose plan has room gets
+  // the row too, as a link (addHref below).
   canAddSite?: boolean;
+  // Where a customer adds a site: the Websites page, which creates it the
+  // way the first one was made (setup-flow.ts) and sends them through setup.
+  // Set = the add row and ?add=1 go there and the dialog never mounts; the
+  // dialog (createProjectCore) stays for self-host and the operator.
+  addHref?: string | null;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   // Mounted from the first open on (and its chunk downloaded then), kept
@@ -103,9 +112,14 @@ export function ProjectSwitcher({
   const openAdd = useCallback(() => {
     if (!canAddSite) return;
     setOpen(false);
+    if (addHref) {
+      // Already on the Websites page: it reads ?add=1 itself.
+      if (pathname !== addHref.split("?")[0]) router.push(addHref);
+      return;
+    }
     setAddMounted(true);
     setAdding(true);
-  }, [canAddSite]);
+  }, [canAddSite, addHref, pathname, router]);
   useAddSiteParam(openAdd);
 
   // null means uncapped, so only an explicit zero closes the door.
@@ -251,6 +265,15 @@ export function ProjectSwitcher({
                 Your plan has no room for another site.
               </span>
             </Link>
+          ) : addHref ? (
+            <Link
+              href={addHref}
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className="block rounded-lg px-3 py-2 text-sm text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
+            >
+              + Add website
+            </Link>
           ) : (
             <button
               type="button"
@@ -274,7 +297,7 @@ export function ProjectSwitcher({
       </div>
       {/* Not mounted until the first open, so its chunk is fetched the first
           time it is needed; after that it stays, closed or open. */}
-      {addMounted && canAddSite ? (
+      {addMounted && canAddSite && !addHref ? (
         <AddSiteDialog
           open={adding}
           onClose={() => setAdding(false)}

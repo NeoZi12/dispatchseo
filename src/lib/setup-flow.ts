@@ -225,6 +225,7 @@ export function buildPlanMenu(freeOpen: boolean, yearly: boolean = annualBilling
       tier,
       name: TIER_NAMES[tier],
       perMonth: articlesPerMonthFor(tier),
+      sites: TIER_LIMITS[tier].sites,
       monthly: TIER_LIMITS[tier].price,
       yearly: yearly ? { perMonth: TIER_LIMITS[tier].annual, charge: annualCharge(tier), savePct: annualSavingsPct(tier) } : null,
     })),
@@ -519,8 +520,8 @@ export async function createHostedProjectForUser(userId: string, rawDomain: stri
     if (remaining <= 0) {
       return {
         error: isActive(sub)
-          ? "Your plan's sites are all in use. Upgrade on the Billing page to add another."
-          : "The free plan covers one site. Pick a plan on the Billing page to add another.",
+          ? "Your plan's websites are all in use. Upgrade on the Billing page to add another."
+          : "The free plan covers 1 website. Pick a plan on the Billing page to add more.",
         code: "no_plan",
       };
     }

@@ -993,7 +993,9 @@ export async function deleteProject(
   const jar = await cookies();
   jar.delete(PROJECT_COOKIE);
   revalidatePath("/", "layout");
-  redirect("/dashboard");
+  // Removed from the Websites page: land back there, on the sites that are
+  // left. One fixed path, never a caller-supplied URL.
+  redirect(String(formData.get("return_to") ?? "") === "/settings/websites" ? "/settings/websites" : "/dashboard");
 }
 
 export type DisconnectRepoState = { error: string } | { done: string } | null;

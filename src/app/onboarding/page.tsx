@@ -36,6 +36,7 @@ import { labelFor } from "@/lib/site-platform";
 import { enqueueLaunch } from "@/lib/job-handlers/launch";
 import { listInstallationRepos } from "@/lib/github-app";
 import { isActive, polarConfigured, priceLabel, productIdForTier, TIER_LIMITS } from "@/lib/billing";
+import { rebalanceOwnerShares } from "@/lib/site-shares";
 import { claimFreeLaunch, type FreeLaunchResult } from "@/lib/free-gate";
 import { notifyOwnerOfFreeSignup } from "@/lib/signup-alert";
 import { clientIp } from "@/lib/login-lockout";
@@ -269,7 +270,11 @@ async function cloudSetupFlow(params: OnboardingParams) {
   if (params.gh === "pick_project" && params.installation_id) return null;
   const s = await resolveSetupStage(parsePlanPick(params.plan, params.interval));
   if (s.legacy) return null;
-  if (params.new === "1" && s.user && s.project?.setup_connected_at) redirect("/dashboard?add=1");
+  // "Add a site" from an owner whose sites are all set up: the Websites page,
+  // which adds it the way the first was made and sends them back here for
+  // its steps (or, with no room on the plan, says how to get some). A site
+  // still mid-setup is picked up below instead.
+  if (params.new === "1" && s.user && s.project?.setup_connected_at) redirect("/settings/websites?add=1");
   // A plan picked on the pricing page by someone whose setup is already done
   // (a free site upgrading): straight to that checkout, or to Billing when a
   // plan is already live. Never silently dropped on the dashboard.
@@ -323,9 +328,19 @@ async function cloudSetupFlow(params: OnboardingParams) {
         if (!isActive(s.sub)) {
           const signup = { ownerId: s.user!.id, email: s.user!.email ?? null, domain: s.project.domain, projectId: s.project.id };
           after(() => notifyOwnerOfFreeSignup(signup));
+        } else {
+          // Multi-site plans: the finished site joins the owner's split, so
+          // the plan's articles are divided again now - awaited, so the page
+          // the owner lands on already shows the new site's share (until
+          // this runs it reads 0 beside a site holding the whole pool).
+          // Never throws.
+          await rebalanceOwnerShares(s.user!.id);
         }
       }
-      redirect("/dashboard");
+      // A site added to an account that already had one goes back to the
+      // Websites page it was added from; a first site goes to the dashboard.
+      const mine = await scopedProjects();
+      redirect(mine.length > 1 ? "/settings/websites" : "/dashboard");
     }
     // Callback flags from a launch-phase install ride along to Home.
     const forwarded = new URLSearchParams();

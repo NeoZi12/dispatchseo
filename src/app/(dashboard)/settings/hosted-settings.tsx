@@ -186,6 +186,42 @@ export async function HostedSettings({
   );
 }
 
+/** The section list: a sticky column on desktop, a row of chips on a
+ *  phone. Shared with the Websites page (settings/websites), which is its
+ *  own route because it is about the account's sites, not this one. */
+export function SettingsNav({ active }: { active: SectionId | "websites" }) {
+  const cloud = isCloudMode();
+  const items: Array<{ id: SectionId | "websites"; title: string; href: string }> = [];
+  for (const x of SECTIONS) {
+    items.push({ id: x.id, title: x.title, href: x.id === "site" ? "/settings" : `/settings?section=${x.id}` });
+  }
+  // Every site on the account (cloud only: a plan is what limits them).
+  if (cloud) items.push({ id: "websites", title: "Websites", href: "/settings/websites" });
+  return (
+    <nav aria-label="Settings sections" className="arrive-up md:sticky md:top-20 md:self-start" style={at(40)}>
+      <ul className="flex flex-wrap gap-1.5 md:flex-col md:gap-0.5">
+        {items.map((x) => (
+          <li key={x.id}>
+            <Link
+              href={x.href}
+              scroll={false}
+              aria-current={x.id === active ? "page" : undefined}
+              className={cx(
+                "block rounded-lg px-3 py-2 text-[14px] transition-colors",
+                x.id === active ? "bg-surface-2 font-medium text-ink" : "text-ink-muted hover:bg-surface hover:text-ink",
+                "max-md:border max-md:border-line-soft",
+                FOCUS_RING,
+              )}
+            >
+              {x.title}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
+
 /* ---------------------------------------------------------------- rows */
 
 /** The card the rows sit in: one surface, hairlines between rows. */
