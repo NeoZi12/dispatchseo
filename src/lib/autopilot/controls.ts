@@ -7,6 +7,9 @@ import { HOUSE_RULES_MAX, normalizeOwnerFacts, OWNER_FACT_CHARS, OWNER_FACTS_MAX
 import { mergeContentPrefs } from "@/lib/content-prefs-store";
 import { findDuplicateSuggestion, isDuplicateKeyError } from "@/lib/suggestion-dedupe";
 import { isProjectUrl } from "@/lib/url-guard";
+import { isCloudMode } from "@/lib/cloud";
+import { writerGate } from "@/lib/billing";
+import { rateLimitHit, rateLimitKey } from "@/lib/rate-limit";
 import { jaccard } from "@/lib/writer/evidence";
 import { cleanTopicList, DUPLICATE_JACCARD, FIT_MIN, matchesBlockedTopic, normalizeKeyword, sentenceTitle } from "./math";
 import { friendlyError } from "./friendly";
@@ -240,6 +243,20 @@ export async function suggestTopic(projectId: string, text: string): Promise<Sug
   for (const r of [...((pages ?? []) as { title: string | null; primary_keyword: string | null }[]), ...((queued ?? []) as { title: string | null; primary_keyword: string | null }[])]) {
     const near = [r.primary_keyword, r.title].find((t) => t && jaccard(t, topic) >= DUPLICATE_JACCARD);
     if (near) return { rejected: `That's too close to "${r.title ?? near}", which the site already has or has queued.` };
+  }
+
+  // Everything above is free. From here a suggestion buys a judge call and a
+  // keyword lookup, so in cloud only a site the writer may work for (paid,
+  // or a launched free site) spends them - an unlaunched or lapsed one is told why.
+  if (isCloudMode()) {
+    const gate = await writerGate(project.id);
+    if (!gate.allowed) return { rejected: `Suggesting topics needs a live plan on this site (${gate.reason}).` };
+  }
+  // The daily count above is a read taken before the insert at the end, so a
+  // parallel burst all passed it and each bought both paid calls. This hit is
+  // atomic and taken before either, for every caller (MCP and dashboard).
+  if (!(await rateLimitHit(rateLimitKey("suggest-topic", project.id), TOPIC_LIMITS.perDay, 86400))) {
+    return { rejected: `That's ${TOPIC_LIMITS.perDay} topic suggestions in 24 hours, the limit. It frees up 24 hours after the first of them.` };
   }
 
   const { profile } = await loadSiteProfile(project);

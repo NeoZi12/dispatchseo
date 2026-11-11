@@ -108,6 +108,8 @@ import {
   recordKeywordIdeasCall,
 } from "@/lib/dataforseo-usage";
 import { rateLimitHit, rateLimitKey } from "@/lib/rate-limit";
+import { isFreePlan, ownerUserIdForProject, projectPlan, writerGate } from "@/lib/billing";
+import { freeStartAllowed, freeStartRaced, recordFreeStart, refundFreeStart } from "@/lib/free-gate";
 import { getDomainRating } from "@/lib/domain-rating";
 import { getAuthority, needsLinkMove } from "@/lib/authority";
 import { validateArticle } from "@/lib/article-validate";
@@ -202,6 +204,11 @@ function failWith(message: string, detail: Record<string, unknown>) {
 const SUBMIT_DAILY_CAP = 5;
 const SUBMIT_IN_FLIGHT_CAP = 3;
 
+// The writer's own refusal (autopilot/usage.ts writerStartGate), so a free
+// owner reads the same limit whichever door the article came through.
+const FREE_ARTICLES_USED_UP =
+  "The free plan's articles for now are used up (2 a month, about two weeks apart), so this one was not stored. Upgrade for more, or hand it in once the next one frees up.";
+
 /** Null when this site may accept another article, or the sentence explaining
  *  why not. Two counts, one round trip each, only on the accepted path. */
 async function submissionCaps(projectId: string): Promise<string | null> {
@@ -259,6 +266,29 @@ const KEYWORD_IDEAS_SEED_CAP = 5;
 // three competitor articles pasted in whole - which is the actual failure mode
 // this bounds, because the next session pays to read whatever is stored here.
 const MAX_RESEARCH_NOTES_CHARS = 64_000;
+
+// Abuse ceilings (security review 2026-11-11). Each sits far above what an
+// honest agent or workflow writes; they exist because one token could
+// otherwise loop a tool into unbounded rows, republishes or model calls.
+// Row caps apply on self-host too (a flood is a flood); the plan-based keyword
+// cap and the request rate are cloud-only where noted at their use.
+const MCP_REQUESTS_PER_MINUTE = 240;
+const EDIT_ARTICLE_DAILY_CAP = 20;
+const UNATTACHED_NOTES_MAX = 200;
+const UNATTACHED_NOTES_DAILY_CAP = 50;
+// Abuse ceilings, not product limits: set years above honest use (a weekly
+// AI scan writes ~120 rows, a trend scan a handful of subjects), because
+// none of these tables has a pruning job and a ceiling a real customer
+// reaches is a silent breakage.
+const AI_CITATION_ROWS_MAX = 50_000;
+const BACKLINK_PROSPECTS_MAX = 2_000;
+const PENDING_SUGGESTIONS_MAX = 500;
+const TREND_TOPICS_MAX = 2_000;
+const PAGES_MAX = 20_000;
+const TRACKED_KEYWORDS_PAID = 300;
+const TRACKED_KEYWORDS_FREE = 50;
+const WAITLIST_DAILY_CAP = 5;
+const THEME_REREAD_DAILY_CAP = 3;
 
 // WHAT A CHAT CLIENT SEES. Claude.ai and ChatGPT pay for every tool schema on
 // every request: the full surface is ~64 tools and ~64KB of JSON schema, which
@@ -511,6 +541,19 @@ const mcpHandler = createMcpHandler(
         // autonomous run passing approved:true without source 'manual' still
         // lands pending, same spirit as update_suggestion's approval coercion.
         const lands = source === "manual" && approved ? "approved" : "pending";
+        // A ceiling on what waits for the owner, all modes: past it the queue
+        // is a flood nobody can approve. Frees up as the owner decides ideas.
+        // A failed count lets it through.
+        if (lands === "pending") {
+          const { count: pendingCount, error: pendingErr } = await db()
+            .from("suggestions")
+            .select("id", { count: "exact", head: true })
+            .eq("project_id", p.id)
+            .eq("status", "pending");
+          if (!pendingErr && (pendingCount ?? 0) >= PENDING_SUGGESTIONS_MAX) {
+            return fail(`This site already has ${PENDING_SUGGESTIONS_MAX} ideas waiting for the owner's decision, the limit, so this one was not added. Room frees up as the owner approves or rejects them.`);
+          }
+        }
         const row = {
           project_id: p.id,
           type,
@@ -1120,6 +1163,20 @@ const mcpHandler = createMcpHandler(
       async (input) => {
         const p = currentProject();
 
+        // Cloud: what we publish (and host) is the plan's to give. An
+        // unlaunched or lapsed site is refused before anything is stored, and
+        // a free site's article counts as one of its free articles (below) -
+        // otherwise the free plan's 2 a month was any number, through here.
+        let freeOwnerId: string | null = null;
+        if (isCloudMode()) {
+          const gate = await writerGate(p.id);
+          if (!gate.allowed) return fail(`This site can't hand in articles right now (${gate.reason}). It can once the site is on a live plan.`);
+          if (gate.free) {
+            freeOwnerId = await ownerUserIdForProject(p.id);
+            if (!freeOwnerId) return fail("The free plan needs an owner account on this site before it can take an article.");
+          }
+        }
+
         const submission = {
           title: input.title,
           slug: input.slug,
@@ -1164,6 +1221,7 @@ const mcpHandler = createMcpHandler(
         // is refused here rather than by a unique-index error, because "we are
         // already publishing that" is an answer and "23505" is not.
         let existingId: string | null = null;
+        let existingStatus: string | null = null;
         if (input.suggestion_id) {
           const { data: prior } = await db()
             .from("article_drafts")
@@ -1182,6 +1240,7 @@ const mcpHandler = createMcpHandler(
             );
           }
           existingId = row?.id ?? null;
+          existingStatus = row?.status ?? null;
         }
 
         // What this site already covers, so the gate can refuse a near-repeat.
@@ -1286,6 +1345,13 @@ const mcpHandler = createMcpHandler(
           if (capped) return fail(capped);
         }
 
+        // A free site's article becomes one of the free plan's articles the
+        // moment it is accepted - in the same per-owner ledger the hosted
+        // writer's free starts use (free-gate.ts). A resubmission of a draft
+        // already `submitted` was counted then; a once-rejected draft was not.
+        const countsAsFree = freeOwnerId !== null && report.ok && existingStatus !== "submitted";
+        if (countsAsFree && !(await freeStartAllowed(freeOwnerId!))) return fail(FREE_ARTICLES_USED_UP);
+
         // The second layer (hardenAgentMdx) runs on what is ACCEPTED - what
         // can reach a customer's file; a rejected draft is kept as sent, for
         // "why was it refused" to be answerable. It refuses an input that
@@ -1331,10 +1397,32 @@ const mcpHandler = createMcpHandler(
           updated_at: now,
         };
 
+        // Recorded just before the save, refunded if the save fails: an
+        // uncounted free article is the hole the ledger closes, a counted one
+        // that never stored costs the owner an article for nothing.
+        let freeStartId: string | null = null;
+        if (countsAsFree) {
+          try {
+            freeStartId = await recordFreeStart(freeOwnerId!, p.id, p.domain);
+          } catch {
+            return fail("We couldn't record this free article just now, so nothing was stored. Try again in a minute.");
+          }
+          if (await freeStartRaced(freeOwnerId!)) {
+            await refundFreeStart(freeStartId, p.id);
+            return fail(FREE_ARTICLES_USED_UP);
+          }
+        }
+        const refundFree = async () => {
+          if (freeStartId) await refundFreeStart(freeStartId, p.id);
+        };
+
         let draftId = existingId;
         if (draftId) {
           const { error } = await db().from("article_drafts").update(row).eq("id", draftId);
-          if (error) return fail(`Could not save the article: ${error.message}`);
+          if (error) {
+            await refundFree();
+            return fail(`Could not save the article: ${error.message}`);
+          }
         } else {
           const { data, error } = await db()
             .from("article_drafts")
@@ -1342,6 +1430,7 @@ const mcpHandler = createMcpHandler(
             .select("id")
             .maybeSingle();
           if (error) {
+            await refundFree();
             if (isDuplicateKeyError(error)) {
               return fail(
                 "There is already an article in flight for that idea. Read it with get_drafts before submitting another.",
@@ -1351,7 +1440,10 @@ const mcpHandler = createMcpHandler(
           }
           draftId = (data as { id: string } | null)?.id ?? null;
         }
-        if (!draftId) return fail("Could not save the article: the database returned no row.");
+        if (!draftId) {
+          await refundFree();
+          return fail("Could not save the article: the database returned no row.");
+        }
 
         if (!report.ok) {
           const failed = report.blocking.filter((c) => !c.passed);
@@ -1686,6 +1778,11 @@ const mcpHandler = createMcpHandler(
       async ({ id, title, meta_description, body, expected_updated_at, expected_file_sha }) => {
         if (title === undefined && meta_description === undefined && body === undefined) return fail("Pass at least one of title, meta_description or body.");
         const p = currentProject();
+        // Every edit republishes (a hosted page, a pull request, a WordPress
+        // update), so a live article must not double as a free rewrite channel.
+        if (!(await rateLimitHit(rateLimitKey("edit-article", p.id), EDIT_ARTICLE_DAILY_CAP, 86400))) {
+          return fail(`This site has made ${EDIT_ARTICLE_DAILY_CAP} article edits in 24 hours, the limit. It frees up 24 hours after the first of them.`);
+        }
         const r = await editArticle(p, id, { title, metaDescription: meta_description, body, expectedUpdatedAt: expected_updated_at, expectedFileSha: expected_file_sha }).catch(() => ({ ok: false as const, error: "The save failed on our side. Try again in a moment." }));
         if (!r.ok) return fail(r.error);
         return ok({ saved: true, pending: Boolean(r.pending), message: r.message, ...(r.prUrl ? { pr_url: r.prUrl } : {}) });
@@ -1795,6 +1892,20 @@ const mcpHandler = createMcpHandler(
             .maybeSingle();
           if (error) return fail(`Could not save those notes: ${error.message}`);
           return ok({ id: (data as { id: string } | null)?.id ?? null, saved: true, suggestion_id, chars: size });
+        }
+        // Notes with no idea to attach to are new rows every time (nothing
+        // replaces them), so they get a ceiling and a daily pace; notes for a
+        // queued idea replace in place above. A failed count lets it through.
+        const { count: looseCount, error: looseErr } = await db()
+          .from("research_notes")
+          .select("id", { count: "exact", head: true })
+          .eq("project_id", p.id)
+          .is("suggestion_id", null);
+        if (!looseErr && (looseCount ?? 0) >= UNATTACHED_NOTES_MAX) {
+          return fail(`This site already keeps ${UNATTACHED_NOTES_MAX} research notes not tied to a queued idea, the limit. Save research against its idea's suggestion_id instead - those notes replace in place and aren't capped.`);
+        }
+        if (!(await rateLimitHit(rateLimitKey("notes-loose", p.id), UNATTACHED_NOTES_DAILY_CAP, 86400))) {
+          return fail(`This site has saved ${UNATTACHED_NOTES_DAILY_CAP} research notes without a suggestion_id in 24 hours, the limit. It frees up 24 hours after the first of them; notes saved against a suggestion_id aren't limited.`);
         }
         const { data, error } = await db()
           .from("research_notes")
@@ -1978,6 +2089,13 @@ const mcpHandler = createMcpHandler(
       async ({ target }) => {
         const p = currentProject();
         if (target === "hosted") {
+          // Cloud: the hosted blog is the plan's to give - switching mints the
+          // key that serves pages from our domain, so an unlaunched or lapsed
+          // site can't take it.
+          if (isCloudMode()) {
+            const gate = await writerGate(p.id);
+            if (!gate.allowed) return fail(`The hosted blog needs a live plan on this site (${gate.reason}). Switch to it once the site is on one.`);
+          }
           // The full switch: key, theme, forwarding pull request, parked
           // drafts released - not just the column.
           // A site whose /blog is already a real blog is hosted at /articles
@@ -2160,15 +2278,56 @@ const mcpHandler = createMcpHandler(
       },
       async ({ keywords }) => {
         const p = currentProject();
-        // No per-plan keyword cap. Plans are sold on SITES; a keyword ceiling
-        // was removed on 2026-08-02 because it never bound in practice - the
-        // DataForSEO budget gate (platformBudgetGate + the pacing ladder in
-        // dataforseo-usage.ts) reaches its limit first on every realistic
-        // usage curve, and it degrades gracefully (rank checks stretch to
-        // every other day, then weekly) instead of refusing the write. Two
-        // gates for one cost driver meant the one nobody could see fired
-        // first and the one built to bend never got the chance.
-        const rows = keywords.map((k) => ({
+        // The per-plan keyword caps were removed on 2026-08-02 (the DataForSEO
+        // budget gate and pacing ladder bind first and degrade gracefully).
+        // What came back on 2026-11-11 is a ceiling on the TOTAL set in cloud,
+        // not a pricing lever: nothing bounded how many rows one token could
+        // add, and every row is a paid weekly check. Keywords already tracked
+        // always update; only the new ones past the ceiling are left out,
+        // nothing is ever deleted. Self-host and operator-owned (unbilled)
+        // sites are uncapped. A failed count read lets the call through.
+        let accepted = keywords;
+        let capNote: string | undefined;
+        if (isCloudMode()) {
+          const plan = await projectPlan(p.id).catch(() => null);
+          if (plan?.status !== "unbilled") {
+            const free = isFreePlan(plan);
+            const cap = free ? TRACKED_KEYWORDS_FREE : TRACKED_KEYWORDS_PAID;
+            const { count, error: countErr } = await db()
+              .from("keywords")
+              .select("id", { count: "exact", head: true })
+              .eq("project_id", p.id);
+            const incoming = new Set(keywords.map((k) => k.keyword));
+            // Only read the existing set when this call could cross the line.
+            if (!countErr && (count ?? 0) + incoming.size > cap) {
+              const { data: known, error: knownErr } = await db()
+                .from("keywords")
+                .select("keyword")
+                .eq("project_id", p.id)
+                .range(0, 9999);
+              if (!knownErr) {
+                const tracked = new Set(((known ?? []) as { keyword: string }[]).map((r) => r.keyword));
+                let room = Math.max(0, cap - (count ?? 0));
+                const added = new Set<string>();
+                accepted = keywords.filter((k) => {
+                  if (tracked.has(k.keyword) || added.has(k.keyword)) return true;
+                  if (room <= 0) return false;
+                  room--;
+                  added.add(k.keyword);
+                  return true;
+                });
+                const left = keywords.length - accepted.length;
+                if (left > 0) {
+                  capNote =
+                    `${left} keyword${left === 1 ? " was" : "s were"} not added: this site can track ${cap} keywords at most` +
+                    `${free ? " on the free plan" : ""}, and that is now reached. Keywords already tracked still update.`;
+                }
+              }
+            }
+          }
+        }
+        if (accepted.length === 0) return fail(capNote ?? "No keywords to track.");
+        const rows = accepted.map((k) => ({
           project_id: p.id,
           keyword: k.keyword,
           search_volume: k.volume,
@@ -2181,7 +2340,7 @@ const mcpHandler = createMcpHandler(
           .upsert(rows, { onConflict: "project_id,keyword" })
           .select();
         if (error) return fail(error.message);
-        return ok({ upserted: data?.length ?? 0, keywords: data });
+        return ok({ upserted: data?.length ?? 0, ...(capNote ? { not_added: keywords.length - accepted.length, note: capNote } : {}), keywords: data });
       },
     );
 
@@ -2310,6 +2469,16 @@ const mcpHandler = createMcpHandler(
         }
         if (published_at && publishedMs > Date.now()) {
           return fail(`published_at is in the future (${published_at}) - pass when the page actually went live.`);
+        }
+        // A row ceiling, all modes. Re-logging a page already on record is an
+        // update and always passes; a failed count lets the call through.
+        const { count: pageCount, error: pageCountErr } = await db()
+          .from("pages")
+          .select("id", { count: "exact", head: true })
+          .eq("project_id", p.id);
+        if (!pageCountErr && (pageCount ?? 0) >= PAGES_MAX) {
+          const { data: known } = await db().from("pages").select("id").eq("project_id", p.id).eq("url", url).maybeSingle();
+          if (!known) return fail(`This site already has ${PAGES_MAX.toLocaleString()} pages on record, the limit, so no new page can be logged. Pages already logged can still be updated.`);
         }
         const { data, error } = await db()
           .from("pages")
@@ -2602,6 +2771,11 @@ const mcpHandler = createMcpHandler(
           (r) => norm(r.domain as string) === target,
         );
         if (dup) return ok({ ...dup, already_queued: true });
+        // A row ceiling, all modes. The rows were read whole above for the
+        // dedupe, so their length is the count.
+        if ((existingRows ?? []).length >= BACKLINK_PROSPECTS_MAX) {
+          return fail(`This site already has ${BACKLINK_PROSPECTS_MAX.toLocaleString()} backlink prospects, the limit, so this one was not added. Work through the ones already listed (get_backlink_prospects).`);
+        }
         const { data, error } = await db()
           .from("backlink_prospects")
           .insert({ project_id: p.id, domain, url, reason, domain_rating })
@@ -2919,6 +3093,17 @@ const mcpHandler = createMcpHandler(
       },
       async ({ results }) => {
         const p = currentProject();
+        // A row ceiling, all modes, on what this tool writes: the agent
+        // engines' rows. The cron's Google AI Overview rows are not counted,
+        // so tracking never eats the scan's room. A failed count lets it through.
+        const { count: citationRows, error: citationErr } = await db()
+          .from("ai_snapshots")
+          .select("id", { count: "exact", head: true })
+          .eq("project_id", p.id)
+          .in("engine", [...AGENT_ENGINES]);
+        if (!citationErr && (citationRows ?? 0) + results.length > AI_CITATION_ROWS_MAX) {
+          return fail(`This site already holds ${(citationRows ?? 0).toLocaleString()} AI-citation rows and the limit is ${AI_CITATION_ROWS_MAX.toLocaleString()}, so these ${results.length} were not recorded.`);
+        }
         const rec = await recordAiSnapshots(p.id, results);
         if ("error" in rec) return fail(rec.error);
         return ok({ recorded: rec.inserted });
@@ -4444,6 +4629,15 @@ const mcpHandler = createMcpHandler(
             topic: existing,
           });
         }
+        // A row ceiling, all modes (dismissed subjects stay on the radar for
+        // the dedupe above, so they count). A failed count lets it through.
+        const { count: topicCount, error: topicCountErr } = await db()
+          .from("trend_topics")
+          .select("id", { count: "exact", head: true })
+          .eq("project_id", p.id);
+        if (!topicCountErr && (topicCount ?? 0) >= TREND_TOPICS_MAX) {
+          return fail(`This site already has ${TREND_TOPICS_MAX} subjects on its Trend radar, the limit, so this one was not added.`);
+        }
         const { data, error } = await db()
           .from("trend_topics")
           .insert({
@@ -4998,6 +5192,11 @@ const mcpHandler = createMcpHandler(
         const p = currentProject();
         const patch: Record<string, unknown> = {};
         if (reread_site) {
+          // Cloud: each re-read fetches the site's homepage from our server;
+          // the plain-override path below stays unlimited.
+          if (isCloudMode() && !(await rateLimitHit(rateLimitKey("theme-reread", p.id), THEME_REREAD_DAILY_CAP, 86400))) {
+            return fail(`The site's homepage was already re-read ${THEME_REREAD_DAILY_CAP} times in 24 hours, the limit. It frees up 24 hours after the first of them; setting accent, mode or logo_url by hand still works now.`);
+          }
           const fresh = await readSiteTheme(p);
           if (!fresh) return fail("Could not read the site's homepage.");
           patch.hosted_theme = fresh.theme;
@@ -5516,6 +5715,12 @@ const mcpHandler = createMcpHandler(
         },
       },
       async ({ email }) => {
+        // Cloud: each new join emails the operator, so one token can't feed
+        // the list (or that inbox) in bulk.
+        const p = currentProject();
+        if (isCloudMode() && !(await rateLimitHit(rateLimitKey("waitlist-mcp", p.id), WAITLIST_DAILY_CAP, 86400))) {
+          return fail(`This site has added ${WAITLIST_DAILY_CAP} waitlist emails in 24 hours, the limit. It frees up 24 hours after the first of them.`);
+        }
         const result = await joinWaitlist(email, "mcp");
         if (!result.ok) return fail(result.error);
         return ok({ joined: true });
@@ -5570,6 +5775,16 @@ async function authed(req: Request): Promise<Response> {
   // are, never what the caller is allowed to do - authorisation is the token's
   // job alone, and a caller can always drop this parameter, so nothing
   // security-relevant may ever hang off it.
+  // A per-key request ceiling, cloud only (a self-hoster's own server is
+  // theirs to load). Far above any agent or workflow's real pace; it bounds
+  // a looping or scripted token. failOpen: a limiter hiccup must never lock
+  // a customer out, so only a definite "over" refuses.
+  if (isCloudMode() && !(await rateLimitHit(rateLimitKey("mcp-req", project.id), MCP_REQUESTS_PER_MINUTE, 60, { failOpen: true }))) {
+    return Response.json(
+      { jsonrpc: "2.0", id: null, error: { code: -32000, message: `Rate limit: ${MCP_REQUESTS_PER_MINUTE} requests a minute per project key. It frees up within a minute.` } },
+      { status: 429, headers: { "Retry-After": "60" } },
+    );
+  }
   const client = new URL(req.url).searchParams.get("client") === "chat" ? "chat" : "agent";
   if (client === "chat") noteChatSeen(project);
   if (client === "agent") noteAgentSeen(project);

@@ -31,6 +31,13 @@ two thin research primitives below - `check_serp` and `suggest_keywords`
 - that route through whatever keyword source your project is set up
 with.
 
+On DispatchSEO Cloud each project key can make **240 requests a minute**,
+far above any agent's real pace. Past that the server answers HTTP 429
+with a JSON-RPC error until the minute is up. Self-hosted servers have no
+such limit. Some tools also have a per-site ceiling on how many rows they
+can create; each one is listed with its tool below, and a call that hits
+it is refused with a sentence that names the limit.
+
 Parity is the rule that keeps the two faces of the product honest:
 anything the dashboard can do, your agent can do here, and vice versa.
 If a dashboard screen doesn't have a matching tool on this page, that's
@@ -199,6 +206,10 @@ idea.
 
 Returns the created row, or `{ note, suggestion }` when front-placement
 or an instant build changed what happened.
+
+A site can hold at most **500 ideas waiting** for the owner's decision.
+Past that, a new idea that would land `pending` is refused. Room frees up
+as the owner approves or rejects ideas.
 
 ### `update_suggestion`
 
@@ -433,6 +444,15 @@ extra articles are worth. Both caps refuse by name and store nothing, a
 rejected article never counts against either, and a resubmission of
 something already in flight always goes through.
 
+On DispatchSEO Cloud the site also has to be on a live plan, or be the
+free plan's one site after its checks have passed. Any other site is
+refused before anything is stored. On the free plan, each accepted article
+counts as one of the plan's free articles (2 a month, about two weeks
+apart), in the same tally the autopilot's own free articles use. Once they
+are used up, an accepted article is refused and not stored. A rejected
+submission never counts, and a resubmission of an article that was
+already accepted doesn't count twice.
+
 Accepted returns `{ draft_id, status: "submitted", score, advisory,
 note }` - `score` is 0-100 across every check, and `advisory` lists the
 non-blocking ones that failed, worth fixing next time but not worth a
@@ -557,6 +577,9 @@ article's dashboard page.
   A body that would break the build (MDX safety) is refused with the reason.
 - **WordPress**: the post is updated in place.
 
+A site can make **20 edits in 24 hours** through this tool. Past that, edits
+are refused until 24 hours after the first of them.
+
 `body` is a **replace, not a patch**: read it with `get_article`, edit, send
 the whole thing back. Pass only the fields that change, and pass
 `expected_updated_at` (the `updatedAt` you read) so a save is refused when the
@@ -659,12 +682,16 @@ Calling it twice in a day queues one read and tells you so
 
 Choose where finished articles go: `wordpress` posts them straight to
 your site, `github` commits the article to the connected repo and opens
-a pull request (merged automatically in automatic mode), `manual`
-finishes the article and leaves it for you to place. Owner-gated.
+a pull request (merged automatically in automatic mode), `hosted` means
+DispatchSEO serves the site's /blog itself (or /articles when /blog is
+taken), and `manual` finishes the article and leaves it for you to place.
+Owner-gated. On DispatchSEO Cloud, `hosted` needs a live plan on the site,
+or the free plan's one site after its checks have passed. Any other site
+is refused.
 
 <Fields>
   <Field name="target" type="string" required="true">
-    `github`, `wordpress`, or `manual`.
+    `github`, `wordpress`, `hosted`, or `manual`.
   </Field>
 </Fields>
 
@@ -775,6 +802,11 @@ handover between them.
   </Field>
 </Fields>
 
+Notes saved **without** a `suggestion_id` are a new row each time, so they
+have limits: at most **200** kept per site, and at most **50 saves in 24
+hours**. Notes saved against a `suggestion_id` replace in place and have
+neither limit.
+
 ### `get_research_notes`
 
 Read back research an earlier conversation saved. Call it first in a
@@ -805,6 +837,13 @@ are left as-is on existing rows.
 </Fields>
 
 Returns `{ upserted, keywords }`.
+
+On DispatchSEO Cloud a site can track at most **300 keywords** on a paid
+plan and **50** on the free plan. When a call would go past that, the
+keywords that fit are added, the rest are left out, and the answer says
+how many with `not_added` and a `note`. If none fit, the call is refused.
+Keywords that are already tracked always update, and nothing already
+tracked is ever removed. Self-hosted servers have no such limit.
 
 ### `get_rankings`
 
@@ -865,7 +904,9 @@ serves HTTP 200, which is verified automatically.
   </Field>
 </Fields>
 
-Returns the upserted page row.
+Returns the upserted page row. A site can have at most **20,000 pages** on
+record. Past that, a new url is refused, but re-logging a page already on
+record still updates it.
 
 ### `get_pages`
 
@@ -981,7 +1022,8 @@ a second one.
   </Field>
 </Fields>
 
-Returns the new row, or the existing one with `already_queued:true`.
+Returns the new row, or the existing one with `already_queued:true`. A site
+can hold at most **2,000 prospects**. Past that, a new domain is refused.
 
 ### `get_backlink_prospects`
 
@@ -1174,7 +1216,9 @@ query - `google_ai_overview` is cron-only and can't be written here.
   </Field>
 </Fields>
 
-Returns `{ recorded }`, the count written.
+Returns `{ recorded }`, the count written. A site can hold at most **50,000**
+rows from these engines (the cron's `google_ai_overview` rows don't count).
+A call that would go past that records nothing and is refused.
 
 ## Trends
 
@@ -1217,6 +1261,9 @@ existing row comes back with a note instead of a duplicate.
     That content's public numbers and date, e.g. "512k views, Jul 12".
   </Field>
 </Fields>
+
+A site's radar holds at most **2,000 subjects**, dismissed ones included.
+Past that, a new subject is refused.
 
 ### `get_trend_topics`
 
@@ -1965,6 +2012,14 @@ opened for the host.
 <Fields>
   <Field name="cta_url" type="string">Absolute URL on the site's own domain.</Field>
   <Field name="cta_label" type="string">Button text, up to 60 characters.</Field>
+  <Field name="accent" type="string">Brand colour as `#rrggbb`.</Field>
+  <Field name="mode" type="string">`light` or `dark`.</Field>
+  <Field name="logo_url" type="string">Absolute https image URL for the header mark.</Field>
+  <Field name="reread_site" type="boolean">
+    Re-read colours and logo from the site's homepage, discarding overrides.
+    On DispatchSEO Cloud this works 3 times in 24 hours per site; setting
+    the other fields by hand has no limit.
+  </Field>
 </Fields>
 
 ## Operator-only
@@ -2171,6 +2226,11 @@ or rejected with the reason. A queued topic carries its monthly searches and
 difficulty from DataForSEO. If DataForSEO has no data for it, it is still
 queued, marked "volume unknown - you asked for it".
 
+A site can suggest **20 topics in 24 hours**, counted here and on the
+dashboard together. Past that, suggestions are refused until 24 hours after
+the first of them. On DispatchSEO Cloud the site also needs a live plan, or
+the free plan's one site after its checks have passed.
+
 <Fields>
   <Field name="topic" type="string" required="true">A search phrase.</Field>
 </Fields>
@@ -2186,6 +2246,7 @@ The odd one out in this section - it doesn't touch content preferences
 at all, it's just the last tool registered on the server. Adds an email
 to the DispatchSEO Cloud waitlist, the same list the public landing page
 feeds. Duplicate emails are fine; re-joining is a no-op, not an error.
+On DispatchSEO Cloud a site can add 5 emails in 24 hours.
 
 <Fields>
   <Field name="email" type="string" required="true">

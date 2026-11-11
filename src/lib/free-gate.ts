@@ -236,6 +236,30 @@ export async function recordFreeStart(ownerId: string, projectId: string, domain
   return (data as { id: string }).id;
 }
 
+/** The look AFTER recordFreeStart: freeStartAllowed then recordFreeStart is
+ *  not atomic, so two starts racing through the gate both see each other
+ *  here and both refuse (fail closed). The same test the writer's own start
+ *  makes (writer/runs.ts recordIfFree); submit_article uses this one. */
+export async function freeStartRaced(ownerId: string): Promise<boolean> {
+  try {
+    const { FREE_ARTICLES_PER_MONTH, freeSpacingDays } = await import("./billing");
+    const now = Date.now();
+    const monthStart = new Date(Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), 1)).toISOString();
+    const { data, error } = await db()
+      .from("free_article_starts")
+      .select("started_at")
+      .eq("owner_user_id", ownerId)
+      .order("started_at", { ascending: false })
+      .limit(FREE_ARTICLES_PER_MONTH + 2);
+    if (error) return true;
+    const starts = ((data ?? []) as { started_at: string }[]).map((r) => r.started_at);
+    const recent = starts.filter((s) => now - Date.parse(s) < freeSpacingDays() * 86_400_000).length;
+    return starts.filter((s) => s >= monthStart).length > FREE_ARTICLES_PER_MONTH || recent > 1;
+  } catch {
+    return true;
+  }
+}
+
 /** Hands a free article back when its run died on OUR side (a vendor fault,
  *  a refusal at pick before any work, page one unreadable): the start row
  *  goes, so freeStartAllowed counts two real articles a month, the way

@@ -123,14 +123,27 @@ type TaskPostResponse = {
 // failures (bad request, exhausted balance) come back per task; they are
 // returned as failures rather than thrown so one bad keyword never blocks the
 // rest of the batch.
+//
+// opts.ceiling (the daily-ranks path): on a platform-billed account the
+// platform ceiling is asked again before every chunk after the first - the
+// caller asked before the first - so one large project can't post far past
+// the day's ceiling in a single run. A stop is reported as `stopped`, never as
+// a failure. The collector's confirm posts don't pass it: they follow up on
+// results already paid for.
 export async function postSerpTasks(
   project: Project,
   creds: DataforseoCreds,
   specs: TaskSpec[],
-): Promise<{ posted: number; failed: string[] }> {
+  opts: { ceiling?: boolean } = {},
+): Promise<{ posted: number; failed: string[]; stopped?: string }> {
   let posted = 0;
   const failed: string[] = [];
+  const recheck = Boolean(opts.ceiling) && creds.billedTo === "platform";
   for (let i = 0; i < specs.length; i += POST_CHUNK) {
+    if (recheck && i > 0) {
+      const ceiling = await platformGlobalCeiling();
+      if (!ceiling.allowed) return { posted, failed, stopped: `pacing: ${ceiling.reason} (${specs.length - i} tasks not posted)` };
+    }
     const chunk = specs.slice(i, i + POST_CHUNK);
     const body = chunk.map((s) => ({
       keyword: s.keyword,
@@ -143,10 +156,12 @@ export async function postSerpTasks(
     const json = await dataforseoJson<TaskPostResponse>("POST", TASK_POST_PATH, creds, body);
     // The whole chunk's cost is billed at post time; meter it against the
     // owner's monthly budget exactly like dataforseo.ts's postOnce hook does
-    // for live calls. Fire-and-forget: a ledger failure must never fail the
-    // run it's recording.
+    // for live calls. A ledger failure must never fail the run it's
+    // recording; awaited (errors swallowed) when the ceiling is re-asked
+    // between chunks, so that look sees this chunk's spend.
     if (creds.meterProjectId && json.cost > 0) {
-      recordDataforseoUsage(creds.meterProjectId, TASK_POST_PATH, json.cost).catch(console.error);
+      const metered = recordDataforseoUsage(creds.meterProjectId, TASK_POST_PATH, json.cost).catch(console.error);
+      if (recheck) await metered;
     }
     const rows: Array<Record<string, unknown>> = [];
     json.tasks?.forEach((t, idx) => {
@@ -285,7 +300,7 @@ export async function queueDailyRankTasks(
       sweeping.push(kw);
     }
 
-    const { posted, failed } = await postSerpTasks(
+    const { posted, failed, stopped } = await postSerpTasks(
       project,
       creds,
       sweeping.map((kw) => ({
@@ -295,11 +310,13 @@ export async function queueDailyRankTasks(
         depth: SWEEP_TASK_DEPTH,
         aio: true,
       })),
+      { ceiling: true },
     );
     return {
       mode: "queued",
       sweep: true,
       queued: posted,
+      ...(stopped ? { stopped } : {}),
       ...(dormantResting > 0 ? { dormant_resting: dormantResting } : {}),
       ...(inFlightSkipped > 0 ? { in_flight_skipped: inFlightSkipped } : {}),
       ...(sweepDropped > 0 ? { over_platform_cap: sweepDropped } : {}),
@@ -383,10 +400,11 @@ export async function queueDailyRankTasks(
       failed: [],
     };
   }
-  const { posted, failed } = await postSerpTasks(project, creds, specs);
+  const { posted, failed, stopped } = await postSerpTasks(project, creds, specs, { ceiling: true });
   return {
     mode: "queued",
     queued: posted,
+    ...(stopped ? { stopped } : {}),
     resting: restingCount,
     ...(inFlightSkipped > 0 ? { in_flight_skipped: inFlightSkipped } : {}),
     ...(sweepDropped > 0 ? { over_platform_cap: sweepDropped } : {}),
