@@ -2779,11 +2779,22 @@ export async function approveDraft(draftId: string): Promise<DraftActionState> {
 export async function discardDraft(draftId: string): Promise<DraftActionState> {
   await assertAuthed();
   await assertRowOwned("article_drafts", draftId);
-  const { error } = await db()
+  // A live article (or one being taken down) is never "discarded": that
+  // would only hide it here while the page stays on the site. Same rule as
+  // the discard_draft MCP tool; the status filter on the write itself means
+  // a draft that went live in between is not discarded either.
+  const LIVE = "That article is on your site (or on its way there). To take it down, use Remove on its page.";
+  const { data: current } = await db().from("article_drafts").select("status").eq("id", draftId).maybeSingle();
+  const status = (current as { status: string } | null)?.status;
+  if (status === "published" || status === "removing") return { error: LIVE };
+  const { data: changed, error } = await db()
     .from("article_drafts")
     .update({ status: "discarded", updated_at: new Date().toISOString() })
-    .eq("id", draftId);
+    .eq("id", draftId)
+    .not("status", "in", "(published,removing)")
+    .select("id");
   if (error) return { error: "We could not discard that one. Try again in a moment." };
+  if (!changed?.length) return { error: LIVE };
   revalidatePath("/drafts");
   return { ok: "Discarded." };
 }

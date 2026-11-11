@@ -95,6 +95,19 @@ export async function runLaunchJob(job: Job): Promise<void> {
   let project = await getProjectById(job.project_id);
   if (!project) return; // deleted since it was queued: a state, not a fault
   if (writerMode(project) !== "hosted") return;
+  // A site the writer may not work on (beyond the plan's site allowance, a
+  // second free site, a lapsed plan) gets no launch crawl, Google setup or
+  // profile spend. A quiet skip, like the crons' "setup incomplete": the
+  // plan's state, not a fault. A gate that could not READ the plan is a
+  // blip, not a verdict: that one throws, so the job retries (the launch's
+  // idempotency key never queues a second one, so a quiet skip is final).
+  const { writerGate } = await import("@/lib/billing");
+  const gate = await writerGate(project.id);
+  if (!gate.allowed && gate.reason.startsWith("could not read")) throw new Error(`plan: ${gate.reason}`);
+  if (!gate.allowed) {
+    console.info(`[launch] ${project.slug}: skipped, setup incomplete (${gate.reason})`);
+    return;
+  }
 
   const errors: string[] = [];
   // Before anything reads the site: a GitHub Pages project site lives in a
