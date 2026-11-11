@@ -26,7 +26,7 @@ import { PageHeading } from "@/components/ui/page-heading";
 import { SiteIcon } from "@/components/ui/site-icon";
 import { StatusPill } from "@/components/ui/status-pill";
 import { MonthBoard, type CalCard } from "@/components/ui/month-board";
-import { ARTICLE_STATUS, articleHref, articleStep, inProgress, shortDate, statusLabel, stepLine, toArticleRow } from "../article-status";
+import { ARTICLE_STATUS, articleHref, articleStep, dayDate, inProgress, shortDate, statusLabel, stepLine, toArticleRow } from "../article-status";
 import { setupGaps } from "../mode";
 import { TOPIC_LIMITS } from "@/lib/autopilot/controls";
 import type { CronHealth } from "@/lib/cron-alerts";
@@ -276,6 +276,10 @@ export async function HostedReport({
     .sort((a, b) => Date.parse(b.publishedAt!) - Date.parse(a.publishedAt!))
     .slice(0, 3);
   const liveCount = r.articles.filter((a) => a.status === "published").length;
+  // The next article's date, in the queue's own projection when it loaded
+  // (spacing, quota, the 05:30 run), else the scheduler's stamp. None while
+  // paused or on a plan with no articles: there is no date to promise.
+  const nextAt = r.paused || r.plan.articlesPerWeek <= 0 ? null : (queue?.upcoming[0]?.expected_start ?? queue?.nextStart ?? r.nextArticleAt);
   // The top-posts lists name our articles by their own titles and publish
   // dates, and open the article's own page; anything else keeps what the
   // pages table had, or its path, and links to the live post.
@@ -383,6 +387,7 @@ export async function HostedReport({
           <h2 id="latest-title" className="arrive-up text-xl font-semibold tracking-tight text-ink" style={at(860)}>
             Latest articles
           </h2>
+          {nextAt ? <NextArticleLine at={nextAt} now={now} /> : null}
           <Suspense fallback={<ArticleRowsSkeleton rows={latest.length} />}>
             <LatestRows projectId={project.id} articles={latest} liveCount={liveCount} />
           </Suspense>
@@ -474,6 +479,34 @@ export async function HostedReport({
 
 /** The latest rows, streamed: their keyword numbers and liveness are one
  *  small read (loadGlances), and the chart below never waits on it. */
+/** "Your next article is on Tuesday, Nov 24 · in 13 days" - one quiet strip
+ *  above the latest articles, so the list always says what comes after it. */
+function NextArticleLine({ at: iso, now }: { at: string; now: number }) {
+  const days = Math.floor(Date.parse(iso) / 86_400_000) - Math.floor(now / 86_400_000);
+  const when = dayDate(iso, now);
+  return (
+    <div
+      className="arrive-up flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-accent/30 bg-accent/[0.06] px-4 py-3"
+      style={at(880)}
+    >
+      <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]">
+          <rect x="3" y="4.5" width="14" height="12.5" rx="2.5" />
+          <path d="M3 8.5h14M7 2.75v3.5M13 2.75v3.5" />
+          <circle cx="10" cy="12.75" r="1.4" fill="currentColor" stroke="none" />
+        </svg>
+      </span>
+      <p className="min-w-0 flex-1 text-[15px] text-ink-muted">
+        {days <= 0 ? "Your next article starts " : "Your next article is on "}
+        <span className="font-semibold text-ink">{when}</span>
+      </p>
+      {days >= 2 ? (
+        <span className="shrink-0 rounded-full bg-accent-soft px-2.5 py-1 text-[13px] font-medium tabular-nums text-accent">in {days} days</span>
+      ) : null}
+    </div>
+  );
+}
+
 async function LatestRows({ projectId, articles, liveCount }: { projectId: string; articles: AutopilotArticle[]; liveCount: number }) {
   const glances = await loadGlances(projectId, articles);
   return (
