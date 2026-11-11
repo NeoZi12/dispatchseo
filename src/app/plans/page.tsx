@@ -58,11 +58,11 @@ const TIER_COPY: Record<
 // enough for a card at the lg three-column width, and never let one wrap.
 const CAPABILITIES = ["Written and published for you", "Weekly keyword research", "Rank and Search Console tracking", "Pauses if Google drops your site"];
 
-// "1 website" / "1 to 3 websites": the plan's site allowance, worded as on
+// "1 website" / "Up to 3 websites": the plan's site allowance, worded as on
 // every plan card (owner, 2026-11-11). An owner may use fewer sites than the
-// plan covers, hence "1 to N".
+// plan covers, hence "Up to N".
 function sitesLine(sites: number): string {
-  return sites === 1 ? "1 website" : `1 to ${sites} websites`;
+  return sites === 1 ? "1 website" : `Up to ${sites} websites`;
 }
 
 function Check({ className }: { className?: string }) {

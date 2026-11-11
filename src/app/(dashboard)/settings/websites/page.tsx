@@ -289,7 +289,7 @@ function WebsitesView({
 
         {free ? (
           <p className="text-[13.5px] text-ink-muted">
-            The free plan writes for 1 website. Growth covers 1 to {TIER_LIMITS.growth.sites} websites with {articlesPerMonthFor("growth")} articles a month, and Scale 1 to{" "}
+            The free plan writes for 1 website. Growth covers up to {TIER_LIMITS.growth.sites} websites with {articlesPerMonthFor("growth")} articles a month, and Scale up to{" "}
             {TIER_LIMITS.scale.sites} with {articlesPerMonthFor("scale")}.{" "}
             <a href="/billing" className="font-medium text-accent underline underline-offset-2 hover:text-ink">
               See plans

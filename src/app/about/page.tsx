@@ -57,9 +57,9 @@ export default function AboutPage() {
         <p>
           Free: 2 articles per month, no card, no end date; free articles carry a small
           DispatchSEO badge. Starter: {ARTICLES_PER_MONTH.starter} articles per month on 1 website for{" "}
-          {priceLabel(TIER_LIMITS.starter.price)}. Growth: {ARTICLES_PER_MONTH.growth} articles per month on 1 to{" "}
+          {priceLabel(TIER_LIMITS.starter.price)}. Growth: {ARTICLES_PER_MONTH.growth} articles per month on up to{" "}
           {TIER_LIMITS.growth.sites} websites for {priceLabel(TIER_LIMITS.growth.price)}. Scale: {ARTICLES_PER_MONTH.scale} articles
-          per month on 1 to {TIER_LIMITS.scale.sites} websites for {priceLabel(TIER_LIMITS.scale.price)}. Paid plans add
+          per month on up to {TIER_LIMITS.scale.sites} websites for {priceLabel(TIER_LIMITS.scale.price)}. Paid plans add
           weekly keyword research, keyword rankings and advanced analytics, and drop the badge.
           Yearly billing is cheaper where offered; the exact figures are on the{" "}
           <Link className="underline text-white" href="/?home=1#pricing">

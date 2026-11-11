@@ -74,7 +74,7 @@ export type ChangelogEntry = {
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   {
     kind: "improved",
-    text: "Paid plans now publish more articles a month and cover more websites, at the same prices: Starter 5 articles a month on 1 website, Growth 15 on 1 to 3 websites, Scale 30 on 1 to 5 websites. Use one site and it gets all of them. Add more and we split them for you.",
+    text: "Paid plans now publish more articles a month and cover more websites, at the same prices: Starter 5 articles a month on 1 website, Growth 15 on up to 3 websites, Scale 30 on up to 5 websites. Use one site and it gets all of them. Add more and we split them for you.",
   },
   { kind: "new", text: "Settings has a Websites page: how many articles a month your plan has, how many websites you're using, and how the articles are divided between them. Open a website's row to pick Autopilot or Manual review, set its number, pause it or remove it. Add a website while your plan has room." },
   { kind: "fixed", text: "The Websites page now re-divides your plan's articles the moment you add a website, pause one or change plan. Before, the numbers could stay out of date until the next morning: a website still in setup could hold articles it couldn't use yet." },

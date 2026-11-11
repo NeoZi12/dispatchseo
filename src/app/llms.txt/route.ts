@@ -43,7 +43,7 @@ site starts on the free plan; paid plans publish more articles a month.
   small DispatchSEO badge.
 - Paid plans, billed monthly: Starter ${priceLabel(TIER_LIMITS.starter.price)}
   (${ARTICLES_PER_MONTH.starter} articles per month, 1 website), Growth ${priceLabel(TIER_LIMITS.growth.price)} (${ARTICLES_PER_MONTH.growth} articles per month,
-  1 to ${TIER_LIMITS.growth.sites} websites), Scale ${priceLabel(TIER_LIMITS.scale.price)} (${ARTICLES_PER_MONTH.scale} articles per month, 1 to ${TIER_LIMITS.scale.sites} websites).
+  up to ${TIER_LIMITS.growth.sites} websites), Scale ${priceLabel(TIER_LIMITS.scale.price)} (${ARTICLES_PER_MONTH.scale} articles per month, up to ${TIER_LIMITS.scale.sites} websites).
   A plan's articles are shared by its websites: one site gets all of them,
   and more sites split them. Paid plans add weekly keyword research, keyword
   rank tracking and advanced analytics, and remove the badge. Yearly billing

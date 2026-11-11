@@ -600,9 +600,9 @@ const WHO: Record<PlanTier, string> = {
 // Plans are stated per month everywhere, flat (owner, 2026-11-11): 5 / 15 /
 // 30, the same count the landing cards show.
 const perMonthLine = (n: number) => (n === 1 ? "1 article a month" : `${n} articles a month`);
-// The plan's websites, worded as on every plan card: "1 website", "1 to 3
+// The plan's websites, worded as on every plan card: "1 website", "Up to 3
 // websites" (an owner may use fewer sites than the plan covers).
-const sitesLine = (n: number) => (n === 1 ? "1 website" : `1 to ${n} websites`);
+const sitesLine = (n: number) => (n === 1 ? "1 website" : `Up to ${n} websites`);
 // Three rows at most after the pace (and the websites row on a paid card).
 const PAID_ROWS = ["Topics people search for", "Rankings and analytics", "No badge"];
 const FREE_ROWS = ["Topics people search for", "Your Google stats", "Small DispatchSEO badge"];

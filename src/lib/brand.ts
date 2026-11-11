@@ -17,11 +17,11 @@ export const BRAND_TAGLINE = "Free SEO automation: researched articles, publishe
 
 // The paid counts come from billing.ts ARTICLES_PER_MONTH (the plan pools, not
 // an env override), so this line cannot drift from the plans. It reads
-// "5, 15 or 30 articles per month on 1 to 5 websites" today.
+// "5, 15 or 30 articles per month on up to 5 websites" today.
 const PAID_RANGE = `${ARTICLES_PER_MONTH.starter}, ${ARTICLES_PER_MONTH.growth} or ${ARTICLES_PER_MONTH.scale}`;
 
 export const BRAND_DESCRIPTION =
-  `DispatchSEO is a free SEO autopilot for small websites. It researches keywords with real search demand, writes fact-checked articles and publishes them to your site for you, as pull requests to your GitHub repo or on a hosted blog, then shows the Google visitors they bring. Two articles per month are free, with no card. Paid plans publish ${PAID_RANGE} articles per month on 1 to ${TIER_LIMITS.scale.sites} websites.`;
+  `DispatchSEO is a free SEO autopilot for small websites. It researches keywords with real search demand, writes fact-checked articles and publishes them to your site for you, as pull requests to your GitHub repo or on a hosted blog, then shows the Google visitors they bring. Two articles per month are free, with no card. Paid plans publish ${PAID_RANGE} articles per month on up to ${TIER_LIMITS.scale.sites} websites.`;
 
 export const BRAND_SAME_AS = [
   "https://github.com/NeoZi12/dispatchseo",
@@ -31,8 +31,8 @@ export const BRAND_SAME_AS = [
 
 const TIER_NAMES: Record<Tier, string> = { starter: "Starter", growth: "Growth", scale: "Scale" };
 
-// "1 website" / "1 to 3 websites", as every plan card words it.
-const sitesLine = (n: number) => (n === 1 ? "1 website" : `1 to ${n} websites`);
+// "1 website" / "up to 3 websites", as every plan card words it.
+const sitesLine = (n: number) => (n === 1 ? "1 website" : `up to ${n} websites`);
 
 // Organization + SoftwareApplication, one graph. Prices come from TIER_LIMITS
 // so the markup can never disagree with the plan cards. Google says

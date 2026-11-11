@@ -145,11 +145,11 @@ function PlanLink({ tier, annual, children }: { tier: Tier; annual: boolean; chi
   );
 }
 
-// "1 website" / "1 to 3 websites": a plan's site allowance as every plan card
+// "1 website" / "Up to 3 websites": a plan's site allowance as every plan card
 // states it (owner, 2026-11-11). An owner may use fewer sites than the plan
-// covers, which is why the paid rows read "1 to N".
+// covers, which is why the paid rows read "Up to N".
 function sitesLine(sites: number): string {
-  return sites === 1 ? "1 website" : `1 to ${sites} websites`;
+  return sites === 1 ? "1 website" : `Up to ${sites} websites`;
 }
 
 // The mobile pricing cards' paid plans. Articles a month and sites come from

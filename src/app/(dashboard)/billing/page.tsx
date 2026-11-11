@@ -41,9 +41,9 @@ const TIER_COPY: Record<Tier, { name: string; sub: string }> = {
   scale: { name: "Scale", sub: "For a bigger portfolio" },
 };
 
-// "1 website" / "1 to 3 websites": a plan's site allowance, worded as on every
+// "1 website" / "Up to 3 websites": a plan's site allowance, worded as on every
 // plan card (owner, 2026-11-11). An owner may use fewer sites than the plan
-// covers, hence "1 to N".
+// covers, hence "Up to N".
 // The pricing card's own copy, the same words as setup's plan step
 // (setup-stage/scenes.tsx WHO and PAID_ROWS), the landing page and /plans.
 // Tick rows are always ONE row (owner rule, 2026-11-09): keep each short.
@@ -63,7 +63,7 @@ function Tick() {
 }
 
 function sitesLine(sites: number): string {
-  return sites === 1 ? "1 website" : `1 to ${sites} websites`;
+  return sites === 1 ? "1 website" : `Up to ${sites} websites`;
 }
 
 
@@ -169,7 +169,7 @@ export default async function BillingPage({
                 </div>
                 <p className="mt-3 text-[15px] text-ink">
                   {hostedMode
-                    ? `${perMonth} ${perMonth === 1 ? "article" : "articles"} a month, ${sitesLine(sitesLimitOf(sub))}`
+                    ? `${perMonth} ${perMonth === 1 ? "article" : "articles"} a month, ${sitesLine(sitesLimitOf(sub)).replace(/^Up/, "up")}`
                     : sitesLine(sitesLimitOf(sub))}
                 </p>
                 <p className="mt-1 text-[14px] text-ink-muted">{state.line}</p>
