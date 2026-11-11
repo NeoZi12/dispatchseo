@@ -2145,10 +2145,11 @@ Takes no parameters. Months are UTC calendar months.
   removed this month; `null` without a pool.
 - `held`: pool articles given to no site this month because none was ready
   for more.
-- `sites`: every site on the account, oldest first, as `{ slug, domain,
-  share, mode, covered, usedThisMonth }`. `covered: false` means the plan
-  allows fewer sites than the account has; that site writes nothing until
-  the plan grows or another site is removed.
+- `otherSites`: the account's other sites, oldest first, as numbers only:
+  `{ share, mode, covered, usedThisMonth }`. Their names and domains are
+  not shown to this site's key. `covered: false` means the plan allows
+  fewer sites than the account has; that site writes nothing until the
+  plan grows or another site is removed.
 
 ### `set_site_share`
 
@@ -2156,8 +2157,10 @@ Sets how many of the plan's monthly articles go to **this** site.
 Owner-gated: use it only when the owner asked in the conversation. The
 same control as Settings > Websites. `auto` hands the site back to
 DispatchSEO's split; `custom` fixes it at `articles_per_month`, a whole
-number from 1 to the pool minus what the account's other sites have set
-by hand. The safety ramp for young sites still paces a custom site. Auto
+number from 1 to this site's current share plus the articles no site is
+using (`share` + `held` from `get_site_share`). It never takes articles
+from the account's other sites: the owner moves those in Settings >
+Websites. The safety ramp for young sites still paces a custom site. Auto
 sites are re-split straight away, and the change applies from the next
 daily run, even if this site had already used its old share this month.
 
@@ -2165,8 +2168,8 @@ Refused, with the reason, on the free plan, self-host and unbilled
 installs, and for a site the plan doesn't cover. Returns `{ mode,
 articles_per_month, report }`, where `report` is a fresh `get_site_share`.
 Only this site's share can be set: the token belongs to this project, so
-other sites are listed by `get_site_share` but never changed. Adding or
-removing sites is done in the dashboard, not over MCP.
+other sites show up in `get_site_share` as counts and are never changed.
+Adding or removing sites is done in the dashboard, not over MCP.
 
 <Fields>
   <Field name="mode" type="string" required="true">

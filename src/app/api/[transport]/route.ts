@@ -60,7 +60,7 @@ import { credentialWarnings, isDryRun, missingCredentials } from "@/lib/writer/m
 import { getWriterRun, listWriterRuns, startWriterRun } from "@/lib/writer/runs";
 import { startHostedRunClaimed } from "@/lib/autopilot/scheduler";
 import { getHostedQueue, removeQueuedIdea, restoreQueuedIdea } from "@/lib/autopilot/queue";
-import { setSiteShare, siteShareReport } from "@/lib/site-shares";
+import { setSiteShare, siteShareReport, type SiteShareReport } from "@/lib/site-shares";
 import { keywordKey, keywordStatsBulk, type KeywordStats } from "@/lib/article-keyword-stats";
 import { getDayHourly, getPeriodStats, parsePeriod } from "@/lib/period-stats";
 import { writerMode as projectWriterMode, writerProvider as projectWriterProvider } from "@/lib/projects";
@@ -168,6 +168,18 @@ function ok(data: unknown) {
  *  point of use so a tool can trim its own answer. */
 function chatMode(): boolean {
   return currentClientKind() === "chat";
+}
+
+/** get_site_share / set_site_share answer for ONE project's token: its own
+ *  numbers and the account's totals. The account's other sites come back as
+ *  counts only - a key that lives in one site's repo has no business
+ *  learning the owner's other domains. */
+function shareReportForToken(r: SiteShareReport, ownSlug: string) {
+  const { sites, ...own } = r;
+  return {
+    ...own,
+    otherSites: sites.filter((x) => x.slug !== ownSlug).map(({ share, mode, covered, usedThisMonth }) => ({ share, mode, covered, usedThisMonth })),
+  };
 }
 function fail(message: string) {
   return {
@@ -5497,9 +5509,13 @@ const mcpHandler = createMcpHandler(
 
     // Multi-site plans (2026-11-11): the account's monthly pool of articles,
     // split between the sites the plan covers. The same two functions the
-    // Settings > Websites page calls (site-shares.ts). Only THIS site's share
-    // can be set - the token is this project's, so its siblings are listed,
-    // never changed. Adding or removing a site is deliberately not here: a
+    // Settings > Websites page calls (site-shares.ts), narrowed to what one
+    // project's token should reach: it reads its own numbers and the
+    // account's totals (the other sites as counts, never their slugs or
+    // domains), and it can only set a share that takes nothing from another
+    // site - auto, or a custom number up to its current share plus the
+    // articles no site is using. Moving articles BETWEEN sites is the
+    // dashboard's job. Adding or removing a site is deliberately not here: a
     // token that could create or delete the owner's other projects is the
     // privilege escalation that keeps checkout off MCP (billing.ts header).
     server.registerTool(
@@ -5513,15 +5529,16 @@ const mcpHandler = createMcpHandler(
           "it) or custom (set by hand), `safeMax` = the most this site can safely take a month while " +
           "Google gets to know it (null = no cap) with `reason`, `usedThisMonth` (published, in " +
           "progress, or failed after the topic was picked), `ownerUsedThisMonth` across the account, " +
-          "`held` = pool articles given to no site because none was ready for more, and `sites` = " +
-          "every site on the account, oldest first (slug, domain, share, mode, covered, " +
-          "usedThisMonth). Months are UTC calendar months.",
+          "`held` = pool articles given to no site because none was ready for more, and " +
+          "`otherSites` = the account's other sites as numbers only (share, mode, covered, " +
+          "usedThisMonth), oldest first - their names and domains are not shown to this site's " +
+          "key. Months are UTC calendar months.",
         inputSchema: {},
       },
       async () => {
         const p = currentProject();
         try {
-          return ok(await siteShareReport(p.id));
+          return ok(shareReportForToken(await siteShareReport(p.id), p.slug));
         } catch (e) {
           return fail(`Could not read this site's share: ${e instanceof Error ? e.message : String(e)}`);
         }
@@ -5535,8 +5552,10 @@ const mcpHandler = createMcpHandler(
         description:
           "Owner-gated: choose how many of the plan's monthly articles go to THIS site. `auto` " +
           "(the default) lets DispatchSEO split the pool between the account's sites by how ready " +
-          "each is; `custom` fixes this site at articles_per_month - a whole number from 1 to the " +
-          "pool minus what the account's other sites have set by hand. The safety ramp for young " +
+          "each is; `custom` fixes this site at articles_per_month - a whole number from 1 to this " +
+          "site's current share plus the articles no site is using (`share` + `held` from " +
+          "get_site_share). It cannot take articles from the account's other sites: the owner " +
+          "moves those in Settings > Websites. The safety ramp for young " +
           "sites still paces a custom site. Auto sites are re-split right away; the change applies " +
           "from the next daily run. The same control as Settings > Websites. Refused on the free " +
           "plan, self-host and unbilled installs, and for a site the plan doesn't cover. Returns the " +
@@ -5556,12 +5575,27 @@ const mcpHandler = createMcpHandler(
       async ({ mode, articles_per_month }) => {
         const p = currentProject();
         if (mode === "custom" && articles_per_month == null) return fail("custom needs articles_per_month: how many articles a month this site should get.");
+        if (mode === "custom") {
+          // This key is one site's: it may grow into articles nobody is
+          // using, never into another site's. A report that cannot be read
+          // refuses - the ceiling is the whole point of the check.
+          const now = await siteShareReport(p.id).catch(() => null);
+          if (!now) return fail("Could not read this site's share just now, so it was not changed. Try again in a minute.");
+          const most = (now.share ?? 0) + (now.held ?? 0);
+          if (articles_per_month! > most) {
+            return fail(
+              `Over MCP this site can be set to ${most} articles a month at most: its current ${now.share ?? 0} plus the ${now.held ?? 0} no site is using. ` +
+                "To move articles from another of the account's sites, the owner changes the split in Settings > Websites.",
+            );
+          }
+        }
         const r = await setSiteShare(p, mode === "custom" ? { mode, share: articles_per_month! } : { mode });
         if ("error" in r) return fail(r.error);
+        const after = await siteShareReport(p.id).catch(() => null);
         return ok({
           mode: r.mode,
           articles_per_month: r.share,
-          report: await siteShareReport(p.id).catch(() => null),
+          report: after ? shareReportForToken(after, p.slug) : null,
         });
       },
     );
