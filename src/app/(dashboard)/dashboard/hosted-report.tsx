@@ -477,36 +477,37 @@ export async function HostedReport({
   );
 }
 
-/** The latest rows, streamed: their keyword numbers and liveness are one
- *  small read (loadGlances), and the chart below never waits on it. */
-/** "Your next article is on Tuesday, Nov 24 · in 13 days" - one quiet strip
- *  above the latest articles, so the list always says what comes after it. */
+/** The next article as the empty slot the list fills next: dashed, like the
+ *  month board's queued topics, with the rows' own shape (a title, a faint
+ *  date line) and the countdown as a right-aligned number over a tiny label,
+ *  like Your top posts. The violet light that passes through it three times
+ *  is the house "slot about to fill" (globals.css dispatch-shimmer-soft). */
 function NextArticleLine({ at: iso, now }: { at: string; now: number }) {
   const days = Math.floor(Date.parse(iso) / 86_400_000) - Math.floor(now / 86_400_000);
   const when = dayDate(iso, now);
   return (
     <div
-      className="arrive-up flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-accent/30 bg-accent/[0.06] px-4 py-3"
+      className="arrive-up dispatch-shimmer-soft relative flex items-center gap-4 overflow-hidden rounded-xl border border-dashed border-line px-4 py-3.5 sm:px-5"
       style={at(880)}
     >
-      <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent">
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]">
-          <rect x="3" y="4.5" width="14" height="12.5" rx="2.5" />
-          <path d="M3 8.5h14M7 2.75v3.5M13 2.75v3.5" />
-          <circle cx="10" cy="12.75" r="1.4" fill="currentColor" stroke="none" />
-        </svg>
-      </span>
-      <p className="min-w-0 flex-1 text-[15px] text-ink-muted">
-        {days <= 0 ? "Your next article starts " : "Your next article is on "}
-        <span className="font-semibold text-ink">{when}</span>
+      <p className="min-w-0 flex-1">
+        <span className="block text-[15px] font-medium text-ink-muted">Your next article</span>
+        <span className="mt-1 block text-[13px] text-ink-faint">
+          Starts <span className="font-medium tabular-nums text-ink">{when}</span>
+        </span>
       </p>
       {days >= 2 ? (
-        <span className="shrink-0 rounded-full bg-accent-soft px-2.5 py-1 text-[13px] font-medium tabular-nums text-accent">in {days} days</span>
+        <p className="shrink-0 text-right">
+          <span className="block text-[1.375rem] font-semibold leading-7 tracking-tight tabular-nums text-ink">{days}</span>
+          <span className="mt-0.5 block text-[11px] font-medium uppercase tracking-wider text-ink-faint">Days to go</span>
+        </p>
       ) : null}
     </div>
   );
 }
 
+/** The latest rows, streamed: their keyword numbers and liveness are one
+ *  small read (loadGlances), and the chart below never waits on it. */
 async function LatestRows({ projectId, articles, liveCount }: { projectId: string; articles: AutopilotArticle[]; liveCount: number }) {
   const glances = await loadGlances(projectId, articles);
   return (
