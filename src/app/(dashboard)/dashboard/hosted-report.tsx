@@ -63,6 +63,9 @@ const DAY = 86_400_000;
 // Starter's cadence, read from the engine's own table (billing.ts), for the
 // free tier's upgrade line.
 const STARTER_PER_MONTH = articlesPerMonthFor("starter");
+// Where an owner changes how their plan's articles are split between their
+// sites (Task D's Websites page; set_site_share over MCP).
+const SPLIT_HREF = "/settings/websites";
 const at = (ms: number, i = 0, step?: number) =>
   ({ "--at": `${ms}ms`, "--i": i, ...(step ? { "--step": `${step}ms` } : {}) }) as React.CSSProperties;
 
@@ -105,6 +108,23 @@ function messageOf(r: AutopilotReport, gaps: ReturnType<typeof setupGaps>, proje
         link: { href: "/billing#plans", label: "See plans" },
       };
     }
+    // A live plan with a pool gives this site 0 for one of two reasons,
+    // and neither is a lapsed plan (multi-site plans, 2026-11-11).
+    const m = r.thisMonth;
+    if (m.pool != null && m.covered === true) {
+      return {
+        title: "This site gets no articles this month.",
+        sub: `Your plan's ${m.pool} articles are going to your other sites this month. Change how they're split in Settings.`,
+        link: { href: SPLIT_HREF, label: "Change the split" },
+      };
+    }
+    if (m.pool != null && m.covered === false) {
+      return {
+        title: "Your plan doesn't cover this site.",
+        sub: "You have more sites than your plan includes, so this one gets no articles. Upgrade, or remove a site you no longer need.",
+        link: { href: "/billing#plans", label: "See plans" },
+      };
+    }
     return { title: "Your plan isn't active, so no new articles start.", sub: null, link: { href: "/billing", label: "Open billing" } };
   }
   const blocking = gaps.find((g) => !g.done && g.blocksPublishing);
@@ -130,6 +150,39 @@ function messageOf(r: AutopilotReport, gaps: ReturnType<typeof setupGaps>, proje
       sub: `Upgrade for ${STARTER_PER_MONTH} articles per month, with the full queue and analytics.`,
       link: { href: "/billing#plans", label: "See plans" },
     };
+  }
+  return null;
+}
+
+/** The line under "This month": this site's real monthly number and what it
+ *  has used, always per month. Its share of a pool when the owner's plan
+ *  is split between sites; the free plan's number; and only where there is
+ *  no monthly number at all (self-host, the operator's override) the pace
+ *  as a month. Null when there is nothing to promise. */
+function monthLineOf(r: AutopilotReport): React.ReactNode {
+  const m = r.thisMonth;
+  const used = `${m.used} started so far.`;
+  if (m.share != null) {
+    if (m.share <= 0) {
+      if (m.pool == null || m.covered !== true) return null;
+      return (
+        <>
+          None of your plan&apos;s {m.pool} articles go to this site this month.{" "}
+          <Link href={SPLIT_HREF} className={LINK}>
+            Change the split in Settings
+          </Link>
+          .
+        </>
+      );
+    }
+    const n = `${m.share} ${m.share === 1 ? "article" : "articles"}`;
+    if (m.pool != null && m.share < m.pool) {
+      return `${n} of your plan's ${m.pool} this month for this site, researched, fact-checked and published for you. ${used}`;
+    }
+    return `${n} a month on ${r.plan.free ? "the free plan" : "your plan"}, researched, fact-checked and published for you. ${used}`;
+  }
+  if (r.plan.articlesPerWeek > 0) {
+    return `About ${r.plan.articlesPerWeek * 4} articles a month, researched, fact-checked and published for you. ${used}`;
   }
   return null;
 }
@@ -298,6 +351,7 @@ export async function HostedReport({
     writing: inProgress(r.articles).length,
     waiting: r.articles.filter((a) => ARTICLE_STATUS[a.status].attention).length,
   };
+  const monthLine = monthLineOf(r);
   const pauseControl = r.paused ? (
     <ActionForm action={resumeAutopilot} slug={project.slug} submitLabel="Resume Dispatcher" size="sm" className="[&_p:empty]:hidden" />
   ) : (
@@ -404,11 +458,7 @@ export async function HostedReport({
             <h2 id="week-title" className="text-xl font-semibold tracking-tight text-ink">
               This month <span className="font-normal text-ink-faint">{month.monthName}</span>
             </h2>
-            {r.plan.articlesPerWeek > 0 ? (
-              <p className="mt-1 text-[14px] text-ink-muted">
-                {r.plan.articlesPerWeek * 4} articles per month on your plan, researched, fact-checked and published for you.
-              </p>
-            ) : null}
+            {monthLine ? <p className="mt-1 text-[14px] text-ink-muted">{monthLine}</p> : null}
           </div>
           {/* The month in counts, each with its word - no legend. */}
           <p className="flex flex-wrap gap-x-5 gap-y-1.5">

@@ -38,6 +38,8 @@ export function QueueBoard({
   nextStart,
   usedThisWeek,
   quota,
+  monthShare = null,
+  usedThisMonth = null,
   paused,
   startedDays,
 }: {
@@ -47,6 +49,11 @@ export function QueueBoard({
   nextStart: string | null;
   usedThisWeek: number;
   quota: number;
+  /** This site's articles this month and how many have started (queue.ts);
+   *  null where no month gate applies (free, self-host). The plan's promise
+   *  is monthly, so the caption counts the month, not the week. */
+  monthShare?: number | null;
+  usedThisMonth?: number | null;
   paused: boolean;
   startedDays: number[];
 }) {
@@ -63,6 +70,8 @@ export function QueueBoard({
         nextStart={nextStart}
         usedThisWeek={usedThisWeek}
         quota={quota}
+        monthShare={monthShare}
+        usedThisMonth={usedThisMonth}
         paused={paused}
       />
 
@@ -119,6 +128,8 @@ function WeekStrip({
   nextStart,
   usedThisWeek,
   quota,
+  monthShare = null,
+  usedThisMonth = null,
   paused,
 }: {
   now: number;
@@ -127,6 +138,11 @@ function WeekStrip({
   nextStart: string | null;
   usedThisWeek: number;
   quota: number;
+  /** This site's articles this month and how many have started (queue.ts);
+   *  null where no month gate applies (free, self-host). The plan's promise
+   *  is monthly, so the caption counts the month, not the week. */
+  monthShare?: number | null;
+  usedThisMonth?: number | null;
   paused: boolean;
 }) {
   const today = dayOf(now);
@@ -183,9 +199,9 @@ function WeekStrip({
     caption = (
       <>
         <span className="font-medium text-ink tabular-nums">
-          {Math.min(usedThisWeek, quota)} of {quota}
+          {monthShare != null && usedThisMonth != null ? `${Math.min(usedThisMonth, monthShare)} of ${monthShare}` : `${Math.min(usedThisWeek, quota)} of ${quota}`}
         </span>{" "}
-        this week{when ? ` · next ${when}` : ""}
+        {monthShare != null && usedThisMonth != null ? "this month" : "this week"}{when ? ` · next ${when}` : ""}
       </>
     );
   }

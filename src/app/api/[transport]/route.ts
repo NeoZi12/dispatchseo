@@ -60,6 +60,7 @@ import { credentialWarnings, isDryRun, missingCredentials } from "@/lib/writer/m
 import { getWriterRun, listWriterRuns, startWriterRun } from "@/lib/writer/runs";
 import { startHostedRunClaimed } from "@/lib/autopilot/scheduler";
 import { getHostedQueue, removeQueuedIdea, restoreQueuedIdea } from "@/lib/autopilot/queue";
+import { setSiteShare, siteShareReport } from "@/lib/site-shares";
 import { keywordKey, keywordStatsBulk, type KeywordStats } from "@/lib/article-keyword-stats";
 import { getDayHourly, getPeriodStats, parsePeriod } from "@/lib/period-stats";
 import { writerMode as projectWriterMode, writerProvider as projectWriterProvider } from "@/lib/projects";
@@ -2811,12 +2812,13 @@ const mcpHandler = createMcpHandler(
       {
         title: "Get DataForSEO usage",
         description:
-          "This project's DataForSEO billing status: who it's billed to (own connected " +
-          "account, the platform's bundled plan, or neither), month-to-date spend against the " +
-          "plan's monthly budget when billed to the platform, the projected month-end spend " +
+          "DataForSEO billing status for this project's account: who it's billed to (own connected " +
+          "account, the platform's bundled plan, or neither), the ACCOUNT's month-to-date spend " +
+          "against the plan's monthly budget when billed to the platform (one budget per account, " +
+          "shared by every site on the plan - not this site's own spend), the projected month-end spend " +
           "with the rank cron's pacing level (normal / slowed / weekly - pacing thins the " +
           "check cadence before the budget can run out, so tracking never stops mid-month), " +
-          "and today's check_serp count against its daily cap. For a project on its own account (or self-host), usage " +
+          "and this site's check_serp and keyword_ideas counts today against their daily caps. For a project on its own account (or self-host), usage " +
           "isn't metered here - billed_to reads 'own' or null and the spend/budget fields " +
           "stay zero.",
         inputSchema: {},
@@ -2826,7 +2828,12 @@ const mcpHandler = createMcpHandler(
         const status = await platformUsageStatus(p.id);
         return ok(
           status.billed_to === "platform"
-            ? status
+            ? {
+                ...status,
+                // The budget is per account (dataforseo-usage.ts sums every
+                // site of the owner), so the spend is too.
+                note: "month_to_date_usd, budget_usd and projected_usd are your account's, shared by every site on your plan.",
+              }
             : {
                 ...status,
                 note:
@@ -5202,8 +5209,12 @@ const mcpHandler = createMcpHandler(
         title: "Get the autopilot report",
         description:
           "Everything the hosted dashboard shows for this site in one read: writer mode, pause " +
-          "state (with the reason when it paused itself), plan and articles per week, when the next " +
-          "article starts, this week's count against the quota, the last 50 articles with status " +
+          "state (with the reason when it paused itself), the plan and this site's articles a month " +
+          "(plan.articlesPerMonth: its share of the account's monthly pool, split between the sites " +
+          "the plan covers - see get_site_share), when the next article starts, `thisMonth` (used / " +
+          "published / inFlight against the share, the account's pool and ownerUsed across its sites, " +
+          "and covered = whether the plan covers this site; share 0 on a covered site means the pool " +
+          "goes to the account's other sites this month), the last 50 articles with status " +
           "(writing / verifying / scheduled / published / failed / needs_setup), cost, " +
           "28-day clicks and impressions, and keywordVolume / keywordDifficulty (the target keyword's " +
           "monthly searches and KD 0-100 as research measured them; null = unmeasured) (a repo " +
@@ -5212,8 +5223,10 @@ const mcpHandler = createMcpHandler(
           "the forwarding PR to merge; setup.siteUnreadable = describe the site with set_brand), the " +
           "owner's brand/tone/blocked topics/author, and this month's spend. `upcoming` = the queue " +
           "the writer will work through, in order (reorder_queue positions first, then best volume for " +
-          "its KD), each with its expected_start day (yyyy-mm-dd UTC); " +
-          "`parked` = ideas the writer set aside, with the reason.",
+          "its KD), each with its expected_start day (yyyy-mm-dd UTC; never past the month's share - " +
+          "the rest fall into next month); " +
+          "`parked` = ideas the writer set aside, with the reason. `thisWeek` and plan.articlesPerWeek " +
+          "are only the internal pace that spreads the month out, not what the plan buys.",
         inputSchema: {},
       },
       async () => {
@@ -5265,13 +5278,84 @@ const mcpHandler = createMcpHandler(
         title: "Resume the autopilot",
         description:
           "Start the autopilot again after a pause (the owner's or its own). The next article " +
-          "starts on the next daily run if the weekly quota and the spacing between articles allow.",
+          "starts on the next daily run if this month's share, the pace and the spacing between articles allow.",
         inputSchema: {},
       },
       async () => {
         const p = currentProject();
         await resumeWriter(p.id);
         return ok({ paused: false });
+      },
+    );
+
+    // Multi-site plans (2026-11-11): the account's monthly pool of articles,
+    // split between the sites the plan covers. The same two functions the
+    // Settings > Websites page calls (site-shares.ts). Only THIS site's share
+    // can be set - the token is this project's, so its siblings are listed,
+    // never changed. Adding or removing a site is deliberately not here: a
+    // token that could create or delete the owner's other projects is the
+    // privilege escalation that keeps checkout off MCP (billing.ts header).
+    server.registerTool(
+      "get_site_share",
+      {
+        title: "Get this site's share of the plan",
+        description:
+          "How the account's monthly article pool is split, from this site's side: `pool` = the " +
+          "plan's articles a month (null = no pool: free plan, self-host, unbilled), `share` = this " +
+          "site's articles this month (the free plan's 2 on free), `mode` = auto (DispatchSEO splits " +
+          "it) or custom (set by hand), `safeMax` = the most this site can safely take a month while " +
+          "Google gets to know it (null = no cap) with `reason`, `usedThisMonth` (published, in " +
+          "progress, or failed after the topic was picked), `ownerUsedThisMonth` across the account, " +
+          "`held` = pool articles given to no site because none was ready for more, and `sites` = " +
+          "every site on the account, oldest first (slug, domain, share, mode, covered, " +
+          "usedThisMonth). Months are UTC calendar months.",
+        inputSchema: {},
+      },
+      async () => {
+        const p = currentProject();
+        try {
+          return ok(await siteShareReport(p.id));
+        } catch (e) {
+          return fail(`Could not read this site's share: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      },
+    );
+
+    server.registerTool(
+      "set_site_share",
+      {
+        title: "Set this site's share of the plan",
+        description:
+          "Owner-gated: choose how many of the plan's monthly articles go to THIS site. `auto` " +
+          "(the default) lets DispatchSEO split the pool between the account's sites by how ready " +
+          "each is; `custom` fixes this site at articles_per_month - a whole number from 1 to the " +
+          "pool minus what the account's other sites have set by hand. The safety ramp for young " +
+          "sites still paces a custom site. Auto sites are re-split right away; the change applies " +
+          "from the next daily run. The same control as Settings > Websites. Refused on the free " +
+          "plan, self-host and unbilled installs, and for a site the plan doesn't cover. Returns the " +
+          "mode and share now in force plus the fresh get_site_share report. Use ONLY when the " +
+          "owner asked for the change in this conversation.",
+        inputSchema: {
+          mode: z.enum(["auto", "custom"]).describe("auto = DispatchSEO splits the pool; custom = a fixed number for this site."),
+          articles_per_month: z
+            .number()
+            .int()
+            .min(1)
+            .max(1000)
+            .optional()
+            .describe("Required with custom: this site's articles a month. Ignored with auto."),
+        },
+      },
+      async ({ mode, articles_per_month }) => {
+        const p = currentProject();
+        if (mode === "custom" && articles_per_month == null) return fail("custom needs articles_per_month: how many articles a month this site should get.");
+        const r = await setSiteShare(p, mode === "custom" ? { mode, share: articles_per_month! } : { mode });
+        if ("error" in r) return fail(r.error);
+        return ok({
+          mode: r.mode,
+          articles_per_month: r.share,
+          report: await siteShareReport(p.id).catch(() => null),
+        });
       },
     );
 

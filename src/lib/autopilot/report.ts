@@ -1,7 +1,7 @@
 import { unstable_cache } from "next/cache";
 import { thinNote, WIDER_SEARCH_TAG } from "./research";
 import { db } from "@/lib/db";
-import { isFreePlan, primeProjectHint, projectPlan } from "@/lib/billing";
+import { isFreePlan, planGate, primeProjectHint, projectPlan } from "@/lib/billing";
 import { credsForProject } from "@/lib/dataforseo";
 import { loadSiteProfile } from "@/lib/site-profile";
 import { normalizeContentPrefs } from "@/lib/content-prefs";
@@ -9,9 +9,10 @@ import { aggregatePageTraffic, aggregateQueries, normalizePageUrl, type GscPageS
 import { getProjectById, publishTarget, writerMode, type Project } from "@/lib/projects";
 import { reachableArticleUrl } from "@/lib/hosted-blog";
 import { backendBaseUrl } from "@/lib/pipeline-pack";
-import { deltaPct } from "./math";
+import { deltaPct, monthStartUtc } from "./math";
 import { blockedTopicsOf } from "./prefs";
 import { weekUsage } from "./scheduler";
+import { monthUsage, weekUsageSince } from "./usage";
 import { staleSitemap } from "@/lib/gsc-sitemaps";
 import { ownerFactsOf } from "@/lib/content-prefs";
 import { sortIdeas, type RankableIdea } from "./idea-order";
@@ -76,9 +77,45 @@ export type AutopilotReport = {
   paused: { at: string; reason: string } | null;
   /** free: the site is on the free tier (billing.ts isFreePlan) - the one
    *  rule the dashboard locks by and the blog credit shows by. */
-  plan: { tier: string; articlesPerWeek: number; status: string; free: boolean };
+  plan: {
+    tier: string;
+    /** The internal weekly pace of the site's monthly number (site-shares
+     *  paceFor) - never the plan's promise; articlesPerMonth is. */
+    articlesPerWeek: number;
+    /** This site's articles this month (billing.ts projectPlan): its share
+     *  of the owner's pool, the free plan's number, or null where there is
+     *  no monthly number (self-host, unbilled, the operator's override). */
+    articlesPerMonth: number | null;
+    status: string;
+    free: boolean;
+  };
   nextArticleAt: string | null;
+  /** Kept for compatibility with readers of the pre-pool shape. The week's
+   *  quota only paces the month (thisMonth); nothing should show it as the
+   *  number of articles the plan buys. */
   thisWeek: { published: number; inFlight: number; quota: number };
+  /** The site's month as the month gate counts it (usage.ts monthAllowance),
+   *  UTC calendar month. */
+  thisMonth: {
+    /** Articles counted against this site's month: published, in progress,
+     *  and failed after the topic was picked. What `share` is compared to. */
+    used: number;
+    published: number;
+    inFlight: number;
+    /** Same as plan.articlesPerMonth. 0 on a paid plan = none of the pool
+     *  goes to this site this month (see `covered`). */
+    share: number | null;
+    /** The owner's articles a month across every covered site; null = no
+     *  pool (free, self-host, unbilled, the operator's override). */
+    pool: number | null;
+    /** The owner's count this month across the pool (deleted sites' carry
+     *  included); null without a pool or when it could not be read. */
+    ownerUsed: number | null;
+    /** Whether the owner's plan covers this site (billing.ts planGate);
+     *  null without a pool. A covered site with share 0 is getting none of
+     *  the pool this month, not a lapsed plan. */
+    covered: boolean | null;
+  };
   articles: AutopilotArticle[];
   /** True only when the list really is a slice (the query or display cap
    *  was hit), so a headline may say "N+"; otherwise N is the real count. */
@@ -224,6 +261,20 @@ function monthStartIso(now: Date): string {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
 }
 
+/** The site's month in its plan (multi-site plans, 2026-11-11): its share,
+ *  what it used, and - where the owner has a pool - the pool, the owner's
+ *  count across sites and whether this site is covered at all. The same
+ *  reads the month gate makes (usage.ts monthUsage), memoized per request,
+ *  so the report and the gate never disagree. Display-only: a read error
+ *  shows the site's count as zero and the owner's as unknown, never throws. */
+async function monthSummary(project: Project, now: Date): Promise<AutopilotReport["thisMonth"]> {
+  const [plan, site] = await Promise.all([projectPlan(project.id), weekUsageSince(project.id, monthStartUtc(now).toISOString())]);
+  const base = { used: site.count, published: site.published, inFlight: site.inFlight, share: plan.articlesPerMonth, pool: plan.poolPerMonth };
+  if (plan.poolPerMonth == null || !project.owner_user_id) return { ...base, ownerUsed: null, covered: null };
+  const [owner, gate] = await Promise.all([monthUsage(project.id, project.owner_user_id, now), planGate(project.id)]);
+  return { ...base, ownerUsed: "readError" in owner ? null : owner.ownerCount, covered: gate.allowed };
+}
+
 export async function getAutopilotReport(projectId: string, opts: { project?: Project | null } = {}): Promise<AutopilotReport> {
   // The dashboard already holds the active project's row; re-reading it
   // here put one round trip in front of everything below on every page.
@@ -234,9 +285,10 @@ export async function getAutopilotReport(projectId: string, opts: { project?: Pr
   primeProjectHint(project);
   const now = new Date();
 
-  const [plan, usage, runsRes, draftsRes, gscLightRes, gsc28, ideas, profile, setup, spend, earlier] = await Promise.all([
+  const [plan, usage, month, runsRes, draftsRes, gscLightRes, gsc28, ideas, profile, setup, spend, earlier] = await Promise.all([
     projectPlan(project.id),
     weekUsage(project.id, now),
+    monthSummary(project, now),
     db()
       .from("writer_runs")
       .select("id, suggestion_id, keyword, title_hint, stage, status, draft_id, error, cost_usd, created_at, updated_at, failure_kind:stage_outputs->>failure_kind")
@@ -385,9 +437,10 @@ export async function getAutopilotReport(projectId: string, opts: { project?: Pr
   return {
     mode: writerMode(project),
     paused: project.writer_paused_at ? { at: project.writer_paused_at, reason: project.writer_pause_reason ?? "Paused." } : null,
-    plan: { tier: plan.tier ?? "none", articlesPerWeek: plan.articlesPerWeek, status: plan.status, free: isFreePlan(plan) },
+    plan: { tier: plan.tier ?? "none", articlesPerWeek: plan.articlesPerWeek, articlesPerMonth: plan.articlesPerMonth, status: plan.status, free: isFreePlan(plan) },
     nextArticleAt: project.writer_paused_at ? null : project.next_article_at,
     thisWeek: { published: usage.published, inFlight: usage.inFlight, quota: plan.articlesPerWeek },
+    thisMonth: month,
     articles: articles.slice(0, ARTICLE_LIMIT),
     articlesTruncated: articles.length > ARTICLE_LIMIT || drafts.length >= DRAFT_LIMIT,
     traffic: { days, clicks28d, impressions28d, deltaClicksPct: prev28.length >= 14 ? deltaPct(clicks28d, prevClicks) : null, topQueries },

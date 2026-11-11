@@ -1082,12 +1082,14 @@ indexed yet, or the cron hasn't run its first pass for this project.
 
 ### `get_dataforseo_usage`
 
-This project's DataForSEO billing status: who it's billed to, month-to-
-date spend against the platform's monthly budget (when applicable), the
-projected month-end spend under the rank cron's current pacing, and
-today's `check_serp` and `keyword_ideas` counts against their daily caps.
-Takes no parameters. A project on its own account (or self-host) isn't
-metered here - the spend fields stay zero.
+DataForSEO billing status for this project's account: who it's billed
+to, the **account's** month-to-date spend against the platform's monthly
+budget (when applicable), the projected month-end spend under the rank
+cron's current pacing, and this site's `check_serp` and `keyword_ideas`
+counts today against their daily caps. The budget is one per account,
+shared by every site on the plan, so the spend fields are the account's
+total, not this site's own. Takes no parameters. A project on its own
+account (or self-host) isn't metered here - the spend fields stay zero.
 
 The two daily caps exist for different reasons and behave differently.
 `check_serp`'s is 30 and applies only to projects on the shared plan -
@@ -2007,17 +2009,25 @@ server. A task that is not queued on this site returns an error.
 ## Autopilot
 
 A hosted site (the cloud default since 2026-10-23) runs on its own: the
-server researches keywords weekly, starts articles on the plan's weekly
-cadence (1, 2 or 3 a week, never two within two days), and pauses itself
-when Search Console collapses. These tools are the whole owner surface of
-that - the same functions the dashboard calls. See
-[How the autopilot works](/docs/autopilot).
+server researches keywords weekly, writes this site's share of the plan's
+monthly articles spread evenly across the month, slower while a young site
+earns Google's trust, and pauses itself when Search Console collapses.
+These tools are the whole owner surface of that - the same functions the
+dashboard calls. See [How the autopilot works](/docs/autopilot).
 
 ### `get_autopilot`
 
-The dashboard's report in one read: mode, pause state and reason, plan
-and articles per week, `nextArticleAt`, this week's count against the
-quota, the last 50 articles (status, stage, cost, gain, 28-day clicks and
+The dashboard's report in one read: mode, pause state and reason, the
+plan and this site's articles a month (`plan.articlesPerMonth`, its share
+of the account's pool - see `get_site_share`), `nextArticleAt`, and
+`thisMonth`: `used` (published, in progress, or failed after the topic was
+picked), `published`, `inFlight`, `share`, the account's `pool` and
+`ownerUsed` across its sites, and `covered` (whether the plan covers this
+site). A `share` of 0 on a covered site means the pool goes to the
+account's other sites this month, not that the plan lapsed. `thisWeek`
+and `plan.articlesPerWeek` are kept for older clients; they are only the
+internal pace that spreads the month out, not what the plan buys. Then
+the last 50 articles (status, stage, cost, gain, 28-day clicks and
 impressions, `keywordVolume` / `keywordDifficulty` - the target keyword's
 monthly searches and KD as research measured them, null when unmeasured;
 `prUrl` / `prMerged` on a
@@ -2039,8 +2049,9 @@ write, in the order it writes them (approved guides minus any a run is
 already on; positions set with `reorder_queue` first, then the best search
 volume for its difficulty: volume / (1 + KD/20), ties to the older idea), each as `{ suggestion_id, title, keyword, volume,
 kd, expected_start }` - `expected_start` is the UTC day (`yyyy-mm-dd`) it is
-expected to start under the weekly quota and spacing, null while paused or
-when the plan includes no articles. `parked` lists the ideas the writer set
+expected to start under the pace, the spacing and this month's share (once
+the share is used, the rest fall into next month), null while paused or
+when the plan includes no articles for this site. `parked` lists the ideas the writer set
 aside, with its `reason`. To take an idea out of the queue, call
 `update_suggestion` with status `parked`; status `approved` puts it back
 where its score ranks it. If the queue cannot be read, `upcoming` and `parked` are left
@@ -2058,6 +2069,58 @@ Never lifts by itself.
 ### `resume_writer`
 
 Starts the autopilot again after any pause, the owner's or its own.
+
+### `get_site_share`
+
+How the account's monthly pool of articles is split, seen from this site.
+A plan has one pool (Starter 5, Growth 15, Scale 30 articles a month),
+split between the sites it covers; each site then runs on its own share.
+Takes no parameters. Months are UTC calendar months.
+
+- `pool`: the plan's articles a month; `null` on the free plan, self-host
+  and unbilled installs, which have no pool to split.
+- `share`: this site's articles this month (2 on the free plan).
+- `mode`: `auto` (DispatchSEO splits the pool by how ready each site is)
+  or `custom` (set by hand with `set_site_share`).
+- `safeMax` and `reason`: the most this site can safely take in a month
+  while Google gets to know it, and why; `null` when there is no cap.
+- `usedThisMonth`: articles counted against this site's month - published,
+  in progress, or failed after the topic was picked.
+- `ownerUsedThisMonth`: the same across the whole account, including sites
+  removed this month; `null` without a pool.
+- `held`: pool articles given to no site this month because none was ready
+  for more.
+- `sites`: every site on the account, oldest first, as `{ slug, domain,
+  share, mode, covered, usedThisMonth }`. `covered: false` means the plan
+  allows fewer sites than the account has; that site writes nothing until
+  the plan grows or another site is removed.
+
+### `set_site_share`
+
+Sets how many of the plan's monthly articles go to **this** site.
+Owner-gated: use it only when the owner asked in the conversation. The
+same control as Settings > Websites. `auto` hands the site back to
+DispatchSEO's split; `custom` fixes it at `articles_per_month`, a whole
+number from 1 to the pool minus what the account's other sites have set
+by hand. The safety ramp for young sites still paces a custom site. Auto
+sites are re-split straight away, and the change applies from the next
+daily run, even if this site had already used its old share this month.
+
+Refused, with the reason, on the free plan, self-host and unbilled
+installs, and for a site the plan doesn't cover. Returns `{ mode,
+articles_per_month, report }`, where `report` is a fresh `get_site_share`.
+Only this site's share can be set: the token belongs to this project, so
+other sites are listed by `get_site_share` but never changed. Adding or
+removing sites is done in the dashboard, not over MCP.
+
+<Fields>
+  <Field name="mode" type="string" required="true">
+    `auto` or `custom`.
+  </Field>
+  <Field name="articles_per_month" type="number">
+    Required with `custom`: this site's articles a month. Ignored with `auto`.
+  </Field>
+</Fields>
 
 ### `set_brand`
 

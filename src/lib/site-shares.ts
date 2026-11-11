@@ -208,6 +208,19 @@ export async function setSiteShare(
   }
   const { error: wErr } = await db().from("projects").update(update).eq("id", project.id);
   if (wErr) return { error: "We couldn't save that just now. Try again in a moment." };
+  // A site that used its old share has next_article_at stamped on the 1st
+  // of next month (the scheduler's 'share used' skip). Left there, a raised
+  // share or a switch to Auto would wait for that date; cleared, the next
+  // daily pass looks again. Only a date in the future, and safe: every
+  // start still passes writerStartGate (month, ramp, week, spacing), so this
+  // can never start more than the new share allows. Best effort - a failed
+  // clear only means the change takes effect on the stamped date.
+  const { error: clearErr } = await db()
+    .from("projects")
+    .update({ next_article_at: null })
+    .eq("id", project.id)
+    .gt("next_article_at", new Date().toISOString());
+  if (clearErr) console.warn(`[site-shares] next_article_at not cleared for ${project.id}: ${clearErr.message}`);
   const rebalanced = await rebalanceOwnerShares(ownerId);
   forgetOwnedSites(ownerId);
   return {

@@ -1,9 +1,9 @@
 import { db } from "@/lib/db";
-import { primeProjectHint, projectPlan, type ProjectHint } from "@/lib/billing";
+import { ownerUserIdForProject, primeProjectHint, projectPlan, type ProjectHint, type ProjectPlan } from "@/lib/billing";
 import { suggestionIdsInFlight } from "@/lib/writer/runs";
 import type { Project } from "@/lib/projects";
-import { upcomingStarts, weekStartUtc } from "./math";
-import { weekUsage } from "./usage";
+import { monthStartUtc, nextMonthStartUtc, upcomingStarts, weekStartUtc, type CadenceInput } from "./math";
+import { monthUsage, weekUsage } from "./usage";
 import { rampInputs, rampSinceDay, rampVerdict } from "./ramp";
 import { sortIdeas } from "./idea-order";
 
@@ -21,9 +21,13 @@ import { sortIdeas } from "./idea-order";
 // The dates are math.ts upcomingStarts over the same weekUsage the
 // scheduler's cadence() reads, floored at next_article_at: the scheduler's
 // slot claim refuses any day before it (a plan change applies from the date
-// already set, scheduler.ts claimSlot). A projection, not a promise: setup
-// gaps, a spent keyword budget or an idea the writer sets aside all move
-// the real day, and a pause or a plan with no articles means no dates.
+// already set, scheduler.ts claimSlot), and held to the site's monthly share
+// of the owner's pool the way the month gate holds the scheduler (usage.ts
+// monthAllowance): a date past this month's share moves into next month.
+// A projection, not a promise: setup gaps, a spent keyword budget, the
+// owner's other sites using the pool first, or an idea the writer sets aside
+// all move the real day, and a pause or a plan with no articles means no
+// dates.
 
 export type QueuedIdea = {
   suggestion_id: string;
@@ -52,8 +56,16 @@ export type HostedQueue = {
   /** The next article slot (yyyy-mm-dd), queue or not: when the queue is
    *  empty that morning's run researches first. */
   nextStart: string | null;
+  /** The internal weekly pace (the ramp's quota of the site's monthly
+   *  number). Not the plan's promise - monthShare is. */
   usedThisWeek: number;
   quota: number;
+  /** This site's articles this month (its share of the owner's pool) and
+   *  how many it has used; both null where the month gate does not apply
+   *  (free plan's own ledger, self-host, unbilled, the operator's
+   *  override), usedThisMonth also when the month could not be read. */
+  monthShare: number | null;
+  usedThisMonth: number | null;
   paused: boolean;
 };
 
@@ -99,7 +111,11 @@ export async function getHostedQueue(
   // below their own single-row lookups (billing.ts projectHint).
   primeProjectHint(project);
   const cols = "id, title, primary_keyword, keyword_volume, keyword_difficulty, queue_position, created_at";
-  const [approvedRes, parkedRes, busy, plan, usage, ramp] = await Promise.all([
+  // The month's room hangs off the plan (only a pooled plan has one), so it
+  // starts the moment the plan is known, beside the reads below.
+  const planRead = projectPlan(project.id);
+  const monthRead = planRead.then((p) => monthRoom(project, p, now));
+  const [approvedRes, parkedRes, busy, plan, usage, ramp, month] = await Promise.all([
     db()
       .from("suggestions")
       .select(cols)
@@ -118,11 +134,12 @@ export async function getHostedQueue(
           .order("created_at", { ascending: false })
           .limit(PARKED_LIMIT),
     suggestionIdsInFlight(project.id),
-    projectPlan(project.id),
+    planRead,
     weekUsage(project.id, now),
     // The ramp's reads need no plan, only its verdict does: started here,
     // beside the plan read, instead of after it.
     rampInputs(project.id, rampSinceDay(now)),
+    monthRead,
   ]);
   if (approvedRes.error) throw new Error(`could not read the queue: ${approvedRes.error.message}`);
 
@@ -139,13 +156,18 @@ export async function getHostedQueue(
     // The week's count belongs to THIS week; a floor in a later week starts
     // that week's quota from zero.
     const sameWeek = weekStartUtc(from).getTime() === weekStartUtc(now).getTime();
-    starts = upcomingStarts({
+    // The month's room belongs to THIS month the same way; a floor in a
+    // later month starts with the whole share.
+    const sameMonth = monthStartUtc(from).getTime() === monthStartUtc(now).getTime();
+    starts = monthCappedStarts({
       now: from,
       quota,
       spacingDays: plan.spacingDays,
       countThisWeek: sameWeek ? usage.count : 0,
       lastStartedAt: usage.lastStartedAt,
       n: Math.max(queued.length, 1),
+      share: month ? month.share : null,
+      room: month ? (sameMonth ? month.room : month.share) : 0,
     });
   }
   const day = (d: Date | undefined) => (d ? d.toISOString().slice(0, 10) : null);
@@ -173,8 +195,70 @@ export async function getHostedQueue(
     nextStart: day(starts[0]),
     usedThisWeek: usage.count,
     quota,
+    monthShare: month ? month.share : null,
+    usedThisMonth: month ? month.used : null,
     paused,
   };
+}
+
+/** What is left of this month for a site on a pooled plan: its share minus
+ *  what it used, and never more than the owner's pool has left across
+ *  their sites. The month gate's own counts (usage.ts monthUsage). Null
+ *  where there is no month gate. Display-only: an unreadable month projects
+ *  as a fresh one, still capped at the share (the gate itself refuses). */
+async function monthRoom(
+  project: Pick<Project, "id"> & { owner_user_id?: string | null },
+  plan: Pick<ProjectPlan, "articlesPerMonth" | "poolPerMonth">,
+  now: Date,
+): Promise<{ share: number; room: number; used: number | null } | null> {
+  const share = plan.articlesPerMonth;
+  const pool = plan.poolPerMonth;
+  if (share == null || pool == null) return null;
+  const ownerId = project.owner_user_id ?? (await ownerUserIdForProject(project.id));
+  if (!ownerId) return null;
+  const m = await monthUsage(project.id, ownerId, now);
+  if ("readError" in m) return { share, room: share, used: null };
+  return { share, room: Math.max(0, Math.min(share - m.siteCount, pool - m.ownerCount)), used: m.siteCount };
+}
+
+/**
+ * upcomingStarts held to the site's month (multi-site plans, 2026-11-11):
+ * at most `room` starts in the first projected month and `share` in every
+ * month after, the way the month gate holds the scheduler. Starts past a
+ * month's allowance move to the next month's first open days - the 1st is a
+ * candidate, since the 05:30 run comes after midnight - with the week's
+ * count and the spacing carried across the month boundary. share null = no
+ * monthly number: the week alone paces it, exactly as before. Pure.
+ */
+export function monthCappedStarts(input: CadenceInput & { n: number; share: number | null; room: number }): Date[] {
+  const { share, room, ...week } = input;
+  if (share == null) return upcomingStarts(week);
+  if (share <= 0 || input.n <= 0) return [];
+  const out: Date[] = [];
+  let from = input.now;
+  let allowance = Math.max(0, Math.min(room, share));
+  let countThisWeek = input.countThisWeek;
+  let lastStartedAt = input.lastStartedAt;
+  // Two years of months is far past any queue: the guard only stops a
+  // loop that could never fill (it can't while share > 0 and quota > 0).
+  for (let guard = 0; out.length < input.n && guard < 24; guard++) {
+    if (allowance > 0) {
+      const monthEnd = nextMonthStartUtc(from).getTime();
+      const batch = upcomingStarts({ ...week, now: from, countThisWeek, lastStartedAt, n: Math.min(allowance, input.n - out.length) });
+      out.push(...batch.filter((d) => d.getTime() < monthEnd));
+    }
+    const next = nextMonthStartUtc(from);
+    // upcomingStarts counts the week of its `now`: the 1st's ISO week may
+    // have begun last month, so its count is the starts already projected
+    // in it, plus the real ones when that week is the caller's own.
+    const wk = weekStartUtc(next).getTime();
+    countThisWeek =
+      out.filter((d) => weekStartUtc(d).getTime() === wk).length + (wk === weekStartUtc(input.now).getTime() ? input.countThisWeek : 0);
+    lastStartedAt = out.length ? out[out.length - 1].toISOString() : input.lastStartedAt;
+    from = next;
+    allowance = share;
+  }
+  return out;
 }
 
 /** Takes one queued idea out of the queue, so the writer never picks it.

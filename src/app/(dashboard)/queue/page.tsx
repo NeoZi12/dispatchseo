@@ -106,6 +106,8 @@ export default async function QueuePage() {
         nextStart={queue.nextStart}
         usedThisWeek={queue.usedThisWeek}
         quota={queue.quota}
+        monthShare={queue.monthShare}
+        usedThisMonth={queue.usedThisMonth}
         paused={queue.paused}
         startedDays={started}
       />
