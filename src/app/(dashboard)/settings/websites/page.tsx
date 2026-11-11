@@ -276,6 +276,18 @@ function WebsitesView({
             />
           )}
 
+          {/* Paid plans hand out the whole plan (no slow start since
+              2026-11-11), so articles are only ever left over by the owner's
+              own choices: custom numbers that add up to less than the plan,
+              or every other site paused or still being set up. Say how to
+              use them rather than "held", which reads as us keeping them. */}
+          {!free && !unread && held > 0 ? (
+            <DispatcherNote kind="waiting" title={`${held} of your ${poolFigure ?? ""} articles ${held === 1 ? "isn't" : "aren't"} assigned to a website`} className="arrive-up" style={at(170)}>
+              They&apos;re yours to use this month. Raise a website&apos;s number below, or switch one to Automatic, and I&apos;ll write them. Paused websites and ones still being set up
+              don&apos;t take any.
+            </DispatcherNote>
+          ) : null}
+
           {uncovered.length > 0 ? (
             <DispatcherNote
               kind="alert"
@@ -345,7 +357,7 @@ function SplitBoard({
   const total = segments.reduce((a, s) => a + (s.share ?? 0), 0) + held;
   const summary = [
     ...segments.map((s) => `${s.domain} ${s.share}, ${Math.min(s.used ?? 0, s.share ?? 0)} started`),
-    ...(held > 0 ? [`${held} held until your sites are ready`] : []),
+    ...(held > 0 ? [`${held} not assigned to a website`] : []),
   ].join("; ");
   return (
     <div className="arrive-up overflow-hidden rounded-2xl border border-line-soft bg-surface px-5 py-5 sm:px-7 sm:py-6" style={style}>
@@ -376,7 +388,7 @@ function SplitBoard({
               <li className="flex items-center gap-2">
                 <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-[3px] border border-dashed border-ink-faint" />
                 <span className="text-ink-muted">
-                  <span className="tabular-nums text-ink">{held}</span> held until your sites are ready
+                  <span className="tabular-nums text-ink">{held}</span> not assigned to a website
                 </span>
               </li>
             ) : null}
@@ -410,7 +422,7 @@ function Figure({ value, label, big = false, align = "left" }: { value: React.Re
 }
 
 /** One site's run of slots: `used` filled, the rest tinted; null hue =
- *  held (dashed, empty). Grows with its count so every slot on the bar is
+ *  not assigned to any site (dashed, empty). Grows with its count so every slot on the bar is
  *  the same width. */
 function Slots({ n, used, hue }: { n: number; used: number; hue: string | null }) {
   const filled = Math.min(used, n);
