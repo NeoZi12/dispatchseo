@@ -30,6 +30,7 @@ import {
   backlogNeeded,
   backlogShort,
   DAY_MS,
+  RESEARCH_EVERY_MS,
   EVERGREEN_MIN,
   FIT_MIN,
   fillKd,
@@ -324,10 +325,8 @@ export type ResearchAdded = { id: string; keyword: string; volume: number; kd: n
 export const WIDER_SEARCH_TAG = "(found via a wider search)";
 export const MODEL_FIRST_TAG = "(proposed from the site, measured by keyword data)";
 
-/** Research re-runs after this long - and an empty result is not retried any
- *  sooner. 6.5 days, not 7, so a daily cron at a fixed hour never slips a
- *  whole extra day past the week. */
-export const RESEARCH_EVERY_MS = 6.5 * DAY_MS;
+/** Research re-runs after this long (math.ts, beside researchEveryMs). */
+export { RESEARCH_EVERY_MS };
 
 /** Prefix of the skip reason when the shared DataForSEO budget is spent -
  *  health.ts makes it loud when it persists. */

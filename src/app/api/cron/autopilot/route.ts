@@ -1,8 +1,9 @@
 import { checkCron } from "@/lib/cron-auth";
 import { reportCronRun } from "@/lib/cron-alerts";
-import { listProjectsChecked, writerMode } from "@/lib/projects";
+import { listProjectsChecked, writerMode, type Project } from "@/lib/projects";
 import { missingCredentials } from "@/lib/writer/models";
-import { runAutopilotPass } from "@/lib/autopilot";
+import { runAutopilotPass, type AutopilotPass } from "@/lib/autopilot";
+import { rebalanceOwnerShares } from "@/lib/site-shares";
 
 // The autopilot's daily pass (vercel.json 05:30 UTC; docker/cron/crontab on
 // self-host). For every project in hosted-writer mode: the auto-pause check,
@@ -14,8 +15,14 @@ import { runAutopilotPass } from "@/lib/autopilot";
 // mid-setup, a met quota, an empty idea queue are all informational skips
 // ({ skipped }). Only a real fault (a DB write, every DataForSEO seed
 // failing, startWriterRun throwing) marks the run failed and returns 500.
-// Each project is isolated with Promise.allSettled - one site's failure never
-// stops another's article. Agent-mode projects are skipped without a read.
+// Each project is isolated - one site's failure never stops another's
+// article. Agent-mode projects are skipped without a read.
+//
+// Multi-site plans (2026-11-11): one owner's sites share one monthly pool,
+// so they run per OWNER - the owner's shares rebalanced once (site-shares.ts),
+// then that owner's sites one after another, oldest first, so two of them
+// can never both read the pool as unused in the same instant. Owners run in
+// parallel with each other, and ownerless projects in parallel as before.
 //
 // The writer's model keys are operator configuration: when a hosted project
 // exists and the deploy has none, every site silently stops getting articles.
@@ -32,7 +39,33 @@ export async function GET(req: Request): Promise<Response> {
   const { projects, degraded } = await listProjectsChecked();
   const hosted = projects.filter((p) => writerMode(p) === "hosted");
   const now = new Date();
-  const runs = await Promise.allSettled(hosted.map((p) => runAutopilotPass(p, now)));
+  const settle = async (p: Project): Promise<PromiseSettledResult<AutopilotPass>> => {
+    try {
+      return { status: "fulfilled", value: await runAutopilotPass(p, now) };
+    } catch (reason) {
+      return { status: "rejected", reason };
+    }
+  };
+  // listProjectsChecked orders by created_at, so each owner's group is
+  // already oldest first.
+  const byOwner = new Map<string, Project[]>();
+  const ownerless: Project[] = [];
+  for (const p of hosted) {
+    if (p.owner_user_id) byOwner.set(p.owner_user_id, [...(byOwner.get(p.owner_user_id) ?? []), p]);
+    else ownerless.push(p);
+  }
+  const outcomes = new Map<string, PromiseSettledResult<AutopilotPass>>();
+  await Promise.all([
+    ...ownerless.map(async (p) => outcomes.set(p.id, await settle(p))),
+    ...[...byOwner].map(async ([ownerId, sites]) => {
+      // Never throws; a failure leaves last month's shares, a valid split.
+      // Each pass then reads its share fresh (projectPlan -> readOwnedSites;
+      // projectHint carries no share, so nothing stale can serve one).
+      await rebalanceOwnerShares(ownerId, now);
+      for (const p of sites) outcomes.set(p.id, await settle(p));
+    }),
+  ]);
+  const runs = hosted.map((p) => outcomes.get(p.id)!);
 
   const result: Record<string, unknown> = { hosted_projects: hosted.length };
   let hadError = false;

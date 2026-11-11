@@ -2,8 +2,8 @@ import type { Project } from "@/lib/projects";
 import { writerMode } from "@/lib/projects";
 import { isDryRun } from "@/lib/writer/models";
 import { evaluateAutoPause } from "./pause";
-import { promoteBacklog, RESEARCH_EVERY_MS, runResearch, type ResearchOutcome } from "./research";
-import { backlogShort, EARLY_RESEARCH_FLOOR_DAYS, earlyResearchAllowed } from "./math";
+import { promoteBacklog, runResearch, type ResearchOutcome } from "./research";
+import { backlogShort, EARLY_RESEARCH_FLOOR_DAYS, earlyResearchAllowed, researchEveryMs } from "./math";
 import { readResearchState } from "@/lib/keyword-research-cache";
 import { runScheduler, type SchedulerOutcome } from "./scheduler";
 import { reportSiteHealth, siteHealthProblems } from "./health";
@@ -79,7 +79,12 @@ export async function runAutopilotPass(project: Project, now = new Date()): Prom
   // article: the queue usually still holds ideas. It is reported, loudly, and
   // the scheduler runs anyway.
   let research: ResearchOutcome | { error: string } | undefined;
-  const stale = !project.last_research_at || now.getTime() - Date.parse(project.last_research_at) >= RESEARCH_EVERY_MS;
+  // Weekly - or every four weeks on a niche whose last two runs each kept at
+  // most one idea (math.ts researchEveryMs): a dry site's weekly run bought
+  // the same empty Labs rows again. A read error reads as "still finding
+  // things", which is the weekly run as before.
+  const researchState = await readResearchState(project.id);
+  const stale = !project.last_research_at || now.getTime() - Date.parse(project.last_research_at) >= researchEveryMs(researchState);
   // Weekly, or sooner when the queue holds less than a week of articles: at
   // five a week, two queued ideas on a Saturday ran dry by Tuesday while the
   // next research sat six days out. runResearch itself tops up to the
@@ -97,7 +102,7 @@ export async function runAutopilotPass(project: Project, now = new Date()): Prom
   const short =
     stale || !floorOn
       ? false
-      : (await queueShort(project, now)) && earlyResearchAllowed(await readResearchState(project.id));
+      : (await queueShort(project, now)) && earlyResearchAllowed(researchState);
   if (stale || short) {
     try {
       research = await runResearch(project, now);

@@ -39,6 +39,18 @@ export function weekStartUtc(now: Date): Date {
   return new Date(d.getTime() - dow * DAY_MS);
 }
 
+/** 00:00 UTC on the 1st of the month containing `now`. A plan's monthly
+ *  pool and every site's share reset here (autopilot/usage.ts monthAllowance). */
+export function monthStartUtc(now: Date): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+}
+
+/** 00:00 UTC on the 1st of the following month: when a used share or pool
+ *  allows the next start. */
+export function nextMonthStartUtc(now: Date): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+}
+
 export type CadenceInput = {
   now: Date;
   /** Articles a week for this site's plan. 0 = the plan buys none. */
@@ -765,6 +777,23 @@ export function earlyResearchAllowed(s: BackoffState): boolean {
   if (s.recent_added.length < 2) return true;
   return s.recent_added[0] >= EARLY_RESEARCH_MIN_RECENT_ADDED || s.recent_added[1] >= EARLY_RESEARCH_MIN_RECENT_ADDED;
 }
+/** Research re-runs after this long - and an empty result is not retried any
+ *  sooner. 6.5 days, not 7, so a daily cron at a fixed hour never slips a
+ *  whole extra day past the week. (Lived in research.ts until 2026-11-11;
+ *  research.ts re-exports it.) */
+export const RESEARCH_EVERY_MS = 6.5 * DAY_MS;
+/** ...and this long on a niche that keeps coming back empty. */
+export const SLOW_RESEARCH_EVERY_MS = 28 * DAY_MS;
+/** How long until a site's next regular research run (multi-site plans,
+ *  2026-11-11). Weekly while research is still finding things; every four
+ *  weeks once the last two runs each kept at most one idea
+ *  (earlyResearchAllowed), because re-buying the same Labs rows on a thin
+ *  niche every week changes nothing - and a site that keeps coming back dry
+ *  is exactly the one the pool split hands fewer articles. Read by the daily
+ *  pass's "stale" check and the scheduler's "researched recently". */
+export function researchEveryMs(s: BackoffState): number {
+  return earlyResearchAllowed(s) ? RESEARCH_EVERY_MS : SLOW_RESEARCH_EVERY_MS;
+}
 export function backlogShort(liveIdeaCount: number, articlesPerWeek: number): boolean {
   return liveIdeaCount < Math.max(4, BACKLOG_REFILL_WEEKS * Math.max(0, Math.floor(articlesPerWeek)));
 }
@@ -831,17 +860,26 @@ export function consecutivePostPickFailures(runs: Array<{ status: string; stage:
   return n;
 }
 
+/** The "no article lately" threshold for a site's own pace: two weeks, or
+ *  two of its own gaps plus three days when it is slower (a site with two
+ *  articles a month starts one every 15 days, so 14 would cry wolf between
+ *  every pair). */
+export function noArticleAlarmDays(spacingDays?: number | null): number {
+  return Math.max(NO_ARTICLE_ALARM_DAYS, 2 * Math.max(0, spacingDays ?? 0) + 3);
+}
+
 /**
  * Should "no article lately" be loud? Only once the site has had its quiet
- * week since setup finished, and only when nothing has started in two weeks
- * (a site that never produced anything counts from the start).
+ * week since setup finished, and only when nothing has started for
+ * noArticleAlarmDays of its pace (a site that never produced anything
+ * counts from the start).
  */
-export function noArticleAlarm(input: { connectedAt: string | null; lastArticleAt: string | null; now: Date }): boolean {
+export function noArticleAlarm(input: { connectedAt: string | null; lastArticleAt: string | null; now: Date; spacingDays?: number | null }): boolean {
   const { connectedAt, lastArticleAt, now } = input;
   if (!connectedAt) return false;
   if (now.getTime() - Date.parse(connectedAt) < NEW_SITE_QUIET_DAYS * DAY_MS) return false;
   if (!lastArticleAt) return true;
-  return now.getTime() - Date.parse(lastArticleAt) >= NO_ARTICLE_ALARM_DAYS * DAY_MS;
+  return now.getTime() - Date.parse(lastArticleAt) >= noArticleAlarmDays(input.spacingDays) * DAY_MS;
 }
 
 // --- Sub-topic spacing -----------------------------------------------------------

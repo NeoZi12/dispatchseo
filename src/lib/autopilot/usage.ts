@@ -1,10 +1,11 @@
 import { cache } from "react";
 import { db } from "@/lib/db";
 import { isCloudMode } from "@/lib/cloud";
-import { ownerUserIdForProject, polarConfigured, projectHint, projectPlan, writerGate } from "@/lib/billing";
+import { outsidePool, ownerUserIdForProject, polarConfigured, projectHint, projectPlan, readOwnedSites, writerGate, type ProjectPlan } from "@/lib/billing";
 import { writerMode, type Project } from "@/lib/projects";
 import { missingCredentials } from "@/lib/writer/models";
-import { cadence, weekStartUtc, spacingDaysFor } from "./math";
+import { monthGateVerdict, type MonthGateReason } from "@/lib/site-shares-core";
+import { cadence, monthStartUtc, nextMonthStartUtc, weekStartUtc, spacingDaysFor } from "./math";
 import { rampFor } from "./ramp";
 
 // What a site has used of its weekly article quota, and the one gate every
@@ -72,9 +73,23 @@ export function weekUsage(projectId: string, now: Date): Promise<WeekUsage> {
 // in the same instant, on every hosted page - and each caller's `now` is its
 // own Date, so the memo is keyed on the week it resolves to. No request
 // scope (the scheduler) means no memo, as before.
-const weekUsageSince = cache(async (projectId: string, since: string): Promise<WeekUsage> => {
+//
+// The same rows counted since any date (monthAllowance counts the month with
+// it) for the site's quota bucket.
+export const weekUsageSince = cache(async (projectId: string, since: string): Promise<WeekUsage> => {
   try {
-    const ids = await quotaBucket(projectId);
+    return await usageFor(await quotaBucket(projectId), since);
+  } catch (e) {
+    return { ...ZERO, readError: e instanceof Error ? e.message : String(e) };
+  }
+});
+
+/** weekUsageSince's count for any list of project ids - the owner's whole
+ *  account for the month gate. Never throws: a read error comes back as
+ *  `readError` with zeros. */
+export async function usageFor(ids: string[], since: string): Promise<WeekUsage> {
+  if (!ids.length) return { ...ZERO };
+  try {
     const [draftsRes, runsRes, lastRunsRes, lastDraftRes] = await Promise.all([
       db()
         .from("article_drafts")
@@ -142,7 +157,85 @@ const weekUsageSince = cache(async (projectId: string, since: string): Promise<W
   } catch (e) {
     return { ...ZERO, readError: e instanceof Error ? e.message : String(e) };
   }
-});
+}
+
+/** What an owner's DELETED sites already used this month (migration 0090,
+ *  written by site-shares.ts recordDeletedSiteCarry). A DB that hasn't run
+ *  0090 has no carry to read: zeros, never an error. */
+export async function ownerMonthCarry(ownerId: string, monthStart: Date): Promise<{ articleStarts: number; dfsMicrousd: number; readError?: string }> {
+  const { data, error } = await db()
+    .from("owner_month_carry")
+    .select("article_starts, dfs_microusd")
+    .eq("owner_user_id", ownerId)
+    .eq("month", monthStart.toISOString().slice(0, 10))
+    .maybeSingle();
+  if (error) {
+    if (/does not exist|could not find|PGRST205|42P01/i.test(error.message)) return { articleStarts: 0, dfsMicrousd: 0 };
+    return { articleStarts: 0, dfsMicrousd: 0, readError: error.message };
+  }
+  const row = data as { article_starts: number | null; dfs_microusd: number | string | null } | null;
+  return { articleStarts: Number(row?.article_starts ?? 0), dfsMicrousd: Number(row?.dfs_microusd ?? 0) };
+}
+
+export type MonthUsage = {
+  /** This site's articles this calendar month (its quota bucket). */
+  siteCount: number;
+  /** The owner's articles this month across every site in the pool, plus
+   *  what deleted sites already used (owner_month_carry). */
+  ownerCount: number;
+};
+
+/** The month's counts the month gate compares. Null owner = no pool. */
+export async function monthUsage(projectId: string, ownerId: string, now: Date): Promise<MonthUsage | { readError: string }> {
+  const start = monthStartUtc(now);
+  const since = start.toISOString();
+  const owned = await readOwnedSites(ownerId);
+  if (owned.error) return { readError: owned.error };
+  // Sites on the operator's per-site override run outside the pool and are
+  // not counted against it (billing.ts outsidePool).
+  const ids = owned.rows.filter((r) => !outsidePool(r)).map((r) => r.id);
+  const [site, owner, carry] = await Promise.all([weekUsageSince(projectId, since), usageFor(ids, since), ownerMonthCarry(ownerId, start)]);
+  const readError = site.readError ?? owner.readError ?? carry.readError;
+  if (readError) return { readError };
+  return { siteCount: site.count, ownerCount: owner.count + carry.articleStarts };
+}
+
+export type MonthAllowance =
+  | { reason: MonthGateReason; nextAt: Date; share: number; pool: number }
+  | { readError: string };
+
+/**
+ * The month gate (multi-site plans): has this site used its share of the
+ * owner's monthly pool, or the owner the whole pool across their sites?
+ * null = yes, an article may start (the week's ramp, quota and spacing still
+ * apply after it). Only a plan with a pool is gated here: self-host,
+ * unbilled and the operator's override have none, and the free tier has its
+ * own durable ledger. A read error refuses, like weekUsage's readError: a
+ * month that could not be counted must not read as an empty one.
+ */
+export async function monthAllowance(
+  project: Pick<Project, "id"> & { owner_user_id?: string | null },
+  plan: Pick<ProjectPlan, "articlesPerMonth" | "poolPerMonth">,
+  now: Date,
+): Promise<MonthAllowance | null> {
+  if (plan.articlesPerMonth == null || plan.poolPerMonth == null) return null;
+  const ownerId = project.owner_user_id ?? (await ownerUserIdForProject(project.id));
+  if (!ownerId) return null;
+  const usage = await monthUsage(project.id, ownerId, now);
+  if ("readError" in usage) return { readError: usage.readError };
+  const reason = monthGateVerdict({ share: plan.articlesPerMonth, pool: plan.poolPerMonth, ...usage });
+  return reason ? { reason, nextAt: nextMonthStartUtc(now), share: plan.articlesPerMonth, pool: plan.poolPerMonth } : null;
+}
+
+/** The owner-facing sentence for a month-gate refusal. writerStartGate
+ *  returns it, and autopilot-actions.ts ownerRefusal passes both shapes
+ *  through by their opening words ("This site has used its", "Your plan's"). */
+export function monthGateSentence(m: { reason: MonthGateReason; nextAt: Date; share: number; pool: number }): string {
+  const when = ` The next one can start ${m.nextAt.toISOString().slice(0, 10)}.`;
+  return m.reason === "share used"
+    ? `This site has used its ${m.share} article${m.share === 1 ? "" : "s"} for this month.${when}`
+    : `Your plan's ${m.pool} articles for this month are used across your sites.${when}`;
+}
 
 /**
  * May a writer run start for this project now? null = yes; otherwise the
@@ -205,12 +298,23 @@ export async function writerStartGate(project: Project, opts: { gated?: boolean 
     }
   }
   const plan = await projectPlan(project.id);
+  // A covered paid site whose share of the pool is 0 this month (the owner
+  // gave the pool to other sites by hand, or the ramp holds it): not a
+  // lapsed plan, so it must not read as one.
+  if (isCloudMode() && plan.poolPerMonth != null && plan.articlesPerMonth === 0) {
+    return `This site gets none of your plan's ${plan.poolPerMonth} articles this month. Change how they're split between your sites in Settings.`;
+  }
   if (isCloudMode() && plan.articlesPerWeek === 0) return "plan inactive: this site's plan includes no articles right now.";
   if (writerMode(project) === "hosted" && !opts.gated) {
     const usage = await weekUsage(project.id, now);
     if (usage.readError) return `This week's usage could not be read (${usage.readError}), so no article starts until it can; try again in a minute.`;
     const ramp = await rampFor(project.id, plan.articlesPerWeek, now);
     if (ramp.stage === "pause") return `This site is held: ${ramp.reason}.`;
+    // The month before the week: the share and the pool are the plan's
+    // numbers, the week's quota and spacing only pace them.
+    const month = await monthAllowance(project, plan, now);
+    if (month && "readError" in month) return `This month's usage could not be read (${month.readError}), so no article starts until it can; try again in a minute.`;
+    if (month) return monthGateSentence(month);
     const verdict = cadence({ now, quota: ramp.quota, spacingDays: plan.spacingDays, countThisWeek: usage.count, lastStartedAt: usage.lastStartedAt });
     const spacing = plan.spacingDays ?? spacingDaysFor(plan.articlesPerWeek);
     if (!verdict.write) {

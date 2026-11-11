@@ -17,7 +17,7 @@ import {
   assertRowOwned,
   assertRowsOwned,
 } from "@/lib/tenant-guard";
-import { getSubscription, isActive, remainingSites, TIER_NAMES } from "@/lib/billing";
+import { getSubscription, isActive, remainingSites, sitesLimitOf, TIER_NAMES } from "@/lib/billing";
 import {
   repoVisibility,
   githubCostGate,
@@ -958,6 +958,14 @@ export async function deleteProject(
   const teardown =
     formData.get("keep_repo") === "on" ? null : await uninstallPipelineFromRepo(project);
 
+  // Multi-site plans: what this site already used this month is measured
+  // BEFORE the row (and its runs and drafts) goes, and added to its owner's
+  // carry once the delete succeeded, so deleting a site and adding it again
+  // never resets the month. Never throws; a failure is logged and the
+  // delete goes ahead.
+  const { addOwnerCarry, measureSiteMonthCarry, rebalanceOwnerShares } = await import("@/lib/site-shares");
+  const carry = await measureSiteMonthCarry(project);
+
   const { error } = await db().from("projects").delete().eq("id", project.id);
   // The repo teardown already happened by now, so a failure here leaves a
   // live project whose pipeline has been pulled out from under it. Say that
@@ -971,7 +979,10 @@ export async function deleteProject(
           : error.message,
     };
   }
+  await addOwnerCarry(carry);
   await stashRepoNotice(teardown);
+  // The pool's share this site held goes back to the owner's other sites.
+  if (project.owner_user_id) await rebalanceOwnerShares(project.owner_user_id);
   await captureServer((await currentUser())?.id ?? project.id, "project_deleted", {
     domain: project.domain,
   });
@@ -1291,8 +1302,8 @@ async function createProjectCore(
       const sub = await getSubscription(auth.user.id);
       return {
         error: isActive(sub)
-          ? `Your ${TIER_NAMES[sub!.tier] ?? sub!.tier} plan covers ${sub!.sites_limit} site${
-              sub!.sites_limit === 1 ? "" : "s"
+          ? `Your ${TIER_NAMES[sub!.tier] ?? sub!.tier} plan covers ${sitesLimitOf(sub!)} site${
+              sitesLimitOf(sub!) === 1 ? "" : "s"
             }. Upgrade on the Billing page to add another.`
           : "Your plan isn't active, so new sites are paused. Pick a plan on the Billing page to add one.",
       };

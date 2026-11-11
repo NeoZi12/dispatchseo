@@ -8,10 +8,11 @@ import { startWriterRun, suggestionIdsInFlight } from "@/lib/writer/runs";
 import { rewriteLiveCached } from "@/lib/hosted-rewrite";
 import { hostedPath } from "@/lib/hosted-blog";
 import { publishTarget, writerMode, type Project } from "@/lib/projects";
-import { cadence } from "./math";
+import { cadence, researchEveryMs } from "./math";
 import { generateSiteProfile } from "./profile";
-import { keywordDataBlocked, RESEARCH_EVERY_MS, runResearch, type ResearchOutcome } from "./research";
-import { weekUsage } from "./usage";
+import { keywordDataBlocked, runResearch, type ResearchOutcome } from "./research";
+import { monthAllowance, weekUsage } from "./usage";
+import { readResearchState } from "@/lib/keyword-research-cache";
 import { rampFor } from "./ramp";
 import { pauseWriter } from "./pause";
 import { countAwaitingReview, MAX_WAITING_FOR_REVIEW, reviewsArticles } from "@/lib/article-review";
@@ -194,6 +195,16 @@ export async function runScheduler(
     await pauseWriter(project.id, `Auto-paused: ${ramp.reason}. More pages on a site Google is not indexing will not help - check Search Console's Pages report, then resume.`, { auto: true, slug: project.slug, rule: "low-index" });
     return { skipped: `paused: ${ramp.reason}`, next_article_at: null };
   }
+  // The month gate (multi-site plans): this site's share of the owner's
+  // monthly pool, and the pool across their sites. Quiet like "quota met":
+  // a used month is the plan working, and the next one starts on the 1st.
+  // A month that could not be counted waits for tomorrow's pass.
+  const month = await monthAllowance(project, plan, now);
+  if (month && "readError" in month) return { skipped: `this month's usage could not be read (${month.readError})`, next_article_at: project.next_article_at, profile: profileOutcome };
+  if (month) {
+    await setNextArticleAt(project.id, month.nextAt);
+    return { skipped: month.reason, next_article_at: month.nextAt.toISOString(), profile: profileOutcome };
+  }
   const usage = await weekUsage(project.id, now);
   const verdict = cadence({ now, quota: ramp.quota, spacingDays: plan.spacingDays, countThisWeek: usage.count, lastStartedAt: usage.lastStartedAt });
   if (!verdict.write) {
@@ -211,8 +222,9 @@ export async function runScheduler(
   if ((await approvedIdeaCount(project.id)) === 0) {
     // Research that came back empty is not retried daily: the site has run
     // out of winnable keywords for now, and re-buying the same Labs rows
-    // changes nothing until the weekly run.
-    const recent = project.last_research_at && now.getTime() - Date.parse(project.last_research_at) < RESEARCH_EVERY_MS;
+    // changes nothing until the next regular run (weekly, or every four
+    // weeks on a niche that keeps coming back empty - math.ts researchEveryMs).
+    const recent = project.last_research_at && now.getTime() - Date.parse(project.last_research_at) < researchEveryMs(await readResearchState(project.id));
     if (opts.researchedThisRun || recent) {
       return { skipped: "no ideas", next_article_at: null, profile: profileOutcome };
     }
@@ -288,6 +300,8 @@ export async function startHostedRunClaimed(
   now = new Date(),
 ): Promise<Awaited<ReturnType<typeof startWriterRun>>> {
   const { writerStartGate } = await import("./usage");
+  // Not gated: this applies the plan, pause, month (share and pool), quota
+  // and spacing rules in full, so the month gate needs no second copy here.
   const gated = await writerStartGate(project, {}, now);
   if (gated) return { refused: gated };
   const dfsBlocked = await keywordDataBlocked(project);

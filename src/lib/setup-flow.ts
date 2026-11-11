@@ -10,7 +10,7 @@ import {
   annualCharge,
   annualSavingsPct,
   applyUnlessSecondPlan,
-  ARTICLES_PER_WEEK,
+  articlesPerMonthFor,
   FREE_ARTICLES_PER_MONTH,
   freeSignupsOpen,
   getSubscription,
@@ -224,7 +224,7 @@ export function buildPlanMenu(freeOpen: boolean, yearly: boolean = annualBilling
     paid: (["starter", "growth", "scale"] as const satisfies readonly Tier[]).map((tier) => ({
       tier,
       name: TIER_NAMES[tier],
-      perWeek: ARTICLES_PER_WEEK[tier],
+      perMonth: articlesPerMonthFor(tier),
       monthly: TIER_LIMITS[tier].price,
       yearly: yearly ? { perMonth: TIER_LIMITS[tier].annual, charge: annualCharge(tier), savePct: annualSavingsPct(tier) } : null,
     })),

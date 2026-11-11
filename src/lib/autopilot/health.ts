@@ -1,11 +1,15 @@
 import { db } from "@/lib/db";
-import { writerGate } from "@/lib/billing";
+import { projectPlan, writerGate } from "@/lib/billing";
 import { reportCronRun } from "@/lib/cron-alerts";
 import { writerProvider, type Project } from "@/lib/projects";
-import { consecutivePostPickFailures, FAILURE_STREAK_ALARM, noArticleAlarm } from "./math";
+import { consecutivePostPickFailures, FAILURE_STREAK_ALARM, noArticleAlarm, noArticleAlarmDays } from "./math";
 import { BUDGET_SKIP } from "./research";
 import { AGENT_STALE_HOURS, AGENT_STALE_REASON, closeRunTasks, waitingOnAgent } from "@/lib/writer/agent-tasks";
 import { failRun, getWriterRun } from "@/lib/writer/runs";
+
+/** The scheduler's month-gate skips (usage.ts monthAllowance): the plan
+ *  working as sold, like "quota met" - never an alarm reason. */
+const MONTH_SKIPS: string[] = ["share used", "plan used"];
 
 const AGENT_SWITCHED_REASON = "the site moved off the subscription writer while this run waited on it";
 
@@ -17,7 +21,10 @@ const AGENT_SWITCHED_REASON = "the site moved off the subscription writer while 
 //   failures   two or more runs in a row failed after pick: the pipeline is
 //              broken for this site, and every retry is paid for
 //   no article an active, unpaused site that finished setup over a week ago
-//              and has started nothing in 14 days
+//              and has started nothing in 14 days (longer for a site whose
+//              own pace is slower: math.ts noArticleAlarmDays). Never for a
+//              site whose month is simply used ("share used", "plan used")
+//              or that has no share of its owner's pool this month
 //   budget     the shared DataForSEO budget is spent, so research cannot run
 //   never live an article rendered and handed to its route 48+ hours ago that
 //              is still not live (an unmerged PR, a page that never loads) -
@@ -105,9 +112,16 @@ export async function siteHealthProblems(project: Project, skips: string[], now:
   }
 
   const connectedAt = project.setup_connected_at ?? null;
-  if (noArticleAlarm({ connectedAt, lastArticleAt: await lastArticleStartedAt(project.id), now })) {
-    const why = skips.find((s) => s && s !== "quota met" && s !== "spacing");
-    problems.push(`no article has started in 14 days${why ? ` (${why})` : ""}`);
+  // The plan's pace sets how long "no article" may last (multi-site plans:
+  // a site with 2 articles a month starts one every 15 days). A plan read
+  // that fails keeps the two-week rule.
+  const plan = await projectPlan(project.id).catch(() => null);
+  const normal = new Set(["quota met", "spacing", ...MONTH_SKIPS]);
+  const monthUsed = skips.some((s) => MONTH_SKIPS.includes(s));
+  const noShare = plan?.poolPerMonth != null && plan.articlesPerMonth === 0;
+  if (!monthUsed && !noShare && noArticleAlarm({ connectedAt, lastArticleAt: await lastArticleStartedAt(project.id), now, spacingDays: plan?.spacingDays })) {
+    const why = skips.find((s) => s && !normal.has(s));
+    problems.push(`no article has started in ${noArticleAlarmDays(plan?.spacingDays)} days${why ? ` (${why})` : ""}`);
   }
 
   if (skips.some((s) => s?.startsWith(BUDGET_SKIP))) {

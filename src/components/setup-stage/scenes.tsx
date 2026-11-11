@@ -562,11 +562,12 @@ export type PlanChoice = { tier: PlanTier; interval: PlanInterval };
 
 /** One paid plan as the plan step shows it. Every number comes from
  *  billing.ts on the server (TIER_LIMITS, annualCharge, annualSavingsPct,
- *  ARTICLES_PER_WEEK) - none is typed here. */
+ *  articlesPerMonthFor) - none is typed here. */
 export type PlanOffer = {
   tier: PaidTier;
   name: string;
-  perWeek: number;
+  /** Articles a month on the plan (the owner's pool). */
+  perMonth: number;
   /** Per month, billed monthly. */
   monthly: number;
   /** Null = no yearly product on this deployment. */
@@ -774,7 +775,7 @@ export function PlanScene({
                   name={o.name}
                   price={money(y ? y.perMonth : o.monthly)}
                   billing={y ? `Billed ${money(y.charge)} a year, save ${y.savePct}%` : "Billed monthly"}
-                  pace={perMonthLine(o.perWeek * 4)}
+                  pace={perMonthLine(o.perMonth)}
                   who={WHO[o.tier]}
                   rows={o.tier === "scale" ? [...PAID_ROWS, "Priority support"] : PAID_ROWS}
                   popular={o.tier === "growth"}

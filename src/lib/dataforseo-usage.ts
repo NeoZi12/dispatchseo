@@ -212,15 +212,32 @@ export async function platformGlobalCeiling(): Promise<
 }
 
 async function monthToDateCostMicrousd(ownerId: string): Promise<number> {
-  const ids = await ownedProjectIds(ownerId);
-  if (ids.length === 0) return 0;
+  const [ids, carried] = await Promise.all([ownedProjectIds(ownerId), carriedCostMicrousd(ownerId)]);
+  if (ids.length === 0) return carried;
   const { data, error } = await db()
     .from("dataforseo_usage")
     .select("cost_microusd")
     .in("project_id", ids)
     .gte("day", monthStartUtc());
+  if (error || !data) return carried;
+  return carried + (data as Array<{ cost_microusd: number }>).reduce((sum, r) => sum + (r.cost_microusd ?? 0), 0);
+}
+
+// What the owner's DELETED sites already spent this month (owner_month_carry,
+// migration 0090, written by site-shares.ts recordDeletedSiteCarry). The
+// usage rows survive a delete (0081) but are summed over the projects the
+// owner still has, so without this "delete the site, add it again" handed a
+// fresh month of keyword data. Any read error, or a DB before 0090, is 0 -
+// the same tolerance as the sum above.
+async function carriedCostMicrousd(ownerId: string): Promise<number> {
+  const { data, error } = await db()
+    .from("owner_month_carry")
+    .select("dfs_microusd")
+    .eq("owner_user_id", ownerId)
+    .eq("month", monthStartUtc())
+    .maybeSingle();
   if (error || !data) return 0;
-  return (data as Array<{ cost_microusd: number }>).reduce((sum, r) => sum + (r.cost_microusd ?? 0), 0);
+  return Number((data as { dfs_microusd: number | string | null }).dfs_microusd ?? 0);
 }
 
 // Is this project's owner still under their tier's monthly DataForSEO budget?

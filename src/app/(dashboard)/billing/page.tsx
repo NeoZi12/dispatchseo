@@ -11,6 +11,7 @@ import {
   isActive,
   polarConfigured,
   priceLabel,
+  sitesLimitOf,
   TIER_LIMITS,
   type Tier,
 } from "@/lib/billing";
@@ -143,8 +144,8 @@ export default async function BillingPage({
             </div>
             <p className="mt-3 text-[15px] text-ink">
               {hostedMode
-                ? `${perMonth} ${perMonth === 1 ? "article" : "articles"} / month${sub.sites_limit > 1 ? `, up to ${sub.sites_limit} sites` : ", one site"}`
-                : `Up to ${sub.sites_limit} ${sub.sites_limit === 1 ? "site" : "sites"}`}
+                ? `${perMonth} ${perMonth === 1 ? "article" : "articles"} / month${sitesLimitOf(sub) > 1 ? `, up to ${sitesLimitOf(sub)} sites` : ", one site"}`
+                : `Up to ${sitesLimitOf(sub)} ${sitesLimitOf(sub) === 1 ? "site" : "sites"}`}
             </p>
             <p className="mt-1 text-[14px] text-ink-muted">{state.line}</p>
             <div className="mt-6 flex flex-wrap items-start gap-3">

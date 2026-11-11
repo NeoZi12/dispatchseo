@@ -4,6 +4,7 @@ import { db } from "./db";
 import { isCloudMode } from "./cloud";
 import { captureServer } from "./posthog-server";
 import { REASON_LABELS, type CancellationReason } from "./cancellation-reasons";
+import { paceFor, resolveShares } from "./site-shares-core";
 
 // Polar billing for CLOUD_MODE (Neo's 2026-07-22 decision: Polar as merchant
 // of record). One subscriptions row per user (migration 0031), upserted by
@@ -34,21 +35,29 @@ export function isBillingInterval(value: unknown): value is BillingInterval {
 // products for a tier MUST be priced in the Polar dashboard to match these
 // numbers, because the page advertises this table and Polar charges its own.
 //
-// Why these numbers (owner, 2026-11-05, the done-for-you release): every
-// plan is ONE SITE, and the tiers differ only in how many articles a week
-// the hosted writer publishes (ARTICLES_PER_WEEK below: up to 1 / 3 / 5).
-// The wedge is the $15 plan - one article a week for a founder's new site,
-// when every general autoblogger starts at $50-80. Cost per site per month
-// measured that day: ~$0.25 of model spend per published article (Opus
-// draft, Sonnet plan and patches, Jev judging), ~$1 of DataForSEO, and the
-// Polar fee; every tier keeps >50% gross margin even at a pessimistic
-// $0.75 an article. Prices here MUST match the Polar products.
+// Why these numbers (owner, 2026-11-05, the done-for-you release; sites
+// and monthly pools 2026-11-11, multi-site plans): a plan is a monthly POOL
+// of articles (ARTICLES_PER_MONTH below: 5 / 15 / 30) on up to 1 / 3 / 5
+// sites. The pool is split into a fixed monthly share per covered site
+// (lib/site-shares.ts), so one site gets all of it and three sites on Growth
+// get about five each - the plan's cost is bounded by the pool, never by the
+// site count. The wedge is still the cheapest plan for a founder's new site,
+// when every general autoblogger starts at $50-80. Cost measured 2026-11-05:
+// ~$0.25 of model spend per published article (Opus draft, Sonnet plan and
+// patches, Jev judging), ~$1 of DataForSEO per site, and the Polar fee;
+// every tier keeps >50% gross margin even at a pessimistic $0.75 an
+// article, and the DataForSEO budgets (dataforseo-usage.ts) are per owner,
+// so extra sites cannot multiply them. Prices here MUST match the Polar
+// products.
 //
 // Existing subscriptions are grandfathered by construction: the webhook
 // rewrites tier and sites_limit only for a product id it recognises
 // (applySubscriptionState), so the owner creates NEW Polar products for
 // these prices and never edits the old ones - the old rows keep their tier
 // and their site allowance (the operator's own Scale row covers 10 sites).
+// Coverage reads sitesLimitOf(), never sites_limit directly: the larger of
+// the stored allowance and today's TIER_LIMITS, so the 2026-11-11 raise
+// (1 -> 3 / 5 sites) reaches existing subscribers without a webhook.
 //
 // The yearly figures are per month and show only once the yearly products
 // exist (productIdForTier).
@@ -61,23 +70,23 @@ export function isBillingInterval(value: unknown): value is BillingInterval {
 // the page would advertise one price and Polar would charge another.
 export const TIER_LIMITS: Record<Tier, { sites: number; price: number; annual: number }> = {
   starter: { sites: 1, price: 19, annual: 15 },
-  growth: { sites: 1, price: 39, annual: 29 },
-  scale: { sites: 1, price: 69, annual: 59 },
+  growth: { sites: 3, price: 39, annual: 29 },
+  scale: { sites: 5, price: 69, annual: 59 },
 };
 
-// Articles a week the hosted writer (the autopilot) publishes per tier
-// (owner, 2026-11-05: up to 1 / 3 / 5 - "up to", because research never
-// queues a keyword without measured volume and difficulty, so a thin niche
-// may not fill the week, and the public copy says so). Up to three a week
-// they start two days apart; five is one a day (math.ts spacingDaysFor) -
-// never two in one morning, which is what a content farm looks like.
+// Articles a MONTH per tier: the owner's pool, shared by every site the plan
+// covers (owner, 2026-11-11, multi-site plans). Counted on UTC calendar
+// months by the month gate (autopilot/usage.ts monthAllowance); each site's
+// weekly pace and spacing come from its share (site-shares-core.ts
+// paceFor), so a lone Starter site writes about one every six days and never
+// two in one morning, which is what a content farm looks like.
 // Env-overridable so the operator can tune cost against results without a
 // deploy, and projects.writer_weekly_quota (0070, operator-only SQL)
-// overrides it for one site.
-export const ARTICLES_PER_WEEK: Record<Tier, number> = {
-  starter: 1,
-  growth: 3,
-  scale: 5,
+// overrides one site's pace outside the pool altogether.
+export const ARTICLES_PER_MONTH: Record<Tier, number> = {
+  starter: 5,
+  growth: 15,
+  scale: 30,
 };
 
 /** Interactive tool pages (calculators, generators) are a feature of the
@@ -106,26 +115,29 @@ export function freeSpacingDays(): number {
   return FREE_ARTICLES_PER_MONTH > 0 ? Math.floor(30 / FREE_ARTICLES_PER_MONTH) : 0;
 }
 
-const WEEKLY_ENV: Record<Tier, string> = {
-  starter: "WRITER_WEEKLY_STARTER",
-  growth: "WRITER_WEEKLY_GROWTH",
-  scale: "WRITER_WEEKLY_SCALE",
+const MONTHLY_ENV: Record<Tier, string> = {
+  starter: "WRITER_MONTHLY_STARTER",
+  growth: "WRITER_MONTHLY_GROWTH",
+  scale: "WRITER_MONTHLY_SCALE",
 };
 
-/** Articles a week for a tier; null = no tier (see UNBILLED_ARTICLES_PER_WEEK).
+/** The plan's pool: articles a month for a tier, shared by its sites. No
+ *  tier (self-host, unbilled) keeps its weekly number counted as four weeks.
  *  A trial is Starter (Polar models the trial on the Starter product). */
-export function articlesPerWeekFor(tier: Tier | null | undefined): number {
-  if (!tier) return UNBILLED_ARTICLES_PER_WEEK;
-  const override = Number(process.env[WEEKLY_ENV[tier]]);
-  if (process.env[WEEKLY_ENV[tier]]?.trim() && Number.isFinite(override) && override >= 0) return Math.floor(override);
-  return ARTICLES_PER_WEEK[tier] ?? UNBILLED_ARTICLES_PER_WEEK;
+export function articlesPerMonthFor(tier: Tier | null | undefined): number {
+  if (!tier) return UNBILLED_ARTICLES_PER_WEEK * 4;
+  const raw = process.env[MONTHLY_ENV[tier]];
+  const override = Number(raw);
+  if (raw?.trim() && Number.isFinite(override) && override >= 0) return Math.floor(override);
+  return ARTICLES_PER_MONTH[tier] ?? UNBILLED_ARTICLES_PER_WEEK * 4;
 }
 
-/** The plan's pace as pricing copy states it: articles a month, counted as
- *  four weeks (Starter 1 a week = 4 a month). A calendar month holds a bit
- *  more than four weeks, so the stated number never over-promises. */
-export function articlesPerMonthFor(tier: Tier | null | undefined): number {
-  return articlesPerWeekFor(tier) * 4;
+/** The weekly pace of a whole pool on ONE site (paceFor); null = no tier
+ *  (see UNBILLED_ARTICLES_PER_WEEK). A site's real pace is its share's
+ *  (projectPlan), which is this only when it is the owner's only site. */
+export function articlesPerWeekFor(tier: Tier | null | undefined): number {
+  if (!tier) return UNBILLED_ARTICLES_PER_WEEK;
+  return paceFor(articlesPerMonthFor(tier)).articlesPerWeek;
 }
 
 /** What Polar charges once a year for the annual plan, in whole dollars. */
@@ -756,7 +768,20 @@ async function writeCancelFlag(
 export function sitesRemaining(sub: Subscription | null, ownedCount: number): number | null {
   if (!isCloudMode() || !polarConfigured()) return null;
   if (!isActive(sub)) return 0;
-  return Math.max(0, sub!.sites_limit - ownedCount);
+  return Math.max(0, sitesLimitOf(sub!) - ownedCount);
+}
+
+// How many sites a subscription covers. The larger of the allowance stored
+// on the row and the tier's allowance today: the webhook writes sites_limit
+// only when an event arrives, so the 2026-11-11 raise (Growth 1 -> 3, Scale
+// 1 -> 5) would otherwise wait for each subscriber's next renewal. The row
+// does not record which Polar product it came from, so a grandfathered
+// product cannot be told apart here - the max is applied to every row, and
+// it only ever widens an allowance (the operator's 10-site Scale row stays
+// 10). Every reader of the allowance goes through this.
+export function sitesLimitOf(sub: Pick<Subscription, "sites_limit" | "tier">): number {
+  const stored = Number.isFinite(sub.sites_limit) ? sub.sites_limit : 0;
+  return Math.max(stored, TIER_LIMITS[sub.tier]?.sites ?? 0);
 }
 
 // How many more sites this user's plan allows. null = unlimited (self-host,
@@ -884,27 +909,62 @@ export async function writerGate(projectId: string): Promise<{ allowed: true; fr
   return { allowed: true, free: true };
 }
 
-// Per-request memo of the read, positive results only (same contract as
-// getSubscription): planGate and writerGate both ask, for the same owner,
-// in the same request.
-const ownedProjectsMemo = cache(() => new Map<string, Promise<string[]>>());
+/** One of an owner's sites as the plan arithmetic needs it: coverage order,
+ *  the monthly share (0090) and the operator's per-site override (0070). */
+export type OwnedSite = {
+  id: string;
+  monthly_share: number | null;
+  share_mode: string | null;
+  writer_weekly_quota: number | null;
+  created_at: string | null;
+};
 
-async function ownedProjectsOldestFirst(ownerId: string): Promise<string[]> {
-  const memo = ownedProjectsMemo();
+// Per-request memo of the read, positive results only (same contract as
+// getSubscription): planGate, writerGate and projectPlan all ask, for the
+// same owner, in the same request.
+const ownedSitesMemo = cache(() => new Map<string, Promise<{ rows: OwnedSite[]; error: string | null }>>());
+
+/** The owner's sites, oldest first (the order coverage is decided in), with
+ *  the read error kept apart from "none" for the gates that must refuse on
+ *  it. A DB that hasn't run 0090 (or 0070) reads the ids alone: every share
+ *  then reads as "not allocated yet". */
+export async function readOwnedSites(ownerId: string): Promise<{ rows: OwnedSite[]; error: string | null }> {
+  const memo = ownedSitesMemo();
   const hit = memo.get(ownerId);
   if (hit) return hit;
-  const read = (async (): Promise<string[]> => {
-    const { data, error } = await db()
-      .from("projects")
-      .select("id")
-      .eq("owner_user_id", ownerId)
-      .order("created_at", { ascending: true });
-    const ids = ((data ?? []) as Array<{ id: string }>).map((r) => r.id);
-    if (error || !ids.length) memo.delete(ownerId);
-    return ids;
+  const read = (async (): Promise<{ rows: OwnedSite[]; error: string | null }> => {
+    const q = (cols: string) => db().from("projects").select(cols).eq("owner_user_id", ownerId).order("created_at", { ascending: true });
+    let res = await q("id, monthly_share, share_mode, writer_weekly_quota, created_at");
+    if (res.error && /does not exist|could not find/i.test(res.error.message)) res = await q("id, created_at");
+    const rows = ((res.data ?? []) as unknown as Array<Partial<OwnedSite> & { id: string }>).map((r) => ({
+      id: r.id,
+      monthly_share: typeof r.monthly_share === "number" ? r.monthly_share : null,
+      share_mode: r.share_mode ?? null,
+      writer_weekly_quota: typeof r.writer_weekly_quota === "number" ? r.writer_weekly_quota : null,
+      created_at: r.created_at ?? null,
+    }));
+    if (res.error || !rows.length) memo.delete(ownerId);
+    return { rows, error: res.error?.message ?? null };
   })();
   memo.set(ownerId, read);
   return read;
+}
+
+/** Drop the memoized read after a write to the owner's shares, so the rest
+ *  of the request (a server action's re-render) sees the new numbers. */
+export function forgetOwnedSites(ownerId: string): void {
+  ownedSitesMemo().delete(ownerId);
+}
+
+async function ownedProjectsOldestFirst(ownerId: string): Promise<string[]> {
+  return (await readOwnedSites(ownerId)).rows.map((r) => r.id);
+}
+
+/** Does a site run outside the plan's pool? The operator's per-site weekly
+ *  number (0070) replaces the plan's pace for that site altogether, so it
+ *  takes no share and is not counted against the owner's pool. */
+export function outsidePool(site: { writer_weekly_quota?: number | null }): boolean {
+  return quotaOf(site.writer_weekly_quota) !== null;
 }
 
 // Is this project covered by its owner's current plan? Crons call this per
@@ -925,9 +985,10 @@ export async function planGate(
   // on the path every hosted page's report walks.
   const [sub, owned] = await Promise.all([getSubscription(ownerId), ownedProjectsOldestFirst(ownerId)]);
   if (!isActive(sub)) return { allowed: false, reason: "subscription inactive" };
-  const covered = owned.slice(0, sub!.sites_limit);
+  const limit = sitesLimitOf(sub!);
+  const covered = owned.slice(0, limit);
   if (!covered.includes(projectId)) {
-    return { allowed: false, reason: `beyond the plan's ${sub!.sites_limit}-site limit` };
+    return { allowed: false, reason: `beyond the plan's ${limit}-site limit` };
   }
   return { allowed: true };
 }
@@ -974,7 +1035,7 @@ export const planPausedProjectSlugs = cache(async (): Promise<Set<string>> => {
     if (byOwner.size === 0) return paused;
     const { data: subs, error: subErr } = await db()
       .from("subscriptions")
-      .select("user_id, status, sites_limit");
+      .select("user_id, status, sites_limit, tier");
     if (subErr) return paused;
     const subByUser = new Map(
       ((subs ?? []) as Array<{ user_id: string } & Subscription>).map((s) => [s.user_id, s]),
@@ -989,7 +1050,7 @@ export const planPausedProjectSlugs = cache(async (): Promise<Set<string>> => {
         for (const slug of slugs) paused.add(slug);
         continue;
       }
-      for (const slug of slugs.slice(sub!.sites_limit)) paused.add(slug); // downgrade overflow
+      for (const slug of slugs.slice(sitesLimitOf(sub!))) paused.add(slug); // downgrade overflow
     }
     return paused;
   } catch {
@@ -1004,30 +1065,63 @@ export const planPausedProjectSlugs = cache(async (): Promise<Set<string>> => {
 // reads as Starter whatever product it was started on, because the trial is
 // what the decision table prices.
 //
+// articlesPerMonth / poolPerMonth (multi-site plans, 2026-11-11): a paid
+// site's share of its owner's monthly pool, and the pool. Both set = the
+// month gate applies (autopilot/usage.ts monthAllowance); poolPerMonth null
+// = no pool to gate on (self-host, unbilled, the operator's per-site
+// override, a lapsed plan), and the free tier states its 2 a month in
+// articlesPerMonth while its own durable ledger (free-gate.ts) gates it.
+//
 // cache(): once per request however many ask - the report, the queue and
 // the hosted pages all do, in the same instant, on every hosted page.
 // Outside a request (crons) React calls through each time, as before.
+export type ProjectPlan = {
+  tier: Tier | null;
+  status: string;
+  articlesPerWeek: number;
+  spacingDays?: number;
+  articlesPerMonth: number | null;
+  poolPerMonth: number | null;
+};
+
 export const projectPlan = cache(async (
   projectId: string,
-): Promise<{ tier: Tier | null; status: string; articlesPerWeek: number; spacingDays?: number }> => {
+): Promise<ProjectPlan> => {
   // The operator's per-site number applies wherever a plan's number would:
   // self-host, unbilled and ownerless rows too. Never where the answer is
   // 0 for want of a live subscription - an override does not buy articles.
   // Two independent single-row facts, read together.
   const billed = isCloudMode() && polarConfigured();
   const [override, ownerId] = await Promise.all([weeklyQuotaOverride(projectId), billed ? ownerUserIdForProject(projectId) : Promise.resolve(null)]);
-  if (!isCloudMode()) return { tier: null, status: "self-host", articlesPerWeek: override ?? UNBILLED_ARTICLES_PER_WEEK };
-  if (!polarConfigured()) return { tier: null, status: "unbilled", articlesPerWeek: override ?? UNBILLED_ARTICLES_PER_WEEK };
-  if (!ownerId) return { tier: null, status: "unbilled", articlesPerWeek: override ?? UNBILLED_ARTICLES_PER_WEEK };
+  const noPool = { articlesPerMonth: null, poolPerMonth: null };
+  if (!isCloudMode()) return { tier: null, status: "self-host", articlesPerWeek: override ?? UNBILLED_ARTICLES_PER_WEEK, ...noPool };
+  if (!polarConfigured()) return { tier: null, status: "unbilled", articlesPerWeek: override ?? UNBILLED_ARTICLES_PER_WEEK, ...noPool };
+  if (!ownerId) return { tier: null, status: "unbilled", articlesPerWeek: override ?? UNBILLED_ARTICLES_PER_WEEK, ...noPool };
   const sub = await getSubscription(ownerId);
   // No live subscription = the free tier (isFreePlan): one article a week
   // at most, freeSpacingDays() apart - FREE_ARTICLES_PER_MONTH a month. A
   // lapsed payer lands here too and keeps writing at the free pace.
-  const free = FREE_ARTICLES_PER_MONTH > 0 ? { articlesPerWeek: 1, spacingDays: freeSpacingDays() } : { articlesPerWeek: 0 };
+  const free =
+    FREE_ARTICLES_PER_MONTH > 0
+      ? { articlesPerWeek: 1, spacingDays: freeSpacingDays(), articlesPerMonth: FREE_ARTICLES_PER_MONTH, poolPerMonth: null }
+      : { articlesPerWeek: 0, articlesPerMonth: 0, poolPerMonth: null };
   if (!sub) return { tier: null, status: "none", ...free };
   const tier: Tier = sub.status === "trialing" ? "starter" : sub.tier;
-  if (!isActive(sub)) return { tier, status: sub.status, ...(isFreePlan({ status: sub.status }) ? free : { articlesPerWeek: 0 }) };
-  return { tier, status: sub.status, articlesPerWeek: override ?? articlesPerWeekFor(tier) };
+  if (!isActive(sub)) return { tier, status: sub.status, ...(isFreePlan({ status: sub.status }) ? free : { articlesPerWeek: 0, ...noPool }) };
+  // The operator's per-site number: exactly the pre-pool behaviour, no month
+  // gate. Operator-only SQL, never a customer state.
+  if (override !== null) return { tier, status: sub.status, articlesPerWeek: override, ...noPool };
+  // The site's share of the owner's pool, among the sites the plan covers
+  // (the oldest sitesLimitOf of them, as planGate decides). A site outside
+  // coverage gets 0 - planGate already refuses it. Sites on the operator's
+  // override take no share (outsidePool).
+  const pool = articlesPerMonthFor(tier);
+  const { rows } = await readOwnedSites(ownerId);
+  const covered = rows.slice(0, sitesLimitOf(sub));
+  const share = covered.some((r) => r.id === projectId)
+    ? (resolveShares(pool, covered.filter((r) => !outsidePool(r))).get(projectId) ?? 0)
+    : 0;
+  return { tier, status: sub.status, articlesPerMonth: share, poolPerMonth: pool, ...paceFor(share) };
 });
 
 /** The one answer to "is this site on the free tier", for every surface that
