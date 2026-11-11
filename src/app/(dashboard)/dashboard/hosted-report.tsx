@@ -668,7 +668,7 @@ function FreeCapCard({ share, used, now }: { share: number; used: number; now: n
             href="/billing#plans"
             className="group inline-flex h-11 items-center gap-2.5 rounded-2xl bg-gradient-to-br from-accent-strong via-violet-600 to-indigo-600 pl-5 pr-2 text-[15px] font-semibold text-white shadow-lg shadow-accent-strong/30 ring-1 ring-inset ring-white/20 transition duration-200 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-accent-strong/40 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent active:translate-y-0 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
           >
-            Keep writing
+            Grow faster
             <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-white/20 transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
                 <path d="M5 12h14M13 6l6 6-6 6" />
