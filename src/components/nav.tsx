@@ -209,17 +209,6 @@ function WebsitesIcon({ className }: IconProps) {
   );
 }
 
-// Sliders: the knobs you set once and leave.
-function AdvancedIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
-      <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
-      <circle cx="15" cy="7" r="2" />
-      <circle cx="9" cy="17" r="2" />
-    </svg>
-  );
-}
-
 function BackIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
@@ -369,7 +358,7 @@ const SETTINGS: NavLink = { href: "/settings", label: "Settings", Icon: Settings
 // (owner, 2026-11-11): open Settings and the site's screens make way for the
 // settings menu, with a back arrow at the top. One menu to learn, the whole
 // page width for the setting itself, and room for the account-level pages -
-// Billing, Feedback, Docs, Log out - that used to crowd the foot of the
+// Websites, Billing, Feedback, Docs - that used to crowd the foot of the
 // sidebar. The sidebar is in this face on every route listed here.
 const UNDER_SETTINGS = ["/settings", "/billing", "/feedback"];
 
@@ -378,15 +367,13 @@ const UNDER_SETTINGS = ["/settings", "/billing", "/feedback"];
 // whether it is the one on screen - the pathname alone is the same for all
 // four. Keep the ids in step with SECTIONS in settings/hosted-settings.tsx.
 type SettingsLink = NavLink & { section?: string; plan?: boolean };
-type SettingsGroup = { label: string; links: SettingsLink[]; logout?: boolean };
+type SettingsGroup = { label: string; links: SettingsLink[] };
 
-const HOSTED_SECTIONS: SettingsLink[] = [
-  // General holds the site and its publishing; an old ?section=publishing
-  // link is not in SECTION_IDS, so it lights General, which is where it lands.
-  { href: "/settings", label: "General", Icon: SettingsIcon, section: "site" },
-  { href: "/settings?section=google", label: "Google", Icon: SearchConsoleIcon, section: "google" },
-  { href: "/settings?section=advanced", label: "Advanced", Icon: AdvancedIcon, section: "advanced" },
-];
+// Hosted Settings is ONE page since 2026-11-11 (owner: three panes each held
+// too little): the site, publishing, Google, search market and the danger
+// zone are all on General. An old ?section= link is not in SECTION_IDS, so
+// it lights General, which is where it lands.
+const HOSTED_SECTIONS: SettingsLink[] = [{ href: "/settings", label: "General", Icon: SettingsIcon, section: "site" }];
 const SECTION_IDS = new Set(HOSTED_SECTIONS.map((l) => l.section));
 
 function settingsGroups({ mode, hasProject, billing }: { mode: NavMode; hasProject: boolean; billing: boolean }): SettingsGroup[] {
@@ -410,11 +397,10 @@ function settingsGroups({ mode, hasProject, billing }: { mode: NavMode; hasProje
   ];
   const groups: SettingsGroup[] = [
     { label: "Site", links: site },
-    // Log out closes the Account group, on every kind of install.
-    { label: "Account", links: account, logout: true },
+    { label: "Account", links: account },
     { label: "Help", links: help },
   ];
-  return groups.filter((g) => g.links.length > 0 || g.logout);
+  return groups.filter((g) => g.links.length > 0);
 }
 
 // The operator's cross-tenant analytics (/owner). Only an id in
@@ -707,8 +693,9 @@ function UpgradeCard() {
 
 // The foot of the sidebar, pinned under the scroll area so it can never be
 // clipped off the bottom of a short screen: the site picker, Polar-style
-// (the layout builds it and passes it in as `switcher`). Above it, on the
-// site's screens only, a free site's upgrade card and the operator's row.
+// (the layout builds it and passes it in as `switcher`), and Log out under
+// it. Above them, on the site's screens only, a free site's upgrade card and
+// the operator's row.
 function SidebarFoot({
   mode,
   pathname,
@@ -726,12 +713,16 @@ function SidebarFoot({
 }) {
   const showUpgrade = upgrade && !inSettings;
   const showOwner = owner && !inSettings;
-  if (!showUpgrade && !showOwner && !switcher) return null;
   return (
     <div className="flex shrink-0 flex-col gap-0.5 border-t border-line-soft px-3 py-3">
       {showUpgrade ? <UpgradeCard /> : null}
       {showOwner ? <SidebarLink link={OWNER} pathname={pathname} big={mode === "hosted"} /> : null}
       {switcher ? <div className={showOwner ? "mt-2" : ""}>{switcher}</div> : null}
+      {/* Under the site picker, on both faces of the sidebar (owner,
+          2026-11-11): leaving the account is not a setting. */}
+      <div className={switcher ? "mt-1.5" : ""}>
+        <LogoutLink />
+      </div>
     </div>
   );
 }
@@ -786,7 +777,6 @@ function SettingsMenuList({ mode, pathname, hasProject, billing, plan, onNavigat
               trailing={l.plan && plan ? <PlanPill plan={plan} /> : undefined}
             />
           ))}
-          {group.logout ? <LogoutLink big={big} /> : null}
         </div>
       ))}
       {hasProject ? null : <NoSiteNote />}

@@ -24,6 +24,7 @@ import { PageHeading } from "@/components/ui/page-heading";
 import { BackToSettings } from "../settings/more-links";
 import { StatusPill, type StatusTone } from "@/components/ui/status-pill";
 import { cx } from "@/components/ui/styles";
+import { BTN_PRIMARY, BTN_SECONDARY } from "@/components/setup-stage/primitives";
 
 export const dynamic = "force-dynamic";
 
@@ -43,11 +44,28 @@ const TIER_COPY: Record<Tier, { name: string; sub: string }> = {
 // "1 website" / "1 to 3 websites": a plan's site allowance, worded as on every
 // plan card (owner, 2026-11-11). An owner may use fewer sites than the plan
 // covers, hence "1 to N".
+// The pricing card's own copy, the same words as setup's plan step
+// (setup-stage/scenes.tsx WHO and PAID_ROWS), the landing page and /plans.
+// Tick rows are always ONE row (owner rule, 2026-11-09): keep each short.
+const WHO: Record<Tier, string> = {
+  starter: "Steady start, monthly articles",
+  growth: "Serious about traffic",
+  scale: "All in on content",
+};
+const PAID_ROWS = ["Topics people search for", "Rankings and analytics", "No badge"];
+
+function Tick() {
+  return (
+    <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0 text-accent" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="m3.5 8.5 3 3 6-7" />
+    </svg>
+  );
+}
+
 function sitesLine(sites: number): string {
   return sites === 1 ? "1 website" : `1 to ${sites} websites`;
 }
 
-const at = (ms: number, i = 0) => ({ "--at": `${ms}ms`, "--i": i }) as React.CSSProperties;
 
 export default async function BillingPage({
   searchParams,
@@ -100,9 +118,9 @@ export default async function BillingPage({
   const perMonth = sub ? articlesPerMonthFor(sub.tier) : 0;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-12">
+    <div className="mx-auto max-w-4xl space-y-10">
       {/* Reached from Settings now, not from a sidebar row of its own. */}
-      <div className="arrive-up space-y-3">
+      <div className="space-y-3">
         <BackToSettings />
         <PageHeading title="Billing" />
       </div>
@@ -137,97 +155,99 @@ export default async function BillingPage({
       {!polarConfigured() ? <Callout tone="warn" title="Billing isn't configured on this deployment yet (POLAR_* env vars missing)." /> : null}
 
       {/* ---- your plan ---- */}
-      <section aria-labelledby="plan-title" className="arrive-up space-y-4" style={at(60)}>
-        {/* Big titles above each card, like Settings: findable while scrolling. */}
+      <section aria-labelledby="plan-title" className="space-y-4">
         <h2 id="plan-title" className="text-[1.4rem] font-semibold tracking-tight text-ink">
           Your plan
         </h2>
         <div className="rounded-2xl border border-line-soft bg-surface p-6 sm:p-7">
-        {sub && state ? (
-          <>
-            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
-              <p className="text-[2rem] font-semibold leading-none tracking-tight text-ink">{TIER_COPY[sub.tier].name}</p>
-              <StatusPill tone={state.tone}>{state.word}</StatusPill>
-            </div>
-            <p className="mt-3 text-[15px] text-ink">
-              {hostedMode
-                ? `${perMonth} ${perMonth === 1 ? "article" : "articles"} a month, ${sitesLine(sitesLimitOf(sub))}`
-                : sitesLine(sitesLimitOf(sub))}
-            </p>
-            <p className="mt-1 text-[14px] text-ink-muted">{state.line}</p>
-            <div className="mt-6 flex flex-wrap items-start gap-3">
-              {sub.status === "past_due" ? (
-                <a href="/api/polar/portal" className={buttonClass("primary", "md")}>
-                  Update payment
+          {sub && state ? (
+            <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-5">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
+                  <p className="text-[2rem] font-semibold leading-none tracking-tight text-ink">{TIER_COPY[sub.tier].name}</p>
+                  <StatusPill tone={state.tone}>{state.word}</StatusPill>
+                </div>
+                <p className="mt-3 text-[15px] text-ink">
+                  {hostedMode
+                    ? `${perMonth} ${perMonth === 1 ? "article" : "articles"} a month, ${sitesLine(sitesLimitOf(sub))}`
+                    : sitesLine(sitesLimitOf(sub))}
+                </p>
+                <p className="mt-1 text-[14px] text-ink-muted">{state.line}</p>
+              </div>
+              <div className="flex flex-wrap items-start gap-3">
+                <a href="/api/polar/portal" className={buttonClass(sub.status === "past_due" ? "primary" : "secondary", "md")}>
+                  {sub.status === "past_due" ? "Update payment" : "Payment and invoices"}
                 </a>
-              ) : (
-                <a href="#plans" className={buttonClass("secondary", "md")}>
-                  Change plan
-                </a>
-              )}
-              {sub.cancel_at_period_end ? (
-                <KeepPlanButton />
-              ) : (
-                <CancelPlanButton endsAt={sub.current_period_end} tierName={TIER_COPY[sub.tier].name} siteCount={siteCount} />
-              )}
+                {sub.cancel_at_period_end ? (
+                  <KeepPlanButton />
+                ) : (
+                  <CancelPlanButton endsAt={sub.current_period_end} tierName={TIER_COPY[sub.tier].name} siteCount={siteCount} />
+                )}
+              </div>
             </div>
-          </>
-        ) : (
-          <>
-            {/* No live plan = the free tier (billing.ts isFreePlan), which is
-                what the Free pill on the settings menu's Billing row says too. */}
-            <p className="text-[1.25rem] font-semibold tracking-tight text-ink">You&apos;re on the free plan</p>
-            <p className="mt-2 text-[15px] text-ink-muted">Pick a plan below for more articles a month, keyword research, rankings and advanced analytics.</p>
-          </>
-        )}
+          ) : (
+            <>
+              {/* No live plan = the free tier (billing.ts isFreePlan), which is
+                  what the Free pill on the settings menu's Billing row says too. */}
+              <p className="text-[1.25rem] font-semibold tracking-tight text-ink">You&apos;re on the free plan</p>
+              <p className="mt-2 text-[15px] text-ink-muted">Pick a plan below for more articles a month, keyword research, rankings and advanced analytics.</p>
+            </>
+          )}
         </div>
       </section>
 
       {/* ---- the plans ---- */}
-      <section id="plans" aria-labelledby="plans-title" className="arrive-up scroll-mt-24 space-y-4" style={at(140)}>
+      {/* The pricing card every other surface uses (setup's plan step, the
+          landing page, /plans): name, the price big, who it's for in violet,
+          then tick rows that never wrap. The owner's own plan carries the
+          violet border and a "Your plan" pill. */}
+      <section id="plans" aria-labelledby="plans-title" className="scroll-mt-24 space-y-4">
         <h2 id="plans-title" className="text-[1.4rem] font-semibold tracking-tight text-ink">
           {hasUpstreamSub ? "Change plan" : "Plans"}
         </h2>
-        <div className="grid gap-4 sm:grid-cols-3">
-          {(Object.keys(TIER_COPY) as Tier[]).map((tier, i) => {
+        <div className="grid gap-x-4 gap-y-7 pt-3 md:grid-cols-3">
+          {(Object.keys(TIER_COPY) as Tier[]).map((tier) => {
             const limits = TIER_LIMITS[tier];
             const isCurrent = active && sub?.tier === tier;
             const monthly = articlesPerMonthFor(tier);
+            const rows = hostedMode
+              ? [`${monthly} ${monthly === 1 ? "article" : "articles"} a month`, sitesLine(limits.sites), ...PAID_ROWS, ...(tier === "scale" ? ["Priority support"] : [])]
+              : [sitesLine(limits.sites), TIER_COPY[tier].sub];
             return (
               <div
                 key={tier}
                 // flex column + mt-auto on the button: the cards carry
                 // different amounts of copy, and the buttons still line up.
                 className={cx(
-                  "arrive-up flex flex-col rounded-xl border p-5",
-                  isCurrent ? "border-accent/50 bg-accent-soft" : "border-line-soft bg-surface",
+                  "relative flex flex-col rounded-2xl bg-surface px-5 pb-5 pt-6",
+                  isCurrent ? "border-2 border-accent-strong shadow-[0_0_60px_-24px_rgba(139,92,246,0.7)]" : "border border-line",
                 )}
-                style={at(200, i)}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="text-[15px] font-semibold text-ink">{TIER_COPY[tier].name}</h3>
-                  {isCurrent ? <span className="text-[12.5px] font-medium text-accent">Your plan</span> : null}
-                </div>
-                <p className="mt-2 text-[1.75rem] font-semibold leading-none tracking-tight text-ink tabular-nums">
-                  {priceLabel(limits.price)}
-                  <span className="text-[14px] font-normal text-ink-muted"> a month</span>
-                </p>
-                {annualBillingAvailable() ? (
-                  <p className="mt-1 text-[12.5px] text-ink-faint tabular-nums">or {priceLabel(limits.annual)} a month, billed yearly</p>
+                {isCurrent ? (
+                  <span className="absolute -top-3 left-5 rounded-full bg-accent-strong px-3 py-1 text-[11.5px] font-bold tracking-wide text-white">Your plan</span>
+                ) : tier === "growth" && !hasUpstreamSub ? (
+                  <span className="absolute -top-3 left-5 rounded-full bg-accent-strong px-3 py-1 text-[11.5px] font-bold tracking-wide text-white">Most popular</span>
                 ) : null}
-                <p className="mt-4 text-[14px] text-ink">
-                  {hostedMode ? (
-                    <>
-                      <span className="font-semibold tabular-nums">{monthly}</span> {monthly === 1 ? "article" : "articles"} a month
-                    </>
-                  ) : (
-                    sitesLine(limits.sites)
-                  )}
+
+                <h3 className="text-[17px] font-bold text-ink">{TIER_COPY[tier].name}</h3>
+                <p className="mt-2 flex items-baseline gap-1">
+                  <span className="text-[36px] font-extrabold leading-none tracking-tight text-white tabular-nums">{priceLabel(limits.price)}</span>
+                  <span className="text-[14px] font-semibold text-ink-faint">/mo</span>
                 </p>
-                <p className="mt-1 text-[13px] text-ink-muted">
-                  {hostedMode ? `${sitesLine(limits.sites)}. ${TIER_COPY[tier].sub}` : TIER_COPY[tier].sub}
+                <p className="mt-1.5 text-[13px] font-medium text-ink-muted tabular-nums">
+                  {annualBillingAvailable() ? `or ${priceLabel(limits.annual)} a month, billed yearly` : "Billed monthly"}
                 </p>
-                {!hasUpstreamSub ? <p className="mt-1 text-[12.5px] font-medium text-ink-faint">Billed today</p> : null}
+                <p className="mt-1 text-[13.5px] font-medium text-accent">{WHO[tier]}</p>
+
+                <ul className="mt-5 space-y-1 text-[14px] text-ink">
+                  {rows.map((r, i) => (
+                    <li key={r} className={cx("flex items-center gap-2.5 whitespace-nowrap py-1", i === 0 ? "font-semibold" : "")}>
+                      <Tick />
+                      <span>{r}</span>
+                    </li>
+                  ))}
+                </ul>
+
                 {/* Multi-site tiers on an agent site only: after two sites
                     GitHub Actions bills the owner, and an upgrade is exactly
                     when that becomes possible - so it sits above the button. */}
@@ -239,9 +259,10 @@ export default async function BillingPage({
                     </a>
                   </p>
                 ) : null}
-                <div className="mt-auto pt-5">
+
+                <div className="mt-auto pt-6">
                   {isCurrent ? (
-                    <p className="flex h-9 items-center justify-center text-sm font-medium text-ink-muted">Your current plan</p>
+                    <p className="flex h-11 items-center justify-center rounded-xl border border-line-soft text-[14px] font-medium text-ink-muted">Your current plan</p>
                   ) : (
                     <a
                       // Existing subscribers change plans in Polar's portal (it
@@ -250,13 +271,14 @@ export default async function BillingPage({
                       // hasUpstreamSub, not `active`: a past_due subscriber
                       // sent to checkout would be billed twice.
                       href={hasUpstreamSub ? "/api/polar/portal" : `/api/polar/checkout?tier=${tier}`}
-                      className={buttonClass(hasUpstreamSub ? "secondary" : "primary", "md", "w-full")}
+                      className={cx(hasUpstreamSub ? BTN_SECONDARY : BTN_PRIMARY, "h-11 w-full rounded-xl py-0 text-[14.5px]")}
                     >
                       {hasUpstreamSub ? `Switch to ${TIER_COPY[tier].name}` : `Choose ${TIER_COPY[tier].name}`}
                     </a>
                   )}
+                  {!isCurrent && !hasUpstreamSub ? <p className="mt-2 text-center text-[12.5px] font-medium text-ink-faint">Billed today</p> : null}
                   {!isCurrent && !hasUpstreamSub && annualBillingAvailable() ? (
-                    <a href={`/api/polar/checkout?tier=${tier}&interval=year`} className="mt-2 block text-center text-[12.5px] text-ink-faint underline decoration-line underline-offset-4 hover:text-ink">
+                    <a href={`/api/polar/checkout?tier=${tier}&interval=year`} className="mt-1 block text-center text-[12.5px] text-ink-faint underline decoration-line underline-offset-4 hover:text-ink">
                       Or pay yearly: {priceLabel(annualCharge(tier))} a year
                     </a>
                   ) : null}
@@ -334,22 +356,13 @@ export default async function BillingPage({
         </section>
       ) : null}
 
-      <div className="arrive-up flex flex-wrap items-center justify-between gap-3 border-t border-line pt-6 text-[13px] text-ink-faint" style={at(320)}>
-        {hasUpstreamSub ? (
-          <a href="/api/polar/portal" className="font-medium text-ink-muted underline decoration-line underline-offset-[3px] hover:text-ink">
-            Payment method and invoices
-          </a>
-        ) : (
-          <span />
-        )}
-        <span>
-          By subscribing you agree to the{" "}
-          <a className="underline underline-offset-2 hover:text-ink-muted" href="/terms">
-            terms of service
-          </a>
-          .
-        </span>
-      </div>
+      <p className="border-t border-line pt-6 text-[13px] text-ink-faint">
+        By subscribing you agree to the{" "}
+        <a className="underline underline-offset-2 hover:text-ink-muted" href="/terms">
+          terms of service
+        </a>
+        .
+      </p>
     </div>
   );
 }

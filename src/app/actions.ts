@@ -1331,7 +1331,7 @@ async function createProjectCore(
       // dead end into a detour.
       return {
         error:
-          "Adding a third site needs one quick step about GitHub Actions costs first. Open your dashboard and use Add project - it'll walk you through it.",
+          "Adding a third site needs one quick step about GitHub Actions costs first. Open your dashboard and use Add website - it'll walk you through it.",
       };
     }
     ownerUserId = auth.user.id;

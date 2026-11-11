@@ -190,9 +190,9 @@ export function AddSiteDialog({
           role="dialog"
           aria-modal="true"
           aria-labelledby="add-site-full-title"
-          className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-6 shadow-2xl shadow-black/60"
+          className="w-full max-w-md rounded-2xl border border-line bg-surface p-6 shadow-2xl shadow-black/70 sm:p-7"
         >
-          <h2 id="add-site-full-title" className="text-lg font-semibold text-white">
+          <h2 id="add-site-full-title" className="text-[1.25rem] font-semibold tracking-tight text-ink">
             Your plan is full
           </h2>
           <p className="mt-1.5 text-sm leading-relaxed text-neutral-400">
@@ -247,9 +247,9 @@ export function AddSiteDialog({
           role="dialog"
           aria-modal="true"
           aria-labelledby="gh-cost-title"
-          className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-6 shadow-2xl shadow-black/60"
+          className="w-full max-w-md rounded-2xl border border-line bg-surface p-6 shadow-2xl shadow-black/70 sm:p-7"
         >
-          <h2 id="gh-cost-title" className="text-lg font-semibold text-white">
+          <h2 id="gh-cost-title" className="text-[1.25rem] font-semibold tracking-tight text-ink">
             Set a GitHub budget first
           </h2>
           <div className="mt-3 space-y-3 text-sm leading-relaxed text-neutral-400">
@@ -357,10 +357,10 @@ export function AddSiteDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="add-site-title"
-        className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-6 shadow-2xl shadow-black/60"
+        className="w-full max-w-md rounded-2xl border border-line bg-surface p-6 shadow-2xl shadow-black/70 sm:p-7"
       >
-        <h2 id="add-site-title" className="text-lg font-semibold text-white">
-          Add a site
+        <h2 id="add-site-title" className="text-[1.25rem] font-semibold tracking-tight text-ink">
+          Add a website
         </h2>
         <p className="mt-1.5 text-sm leading-relaxed text-neutral-400">
           {cloud
@@ -481,7 +481,7 @@ export function AddSiteDialog({
           <input type="hidden" name="content_mode" value="detect" />
 
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-neutral-300">Site name</span>
+            <span className="mb-1.5 block text-sm font-medium text-ink">Website name</span>
             <input
               ref={nameRef}
               name="name"
@@ -491,12 +491,12 @@ export function AddSiteDialog({
               maxLength={80}
               placeholder="Acme"
               autoComplete="off"
-              className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-violet-500/50 focus:outline-none"
+              className="h-11 w-full rounded-xl border border-line bg-surface-2 px-3.5 text-[15px] text-ink placeholder:text-ink-faint outline-none transition-colors hover:border-surface-3 focus-visible:border-accent/60 focus-visible:ring-2 focus-visible:ring-accent/25"
             />
           </label>
 
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-neutral-300">Domain</span>
+            <span className="mb-1.5 block text-sm font-medium text-ink">Domain</span>
             <input
               name="domain"
               value={domain}
@@ -506,7 +506,7 @@ export function AddSiteDialog({
               autoComplete="off"
               autoCapitalize="none"
               spellCheck={false}
-              className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-violet-500/50 focus:outline-none"
+              className="h-11 w-full rounded-xl border border-line bg-surface-2 px-3.5 text-[15px] text-ink placeholder:text-ink-faint outline-none transition-colors hover:border-surface-3 focus-visible:border-accent/60 focus-visible:ring-2 focus-visible:ring-accent/25"
             />
             <span className="mt-1.5 block text-xs text-neutral-500">
               The live site, without https:// - we check it answers before saving it.
@@ -597,7 +597,7 @@ export function AddSiteDialog({
           ) : null}
           {!cloud && selfHostTarget === "github" ? (
             <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-neutral-300">GitHub repo</span>
+              <span className="mb-1.5 block text-sm font-medium text-ink">GitHub repo</span>
               <input
                 name="repo"
                 value={repo}
@@ -607,7 +607,7 @@ export function AddSiteDialog({
                 autoComplete="off"
                 autoCapitalize="none"
                 spellCheck={false}
-                className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-violet-500/50 focus:outline-none"
+                className="h-11 w-full rounded-xl border border-line bg-surface-2 px-3.5 text-[15px] text-ink placeholder:text-ink-faint outline-none transition-colors hover:border-surface-3 focus-visible:border-accent/60 focus-visible:ring-2 focus-visible:ring-accent/25"
               />
               <span className="mt-1.5 block text-xs text-neutral-500">
                 The repo DispatchSEO opens pull requests against. A full GitHub URL works too.
@@ -629,16 +629,16 @@ export function AddSiteDialog({
               type="button"
               onClick={onClose}
               disabled={pending}
-              className="cursor-pointer rounded-lg px-3 py-2 text-sm text-neutral-400 transition-colors hover:text-neutral-200 disabled:opacity-50"
+              className="inline-flex h-11 cursor-pointer items-center rounded-xl px-4 text-[14.5px] font-medium text-ink-muted transition-colors hover:text-ink disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={pending}
-              className="cursor-pointer rounded-lg bg-white px-4 py-2 text-sm font-medium text-neutral-950 transition-opacity hover:opacity-90 disabled:opacity-50"
+              className="inline-flex h-11 cursor-pointer items-center justify-center rounded-xl bg-gradient-to-r from-[#6d28d9] to-[#9333ea] px-5 text-[14.5px] font-semibold text-white shadow-lg shadow-[#7c3aed]/30 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {pending ? "Adding..." : "Add site"}
+              {pending ? "Adding..." : "Add website"}
             </button>
           </div>
         </form>

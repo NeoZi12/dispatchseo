@@ -2,22 +2,24 @@
 
 import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { addWebsite, saveSitePaused, saveSitePublishMode, saveSiteShare, type AddWebsiteState, type SiteShareState } from "@/app/site-actions";
-import { CardMascot } from "@/components/card-mascot";
 import { DeleteProjectForm } from "@/components/delete-project";
 import { SiteIcon } from "@/components/ui/site-icon";
 import { cx, FOCUS_RING } from "@/components/ui/styles";
 import { BTN_PRIMARY, BTN_SECONDARY } from "@/components/setup-stage/primitives";
 
 // The Websites page's moving parts (page.tsx has the data and the why): the
-// header with its Add website panel, and one CARD per site. Everything on a
-// card is said in a whole phrase, because the short labels it first shipped
-// with ("Started", "This month", "How articles go live") read as riddles to
-// the owner himself (2026-11-11): the head says "14 articles a month" and
-// "6 used so far this month"; under it, in view rather than behind a click,
-// two questions answered by picking one of two cards with an icon and a
-// sentence each (Publishing: Autopilot or Manual review; Articles a month:
-// Automatic or Custom), then the pause switch, then Remove, which asks in a
-// pop-up. An account holds five sites at most, so nothing needs hiding.
+// header with its Add website panel, and ONE card for everything else
+// (SitesBoard): the plan's two numbers, then a row per website with its
+// icon, its name, and its articles a month. A row opens (animated) to its
+// settings: Publishing (Autopilot or Manual review), Articles a month
+// (Automatic or Custom), the pause switch and Remove, which asks in a pop-up.
+//
+// Kept deliberately plain (owner, 2026-11-11, after three richer versions:
+// "too much", then "I don't like the graph", "they don't need to be
+// different colors", "remove the not assigned thing"): no dispatcher scene
+// or speech bubbles, no bar or boxes of any kind, no colour per website, no
+// leftover-articles row, no entrance animations. Words are whole phrases
+// ("9 articles a month", "5 used this month"), never bare labels.
 
 export type SiteCard = {
   slug: string;
@@ -56,23 +58,17 @@ export type SiteCard = {
 const BTN_PRIMARY_SM = cx(BTN_PRIMARY, "rounded-lg px-4 py-2 text-[14px] shadow-md");
 const BTN_SECONDARY_SM = cx(BTN_SECONDARY, "rounded-lg px-4 py-2 text-[14px]");
 
-/* ------------------------------------------------------------ dispatcher */
+/* ------------------------------------------------------------------ note */
 
-/** The dispatcher saying one thing, inline: its face and a speech bubble.
- *  The compact sibling of DispatcherNote, for a row or a form. */
-export function DispatcherLine({ tone = "info", children, action }: { tone?: "info" | "warn"; children: React.ReactNode; action?: React.ReactNode }) {
+/** One plain line of explanation or refusal, with at most one action. */
+function Note({ tone = "info", children, action }: { tone?: "info" | "warn"; children: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <div role={tone === "warn" ? "alert" : "status"} className="flex items-start gap-3">
-      {/* With his headset on (owner, 2026-11-11); the blink is .dash-mascot. */}
-      <CardMascot className="dash-mascot mt-0.5 h-8 w-8 shrink-0" />
-      <div className={cx("relative min-w-0 rounded-xl border bg-surface-2/80 px-3.5 py-2.5", tone === "warn" ? "border-warn/30" : "border-line")}>
-        <span
-          aria-hidden="true"
-          className={cx("absolute -left-[6px] top-3.5 h-2.5 w-2.5 -rotate-45 border-l border-t bg-surface-2", tone === "warn" ? "border-warn/30" : "border-line")}
-        />
-        <p className="text-[13.5px] leading-relaxed text-ink">{children}</p>
-        {action ? <div className="mt-2.5">{action}</div> : null}
-      </div>
+    <div
+      role={tone === "warn" ? "alert" : "status"}
+      className={cx("rounded-lg border px-3.5 py-2.5", tone === "warn" ? "border-warn/30 bg-warn/[0.06]" : "border-line-soft bg-surface-2/60")}
+    >
+      <p className={cx("text-[13.5px] leading-relaxed", tone === "warn" ? "text-ink" : "text-ink-muted")}>{children}</p>
+      {action ? <div className="mt-2.5">{action}</div> : null}
     </div>
   );
 }
@@ -93,13 +89,13 @@ export function WebsitesHeader({
 }) {
   const [open, setOpen] = useState(initialOpen);
   return (
-    <div className="arrive-up space-y-5" style={style}>
+    <div className="space-y-5" style={style}>
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
         <div className="min-w-0">
           <h1 id="websites-title" className="text-[1.75rem] font-semibold leading-tight tracking-tight text-ink">
             Websites
           </h1>
-          <p className="mt-2 max-w-[52ch] text-sm leading-relaxed text-ink-muted">Every site on your plan, and how this month&apos;s articles are split between them.</p>
+          <p className="mt-2 text-sm leading-relaxed text-ink-muted">Your websites, and how your plan&apos;s articles are divided between them.</p>
         </div>
         {canAdd ? (
           open ? null : (
@@ -182,7 +178,7 @@ function AddWebsiteForm({ onCancel }: { onCancel: () => void }) {
 
       {shown ? (
         <div className="mt-4">
-          <DispatcherLine
+          <Note
             tone="warn"
             action={
               shown.override ? (
@@ -193,7 +189,7 @@ function AddWebsiteForm({ onCancel }: { onCancel: () => void }) {
             }
           >
             {shown.error}
-          </DispatcherLine>
+          </Note>
         </div>
       ) : null}
 
@@ -247,87 +243,155 @@ const STATUS: Record<SiteCard["status"], { label: string; dot: string }> = {
   setup: { label: "Setting up", dot: "bg-accent" },
 };
 
-export function SiteList({ cards, style }: { cards: SiteCard[]; style?: React.CSSProperties }) {
+export function SitesBoard({
+  pool,
+  poolLabel,
+  sitesFigure,
+  sitesLabel,
+  cards,
+  resets,
+}: {
+  pool: number | null;
+  poolLabel: string;
+  sitesFigure: string;
+  sitesLabel: string;
+  cards: SiteCard[];
+  /** "December 1": when the month starts over. */
+  resets: string;
+}) {
   return (
-    <ol className="space-y-4" style={style}>
-      {cards.map((c, i) => (
-        <SiteCardView key={c.slug} card={c} index={i} />
-      ))}
-    </ol>
+    <div className="overflow-clip rounded-2xl border border-line-soft bg-surface">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-8 gap-y-2 px-5 py-6 sm:px-6">
+        <p className="flex items-baseline gap-2.5">
+          <span className="text-[2.5rem] font-semibold leading-none tracking-tight tabular-nums text-ink">{pool ?? "-"}</span>
+          <span className="text-[14.5px] text-ink-muted">{poolLabel}</span>
+        </p>
+        <p className="flex items-baseline gap-2">
+          <span className="text-[1.375rem] font-semibold leading-none tracking-tight tabular-nums text-ink">{sitesFigure}</span>
+          <span className="text-[14.5px] text-ink-muted">{sitesLabel}</span>
+        </p>
+      </div>
+
+      <ul className="divide-y divide-line-soft border-t border-line-soft">
+        {cards.map((c) => (
+          <SiteRow key={c.slug} card={c} />
+        ))}
+      </ul>
+
+      <p className="border-t border-line-soft px-5 py-3 text-[12.5px] text-ink-faint sm:px-6">The month starts again on {resets}.</p>
+    </div>
   );
 }
 
-function SiteCardView({ card: c, index }: { card: SiteCard; index: number }) {
+/** One figure on a website's row: the number, and under it what it counts.
+ *  The label is spelled out from sm up and shortened on a phone. */
+function RowStat({ value, label, short, strong = false }: { value: number; label: string; short: string; strong?: boolean }) {
+  return (
+    // min-w, not w: the label is the widest line, so the column grows to it
+    // and the number centres over the words. Every row carries the same
+    // labels, so the columns still line up down the card.
+    <span className="flex min-w-[3.75rem] flex-col items-center text-center sm:min-w-[7.25rem]">
+      <span className={cx("block font-semibold leading-7 tracking-tight tabular-nums", strong ? "text-[1.5rem] text-ink" : "text-[1.25rem] text-ink-muted")}>{value}</span>
+      <span className="mt-1 block whitespace-nowrap text-[11px] font-medium uppercase tracking-[0.07em] text-ink-faint">
+        <span className="hidden sm:inline">{label}</span>
+        <span className="sm:hidden">{short}</span>
+      </span>
+    </span>
+  );
+}
+
+/** One website: its icon, name and articles a month, and behind a click,
+ *  its settings. A site that
+ *  needs something from the owner (setup unfinished, not covered) starts
+ *  open, so the reason and its button are never hidden. */
+function SiteRow({ card: c }: { card: SiteCard }) {
+  const [open, setOpen] = useState(c.status === "setup" || c.status === "uncovered");
+  const panel = useId();
   const st = STATUS[c.status];
   const muted = c.status === "uncovered";
-  const used = c.used ?? null;
   return (
-    <li
-      className={cx("arrive-up overflow-clip rounded-2xl border bg-surface", muted ? "border-line-soft/70" : "border-line-soft")}
-      style={{ "--at": "200ms", "--i": index, "--step": "70ms" } as React.CSSProperties}
-    >
-      {/* Head: who it is, how it's doing, and its number - as a phrase. */}
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-4 px-5 py-5 sm:px-6">
-        <span className={cx("flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-line-soft bg-surface-2", muted && "opacity-50 grayscale")}>
-          <SiteIcon domain={c.domain} className="h-7 w-7" />
+    <li>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-controls={panel}
+        className={cx("flex w-full items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-surface-2/60 sm:px-6", open && "bg-surface-2/40", FOCUS_RING)}
+      >
+        <span className={cx("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-line-soft bg-surface-2", muted && "opacity-50 grayscale")}>
+          <SiteIcon domain={c.domain} className="h-6 w-6" />
         </span>
-        <div className="min-w-0 flex-1">
-          <p className={cx("truncate text-[16px] font-semibold tracking-tight", muted ? "text-ink-muted" : "text-ink")} title={c.domain}>
+        <span className="min-w-0 flex-1">
+          <span className={cx("block truncate text-[15px] font-medium", muted ? "text-ink-muted" : "text-ink")} title={c.domain}>
             {c.domain}
-          </p>
-          <p className="mt-1 flex items-center gap-1.5 text-[13px] text-ink-muted">
+          </span>
+          <span className="mt-0.5 flex items-center gap-1.5 text-[13px] text-ink-muted">
             <span aria-hidden="true" className={cx("h-1.5 w-1.5 shrink-0 rounded-full", st.dot)} />
-            <span className="truncate">
-              {st.label}
-              {c.outside ? ", pace set by DispatchSEO" : null}
-            </span>
-          </p>
-        </div>
-        {c.share != null ? (
-          <div className="shrink-0 sm:text-right">
-            <p className="flex items-baseline gap-2 sm:justify-end">
-              <span className={cx("text-[2rem] font-semibold leading-none tracking-tight tabular-nums", c.hue ? "" : "text-ink-muted")} style={c.hue ? { color: c.hue } : undefined}>
-                {c.share}
-              </span>
-              <span className="text-[14px] font-medium text-ink">{c.share === 1 ? "article a month" : "articles a month"}</span>
-            </p>
-            {used != null ? (
-              <p className="mt-1.5 text-[13px] text-ink-muted">
-                <span className="tabular-nums text-ink">{Math.min(used, Math.max(c.share, used))}</span> used so far this month
-              </p>
+            <span className="truncate">{st.label}</span>
+            {/* The publishing mode wears the same icon as its button in
+                the Publishing setting below: bolt for Autopilot, eye for
+                Manual review. */}
+            {c.controllable && c.status !== "paused" ? (
+              <>
+                <span aria-hidden="true" className="text-ink-faint">
+                  ·
+                </span>
+                <span aria-hidden="true" className={cx("inline-flex shrink-0 [&_svg]:h-3.5 [&_svg]:w-3.5", c.publishMode === "review" ? "text-warn" : "text-ok")}>
+                  {c.publishMode === "review" ? EYE : BOLT}
+                </span>
+                <span className="shrink-0">{c.publishMode === "review" ? "Manual review" : "Autopilot"}</span>
+              </>
             ) : null}
-          </div>
+            {c.outside ? <span className="truncate">· pace set by DispatchSEO</span> : null}
+          </span>
+        </span>
+        {/* Two fixed columns, the "Your top posts" shape: a number over a
+            small label, the same width on every row so the figures line up
+            down the card. The site's articles a month is the headline, on
+            the right; what it has used sits quieter beside it. */}
+        {c.share != null ? (
+          <span className="flex shrink-0 items-start gap-5 sm:gap-9">
+            {c.used != null ? <RowStat value={c.used} label="Used this month" short="Used" /> : null}
+            <RowStat value={c.share} label="Articles a month" short="A month" strong={!muted} />
+          </span>
         ) : null}
-      </div>
+        <svg aria-hidden="true" viewBox="0 0 16 16" className={cx("h-4 w-4 shrink-0 text-ink-faint transition-transform duration-150", open && "rotate-180")}>
+          <path d="m3.5 6 4.5 4.5L12.5 6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
 
-      {c.line ? (
-        <div className="px-5 pb-5 sm:px-6">
-          <DispatcherLine
-            tone={c.status === "uncovered" ? "warn" : "info"}
-            action={
-              c.status === "setup" ? (
-                <a href="/onboarding" className={BTN_PRIMARY_SM}>
-                  Finish setup
-                </a>
-              ) : c.status === "uncovered" ? (
-                <a href="/billing" className={BTN_SECONDARY_SM}>
-                  See plans
-                </a>
-              ) : undefined
-            }
-          >
-            {c.line}
-          </DispatcherLine>
+      {/* Always mounted so opening AND closing animate: the grid row goes
+          0fr <-> 1fr and the inner box clips. `inert` keeps a closed panel's
+          buttons out of the tab order and away from screen readers. */}
+      <div id={panel} className={cx("grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none", open ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
+        <div className="min-h-0 overflow-hidden" inert={!open}>
+        <div className={cx("divide-y divide-line-soft border-t border-line-soft bg-canvas/40 transition-opacity duration-300 motion-reduce:transition-none", open ? "opacity-100" : "opacity-0")}>
+          {c.line ? (
+            <div className="px-5 py-4 sm:px-6">
+              <Note
+                tone={c.status === "uncovered" ? "warn" : "info"}
+                action={
+                  c.status === "setup" ? (
+                    <a href="/onboarding" className={BTN_PRIMARY_SM}>
+                      Finish setup
+                    </a>
+                  ) : c.status === "uncovered" ? (
+                    <a href="/billing" className={BTN_SECONDARY_SM}>
+                      See plans
+                    </a>
+                  ) : undefined
+                }
+              >
+                {c.line}
+              </Note>
+            </div>
+          ) : null}
+          {c.controllable ? <PublishModeRow card={c} /> : null}
+          {c.editable ? <ShareControl card={c} /> : null}
+          {c.controllable ? <PauseRow card={c} /> : null}
+          <RemoveSite card={c} />
         </div>
-      ) : null}
-
-      {/* Controls, as rows: the setting and one line on the left, its
-          control on the right. */}
-      <div className="divide-y divide-line-soft border-t border-line-soft">
-        {c.controllable ? <PublishModeRow card={c} /> : null}
-        {c.editable ? <ShareControl card={c} /> : null}
-        {c.controllable ? <PauseRow card={c} /> : null}
-        <RemoveSite card={c} />
+        </div>
       </div>
     </li>
   );
@@ -444,7 +508,7 @@ function PublishModeRow({ card: c }: { card: SiteCard }) {
           </form>
           {state && !state.ok ? (
             <div className="mt-3">
-              <DispatcherLine tone="warn">{state.message}</DispatcherLine>
+              <Note tone="warn">{state.message}</Note>
             </div>
           ) : null}
         </>
@@ -470,7 +534,7 @@ function PauseRow({ card: c }: { card: SiteCard }) {
     <ControlRow
       title="Keep writing for this website"
       description={on ? "Switch off to pause it. Nothing already published is touched." : "Paused. No new articles for this website until you switch it back on."}
-      below={state && !state.ok ? <DispatcherLine tone="warn">{state.message}</DispatcherLine> : undefined}
+      below={state && !state.ok ? <Note tone="warn">{state.message}</Note> : undefined}
     >
       <form action={formAction} className="flex items-center gap-3">
         <input type="hidden" name="slug" value={c.slug} />
@@ -509,9 +573,9 @@ function ShareControl({ card: c }: { card: SiteCard }) {
 
   const stepper =
     mode !== "custom" ? null : full ? (
-      <DispatcherLine tone="warn">
+      <Note tone="warn">
         Your other websites already have all {c.pool} of your plan&apos;s articles set by hand. Set one of them back to Auto first.
-      </DispatcherLine>
+      </Note>
     ) : (
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
         <div className="flex items-center rounded-xl border border-line bg-surface-2">
@@ -565,7 +629,7 @@ function ShareControl({ card: c }: { card: SiteCard }) {
                 {pending ? "Saving" : "Save"}
               </button>
             ) : null}
-            {state && !state.ok ? <DispatcherLine tone="warn">{state.message}</DispatcherLine> : null}
+            {state && !state.ok ? <Note tone="warn">{state.message}</Note> : null}
           </div>
         }
       >
@@ -662,9 +726,9 @@ function RemoveDialog({ card: c, onClose }: { card: SiteCard; onClose: () => voi
           </div>
         </div>
         {c.isLastSite ? (
-          <DispatcherLine tone="warn">
+          <Note tone="warn">
             This is your last website. Once you remove it, you&apos;ll have no websites on DispatchSEO, and nothing gets written until you add one.
-          </DispatcherLine>
+          </Note>
         ) : null}
         <p className="text-[13px] leading-relaxed text-ink-muted">The articles it already used this month still count toward your plan, so removing a website and adding it again doesn&apos;t give you more.</p>
         <DeleteProjectForm

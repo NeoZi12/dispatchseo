@@ -38,19 +38,20 @@ import { countAwaitingReview } from "@/lib/article-review";
 
 // Settings for a hosted-writer project, laid out like Polar's: the sidebar
 // turns into the settings menu (nav.tsx SettingsMenu), each entry opens one
-// pane here (?section=, one URL each; the ids must match HOSTED_SECTIONS
-// there), and a pane is one or more GROUPS - a small title, then a card of
+// page, and a page is one or more GROUPS - a small title, then a card of
 // ROWS: the setting's name and one muted line on the left, its control on
 // the right, hairlines between. Destructive actions are their own group at
 // the end of Advanced.
 //
-// Only what an owner must be able to change (owner, 2026-10-24), cut on
-// 2026-11-09 and again on 2026-11-11 to three panes:
-//   General  - the site, and how and where its articles go out. Where they
-//              go shows only while it needs a hand.
-//   Google   - the Search Console connection.
-//   Advanced - search market, launch date, disconnecting and deleting.
-// Billing, Feedback and Docs are pages of their own in the same menu.
+// Only what an owner must be able to change (owner, 2026-10-24). ONE page
+// since 2026-11-11 (owner: three panes each held too little), in groups:
+//   Site        - the site, and when it launched.
+//   Publishing  - how articles go live; where they go shows only while it
+//                 needs a hand.
+//   Google      - the Search Console connection and the search market.
+//   Danger zone - disconnecting and deleting.
+// Websites, Billing, Feedback and Docs are pages of their own in the menu.
+// An old ?section= link (publishing, google, advanced) just lands here.
 //
 // Gone from this page on 2026-11-11 (owner: "we don't really need that"):
 // "What your site is", "Topics it covers" and "Facts only you know". Setup
@@ -65,14 +66,7 @@ import { countAwaitingReview } from "@/lib/article-review";
 
 type Controls = AutopilotReport["controls"];
 
-const SECTIONS = [
-  { id: "site", title: "General", description: "Your site, and how its articles go out." },
-  { id: "google", title: "Google", description: "Where the clicks and searches in your report come from." },
-  { id: "advanced", title: "Advanced", description: "Set once when you added the site. Disconnecting and deleting are here too." },
-] as const;
-type SectionId = (typeof SECTIONS)[number]["id"];
 
-const at = (ms: number, i = 0) => ({ "--at": `${ms}ms`, "--i": i }) as React.CSSProperties;
 
 // The report is the source of truth for these values; if it can't be built
 // this request, read the same rows directly so Settings still opens with
@@ -120,37 +114,14 @@ export async function HostedSettings({
     (target === "github" && !project.github_repo) || target === "manual" || target === "wordpress" || (target === "hosted" && !(await rewriteLiveCached(project))) || (parked ?? 0) > 0;
   // The Plan pane is gone; anything still pointing at it means Billing.
   if (section === "plan" && isCloudMode()) redirect("/billing");
-  const sections = SECTIONS;
-  // Publishing is part of General now; the stuck-state links that still say
-  // ?section=publishing fall through to it here, like any unknown id.
-  const active: SectionId = sections.find((x) => x.id === section)?.id ?? "site";
-  const meta = SECTIONS.find((x) => x.id === active)!;
 
   return (
     <div className="mx-auto max-w-3xl space-y-7">
-      {/* Phones only. From md up the sidebar itself is the settings menu
-          (nav.tsx SettingsMenu), so the page is one column with the whole
-          width for the setting. On a phone the sidebar is a drawer, and the
-          panes are worth keeping one tap away. */}
-      <nav aria-label="Settings sections" className="arrive-up md:hidden">
+      {/* Phones only. From md up the sidebar is the settings menu (nav.tsx
+          SettingsMenu); on a phone that menu is a drawer, so the other
+          settings pages stay one tap away as chips. */}
+      <nav aria-label="More settings" className="md:hidden">
         <ul className="flex flex-wrap gap-1.5">
-          {sections.map((x) => (
-            <li key={x.id}>
-              <Link
-                href={x.id === "site" ? "/settings" : `/settings?section=${x.id}`}
-                scroll={false}
-                aria-current={x.id === active ? "page" : undefined}
-                className={cx(
-                  "block rounded-lg border px-3 py-2 text-[14px] transition-colors",
-                  x.id === active ? "border-line bg-surface-2 font-medium text-ink" : "border-line-soft text-ink-muted hover:bg-surface hover:text-ink",
-                  FOCUS_RING,
-                )}
-              >
-                {x.title}
-              </Link>
-            </li>
-          ))}
-          {/* Pages of their own, not panes: Billing, Feedback, Docs. */}
           {moreLinks().map((link) => (
             <li key={link.href}>
               <MoreLinkAnchor
@@ -162,21 +133,20 @@ export async function HostedSettings({
         </ul>
       </nav>
 
-      {/* key: a new pane arrives like a new page, not a patched one. */}
-      <div className="space-y-6" key={active}>
-        <PageHeading className="arrive-up" style={at(40)} title={meta.title} description={meta.description} />
-        <div className="arrive-up space-y-5" style={at(100)}>
-            {active === "site" ? (
-              <>
-                <SiteSection project={project} />
-                <Group title="Publishing" description={publishingOpen ? "Something here needs you before articles can go out." : "When finished articles go live."}>
-                  {publishingOpen ? <PublishingSection project={project} /> : null}
-                  <PublishModeForm project={project} />
-                </Group>
-              </>
-            ) : null}
-            {active === "google" ? <GoogleSection project={project} /> : null}
-            {active === "advanced" ? <AdvancedSection project={project} account={account} /> : null}
+      <div className="space-y-6">
+        <PageHeading title="General" description="Your site, how its articles go out, and its Google connection." />
+        <div className="space-y-5">
+          <SiteSection project={project} />
+          <Group id="publishing" title="Publishing" description={publishingOpen ? "Something here needs you before articles can go out." : "When finished articles go live."}>
+            {publishingOpen ? <PublishingSection project={project} /> : null}
+            <PublishModeForm project={project} />
+          </Group>
+          <Group id="google" title="Google" description="Where your clicks and searches come from, and which Google we measure.">
+            <GoogleSection project={project} />
+          </Group>
+          <Group id="danger" title="Danger zone" description="These can't be undone.">
+            <DangerSection project={project} account={account} />
+          </Group>
         </div>
       </div>
     </div>
@@ -209,9 +179,9 @@ function Row({ title, description, children, full = false }: { title: string; de
 
 /** A titled set of cards inside a pane, Polar-style: a small heading and one
  *  muted line, then the card(s) of rows. */
-function Group({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
+function Group({ id, title, description, children }: { id?: string; title: string; description?: string; children: React.ReactNode }) {
   return (
-    <section className="space-y-3 pt-3">
+    <section id={id} className="scroll-mt-24 space-y-3 pt-3">
       <div>
         <h2 className="text-[15px] font-semibold tracking-tight text-ink">{title}</h2>
         {description ? <p className="mt-0.5 text-[13px] text-ink-muted">{description}</p> : null}
@@ -247,6 +217,7 @@ async function SiteSection({ project }: { project: Project }) {
           <OutArrow className="h-3.5 w-3.5 opacity-70" />
         </a>
       </div>
+      <SiteLaunchedRow current={project.site_launched_at ?? project.created_at} slug={project.slug} hosted />
     </Rows>
     </>
   );
@@ -407,22 +378,16 @@ function GoogleSection({ project }: { project: Project }) {
           </Link>
         </span>
       </Row>
+      <MarketRow locationCode={project.location_code} languageCode={project.language_code} slug={project.slug} hosted />
     </Rows>
   );
 }
 
-function AdvancedSection({ project, account }: { project: Project; account: { email: string | null; siteCount: number; subscribed: boolean } | null }) {
+function DangerSection({ project, account }: { project: Project; account: { email: string | null; siteCount: number; subscribed: boolean } | null }) {
   const target = publishTarget(project);
   const isDefault = project.id === DEFAULT_PROJECT_ID;
   const lastSiteWhileSubscribed = isCloudMode() && account?.siteCount === 1 && account.subscribed;
   return (
-    <>
-      <Rows>
-        <MarketRow locationCode={project.location_code} languageCode={project.language_code} slug={project.slug} hosted />
-        <SiteLaunchedRow current={project.site_launched_at ?? project.created_at} slug={project.slug} hosted />
-      </Rows>
-
-      <Group title="Danger zone" description="These can't be undone.">
       <Rows danger>
         {project.github_repo ? (
           <Row title="Disconnect the repo" description="Articles stop going to it. Nothing in the repo changes." full>
@@ -448,8 +413,6 @@ function AdvancedSection({ project, account }: { project: Project; account: { em
           </Row>
         ) : null}
       </Rows>
-      </Group>
-    </>
   );
 }
 

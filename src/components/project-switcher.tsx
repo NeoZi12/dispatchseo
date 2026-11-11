@@ -59,6 +59,16 @@ function Favicon({
   );
 }
 
+function PlusMark() {
+  return (
+    <span aria-hidden="true" className="grid h-5 w-5 shrink-0 place-items-center rounded-md border border-violet-400/40">
+      <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <path d="M8 3.5v9M3.5 8h9" />
+      </svg>
+    </span>
+  );
+}
+
 export function ProjectSwitcher({
   projects,
   activeSlug,
@@ -161,7 +171,7 @@ export function ProjectSwitcher({
       {pending ? (
         <div
           role="progressbar"
-          aria-label="Switching project"
+          aria-label="Switching website"
           className="pointer-events-none fixed inset-x-0 top-0 z-50 h-0.5 overflow-hidden bg-neutral-800/60"
         >
           <div className="dispatch-sweep h-full w-1/3 rounded-r-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)]" />
@@ -195,7 +205,7 @@ export function ProjectSwitcher({
         ) : (
           // The domain is the one flexible thing in the mobile topbar - it
           // truncates so a long one can't push the mode switch off-screen.
-          <span className="truncate">{active?.domain ?? "select project"}</span>
+          <span className="truncate">{active?.domain ?? "Select a website"}</span>
         )}
         {pending ? (
           <svg
@@ -227,7 +237,7 @@ export function ProjectSwitcher({
           role="menu"
           className={
             inSidebar
-              ? "absolute bottom-full left-0 z-30 mb-2 max-h-[min(26rem,70vh)] w-full overflow-y-auto rounded-xl border border-neutral-800 bg-neutral-900 p-1 shadow-xl shadow-black/40"
+              ? "dispatch-fade-in absolute bottom-full left-0 z-30 mb-2 max-h-[min(26rem,70vh)] w-full overflow-y-auto rounded-xl border border-neutral-800 bg-neutral-900 p-1 shadow-xl shadow-black/40"
               : "absolute left-0 top-full z-30 mt-2 w-64 rounded-xl border border-neutral-800 bg-neutral-900 p-1 shadow-xl shadow-black/40"
           }
         >
@@ -272,52 +282,39 @@ export function ProjectSwitcher({
               </button>
             );
           })}
-          <div className="my-1 border-t border-neutral-800" />
-          {!canAddSite ? null : planFull ? (
-            <Link
-              href="/billing"
-              role="menuitem"
-              onClick={() => setOpen(false)}
-              className="block rounded-lg px-3 py-2 transition-colors hover:bg-neutral-800"
-            >
-              <span className="block text-sm text-violet-300">Upgrade to add more sites</span>
-              {/* Deliberately no site count here. `remaining` is all this
-                  component knows, and a downgraded account can sit ABOVE its
-                  limit (Scale -> Starter keeps both sites, the newer one just
-                  falls outside coverage) - so "your plan covers N sites"
-                  computed from the list length would be wrong exactly for the
-                  people most likely to read it. */}
-              <span className="mt-0.5 block text-xs text-neutral-500">
-                Your plan has no room for another site.
-              </span>
-            </Link>
-          ) : addHref ? (
-            <Link
-              href={addHref}
-              role="menuitem"
-              onClick={() => setOpen(false)}
-              className="block rounded-lg px-3 py-2 text-sm text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
-            >
-              + Add website
-            </Link>
-          ) : (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={openAdd}
-              className="block w-full cursor-pointer rounded-lg px-3 py-2 text-left text-sm text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
-            >
-              + Add project
-            </button>
-          )}
-          <Link
-            href="/settings"
-            role="menuitem"
-            onClick={() => setOpen(false)}
-            className="block rounded-lg px-3 py-2 text-sm text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
-          >
-            Project settings
-          </Link>
+          {/* One row under the list, and only for an account that can
+              actually add a website (owner, 2026-11-11): a plan with room
+              left, or self-host. On free, on Starter, or with the plan full
+              there is no row at all - no "upgrade" teaser, and no settings
+              link (Settings is in the sidebar). On the hosted version the
+              row goes to the Websites page's own form; self-host opens the
+              dialog. */}
+          {canAddSite && !planFull ? (
+            <>
+              <div className="my-1 border-t border-neutral-800" />
+              {addHref ? (
+                <Link
+                  href={addHref}
+                  role="menuitem"
+                  onClick={() => setOpen(false)}
+                  className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-violet-300 transition-colors hover:bg-neutral-800 hover:text-violet-200"
+                >
+                  <PlusMark />
+                  Add website
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={openAdd}
+                  className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-violet-300 transition-colors hover:bg-neutral-800 hover:text-violet-200"
+                >
+                  <PlusMark />
+                  Add website
+                </button>
+              )}
+            </>
+          ) : null}
         </div>
       ) : null}
       </div>

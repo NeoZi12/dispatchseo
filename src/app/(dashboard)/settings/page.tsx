@@ -243,7 +243,7 @@ export default async function SettingsPage({
   return (
     <div className="mx-auto max-w-xl space-y-8">
       <PageHeader
-        title="Project settings"
+        title="Website settings"
         hint={`Everything DispatchSEO knows about ${project.name}. Switch sites at the bottom of the sidebar to manage a different one.`}
       />
       {/* Billing, Feedback, Docs, on a phone (the sidebar's settings menu has them on desktop). */}

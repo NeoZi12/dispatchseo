@@ -198,13 +198,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
       cloud={billing}
       sitesRemaining={sitesLeft}
       githubCostRequired={githubCost.required}
-      // Self-host and the operator always get the add row (and
-      // its dialog); a customer gets it while the plan has room
-      // for another site (Growth 3, Scale 5), and it takes them
-      // to the Websites page, where a site is added the way the
-      // first one was (createHostedProjectForUser).
-      canAddSite={!billing || owner || (sitesLeft ?? 0) > 0}
-      addHref={billing && !owner ? "/settings/websites?add=1" : null}
+      // "Add website" shows only for an account that can add one (owner,
+      // 2026-11-11): self-host (uncapped, null), or a plan with room left.
+      // Free and Starter cover one site and a full plan has no room, so
+      // those see no row at all. On the hosted version it opens the
+      // Websites page's own form - the operator's too, so the old dialog
+      // is only ever self-host's.
+      canAddSite={!billing || sitesLeft === null || sitesLeft > 0}
+      addHref={billing ? "/settings/websites?add=1" : null}
       placement="sidebar"
     />
   ) : null;
