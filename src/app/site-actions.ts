@@ -22,6 +22,8 @@ import { getProjectBySlug } from "@/lib/projects";
 import { assertProjectOwned } from "@/lib/tenant-guard";
 import { createHostedProjectForUser, isProjectDomain, normalizeProjectDomain, probeSite } from "@/lib/setup-flow";
 import { setSiteShare, type SetSiteShareInput } from "@/lib/site-shares";
+import { setPublishMode } from "@/lib/article-review";
+import { pauseWriter, resumeWriter } from "@/lib/autopilot/pause";
 
 export type AddWebsiteState = {
   error: string;
@@ -90,4 +92,55 @@ export async function saveSiteShare(_prev: SiteShareState, fd: FormData): Promis
   revalidatePath("/settings/websites");
   revalidatePath("/dashboard");
   return { ok: true, message: "Saved", at };
+}
+
+/** The signed-in owner's website by slug, whichever site is active on the
+ *  dashboard: the Websites page lists every site on the account, so its
+ *  controls act on the row they sit in, not on the dash_project cookie
+ *  (autopilot-actions.ts ownedProject refuses anything but the active site,
+ *  which is right for a page about ONE site and wrong for this one). */
+async function ownedSite(fd: FormData) {
+  if (!(await dashboardAuth())) return null;
+  const project = await getProjectBySlug(String(fd.get("slug") ?? ""));
+  if (!project) return null;
+  try {
+    await assertProjectOwned(project.id);
+  } catch {
+    return null;
+  }
+  return project;
+}
+
+/** One website's publishing mode: "auto" (articles go live on their own) or
+ *  "review" (each waits for the owner's Publish). Same rule as Settings and
+ *  the set_publish_mode path (article-review.ts setPublishMode). */
+export async function saveSitePublishMode(_prev: SiteShareState, fd: FormData): Promise<SiteShareState> {
+  const at = Date.now();
+  const project = await ownedSite(fd);
+  if (!project) return { ok: false, message: "That website isn't on this account.", at };
+  const mode = String(fd.get("mode") ?? "");
+  if (mode !== "auto" && mode !== "review") return { ok: false, message: "Pick automatic or review.", at };
+  const r = await setPublishMode(project, mode);
+  if (!r.ok) return { ok: false, message: r.error, at };
+  revalidatePath("/settings/websites");
+  revalidatePath("/", "layout");
+  return { ok: true, message: "Saved", at };
+}
+
+/** Pause or resume one website's articles (pause.ts, the same calls the
+ *  dashboard's own Pause and the pause_writer / resume_writer MCP tools make). */
+export async function saveSitePaused(_prev: SiteShareState, fd: FormData): Promise<SiteShareState> {
+  const at = Date.now();
+  const project = await ownedSite(fd);
+  if (!project) return { ok: false, message: "That website isn't on this account.", at };
+  const paused = String(fd.get("paused") ?? "") === "1";
+  try {
+    if (paused) await pauseWriter(project.id, "Paused by you from the dashboard.");
+    else await resumeWriter(project.id);
+  } catch {
+    return { ok: false, message: "We couldn't save that just now. Try again in a moment.", at };
+  }
+  revalidatePath("/settings/websites");
+  revalidatePath("/", "layout");
+  return { ok: true, message: paused ? "Paused" : "Resumed", at };
 }
