@@ -191,6 +191,11 @@ const PROBES: Probe[] = [
   // hourly-gsc cron notes a skip and the day page says the hours are on their way.
   { migration: "0088_gsc_hourly", table: "gsc_hourly", column: "hours" },
   { migration: "0089_publish_mode", table: "projects", column: "publish_mode" },
+  // 0090: multi-site plans (lib/site-shares.ts). The carry table is created
+  // after the two projects columns, so it stands in for all three. Without
+  // the columns every site reads as "not allocated yet" (an even split);
+  // without the table a deleted site's month is simply not carried.
+  { migration: "0090_site_shares", table: "owner_month_carry", column: "article_starts" },
 ];
 
 // Migrations that genuinely CANNOT be probed through this mechanism, with the

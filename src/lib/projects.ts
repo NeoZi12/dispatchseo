@@ -226,6 +226,15 @@ export type Project = {
    *  plan's. Absent on a DB that hasn't run 0070 and on the COLS_PRE_0070 tier. */
   writer_weekly_quota: number | null;
 
+  /** Migration 0090 (multi-site plans, lib/site-shares.ts): this site's
+   *  articles this month out of its owner's plan pool. Null = not allocated
+   *  yet (an even split of what the owner's other sites leave). Optional:
+   *  absent on a DB that hasn't run 0090 and on the COLS_PRE_0090 tier. */
+  monthly_share?: number | null;
+  /** 'auto' = the daily rebalance sets monthly_share; 'custom' = the owner
+   *  set it by hand. Absent (pre-0090) reads as 'auto'. */
+  share_mode?: "auto" | "custom" | null;
+
   created_at: string;
 };
 
@@ -342,11 +351,16 @@ export function writerProvider(p: Pick<Project, "writer_provider">): "api" | "ag
 
 // mcp_token deliberately excluded - only fetchProjectToken exposes it.
 const COLS =
-  "id, slug, name, domain, gsc_site_url, github_repo, content_mode, content_path_hint, dataforseo_login, dataforseo_password, keyword_source, serpapi_key, powerups_skipped, location_code, language_code, mode, auto_approve, auto_approve_tools, auto_build_guides, auto_build_tools, auto_merge, last_trend_scan_at, site_launched_at, pipeline_installed_at, pipeline_verified, content_prefs, gsc_oauth_refresh_token, github_installation_id, github_app_installed_at, install_progress, onboarding_screen, owner_user_id, agent, internal_linking, publish_target, wp_url, wp_username, wp_app_password, wp_connected_at, wp_seo_plugin, wp_capabilities, publish_hour, ai_choice, chat_last_seen_at, agent_last_seen_at, agent_credential_at, setup_connected_at, setup_deferred, hosted_cta_url, hosted_cta_label, hosted_rewrite_pr_url, hosted_rewrite_live_at, hosted_theme, hosted_key, hosted_origin, writer_mode, writer_paused_at, writer_pause_reason, writer_resumed_at, author_name, author_bio, author_url, last_research_at, next_article_at, writer_provider, writer_weekly_quota, hosted_rewrite_state, hosted_path, site_path, repo_site_check, publish_mode, created_at";
+  "id, slug, name, domain, gsc_site_url, github_repo, content_mode, content_path_hint, dataforseo_login, dataforseo_password, keyword_source, serpapi_key, powerups_skipped, location_code, language_code, mode, auto_approve, auto_approve_tools, auto_build_guides, auto_build_tools, auto_merge, last_trend_scan_at, site_launched_at, pipeline_installed_at, pipeline_verified, content_prefs, gsc_oauth_refresh_token, github_installation_id, github_app_installed_at, install_progress, onboarding_screen, owner_user_id, agent, internal_linking, publish_target, wp_url, wp_username, wp_app_password, wp_connected_at, wp_seo_plugin, wp_capabilities, publish_hour, ai_choice, chat_last_seen_at, agent_last_seen_at, agent_credential_at, setup_connected_at, setup_deferred, hosted_cta_url, hosted_cta_label, hosted_rewrite_pr_url, hosted_rewrite_live_at, hosted_theme, hosted_key, hosted_origin, writer_mode, writer_paused_at, writer_pause_reason, writer_resumed_at, author_name, author_bio, author_url, last_research_at, next_article_at, writer_provider, writer_weekly_quota, hosted_rewrite_state, hosted_path, site_path, repo_site_check, publish_mode, monthly_share, share_mode, created_at";
+
+// Pre-0090 (multi-site plans): monthly_share and share_mode are absent; such
+// a DB reads every site as "not allocated yet, auto", which splits the plan
+// evenly - a single site gets the whole pool.
+const COLS_PRE_0090 = COLS.replace(", monthly_share, share_mode", "");
 
 // Pre-0089 (review before publishing): publish_mode is absent; such a DB
 // reads as "not chosen", which publishes automatically, as every site did.
-const COLS_PRE_0089 = COLS.replace(", publish_mode", "");
+const COLS_PRE_0089 = COLS_PRE_0090.replace(", publish_mode", "");
 
 // Pre-0087 (repo/site check): repo_site_check is absent; such a DB reads as
 // "never checked", which never blocks anything.
@@ -452,6 +466,9 @@ async function selectProjects<T>(
     Boolean(e && e.message.includes("does not exist"));
   const first = await run(COLS);
   if (!missingCol(first.error)) return first;
+  // Drop 0090's share columns first (reads as an even, automatic split).
+  const unshared = await run(COLS_PRE_0090);
+  if (!missingCol(unshared.error)) return unshared;
   // Drop 0089's publish_mode first (reads as automatic publishing).
   const automatic = await run(COLS_PRE_0089);
   if (!missingCol(automatic.error)) return automatic;
@@ -604,6 +621,10 @@ function envFallbackProject(): Project {
     next_article_at: null,
     writer_provider: null,
     writer_weekly_quota: null,
+    // Not allocated, automatic: the synthetic row is ownerless, so no plan
+    // pool applies to it anyway.
+    monthly_share: null,
+    share_mode: null,
     created_at: new Date(0).toISOString(),
   };
 }
