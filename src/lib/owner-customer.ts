@@ -8,6 +8,7 @@ import { polarOrders, polarOrdersError, revenueUsd, summarize, type MoneySummary
 import { accountSetupProgress, siteSetupProgress, type SetupProgress } from "./owner-setup";
 import type { PublishTarget } from "./setup-path-core";
 import { compareIdeas } from "./autopilot/idea-order";
+import { nextArticles, type NextArticle } from "./owner-next-article";
 
 // One customer, everything: what they paid (every Polar charge), what they
 // cost (every metered line item), what their sites got (every article with
@@ -68,6 +69,13 @@ export type CustomerDetail = {
   email: string;
   createdAt: string;
   lastSignInAt: string | null;
+  /** The last dashboard page they opened (a sign-in counts), and the last
+   *  public dispatchseo.com page they opened while signed in (0091). */
+  lastDashboardAt: string | null;
+  lastSiteAt: string | null;
+  /** The soonest next article across their hosted sites, as their Home
+   *  projects it (owner-next-article.ts), and which site. */
+  nextArticle: (NextArticle & { domain: string }) | null;
   operator: boolean;
   plan: {
     tier: string | null;
@@ -177,7 +185,7 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
 
   const [subRes, projRes, qualRes, eventsRes, orders] = await Promise.all([
     db().from("subscriptions").select("tier, status, cancel_at_period_end, current_period_end, provider_customer_id, provider_subscription_id, created_at").eq("user_id", userId).maybeSingle(),
-    db().from("projects").select("id, domain, name, writer_mode, created_at, gsc_site_url, github_repo, next_article_at, last_research_at, publish_target, hosted_rewrite_pr_url, hosted_rewrite_state, hosted_rewrite_live_at").eq("owner_user_id", userId),
+    db().from("projects").select("id, domain, name, writer_mode, writer_paused_at, created_at, gsc_site_url, github_repo, next_article_at, last_research_at, publish_target, hosted_rewrite_pr_url, hosted_rewrite_state, hosted_rewrite_live_at").eq("owner_user_id", userId),
     db().from("signup_qualifiers").select("domain, platform, ai_choice, verdict, created_at").eq("user_id", userId).order("created_at", { ascending: false }).limit(1),
     db().from("app_events").select("at, event, props").eq("distinct_id", userId).order("at", { ascending: false }).limit(60),
     polarOrders(),
@@ -217,6 +225,24 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
   }));
   const ids = projects.map((p) => p.id);
   const domainOf = new Map(projects.map((p) => [p.id, p.domain]));
+  // Started now, read at the end: neither blocks the reads below.
+  const nextRead = nextArticles(
+    ((projRes.data ?? []) as Row[]).map((p) => ({
+      id: String(p.id),
+      next_article_at: (p.next_article_at as string | null) ?? null,
+      writer_mode: (p.writer_mode as string | null) ?? null,
+      writer_paused_at: (p.writer_paused_at as string | null) ?? null,
+      owner_user_id: userId,
+      domain: String(p.domain ?? ""),
+      created_at: String(p.created_at ?? ""),
+    })),
+    new Date(now),
+  );
+  // Optional (0091): unapplied, both visits fall back below.
+  const visitsRead = Promise.resolve(db().rpc("owner_user_last_visits", { p_user: userId })).then(
+    (r) => (r.error ? null : (((r.data ?? []) as Row[])[0] ?? null)),
+    () => null,
+  );
 
   const start = new Date(u.created_at).getTime();
   const firstDay = Math.floor(start / DAY) * DAY;
@@ -537,11 +563,22 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
         now,
       );
 
+  const [next, visits] = await Promise.all([nextRead, visitsRead]);
+  const soonest = projects
+    .filter((p) => next.has(p.id))
+    .map((p) => ({ ...next.get(p.id)!, domain: p.domain }))
+    .sort((a, b) => a.at.localeCompare(b.at))[0];
+  const newest = (xs: Array<unknown>) =>
+    xs.filter((x): x is string => typeof x === "string" && x.length > 0).sort((a, b) => Date.parse(a) - Date.parse(b)).at(-1) ?? null;
+
   return {
     userId,
     email: u.email ?? "(no email)",
     createdAt: u.created_at,
     lastSignInAt: u.last_sign_in_at ?? null,
+    lastDashboardAt: newest([visits?.last_app, u.last_sign_in_at, ((daysRes.data ?? []) as Row[]).map((r) => String(r.day)).sort().at(-1)]),
+    lastSiteAt: newest([visits?.last_site]),
+    nextArticle: soonest ?? null,
     operator: isOperator(userId),
     plan: {
       tier: (sub?.tier as string | null) ?? null,

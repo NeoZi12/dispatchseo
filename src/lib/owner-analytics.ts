@@ -7,6 +7,7 @@ import { ordersByUser, polarOrders, polarOrdersError, summarize, revenueUsd, typ
 import { memoMinute } from "./owner-memo";
 import { claudeCredit, type ClaudeCredit } from "./claude-credit";
 import { siteSetupProgress, type SetupProgress } from "./owner-setup";
+import { nextArticles, type NextArticle } from "./owner-next-article";
 
 // Everything /owner shows, in two reads: the site's traffic and funnel
 // (web_visits + app_events, migration 0073) and the customer ledger (auth
@@ -324,6 +325,9 @@ export type CustomerSite = {
   /** Free Claude API credit already taken off the AI cost above (claude-credit.ts). */
   claudeCreditRecentUsd: number;
   claudeCreditUsd: number;
+  /** The next article the hosted writer will start here (owner-next-article.ts);
+   *  null for agent sites, paused writers, or no date. */
+  nextArticle: NextArticle | null;
 };
 
 export type Customer = {
@@ -377,9 +381,17 @@ export type Customer = {
   dfsRecentUsd: number;
   /** Free Claude API credit already taken off their cost. */
   claudeCreditRecentUsd: number;
+  /** The latest of the two visits below and their last sign-in: what the list sorts by. */
   lastSeen: string | null;
+  /** The last dashboard page they opened (a sign-in counts: it lands there). */
+  lastDashboardAt: string | null;
+  /** The last public dispatchseo.com page they opened while signed in; null
+   *  when never seen there (or migration 0091 is not applied). */
+  lastSiteAt: string | null;
   viewsRecent: number;
   daysActiveRecent: number;
+  /** Their soonest next article across their sites, and which site. */
+  nextArticle: (NextArticle & { domain: string }) | null;
   /** Where they stand in setup, for accounts with a site and no article yet
    *  (owner-setup.ts); null once an article is out, or for accounts with no site. */
   setup: SetupProgress | null;
@@ -445,6 +457,7 @@ type ProjectRow = {
   publish_mode?: string | null;
   writer_paused_at?: string | null;
   writer_pause_reason?: string | null;
+  next_article_at?: string | null;
   created_at: string;
 };
 
@@ -454,7 +467,7 @@ function siteModeOf(p: ProjectRow): SiteMode {
   return p.publish_mode === "review" ? "manual" : "autopilot";
 }
 
-const PROJECT_COLS = "id, slug, name, domain, owner_user_id, writer_mode, writer_paused_at, writer_pause_reason, publish_mode, created_at";
+const PROJECT_COLS = "id, slug, name, domain, owner_user_id, writer_mode, writer_paused_at, writer_pause_reason, next_article_at, publish_mode, created_at";
 
 /** The sites, with how each publishes. A DB without 0089 has no publish_mode:
  *  read again without it, which reads as autopilot (what every site did). */
@@ -610,7 +623,13 @@ function siteOf(p: ProjectRow, r: RollupRow | undefined, credit: ClaudeCredit | 
     dfsRecentUsd: dfsRecent,
     claudeCreditRecentUsd: creditRecent,
     claudeCreditUsd: creditAll,
+    nextArticle: null,
   };
+}
+
+/** The newest of some ISO timestamps, or null when there are none. */
+function latest(...xs: Array<string | null | undefined>): string | null {
+  return xs.filter((x): x is string => Boolean(x)).sort((a, b) => Date.parse(a) - Date.parse(b)).at(-1) ?? null;
 }
 
 /** The customer ledger. Memoised a minute per range (owner-memo.ts). */
@@ -620,7 +639,7 @@ async function customersReportFresh(range: Range, now = Date.now()): Promise<Cus
   if (!isCloudMode()) return null;
   const w = windows(range, now);
   const since = ISO(w.from);
-  const [usersRes, subsRes, projectsRes, rollupRes, activityRes, costRes, credit] = await Promise.all([
+  const [usersRes, subsRes, projectsRes, rollupRes, activityRes, costRes, credit, visitsRes] = await Promise.all([
     db().auth.admin.listUsers({ page: 1, perPage: 1000 }),
     db().from("subscriptions").select("user_id, provider_customer_id, tier, status, provider_subscription_id, current_period_end, cancel_at_period_end, created_at"),
     ownerProjects(),
@@ -628,6 +647,9 @@ async function customersReportFresh(range: Range, now = Date.now()): Promise<Cus
     db().rpc("owner_user_activity", { p_since: since }),
     db().rpc("owner_cost_daily", { p_from: since, p_to: ISO(w.to) }),
     claudeCredit(since),
+    // Optional (0091): unapplied, the dashboard visit falls back to the
+    // activity read above and the site visit stays empty.
+    db().rpc("owner_user_last_visits", { p_user: null }),
   ]);
   if (usersRes.error) throw usersRes.error;
   if (subsRes.error) throw subsRes.error;
@@ -645,6 +667,12 @@ async function customersReportFresh(range: Range, now = Date.now()): Promise<Cus
     ((activityRes.data ?? []) as RollupRow[]).map((r) => [
       String(r.user_id),
       { lastSeen: String(r.last_seen), views: Number(r.views_recent ?? 0), days: Number(r.days_active_recent ?? 0) },
+    ]),
+  );
+  const lastVisits = new Map(
+    (visitsRes.error ? [] : ((visitsRes.data ?? []) as RollupRow[])).map((r) => [
+      String(r.user_id),
+      { app: r.last_app ? String(r.last_app) : null, site: r.last_site ? String(r.last_site) : null },
     ]),
   );
   const projects = (projectsRes.data ?? []) as ProjectRow[];
@@ -669,6 +697,9 @@ async function customersReportFresh(range: Range, now = Date.now()): Promise<Cus
     const plan = planOf(sub, sub?.provider_subscription_id ? facts.get(sub.provider_subscription_id) : undefined);
     const sites = (sitesByOwner.get(u.id) ?? []).sort((a, b) => b.articles - a.articles);
     const act = activity.get(u.id);
+    const visits = lastVisits.get(u.id);
+    const lastDashboardAt = latest(visits?.app, act?.lastSeen, u.last_sign_in_at);
+    const lastSiteAt = visits?.site ?? null;
     const costRecentUsd = sites.reduce((a, s) => a + s.costRecentUsd, 0);
     const costUsd = sites.reduce((a, s) => a + s.costUsd, 0);
     const mine = byUser.get(u.id) ?? [];
@@ -704,9 +735,12 @@ async function customersReportFresh(range: Range, now = Date.now()): Promise<Cus
       llmRecentUsd: sites.reduce((a, s) => a + s.llmRecentUsd, 0),
       dfsRecentUsd: sites.reduce((a, s) => a + s.dfsRecentUsd, 0),
       claudeCreditRecentUsd: sites.reduce((a, s) => a + s.claudeCreditRecentUsd, 0),
-      lastSeen: act?.lastSeen ?? u.last_sign_in_at ?? null,
+      lastSeen: latest(lastDashboardAt, lastSiteAt),
+      lastDashboardAt,
+      lastSiteAt,
       viewsRecent: act?.views ?? 0,
       daysActiveRecent: act?.days ?? 0,
+      nextArticle: null,
       setup: null,
     };
   });
@@ -721,6 +755,18 @@ async function customersReportFresh(range: Range, now = Date.now()): Promise<Cus
       c.setup = p && !p.complete ? p : null;
     }),
   );
+
+  // Each hosted site's next article, in the queue's own projection - the
+  // date and title the customer sees on their Home. Owned sites only.
+  const next = await nextArticles(
+    projects.filter((p) => p.owner_user_id).map((p) => ({ ...p, next_article_at: p.next_article_at ?? null })),
+    new Date(now),
+  );
+  for (const c of customers) {
+    for (const s of c.sites) s.nextArticle = next.get(s.id) ?? null;
+    const soonest = c.sites.filter((s) => s.nextArticle).sort((a, b) => a.nextArticle!.at.localeCompare(b.nextArticle!.at))[0];
+    c.nextArticle = soonest ? { ...soonest.nextArticle!, domain: soonest.domain } : null;
+  }
 
   // Paying first (by what they pay), then trials, then the rest by sign-up
   // date; the operator's own account sinks to the bottom of its group.

@@ -213,11 +213,15 @@ function PlanRow({ x, now }: { x: Customer; now: number }) {
       <td className="px-3 py-3">
         <ModeTag x={x} />
       </td>
+      <td className="max-w-[13rem] px-3 py-3">
+        <NextArticleCell x={x} now={now} />
+      </td>
       <td className="px-3 py-3 text-right font-mono tabular-nums text-ink">{fmt(x.articles)}</td>
       <td className="px-3 py-3 text-right font-mono tabular-nums text-ink">{money(x.revenueRecentUsd)}</td>
       <td className="px-3 py-3 text-right font-mono tabular-nums text-ink">{money(x.totalCostRecentUsd, { precise: true })}</td>
       <td className={cx("px-3 py-3 text-right font-mono tabular-nums", marginClass(x.marginRecentUsd))}>{money(x.marginRecentUsd)}</td>
-      <td className="hidden px-6 py-3 text-right font-mono tabular-nums text-ink sm:table-cell">{ago(x.lastSeen, now)}</td>
+      <td className="hidden whitespace-nowrap px-3 py-3 text-right font-mono tabular-nums text-ink lg:table-cell">{ago(x.lastDashboardAt, now)}</td>
+      <td className="hidden whitespace-nowrap px-6 py-3 text-right font-mono tabular-nums text-ink lg:table-cell">{ago(x.lastSiteAt, now)}</td>
     </ClickRow>
   );
 }
@@ -242,12 +246,11 @@ function PlanCard({ x, now }: { x: Customer; now: number }) {
             {fmt(x.articles)} {x.articles === 1 ? "article" : "articles"}
           </span>
         </p>
-        <dl className="mt-3 grid grid-cols-4 gap-2 font-mono tabular-nums">
+        <dl className="mt-3 grid grid-cols-3 gap-2 font-mono tabular-nums">
           {[
             ["Revenue", money(x.revenueRecentUsd), "text-ink"],
             ["Cost", money(x.totalCostRecentUsd, { precise: true }), "text-ink"],
             ["Margin", money(x.marginRecentUsd), marginClass(x.marginRecentUsd)],
-            ["Seen", ago(x.lastSeen, now), "text-ink"],
           ].map(([k, v, cls]) => (
             <div key={k} className="min-w-0">
               <dt className="font-sans text-[11px] text-ink-faint">{k}</dt>
@@ -255,6 +258,7 @@ function PlanCard({ x, now }: { x: Customer; now: number }) {
             </div>
           ))}
         </dl>
+        <MobileExtras x={x} now={now} />
       </Link>
     </li>
   );
@@ -290,11 +294,13 @@ export function PlansPanel({ c, range, now }: { c: CustomersReport; range: numbe
                   <th scope="col" className="px-6 pb-3 pt-4 font-medium">Customer</th>
                   <th scope="col" className="px-3 pb-3 pt-4 font-medium">Status</th>
                   <th scope="col" className="px-3 pb-3 pt-4 font-medium">Mode</th>
+                  <th scope="col" className="px-3 pb-3 pt-4 font-medium">Next article</th>
                   <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Articles</th>
                   <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Revenue, {rangeShort(range)}</th>
                   <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Cost</th>
                   <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Margin</th>
-                  <th scope="col" className="hidden px-6 pb-3 pt-4 text-right font-medium sm:table-cell">Last seen</th>
+                  <th scope="col" className="hidden px-3 pb-3 pt-4 text-right font-medium lg:table-cell" title={VISIT_HINT.dashboard}>Dashboard</th>
+                  <th scope="col" className="hidden px-6 pb-3 pt-4 text-right font-medium lg:table-cell" title={VISIT_HINT.site}>Site</th>
                 </tr>
               </thead>
               {filled.map((g) => (
@@ -352,6 +358,70 @@ function SiteList({ x }: { x: Customer }) {
   return <span className="block truncate text-[12px] text-ink-faint">{x.sites.map((s) => s.domain).join(", ")}</span>;
 }
 
+/** "today" / "tomorrow" / "in 3d" for a yyyy-mm-dd (UTC) day. */
+function untilWords(day: string, now: number): string {
+  const today = Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), new Date(now).getUTCDate());
+  const d = Math.round((Date.parse(`${day}T00:00:00Z`) - today) / 86_400_000);
+  return d <= 0 ? "today" : d === 1 ? "tomorrow" : `in ${d}d`;
+}
+
+/** Why there is no next-article date: their own agent builds, the writer is
+ *  paused, or there is simply none (no site, a plan with no articles). */
+function noNextWord(x: Customer): string {
+  if (!x.sites.length) return "-";
+  if (x.sites.every((s) => s.mode === "agent")) return "their agent";
+  if (x.sites.every((s) => s.mode === "paused" || s.mode === "agent")) return "paused";
+  return "-";
+}
+
+/** The next article's day and title (or "topic picked that morning" when the
+ *  queue is empty and the day's run researches first). */
+function NextArticleCell({ x, now }: { x: Customer; now: number }) {
+  const n = x.nextArticle;
+  if (!n) return <span className="text-[12px] text-ink-faint">{noNextWord(x)}</span>;
+  const title = n.title ?? "Topic picked that morning";
+  return (
+    <span className="block min-w-0" title={`${title}${x.sites.length > 1 ? ` · ${n.domain}` : ""}`}>
+      <span className="block whitespace-nowrap font-mono text-[12.5px] tabular-nums text-ink">
+        {shortDate(n.at)} <span className="text-ink-faint">· {untilWords(n.at, now)}</span>
+      </span>
+      <span className={cx("block truncate text-[12px]", n.title ? "text-ink-muted" : "text-ink-faint")}>{title}</span>
+    </span>
+  );
+}
+
+/** Phone cards: the next article and the two last visits, two short lines. */
+function MobileExtras({ x, now }: { x: Customer; now: number }) {
+  const n = x.nextArticle;
+  return (
+    <div className="mt-3 space-y-1 text-[12px] text-ink-faint">
+      <p className="truncate">
+        Next article:{" "}
+        {n ? (
+          <>
+            <span className="font-mono tabular-nums text-ink">
+              {shortDate(n.at)} ({untilWords(n.at, now)})
+            </span>{" "}
+            · <span className="text-ink-muted">{n.title ?? "topic picked that morning"}</span>
+          </>
+        ) : (
+          noNextWord(x)
+        )}
+      </p>
+      <p>
+        Dashboard <span className="font-mono tabular-nums text-ink">{ago(x.lastDashboardAt, now)}</span>
+        <span aria-hidden="true"> · </span>
+        Site <span className="font-mono tabular-nums text-ink">{ago(x.lastSiteAt, now)}</span>
+      </p>
+    </div>
+  );
+}
+
+const VISIT_HINT = {
+  dashboard: "The last dashboard page they opened (a sign-in counts).",
+  site: "The last public dispatchseo.com page (home, blog, docs, free tools, plans) they opened while signed in.",
+};
+
 function marginClass(v: number | null): string {
   return v == null ? "text-ink-faint" : v < 0 ? "text-danger" : v > 0 ? "text-ok" : "text-ink";
 }
@@ -372,12 +442,11 @@ function MobileCustomer({ x, now }: { x: Customer; now: number; range: number })
         </div>
         {cancelNote(x.plan) ? <p className="mt-1.5 text-[12px] text-danger/90">{cancelNote(x.plan)}</p> : null}
         <ModeTag x={x} className="mt-1.5" />
-        <dl className="mt-3 grid grid-cols-4 gap-2 font-mono tabular-nums">
+        <dl className="mt-3 grid grid-cols-3 gap-2 font-mono tabular-nums">
           {[
             ["Revenue", money(x.revenueRecentUsd), "text-ink"],
             ["Cost", money(x.totalCostRecentUsd, { precise: true }), "text-ink"],
             ["Margin", money(x.marginRecentUsd), marginClass(x.marginRecentUsd)],
-            ["Seen", ago(x.lastSeen, now), "text-ink"],
           ].map(([k, v, cls]) => (
             <div key={k} className="min-w-0">
               <dt className="font-sans text-[11px] text-ink-faint">{k}</dt>
@@ -385,6 +454,7 @@ function MobileCustomer({ x, now }: { x: Customer; now: number; range: number })
             </div>
           ))}
         </dl>
+        <MobileExtras x={x} now={now} />
       </Link>
     </li>
   );
@@ -407,12 +477,14 @@ function CustomerRows({ rows, now, range }: { rows: Customer[]; now: number; ran
               <th scope="col" className="px-6 pb-3 pt-4 font-medium">Customer</th>
               <th scope="col" className="px-3 pb-3 pt-4 font-medium">Status</th>
               <th scope="col" className="px-3 pb-3 pt-4 font-medium">Mode</th>
+              <th scope="col" className="px-3 pb-3 pt-4 font-medium">Next article</th>
               <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Revenue</th>
               <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Cost</th>
               <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Margin</th>
               <th scope="col" className="hidden px-3 pb-3 pt-4 text-right font-medium xl:table-cell">Articles</th>
               <th scope="col" className="hidden px-3 pb-3 pt-4 text-right font-medium xl:table-cell">Clicks 28d</th>
-              <th scope="col" className="hidden px-6 pb-3 pt-4 text-right font-medium lg:table-cell">Last seen</th>
+              <th scope="col" className="hidden px-3 pb-3 pt-4 text-right font-medium lg:table-cell" title={VISIT_HINT.dashboard}>Dashboard</th>
+              <th scope="col" className="hidden px-6 pb-3 pt-4 text-right font-medium lg:table-cell" title={VISIT_HINT.site}>Site</th>
             </tr>
           </thead>
           <tbody>
@@ -439,12 +511,16 @@ function CustomerRows({ rows, now, range }: { rows: Customer[]; now: number; ran
                 <td className="px-3 py-3">
                   <ModeTag x={x} />
                 </td>
+                <td className="max-w-[13rem] px-3 py-3">
+                  <NextArticleCell x={x} now={now} />
+                </td>
                 <td className="px-3 py-3 text-right font-mono tabular-nums text-ink">{money(x.revenueRecentUsd)}</td>
                 <td className="px-3 py-3 text-right font-mono tabular-nums text-ink">{money(x.totalCostRecentUsd, { precise: true })}</td>
                 <td className={cx("px-3 py-3 text-right font-mono tabular-nums", marginClass(x.marginRecentUsd))}>{money(x.marginRecentUsd)}</td>
                 <td className="hidden px-3 py-3 text-right font-mono tabular-nums text-ink xl:table-cell">{fmt(x.articles)}</td>
                 <td className="hidden px-3 py-3 text-right font-mono tabular-nums text-ink xl:table-cell">{fmt(x.clicks28d)}</td>
-                <td className="hidden px-6 py-3 text-right font-mono tabular-nums text-ink lg:table-cell">{ago(x.lastSeen, now)}</td>
+                <td className="hidden whitespace-nowrap px-3 py-3 text-right font-mono tabular-nums text-ink lg:table-cell">{ago(x.lastDashboardAt, now)}</td>
+                <td className="hidden whitespace-nowrap px-6 py-3 text-right font-mono tabular-nums text-ink lg:table-cell">{ago(x.lastSiteAt, now)}</td>
               </ClickRow>
             ))}
           </tbody>

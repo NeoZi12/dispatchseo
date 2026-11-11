@@ -323,7 +323,6 @@ export function CustomerDetailView({ d, now, inModal = false }: { d: CustomerDet
   const failRate = writerRuns ? d.writer.failed / writerRuns : 0;
   const activeDays = d.activeDays.length;
   const views90 = d.activeDays.reduce((a, x) => a + x.views, 0);
-  const lastSeen = [d.lastSignInAt, d.events[0]?.at, d.activeDays.map((x) => x.day).sort().at(-1)].filter((x): x is string => Boolean(x)).sort().at(-1) ?? null;
   const initial = (d.email.trim()[0] ?? "?").toUpperCase();
   const articles = [...d.articles].sort((a, b) => b.clicks28d - a.clicks28d || b.impressions28d - a.impressions28d || b.publishedAt.localeCompare(a.publishedAt));
   const scanned = d.marks.checked;
@@ -375,7 +374,18 @@ export function CustomerDetailView({ d, now, inModal = false }: { d: CustomerDet
               <span className="text-ink-faint">
                 Customer for {sinceWords(d.createdAt, now)} · since {fullDate(d.createdAt)}
               </span>
-              <span className="text-ink-faint">Last seen {ago(lastSeen, now)}</span>
+              <span className="text-ink-faint" title="The last dashboard page they opened (a sign-in counts).">
+                Dashboard {ago(d.lastDashboardAt, now)}
+              </span>
+              <span className="text-ink-faint" title="The last public dispatchseo.com page they opened while signed in.">
+                Site {ago(d.lastSiteAt, now)}
+              </span>
+              {d.nextArticle ? (
+                <span className="text-ink-faint" title={d.nextArticle.title ?? "The queue is empty: that morning's run picks a topic first."}>
+                  Next article {fullDate(d.nextArticle.at)}
+                  {d.sites.length > 1 ? ` on ${d.nextArticle.domain}` : ""}
+                </span>
+              ) : null}
               {d.plan.periodEnd && !cancelled && (d.plan.status === "active" || d.plan.status === "trialing") ? (
                 <span className="text-ink-faint">
                   {d.plan.status === "trialing" ? "Trial ends" : "Renews"} {fullDate(d.plan.periodEnd)}
@@ -587,7 +597,11 @@ export function CustomerDetailView({ d, now, inModal = false }: { d: CustomerDet
         )}
         <p className="border-t border-line-soft px-5 py-3 text-[12.5px] text-ink-faint sm:px-6">
           {d.queue.lastResearchAt ? `Last research ${fullDate(d.queue.lastResearchAt)} (${ago(d.queue.lastResearchAt, now)})` : "No research run yet"}
-          {d.queue.nextArticleAt ? ` · next article due ${fullDate(d.queue.nextArticleAt)}` : ""}
+          {d.nextArticle
+            ? ` · next article ${fullDate(d.nextArticle.at)}: ${d.nextArticle.title ? `"${d.nextArticle.title}"` : "topic picked that morning"}${d.sites.length > 1 ? ` (${d.nextArticle.domain})` : ""}`
+            : d.queue.nextArticleAt
+              ? ` · next article due ${fullDate(d.queue.nextArticleAt)}`
+              : ""}
           {d.queue.items.length && (d.queue.rejected || d.queue.done) ? ` · ${fmt(d.queue.rejected)} rejected, ${fmt(d.queue.done)} written so far` : ""}
         </p>
       </Panel>

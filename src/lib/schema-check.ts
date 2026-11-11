@@ -217,6 +217,11 @@ export const UNPROBEABLE: Record<string, string> = {
   // own agent publishes through PRs - operator-only, no customer impact.
   "0079_owner_rollup_counts_pages":
     "create or replace of one SQL function - artifact is in pg_proc, not queryable via PostgREST",
+  // Adds owner_user_last_visits (last dashboard / last public-site visit per
+  // person). Unapplied, /owner falls back to the old "last seen" and shows
+  // no site visit - operator-only, no customer impact.
+  "0091_owner_last_visits":
+    "create or replace of one SQL function - artifact is in pg_proc, not queryable via PostgREST",
   // Rewrites foreign keys to ON DELETE CASCADE. No table or column changes -
   // its artifact lives in pg_constraint. Failure mode if unapplied is a
   // failed project delete (loud, immediate, user-facing), not silent drift.
