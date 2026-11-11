@@ -110,6 +110,18 @@ export async function GET(req: Request): Promise<Response> {
   } catch (e) {
     console.warn("[jobs] launch backfill failed:", e instanceof Error ? e.message : e);
   }
+  // Operator-only: runs parked on the subscription writer 24h+ (or on a site
+  // switched off it) end as infra, slot returned, idea still approved
+  // (autopilot/health.ts). Every tick, so 24h means 24h - from the daily
+  // autopilot cron it meant ~48h. Global: the operator's own sites write
+  // through the hosted pipeline in either writer mode.
+  try {
+    const stale = await (await import("@/lib/autopilot/health")).failStaleAgentRuns(new Date());
+    if (stale.length) result.agent_writer_failed_stale = stale;
+  } catch (e) {
+    hadError = true;
+    result.agent_writer = { error: e instanceof Error ? e.message : String(e) };
+  }
   // Once a day (the 09:00 UTC hour; idempotent, so every tick in it is
   // harmless): free owners 55 days unseen get the one "log in to keep your
   // articles coming" email (lib/free-gate.ts). Best-effort.
@@ -229,7 +241,8 @@ export async function GET(req: Request): Promise<Response> {
   // worth counting against the staleness clock, same reasoning as the other
   // claim-marker crons. A tick that found wedged rows is a real outcome, never
   // claim-only - the claim marker would hide its error from the banner.
-  await reportCronRun("jobs", result, hadError, jobs.length === 0 && queue.wedged === 0);
+  const sweepActed = Boolean(result.agent_writer || result.agent_writer_failed_stale);
+  await reportCronRun("jobs", result, hadError, jobs.length === 0 && queue.wedged === 0 && !sweepActed);
   return Response.json(result, { status: hadError ? 500 : 200 });
 }
 

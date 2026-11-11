@@ -21,8 +21,9 @@ import { failRun, getWriterRun, type FailureKind, type Stage, type WriterRun } f
 // THE ONE EXCEPTION to runs.ts's invariant ("a running run always has a
 // pending write job"): a run parked on the agent has no job behind it - the
 // last answer creates one. What keeps it from waiting forever is the
-// autopilot health pass (failStaleAgentRuns), which fails a run whose tasks
-// went unanswered for 24 hours as infra, handing its slot back.
+// stale sweep (failStaleAgentRuns, every jobs-cron tick), which fails a run
+// whose tasks went unanswered for 24 hours - or whose site moved off the
+// subscription writer - as infra, handing its slot back.
 //
 // The batch provider (0075) reuses all of it with one difference: the
 // answer comes from the batch-poll job (job-handlers/batch-poll.ts) reading

@@ -1,11 +1,13 @@
 import { db } from "@/lib/db";
 import { writerGate } from "@/lib/billing";
 import { reportCronRun } from "@/lib/cron-alerts";
-import type { Project } from "@/lib/projects";
+import { writerProvider, type Project } from "@/lib/projects";
 import { consecutivePostPickFailures, FAILURE_STREAK_ALARM, noArticleAlarm } from "./math";
 import { BUDGET_SKIP } from "./research";
 import { AGENT_STALE_HOURS, AGENT_STALE_REASON, closeRunTasks, waitingOnAgent } from "@/lib/writer/agent-tasks";
 import { failRun, getWriterRun } from "@/lib/writer/runs";
+
+const AGENT_SWITCHED_REASON = "the site moved off the subscription writer while this run waited on it";
 
 // When a hosted site's autopilot is quietly not working, the owner has to
 // hear about it - but only when it has LASTED. Every daily skip ("no ideas",
@@ -132,6 +134,12 @@ export async function reportSiteHealth(project: Project, problems: string[]): Pr
  * project, not inside the hosted-only pass: the operator's own sites need
  * not be in hosted mode to write through the hosted pipeline. Returns the
  * run ids it failed.
+ *
+ * Runs from the 5-minute jobs cron, not the daily autopilot one: autopilot
+ * starts articles at 05:30 and they park ~30 min later, so a once-a-day
+ * sweep at 05:30 always found them 23.5h old and let them sit ~48h "In
+ * progress" (ClockedCode, 2026-11-11). A site switched OFF the subscription
+ * writer ends its parked runs at once - nothing will ever answer them.
  */
 export async function failStaleAgentRuns(now: Date): Promise<string[]> {
   const cutoff = new Date(now.getTime() - AGENT_STALE_HOURS * 3_600_000).toISOString();
@@ -139,21 +147,33 @@ export async function failStaleAgentRuns(now: Date): Promise<string[]> {
     .from("writer_runs")
     .select("id, project_id")
     .eq("status", "running")
-    // ISO timestamps written by one clock compare correctly as text.
-    .lt("stage_outputs->waiting_on_agent->>since", cutoff)
+    // ->>since, not ->: a cleared marker is JSON null, which is not SQL NULL.
+    .not("stage_outputs->waiting_on_agent->>since", "is", null)
     .limit(50);
   if (error) throw new Error(`could not read runs waiting on the subscription writer: ${error.message}`);
+  const rows = (data ?? []) as { id: string; project_id: string }[];
+  if (rows.length === 0) return [];
+  const { data: projects, error: pErr } = await db()
+    .from("projects")
+    .select("id, writer_provider")
+    .in("id", [...new Set(rows.map((r) => r.project_id))]);
+  if (pErr) throw new Error(`could not read the writer provider: ${pErr.message}`);
+  const provider = new Map(((projects ?? []) as Pick<Project, "id" | "writer_provider">[]).map((p) => [p.id, writerProvider(p)]));
   const failed: string[] = [];
-  for (const row of (data ?? []) as { id: string; project_id: string }[]) {
+  for (const row of rows) {
     const run = await getWriterRun(row.project_id, row.id);
     const waiting = run ? waitingOnAgent(run) : null;
     // Re-read: an answer may have re-queued it since the select, and a
     // marker left from an earlier stage is not a wait on this one.
-    if (!run || run.status !== "running" || !waiting || waiting.stage !== run.stage || waiting.since >= cutoff) continue;
-    await failRun(run, AGENT_STALE_REASON, 0, "infra");
+    if (!run || run.status !== "running" || !waiting || waiting.stage !== run.stage) continue;
+    const switchedAway = provider.get(row.project_id) !== "agent";
+    // ISO timestamps written by one clock compare correctly as text.
+    if (!switchedAway && waiting.since >= cutoff) continue;
+    const reason = switchedAway ? AGENT_SWITCHED_REASON : AGENT_STALE_REASON;
+    await failRun(run, reason, 0, "infra");
     // failRun is compare-and-set and marks the object only when it won.
     if ((run.status as string) === "failed") {
-      await closeRunTasks(run.id, AGENT_STALE_REASON);
+      await closeRunTasks(run.id, reason);
       failed.push(run.id);
     }
   }
