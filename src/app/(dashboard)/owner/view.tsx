@@ -40,17 +40,19 @@ function StatusChip({ c }: { c: Customer }) {
   return <span className={cx("inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-[11.5px] font-medium", cls)}>{word}</span>;
 }
 
-const MODE_LABEL: Record<SiteMode, string> = { autopilot: "Autopilot", manual: "Manual", paused: "Paused", agent: "Own agent" };
+const MODE_LABEL: Record<SiteMode, string> = { autopilot: "Autopilot", manual: "Manual", paused: "Paused", blocked: "Wrong repo", agent: "Own agent" };
 const MODE_CLS: Record<SiteMode, string> = {
   autopilot: "text-ok",
   manual: "text-info",
   paused: "text-warn",
+  blocked: "text-danger",
   agent: "text-ink-faint",
 };
 const MODE_HINT: Record<SiteMode, string> = {
   autopilot: "Articles go live by themselves",
   manual: "Each article waits for the owner to press Publish",
   paused: "The Dispatcher is paused: nothing is written or published",
+  blocked: "The connected repository doesn't build their site, so nothing can publish and the Dispatcher writes nothing until they connect the right one",
   agent: "The owner's own coding agent builds the articles",
 };
 
@@ -59,14 +61,14 @@ const MODE_HINT: Record<SiteMode, string> = {
  *  paused shows both. */
 function ModeTag({ x, className = "" }: { x: Customer; className?: string }) {
   if (!x.sites.length) return <span className={cx("text-[12px] text-ink-faint", className)}>-</span>;
-  const order: SiteMode[] = ["paused", "manual", "autopilot", "agent"];
+  const order: SiteMode[] = ["blocked", "paused", "manual", "autopilot", "agent"];
   const modes = order.filter((m) => x.sites.some((s) => s.mode === m));
   const many = x.sites.length > 1;
   return (
     <span className={cx("inline-flex flex-wrap items-center gap-x-2.5 gap-y-0.5", className)}>
       {modes.map((m) => {
         const sites = x.sites.filter((s) => s.mode === m);
-        const reason = m === "paused" ? sites.map((s) => s.pauseReason).find(Boolean) : null;
+        const reason = m === "paused" || m === "blocked" ? sites.map((s) => s.pauseReason).find(Boolean) : null;
         const title = [MODE_HINT[m], reason, many ? sites.map((s) => s.domain).join(", ") : null].filter(Boolean).join(" · ");
         return (
           <span key={m} className={cx("inline-flex items-center gap-1.5 whitespace-nowrap text-[12.5px] font-medium", MODE_CLS[m])} title={title}>
@@ -370,6 +372,7 @@ function untilWords(day: string, now: number): string {
 function noNextWord(x: Customer): string {
   if (!x.sites.length) return "-";
   if (x.sites.every((s) => s.mode === "agent")) return "their agent";
+  if (x.sites.some((s) => s.mode === "blocked") && x.sites.every((s) => s.mode !== "autopilot" && s.mode !== "manual")) return "none: wrong repo";
   if (x.sites.every((s) => s.mode === "paused" || s.mode === "agent")) return "paused";
   return "-";
 }

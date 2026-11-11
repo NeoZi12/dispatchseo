@@ -5,6 +5,7 @@ import { isCloudMode } from "@/lib/cloud";
 import { rateLimitHit, rateLimitKey } from "@/lib/rate-limit";
 import { loadSiteProfile } from "@/lib/site-profile";
 import { publishRoute } from "@/lib/job-handlers/draft-status";
+import { repoStillNotTheSite } from "@/lib/repo-site-check";
 import { isDryRun, missingCredentials } from "@/lib/writer/models";
 import { startWriterRun, suggestionIdsInFlight } from "@/lib/writer/runs";
 import { rewriteLiveCached } from "@/lib/hosted-rewrite";
@@ -149,6 +150,10 @@ export async function runScheduler(
   // article with nowhere to go would only pile up as blocked_setup and eat
   // the week's quota before the owner connected anything.
   if (publishRoute(project) === "blocked") return { skipped: "setup incomplete: nowhere to publish yet" };
+  // A connected repo that doesn't build the site (empty, or another
+  // project's) publishes nowhere either: the article would only be held.
+  // The owner's Home card asks them to connect the right one.
+  if (await repoStillNotTheSite(project)) return { skipped: "setup incomplete: the connected repository isn't the site's" };
   // Operator configuration, not the owner's: reported once per cron run by
   // the route (loudly), skipped quietly per project here.
   if (missingCredentials().length) return { skipped: "the writer has no model credentials on this deploy" };

@@ -9,6 +9,7 @@ import { accountSetupProgress, siteSetupProgress, type SetupProgress } from "./o
 import type { PublishTarget } from "./setup-path-core";
 import { compareIdeas } from "./autopilot/idea-order";
 import { nextArticles, type NextArticle } from "./owner-next-article";
+import { repoMismatchOf, type RepoMismatch } from "./site-root";
 
 // One customer, everything: what they paid (every Polar charge), what they
 // cost (every metered line item), what their sites got (every article with
@@ -100,6 +101,9 @@ export type CustomerDetail = {
     forwardingUrl: string | null;
     /** When the writer is due to publish next, and when research last ran. */
     nextArticleAt: string | null;
+    /** The connected repo doesn't build the site (empty, or another
+     *  project's): nothing publishes and the writer starts nothing. */
+    wrongRepo: RepoMismatch | null;
     lastResearchAt: string | null;
     /** Finished articles with nowhere to publish (draft status blocked_setup)
      *  on a hosted-writer site, and when the oldest was written. Nothing
@@ -185,7 +189,7 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
 
   const [subRes, projRes, qualRes, eventsRes, orders] = await Promise.all([
     db().from("subscriptions").select("tier, status, cancel_at_period_end, current_period_end, provider_customer_id, provider_subscription_id, created_at").eq("user_id", userId).maybeSingle(),
-    db().from("projects").select("id, domain, name, writer_mode, writer_paused_at, created_at, gsc_site_url, github_repo, next_article_at, last_research_at, publish_target, hosted_rewrite_pr_url, hosted_rewrite_state, hosted_rewrite_live_at").eq("owner_user_id", userId),
+    db().from("projects").select("id, domain, name, writer_mode, writer_paused_at, created_at, gsc_site_url, github_repo, repo_site_check, next_article_at, last_research_at, publish_target, hosted_rewrite_pr_url, hosted_rewrite_state, hosted_rewrite_live_at").eq("owner_user_id", userId),
     db().from("signup_qualifiers").select("domain, platform, ai_choice, verdict, created_at").eq("user_id", userId).order("created_at", { ascending: false }).limit(1),
     db().from("app_events").select("at, event, props").eq("distinct_id", userId).order("at", { ascending: false }).limit(60),
     polarOrders(),
@@ -220,6 +224,7 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
     repo: (p.github_repo as string | null) ?? null,
     forwarding: forwardingLine(p),
     nextArticleAt: (p.next_article_at as string | null) ?? null,
+    wrongRepo: p.writer_mode === "hosted" ? repoMismatchOf({ github_repo: (p.github_repo as string | null) ?? null, repo_site_check: p.repo_site_check }) : null,
     lastResearchAt: (p.last_research_at as string | null) ?? null,
     forwardingUrl: typeof p.hosted_rewrite_pr_url === "string" && p.hosted_rewrite_pr_url.startsWith("http") ? p.hosted_rewrite_pr_url : null,
   }));
@@ -235,6 +240,8 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
       owner_user_id: userId,
       domain: String(p.domain ?? ""),
       created_at: String(p.created_at ?? ""),
+      github_repo: (p.github_repo as string | null) ?? null,
+      repo_site_check: p.repo_site_check ?? null,
     })),
     new Date(now),
   );

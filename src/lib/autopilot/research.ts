@@ -3,6 +3,7 @@ import { isFreePlan, projectPlan, writerGate } from "@/lib/billing";
 import { isCloudMode } from "@/lib/cloud";
 import { platformBudgetGate } from "@/lib/dataforseo-usage";
 import { publishRoute } from "@/lib/job-handlers/draft-status";
+import { repoStillNotTheSite } from "@/lib/repo-site-check";
 import { credsForProject, keywordOverview, serpSnapshot, type DataforseoCreds, type KeywordIdea, type SerpSnapshot } from "@/lib/dataforseo";
 import {
   cachedBulkKeywordDifficulty,
@@ -454,6 +455,7 @@ export async function researchReadiness(project: Project, opts: { skipPlanGate?:
   // publish: the publish-readiness and plan gates (and the free plan's claim
   // check, which needs the deploy's FREE_GATE_SALT) are what it skips.
   if (!opts.skipPlanGate && publishRoute(project) === "blocked") return { ready: false, skipped: "setup incomplete: nowhere to publish yet" };
+  if (!opts.skipPlanGate && (await repoStillNotTheSite(project))) return { ready: false, skipped: "setup incomplete: the connected repository isn't the site's" };
   if (missingCredentials().length) return { ready: false, skipped: "the writer has no model credentials on this deploy" };
   if (opts.skipPlanGate) return { ready: true };
   const gate = await writerGate(project.id);

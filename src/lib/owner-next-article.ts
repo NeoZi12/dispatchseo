@@ -1,4 +1,5 @@
 import { getHostedQueue } from "@/lib/autopilot/queue";
+import { repoMismatchOf } from "@/lib/site-root";
 
 // The next article a hosted site will write, for the owner dashboard: the
 // same projection the customer's own Home shows ("Up next" + its date) -
@@ -7,8 +8,9 @@ import { getHostedQueue } from "@/lib/autopilot/queue";
 // topic first, so there is a date but no title yet).
 //
 // Only sites the hosted writer runs and nobody paused have one: an agent
-// site's own coding agent decides when it builds, and a paused writer has no
-// date to promise. Fails soft - a read error reads as "no date", never as a
+// site's own coding agent decides when it builds, a paused writer has no
+// date to promise, and neither does a site whose connected repo isn't the
+// site's (the scheduler starts nothing there: repoStillNotTheSite). Fails soft - a read error reads as "no date", never as a
 // broken owner page.
 
 export type NextArticle = {
@@ -27,10 +29,12 @@ export type NextArticleSite = {
   owner_user_id?: string | null;
   domain?: string | null;
   created_at?: string | null;
+  github_repo?: string | null;
+  repo_site_check?: unknown;
 };
 
 export async function nextArticleOf(p: NextArticleSite, now = new Date()): Promise<NextArticle | null> {
-  if (p.writer_mode !== "hosted" || p.writer_paused_at) return null;
+  if (p.writer_mode !== "hosted" || p.writer_paused_at || repoMismatchOf(p)) return null;
   try {
     const q = await getHostedQueue(
       { id: p.id, next_article_at: p.next_article_at, writer_paused_at: p.writer_paused_at ?? null, owner_user_id: p.owner_user_id, domain: p.domain, created_at: p.created_at },

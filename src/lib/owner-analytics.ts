@@ -8,6 +8,7 @@ import { memoMinute } from "./owner-memo";
 import { claudeCredit, type ClaudeCredit } from "./claude-credit";
 import { siteSetupProgress, type SetupProgress } from "./owner-setup";
 import { nextArticles, type NextArticle } from "./owner-next-article";
+import { repoMismatchOf } from "./site-root";
 
 // Everything /owner shows, in two reads: the site's traffic and funnel
 // (web_visits + app_events, migration 0073) and the customer ledger (auth
@@ -297,9 +298,12 @@ export type PlanTone = "ok" | "active" | "warn" | "danger" | "neutral";
 
 /** How a site's articles go live. "agent" = the owner's own coding agent
  *  builds (no hosted writer, so no autopilot to pause); otherwise a pause
- *  (writer_paused_at) beats the publish mode; publish_mode "review" is manual
- *  approval; anything else (auto, or not chosen yet) publishes by itself. */
-export type SiteMode = "autopilot" | "manual" | "paused" | "agent";
+ *  (writer_paused_at) beats the publish mode; "blocked" = the connected repo
+ *  doesn't build the site (empty, or another project's: repo_site_check), so
+ *  nothing can publish and the scheduler starts nothing (repoStillNotTheSite);
+ *  publish_mode "review" is manual approval; anything else (auto, or not
+ *  chosen yet) publishes by itself. */
+export type SiteMode = "autopilot" | "manual" | "paused" | "blocked" | "agent";
 
 export type CustomerSite = {
   id: string;
@@ -458,16 +462,19 @@ type ProjectRow = {
   writer_paused_at?: string | null;
   writer_pause_reason?: string | null;
   next_article_at?: string | null;
+  github_repo?: string | null;
+  repo_site_check?: unknown;
   created_at: string;
 };
 
 function siteModeOf(p: ProjectRow): SiteMode {
   if (p.writer_mode !== "hosted") return "agent";
   if (p.writer_paused_at) return "paused";
+  if (repoMismatchOf(p)) return "blocked";
   return p.publish_mode === "review" ? "manual" : "autopilot";
 }
 
-const PROJECT_COLS = "id, slug, name, domain, owner_user_id, writer_mode, writer_paused_at, writer_pause_reason, next_article_at, publish_mode, created_at";
+const PROJECT_COLS = "id, slug, name, domain, owner_user_id, writer_mode, writer_paused_at, writer_pause_reason, next_article_at, github_repo, repo_site_check, publish_mode, created_at";
 
 /** The sites, with how each publishes. A DB without 0089 has no publish_mode:
  *  read again without it, which reads as autopilot (what every site did). */
@@ -608,7 +615,7 @@ function siteOf(p: ProjectRow, r: RollupRow | undefined, credit: ClaudeCredit | 
     domain: p.domain,
     hosted: p.writer_mode === "hosted",
     mode: siteModeOf(p),
-    pauseReason: p.writer_paused_at ? (p.writer_pause_reason ?? "Paused.") : null,
+    pauseReason: p.writer_paused_at ? (p.writer_pause_reason ?? "Paused.") : wrongRepoLine(p),
     articles: Number(r?.articles ?? 0),
     articlesRecent: Number(r?.articles_recent ?? 0),
     lastArticleAt: r?.last_article_at ? String(r.last_article_at) : null,
@@ -625,6 +632,12 @@ function siteOf(p: ProjectRow, r: RollupRow | undefined, credit: ClaudeCredit | 
     claudeCreditUsd: creditAll,
     nextArticle: null,
   };
+}
+
+/** Why a "blocked" site writes nothing, for the mode tag's hover. */
+function wrongRepoLine(p: ProjectRow): string | null {
+  const m = repoMismatchOf(p);
+  return m ? `${m.repo} ${m.empty ? "is empty" : "doesn't build the site"}` : null;
 }
 
 /** The newest of some ISO timestamps, or null when there are none. */

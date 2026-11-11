@@ -204,6 +204,22 @@ export function repoIsNotTheSite(project: Pick<Project, "github_repo"> & { repo_
 }
 
 /**
+ * The spend gate (scheduler + research): is the connected repo still the
+ * wrong one? Only a site whose stored check already says "mismatch" pays
+ * for a look, and that look reuses the stored answer for a day, so a repo
+ * the owner fixes (shares the right one, or fills an empty one) is noticed
+ * within a day even before the held article's own retry re-checks it.
+ * Anything unreadable reads as "not wrong": this must never block a site
+ * whose repo is fine (reverto.ai, 2026-11-12: an empty repo kept a free
+ * site "on Autopilot" with a second article due that could only be held).
+ */
+export async function repoStillNotTheSite(project: Project): Promise<boolean> {
+  if (!project.github_repo || !repoIsNotTheSite(project)) return false;
+  const check = await checkRepoBuildsSite(project).catch(() => null);
+  return check?.verdict === "mismatch" && check.repo === project.github_repo;
+}
+
+/**
  * The owner changed which repos the App can see (they came back from
  * GitHub's picker, or GitHub sent installation_repositories): every project
  * on that installation whose connected repo is the wrong one gets the right

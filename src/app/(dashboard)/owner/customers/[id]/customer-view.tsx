@@ -380,6 +380,13 @@ export function CustomerDetailView({ d, now, inModal = false }: { d: CustomerDet
               <span className="text-ink-faint" title="The last public dispatchseo.com page they opened while signed in.">
                 Site {ago(d.lastSiteAt, now)}
               </span>
+              {d.sites
+                .filter((s) => s.wrongRepo)
+                .map((s) => (
+                  <span key={s.id} className="text-danger/90" title="Nothing can publish there, so the writer starts no article until they connect the repository the site is built from.">
+                    Wrong repo{d.sites.length > 1 ? ` on ${s.domain}` : ""}: {s.wrongRepo!.repo} {s.wrongRepo!.empty ? "is empty" : "doesn't build the site"}
+                  </span>
+                ))}
               {d.nextArticle ? (
                 <span className="text-ink-faint" title={d.nextArticle.title ?? "The queue is empty: that morning's run picks a topic first."}>
                   Next article {fullDate(d.nextArticle.at)}
@@ -599,7 +606,7 @@ export function CustomerDetailView({ d, now, inModal = false }: { d: CustomerDet
           {d.queue.lastResearchAt ? `Last research ${fullDate(d.queue.lastResearchAt)} (${ago(d.queue.lastResearchAt, now)})` : "No research run yet"}
           {d.nextArticle
             ? ` · next article ${fullDate(d.nextArticle.at)}: ${d.nextArticle.title ? `"${d.nextArticle.title}"` : "topic picked that morning"}${d.sites.length > 1 ? ` (${d.nextArticle.domain})` : ""}`
-            : d.queue.nextArticleAt
+            : d.queue.nextArticleAt && !d.sites.some((s) => s.wrongRepo)
               ? ` · next article due ${fullDate(d.queue.nextArticleAt)}`
               : ""}
           {d.queue.items.length && (d.queue.rejected || d.queue.done) ? ` · ${fmt(d.queue.rejected)} rejected, ${fmt(d.queue.done)} written so far` : ""}
