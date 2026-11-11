@@ -524,10 +524,9 @@ export default async function LandingPage({
           </div>
           </PricingSwitch>
           {/* How a multi-site plan's articles reach its sites, under every
-              plan surface in the same two lines (landing, /plans, billing). */}
+              plan surface in the same line (landing, /plans, billing). */}
           <div className="plans-note">
             <p>Use one site and it gets all of them. Add more and we split them for you.</p>
-            <p>New sites start slower while Google gets to know them.</p>
           </div>
         </div>
       </section>

@@ -265,11 +265,10 @@ export default async function BillingPage({
             );
           })}
         </div>
-        {/* How a plan's articles reach its sites - the same two lines as the
+        {/* How a plan's articles reach its sites - the same line as the
             landing's pricing section and /plans. */}
         <div className="space-y-0.5 text-[13.5px] text-ink-muted">
           <p>Use one site and it gets all of them. Add more and we split them for you.</p>
-          <p>New sites start slower while Google gets to know them.</p>
         </div>
         {/* The point of purchase for an upgrade, so the same express-consent
             line /plans and setup's checkout step carry (EU/UK 14-day

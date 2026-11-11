@@ -310,11 +310,10 @@ export default async function PlansPage({
           })}
         </div>
 
-        {/* How a plan's articles reach its sites - the same two lines as
+        {/* How a plan's articles reach its sites - the same line as
             the landing's pricing section and the billing page. */}
         <div className="mt-10 space-y-0.5 text-center text-sm text-neutral-400">
           <p>Use one site and it gets all of them. Add more and we split them for you.</p>
-          <p>New sites start slower while Google gets to know them.</p>
         </div>
 
         {/* Reassurance + the legal line, quiet at the base of the page. */}

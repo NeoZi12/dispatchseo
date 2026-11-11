@@ -2137,14 +2137,15 @@ Takes no parameters. Months are UTC calendar months.
 - `share`: this site's articles this month (2 on the free plan).
 - `mode`: `auto` (DispatchSEO splits the pool by how ready each site is)
   or `custom` (set by hand with `set_site_share`).
-- `safeMax` and `reason`: the most this site can safely take in a month
-  while Google gets to know it, and why; `null` when there is no cap.
+- `safeMax` and `reason`: `null` on a paid plan unless the site is stopped
+  (Google has indexed too few of its articles), then `0` and why. On the
+  free plan and self-host, the slow-start cap for a new site and why.
 - `usedThisMonth`: articles counted against this site's month - published,
   in progress, or failed after the topic was picked.
 - `ownerUsedThisMonth`: the same across the whole account, including sites
   removed this month; `null` without a pool.
-- `held`: pool articles given to no site this month because none was ready
-  for more.
+- `held`: pool articles no site can take right now. Only above 0 when every
+  other site is paused, stopped or still being set up.
 - `otherSites`: the account's other sites, oldest first, as numbers only:
   `{ share, mode, covered, usedThisMonth }`. Their names and domains are
   not shown to this site's key. `covered: false` means the plan allows

@@ -5526,10 +5526,11 @@ const mcpHandler = createMcpHandler(
           "How the account's monthly article pool is split, from this site's side: `pool` = the " +
           "plan's articles a month (null = no pool: free plan, self-host, unbilled), `share` = this " +
           "site's articles this month (the free plan's 2 on free), `mode` = auto (DispatchSEO splits " +
-          "it) or custom (set by hand), `safeMax` = the most this site can safely take a month while " +
-          "Google gets to know it (null = no cap) with `reason`, `usedThisMonth` (published, in " +
+          "it) or custom (set by hand), `safeMax` = null on a paid plan unless the site is stopped for " +
+          "too few indexed articles (then 0, with `reason`), `usedThisMonth` (published, in " +
           "progress, or failed after the topic was picked), `ownerUsedThisMonth` across the account, " +
-          "`held` = pool articles given to no site because none was ready for more, and " +
+          "`held` = pool articles no site can take right now (only when every other site is paused, " +
+          "stopped or still being set up), and " +
           "`otherSites` = the account's other sites as numbers only (share, mode, covered, " +
           "usedThisMonth), oldest first - their names and domains are not shown to this site's " +
           "key. Months are UTC calendar months.",
