@@ -5556,8 +5556,7 @@ const mcpHandler = createMcpHandler(
           "each is; `custom` fixes this site at articles_per_month - a whole number from 1 to this " +
           "site's current share plus the articles no site is using (`share` + `held` from " +
           "get_site_share). It cannot take articles from the account's other sites: the owner " +
-          "moves those in Settings > Websites. The safety ramp for young " +
-          "sites still paces a custom site. Auto sites are re-split right away; the change applies " +
+          "moves those in Settings > Websites. Auto sites are re-split right away; the change applies " +
           "from the next daily run. The same control as Settings > Websites. Refused on the free " +
           "plan, self-host and unbilled installs, and for a site the plan doesn't cover. Returns the " +
           "mode and share now in force plus the fresh get_site_share report. Use ONLY when the " +
