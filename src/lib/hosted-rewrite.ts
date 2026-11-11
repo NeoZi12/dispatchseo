@@ -331,7 +331,7 @@ export function planRewrite(paths: string[], existing: RepoFiles, backend: strin
  * own /blog is refused, as before - the owner's own choice of "hosted" from
  * Settings or MCP must never quietly land somewhere other than /blog.
  */
-export async function switchToHostedBlog(project: Project, opts: { secondPath?: boolean } = {}): Promise<Project | null> {
+export async function switchToHostedBlog(project: Project, opts: { secondPath?: boolean; /** The caller just probed the site and it serves its own /blog. */ ownBlog?: true } = {}): Promise<Project | null> {
   // A site that already serves a /blog (a CMS-backed one the repo scan could
   // not see, or anything else) must not have it forwarded away from under
   // it. "No markdown folder" is not "no blog".
@@ -339,7 +339,10 @@ export async function switchToHostedBlog(project: Project, opts: { secondPath?: 
   // A path chosen on an earlier attempt is kept as it is: once our rule is
   // live it answers with our marker, and re-deciding would only flip-flop.
   let path: string | null = project.hosted_path && hostedPath(project) !== "blog" ? hostedPath(project) : null;
-  if (!path && (await servesOwnBlog(project))) {
+  // The caller's "yes" is taken as it is: a second probe a moment later can
+  // answer differently (a 5xx blip), and "no" there would forward the
+  // owner's own /blog to ours.
+  if (!path && (opts.ownBlog || (await servesOwnBlog(project)))) {
     if (!opts.secondPath) return null;
     path = await firstFreePath(project);
     if (!path) return null;

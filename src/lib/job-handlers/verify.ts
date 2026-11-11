@@ -323,8 +323,10 @@ async function verifyRepoArticle(job: Job, draftId: string): Promise<void> {
   // repo. The article is published again, under a new pull request.
   if (mergedWithoutChange(pr, landMemo(job.payload))) {
     const { republishAfterEmptyMerge } = await import("./publish-repo");
-    await republishAfterEmptyMerge(project, draftId);
-    return;
+    // Once. A second empty merge is recorded as the merge it was: the page
+    // never appears, and the "not live" rail says so, instead of a new pull
+    // request in the owner's repo every round.
+    if (await republishAfterEmptyMerge(project, draftId)) return;
   }
 
   // MERGED. Stamp it once - the publish handler only knows about a merge it

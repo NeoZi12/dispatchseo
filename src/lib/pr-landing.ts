@@ -56,7 +56,7 @@ export type LandMemo = {
    *  branch head while it runs), `from` the commit under it that holds our
    *  change, `tree` that commit's tree to put back, `failing` the checks
    *  that were red with the change (null = unreadable). */
-  probe?: { sha: string; from: string; tree: string; at: string; failing: string[] | null } | null;
+  probe?: { sha: string; from: string; tree: string; at: string; failing: string[] | null; /** The `seo` label was on it and came off for the probe. */ labelled?: boolean } | null;
   /** Head commit whose red checks were shown not to be about our change. */
   cleared?: string | null;
   /** Head commit whose red checks were shown to BE about our change. */
@@ -143,12 +143,14 @@ export async function landPullRequest(
     if (pr.head_sha !== m.probe.sha) {
       // Something was pushed over it (an owner's second edit rebuilds the
       // branch from scratch): that push is the branch now.
+      if (m.probe.labelled) await seoLabel(project, pr.number, true);
       m.probe = null;
     } else {
       const verdict = await probeVerdict(project, pr, m.probe);
       if (verdict === "pending") return wait(SOON_MS);
       const back = await pushCommit(project, pr.head_ref, pr.head_sha, m.probe.tree, "chore: the change, back in place");
       if (!back) return wait(SOON_MS);
+      if (m.probe.labelled) await seoLabel(project, pr.number, true);
       m.probe = null;
       if (verdict === "red") {
         m.cleared = back;
@@ -238,8 +240,31 @@ async function startProbe(project: Project, pr: PullRequestState, failing: strin
   const base = ((cmp.json?.merge_base_commit as { commit?: { tree?: { sha?: string } } } | undefined)?.commit?.tree?.sha ?? "") as string;
   const ours = ((head.json?.tree as { sha?: string } | undefined)?.sha ?? "") as string;
   if (cmp.status !== 200 || head.status !== 200 || !base || !ours || base === ours) return null;
+  // While the branch holds no change the pull request must not look ready
+  // to the site's own merge automation: the pipeline pack's seo-auto-merge
+  // merges a green `seo` pull request whose files are all in the publish
+  // folders - and one with NO files passes that test (audit, 2026-11-11).
+  // The label comes off first and goes back on with the change.
+  const labelled = await seoLabel(project, pr.number, false);
   const sha = await pushCommit(project, pr.head_ref, pr.head_sha, base, "chore: run the checks without this change (is the failing check about it?)");
-  return sha ? { sha, from: pr.head_sha, tree: ours, at: new Date().toISOString(), failing } : null;
+  if (!sha && labelled) await seoLabel(project, pr.number, true);
+  return sha ? { sha, from: pr.head_sha, tree: ours, at: new Date().toISOString(), failing, labelled } : null;
+}
+
+/** Put the `seo` label on a pull request or take it off (true = it did). Best effort, like
+ *  the labelling at open time: the App may hold no Issues permission, and a
+ *  pull request without the label is only missing from one dashboard card. */
+async function seoLabel(project: Project, prNumber: number, on: boolean): Promise<boolean> {
+  const repo = project.github_repo;
+  const token = repo ? await tokenForRef(project).catch(() => null) : null;
+  if (!repo || !token || !prNumber) return false;
+  const res = await (on
+    ? githubApi(token, "POST", `/repos/${repo}/issues/${prNumber}/labels`, { labels: ["seo"] })
+    : githubApi(token, "DELETE", `/repos/${repo}/issues/${prNumber}/labels/seo`)
+  ).catch(() => null);
+  // Taking it off answers 200 only when it was there: that is what decides
+  // whether it goes back on afterwards.
+  return res?.status === 200;
 }
 
 /** red = the checks that failed with our change fail without it too.

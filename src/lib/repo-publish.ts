@@ -685,6 +685,21 @@ export function chooseFileName(
 // Guessing the published address
 // ---------------------------------------------------------------------------
 
+/** The slug the committed file is served under: the article's own, or
+ *  `slug-2` when the file had to be renamed because the owner already has a
+ *  post at that slug (articleFileName). Predicting the bare slug then asked
+ *  for the OWNER's older post, which carries the slug, so it passed as ours:
+ *  their page was recorded as our article and the "it's live" email linked
+ *  to it (audit, 2026-11-11). */
+export function servedSlug(slug: string, repoPath: string): string {
+  const stem = fileStem(baseOf(repoPath)).toLowerCase();
+  const own = slug.toLowerCase();
+  const at = stem.lastIndexOf(own);
+  if (!repoPath || at < 0) return slug;
+  const tail = stem.slice(at + own.length);
+  return /^-\d+$/.test(tail) ? `${slug}${tail}` : slug;
+}
+
 /** Directory names that are build plumbing rather than a URL segment - a file
  *  in `src/content/blog` is served at /blog/..., never at /src/... */
 const NON_URL_SEGMENTS = new Set(["content", "src", "pages", "app", "data"]);
@@ -1127,7 +1142,7 @@ export async function publishDraftToRepo(
         domain: project.domain,
         basePath: sitePath(project),
         dir: draft.repo_path ? dirOf(draft.repo_path) : "",
-        slug: draft.slug,
+        slug: servedSlug(draft.slug, draft.repo_path ?? ""),
         sampleStems: [],
         linkCandidates: await linkCandidatesFor(project.id),
       }),
@@ -1409,7 +1424,7 @@ export async function publishDraftToRepo(
     domain: project.domain,
     basePath: sitePath(project),
     dir,
-    slug,
+    slug: servedSlug(slug, repoPath),
     sampleStems: dirFiles.map((p) => fileStem(baseOf(p))),
     linkCandidates,
   });

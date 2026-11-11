@@ -315,7 +315,7 @@ aside.rail{display:none}
 .promo li svg{width:16px;height:16px;flex:none;color:var(--accent)}
 .promo .cta{display:block;margin-top:20px;background:var(--accent);color:var(--accent-ink);text-decoration:none;text-align:center;font-weight:600;font-size:13px;padding:9px 14px;border-radius:10px}
 .promo .cta:hover{filter:brightness(1.08)}
-.promo.below{margin-top:40px}
+.promo.below,.promo.end{margin-top:40px}
 .credit.rail{margin-top:-18px}
 .credit{margin:12px 0 0;font-size:12px;line-height:1.5;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:6px}
 .credit a{display:inline-flex;align-items:center;gap:5px;color:var(--ink2);font-weight:600;text-decoration:none}
@@ -525,6 +525,9 @@ export async function renderHostedArticle(project: Project, post: HostedPost): P
   const base = await backendBaseUrl();
   const cover = post.cover_url ? (post.cover_url.startsWith("http") ? post.cover_url : `${base}${post.cover_url}`) : null;
   const headings = headingsOf(post.rendered_html);
+  // Fewer than three headings: no contents list and no side rail. The site's
+  // card then closes the article at every width - it used to sit ABOVE the
+  // body there, an ad before the first sentence (audit, 2026-11-11).
   const rail = headings.length >= 3;
   const canonical = hostedArticleUrl(project, post.slug);
   const t = stringsFor(site.lang);
@@ -546,9 +549,9 @@ ${back}
 <h1>${esc(post.title)}</h1>
 <p class="meta">${byline ? `${byline}<span aria-hidden="true">·</span>` : ""}<time datetime="${esc(postDate(post))}">${esc(fmtDate(postDate(post), site.lang))}</time><span aria-hidden="true">·</span><span>${readingMinutes(post.rendered_html)} ${esc(t.minRead)}</span></p>
 ${cover ? `<img class="cover" src="${esc(cover)}" alt="" width="1200" height="675" fetchpriority="high">` : ""}
-${rail ? tocHtml(headings, "inline", t.onThisPage) : promo(site)}
+${rail ? tocHtml(headings, "inline", t.onThisPage) : ""}
 <div class="body">${decorateBody(post.rendered_html, t.inShort)}</div>
-${rail ? promo(site, "below") : ""}
+${promo(site, rail ? "below" : "end")}
 ${bio}
 <div class="endnav">${back}</div>
 </article>

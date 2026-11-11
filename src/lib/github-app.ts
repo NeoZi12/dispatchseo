@@ -289,7 +289,7 @@ export async function callerControlsInstallation(
       }
       const body = (await res.json()) as { installations?: Array<{ id?: number }> };
       const list = body.installations ?? [];
-      if (list.some((i) => i.id === installationId)) return true;
+      if (list.some((i) => i.id === installationId)) return canWriteThroughInstallation(token.access_token, installationId);
       if (list.length < 100) {
         console.error(
           `[github-install] installation ${installationId} not in the installer's own list ` +
@@ -301,6 +301,50 @@ export async function callerControlsInstallation(
     return false;
   } catch {
     return false;
+  }
+}
+
+// "In the installer's list" also holds for an organization member who can
+// only READ a repo the App is installed on: GitHub lists every installation
+// the user can see. Binding it to their DispatchSEO site would then open (and
+// on Auto, merge) pull requests in repos they cannot push to themselves. So
+// the caller must be able to push to at least one repo the installation
+// covers - true of anyone who installed the App or administers its repos.
+//
+// Refuses ONLY on positive evidence: repos were listed, each with the
+// caller's permissions, and none allows push. Anything else (GitHub
+// unreachable, an unexpected shape, an installation with no repos yet) keeps
+// the answer the list gave - a legitimate install must never be blocked by
+// this second look (launch morning, 2026-07-28).
+async function canWriteThroughInstallation(userToken: string, installationId: number): Promise<boolean> {
+  try {
+    let seen = 0;
+    for (let page = 1; page <= 3; page++) {
+      const res = await fetch(`${API}/user/installations/${installationId}/repositories?per_page=100&page=${page}`, {
+        headers: {
+          Authorization: `Bearer ${userToken}`,
+          Accept: "application/vnd.github+json",
+          "User-Agent": USER_AGENT,
+        },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!res.ok) return true;
+      const body = (await res.json()) as { repositories?: Array<{ permissions?: { admin?: boolean; push?: boolean; maintain?: boolean } | null }> };
+      const repos = body.repositories;
+      if (!Array.isArray(repos)) return true;
+      for (const r of repos) {
+        if (!r?.permissions || typeof r.permissions !== "object") return true; // shape we cannot judge
+        if (r.permissions.admin || r.permissions.push || r.permissions.maintain) return true;
+      }
+      seen += repos.length;
+      if (repos.length < 100) break;
+      if (page === 3) return true; // more repos than we read: not proven
+    }
+    if (seen === 0) return true;
+    console.error(`[github-install] installation ${installationId}: the caller can read ${seen} repo(s) through it and push to none - refused`);
+    return false;
+  } catch {
+    return true;
   }
 }
 

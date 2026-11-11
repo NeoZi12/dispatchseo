@@ -240,6 +240,12 @@ function upcomingRoute(project: Project): ArticleRoute | null {
 
 type PendingPr = { prNumber: number; url: string; previous: Previous | null; previousPrUrl: string | null; /** Where the pending text is read from: the branch, or a commit on it. */ branch: string; /** Open on GitHub with no watcher left: a chain that died. */ orphan: boolean };
 
+/** Is a watcher's pull request in the repo the site publishes to today? A
+ *  watcher from before the repo was stamped (2026-11-11) says yes. */
+export function sameRepo(watched: string | null | undefined, current: string | null | undefined): boolean {
+  return !watched || watched.toLowerCase() === String(current ?? "").toLowerCase();
+}
+
 const editBranch = (row: Pick<Row, "slug" | "id">) => `dispatchseo/edit-${row.slug}-${row.id.replace(/-/g, "").slice(0, 8)}`;
 
 /** The pull request still being watched for this article (the owner-pr
@@ -256,10 +262,12 @@ async function pendingPr(project: Project, draftId: string, kind: "edit" | "remo
   // Two can be unfinished at once (2026-11-11): a newer edit's watcher, and
   // an older one whose pull request was closed or merged but which has not
   // looked yet. GitHub numbers only go up, so the highest is the current one.
-  type P = { prNumber?: number; previous?: Previous; previousPrUrl?: string | null; land?: { probe?: { from?: string } | null } };
+  // A watcher armed on another repo (the site's repo was changed since) is
+  // not this article's pull request: its number means nothing here.
+  type P = { prNumber?: number; repo?: string; previous?: Previous; previousPrUrl?: string | null; land?: { probe?: { from?: string } | null } };
   const payload = ((data ?? []) as { payload?: P }[])
     .map((d) => d.payload)
-    .filter((x): x is P => Boolean(x?.prNumber))
+    .filter((x): x is P => Boolean(x?.prNumber) && sameRepo(x?.repo, project.github_repo))
     .sort((a, b) => Number(b.prNumber) - Number(a.prNumber))[0];
   if (!payload?.prNumber) return null;
   // While the checks are being run without the change (pr-landing.ts), the
@@ -569,7 +577,7 @@ async function watchPr(project: Project, draftId: string, prNumber: number, payl
   await enqueue({
     projectId: project.id,
     kind: "owner-pr",
-    payload: { draftId, prNumber, round: 0, deadline: new Date(Date.now() + 30 * 86_400_000).toISOString(), ...payload },
+    payload: { draftId, prNumber, repo: project.github_repo ?? undefined, round: 0, deadline: new Date(Date.now() + 30 * 86_400_000).toISOString(), ...payload },
     // Long enough for the site's checks to have run on a fresh PR.
     runAfter: new Date(Date.now() + 10 * 60_000),
     idempotencyKey: `owner-pr:${draftId}:${prNumber}:${payload.rearmed ? `re${payload.rearmed}` : "r0"}`,

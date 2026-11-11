@@ -1087,16 +1087,22 @@ export const planPausedProjectSlugs = cache(async (): Promise<Set<string>> => {
   const paused = new Set<string>();
   if (!isCloudMode() || !polarConfigured()) return paused;
   try {
+    // In the order coverage is decided in (coverageOrder, as planGate reads
+    // it through readOwnedSites): by age alone this silenced the alerts of a
+    // downgraded owner's WORKING site and kept them for the paused one.
     const { data: projects, error } = await db()
       .from("projects")
-      .select("slug, owner_user_id")
-      .order("created_at", { ascending: true }); // same order coverage is decided in
+      .select("slug, owner_user_id, created_at, writer_mode, writer_paused_at, setup_connected_at")
+      .order("created_at", { ascending: true });
     if (error || !projects) return paused;
-    const byOwner = new Map<string, string[]>();
-    for (const p of projects as Array<{ slug: string; owner_user_id: string | null }>) {
+    type P = { slug: string; owner_user_id: string | null; created_at: string | null; writer_mode: string | null; writer_paused_at: string | null; setup_connected_at: string | null };
+    const rowsByOwner = new Map<string, Array<P & { idle: boolean }>>();
+    for (const p of projects as P[]) {
       if (!p.owner_user_id) continue; // ownerless = never gated, exactly like planGate
-      byOwner.set(p.owner_user_id, [...(byOwner.get(p.owner_user_id) ?? []), p.slug]);
+      rowsByOwner.set(p.owner_user_id, [...(rowsByOwner.get(p.owner_user_id) ?? []), { ...p, idle: idleSite(p) }]);
     }
+    const byOwner = new Map<string, string[]>();
+    for (const [ownerId, rows] of rowsByOwner) byOwner.set(ownerId, coverageOrder(rows).map((r) => r.slug));
     if (byOwner.size === 0) return paused;
     const { data: subs, error: subErr } = await db()
       .from("subscriptions")

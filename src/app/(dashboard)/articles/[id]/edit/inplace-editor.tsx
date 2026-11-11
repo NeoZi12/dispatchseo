@@ -134,6 +134,11 @@ export function InplaceEditor({
   const bump = useCallback(() => setTick((t) => t + 1), []);
   const [state, formAction, pending] = useActionState(saveArticleEdit, null);
   const lastSavedAt = useRef<number | null>(null);
+  // Typing in a block reaches the blocks only when the block loses focus.
+  // Until then this says "there is unsaved typing": the button read "Saved"
+  // and was disabled, and Cmd+S did nothing, with the cursor still in the
+  // paragraph just changed (audit, 2026-11-11).
+  const typingRef = useRef(false);
 
   // trimEnd, not trim (2026-11-11): a block's first-line indentation is part
   // of its source (four spaces = an indented code block on the site's own
@@ -141,7 +146,7 @@ export function InplaceEditor({
   const bodyOf = (blocks: Block[]) => blocks.map((b) => b.source.trimEnd()).filter(Boolean).join("\n\n");
   const dirtyVisual = titleRef.current !== savedRef.current.title || meta !== initial.metaDescription || bodyOf(blocksRef.current) !== bodyOf(savedRef.current.blocks);
   // Typing in the HTML tab counts as a change before it reaches the blocks.
-  const dirty = dirtyVisual || (tab === "html" && htmlText !== htmlBase);
+  const dirty = dirtyVisual || typingRef.current || (tab === "html" && htmlText !== htmlBase);
   void tick;
 
   // ---- the preview: plain DOM inside a shadow root --------------------------
@@ -386,19 +391,31 @@ export function InplaceEditor({
         const key = keyOf(ed);
         // Let the click that took focus land first (a toolbar button on the
         // same block re-mounts the DOM under it otherwise).
-        if (key) setTimeout(() => commitBlock(key), 0);
+        if (key)
+          setTimeout(() => {
+            commitBlock(key);
+            typingRef.current = false;
+            bump();
+          }, 0);
       } else if (t?.matches?.("h1.title")) {
+        typingRef.current = false;
         const next = (t.textContent ?? "").replace(/\s+/g, " ").trim();
         if (next !== titleRef.current) {
           remember();
           titleRef.current = next;
           t.textContent = next;
-          bump();
         }
+        bump();
+      } else {
+        typingRef.current = false;
+        bump();
       }
     };
 
-    const onInput = () => bump();
+    const onInput = () => {
+      typingRef.current = true;
+      bump();
+    };
 
     // The hover tools sit on the content's top edge, not the block's: the
     // page's own margins (44px above an h2) live inside the block.
@@ -620,6 +637,13 @@ export function InplaceEditor({
     const active = rootRef.current?.activeElement as HTMLElement | null;
     active?.blur();
     setTimeout(() => {
+      typingRef.current = false;
+      // The typing was put back by hand before leaving the block: nothing to
+      // send, and a save of the same text would still republish the article.
+      if (titleRef.current === savedRef.current.title && meta === initial.metaDescription && bodyOf(blocksRef.current) === bodyOf(savedRef.current.blocks)) {
+        bump();
+        return;
+      }
       const fd = new FormData();
       fd.set("id", id);
       fd.set("slug", slug);
@@ -630,7 +654,7 @@ export function InplaceEditor({
       fd.set("body", bodyOf(blocksRef.current));
       startTransition(() => formAction(fd));
     }, 10);
-  }, [pending, takeHtml, id, slug, updatedAt, fileSha, meta, formAction]);
+  }, [pending, takeHtml, id, slug, updatedAt, fileSha, meta, formAction, initial.metaDescription, bump]);
 
   useEffect(() => {
     if (state?.ok && state.at !== lastSavedAt.current) {

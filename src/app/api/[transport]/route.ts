@@ -1253,6 +1253,25 @@ const mcpHandler = createMcpHandler(
           }
           existingId = row?.id ?? null;
           existingStatus = row?.status ?? null;
+        } else {
+          // No idea behind it: a resubmission of the same article (same slug)
+          // after a rejection updates that rejected row. Each attempt used to
+          // store a new one, so three tries at one article left three rejected
+          // drafts in the owner's list (audit, 2026-11-11). Only a REJECTED
+          // row is reused - anything further along is somebody's article.
+          const { data: prior } = await db()
+            .from("article_drafts")
+            .select("id, status")
+            .eq("project_id", p.id)
+            .is("suggestion_id", null)
+            .eq("slug", submission.slug)
+            .eq("status", "rejected")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          const row = prior as { id: string; status: string } | null;
+          existingId = row?.id ?? null;
+          existingStatus = row?.status ?? null;
         }
 
         // What this site already covers, so the gate can refuse a near-repeat.
@@ -1351,8 +1370,11 @@ const mcpHandler = createMcpHandler(
         // nothing, so refusing one on a cap would punish an agent for the very
         // round trip the gate asked it to make. And a resubmission updates a
         // draft that already counted, so it must pass freely or a capped site
-        // could never fix the article it already has in flight.
-        if (report.ok && !existingId) {
+        // could never fix the article it already has in flight. A draft that
+        // was only ever REJECTED never counted, so its first accepted version
+        // is a new article here (it used to pass uncounted: reject once, then
+        // resubmit, and the caps never applied).
+        if (report.ok && existingStatus !== "submitted") {
           const capped = await submissionCaps(p.id);
           if (capped) return fail(capped);
         }
@@ -1460,7 +1482,7 @@ const mcpHandler = createMcpHandler(
         if (!report.ok) {
           const failed = report.blocking.filter((c) => !c.passed);
           return failWith(
-            `Not published: ${failed.length} check(s) must pass first. Fix each one below and call submit_article again with the same suggestion_id.`,
+            `Not published: ${failed.length} check(s) must pass first. Fix each one below and call submit_article again with the same suggestion_id (or, without one, the same slug).`,
             {
               draft_id: draftId,
               status: "rejected",

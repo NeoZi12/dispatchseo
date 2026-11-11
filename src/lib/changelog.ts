@@ -692,6 +692,8 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
       "proof that you installed it, Search Console numbers come only from the Google account you " +
       "connected, and the dashboard session cookie is no longer readable by page scripts.",
   },
+  { kind: "fixed", text: "The article editor now shows \"Save changes\" as soon as you type. Before, it could still say \"Saved\" while your cursor was in the paragraph you had just changed, and saving with the keyboard did nothing." },
+  { kind: "fixed", text: "On a blog we host, a very short article no longer shows your site's card above the text. The card now comes after the article." },
 ];
 
 // Newest first. The head of this list is what the banner announces.

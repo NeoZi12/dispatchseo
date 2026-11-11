@@ -3,7 +3,7 @@ import { enqueue, type Job } from "@/lib/jobs";
 import { effectiveAutomations, getProjectById } from "@/lib/projects";
 import { tokenForRef } from "@/lib/github";
 import { commentOnPullRequest, fetchPullRequest, githubApi } from "@/lib/repo-publish";
-import { afterRemoval, redoOwnerChange } from "@/lib/article-owner";
+import { afterRemoval, redoOwnerChange, sameRepo } from "@/lib/article-owner";
 import { landMemo, landPullRequest, mergedWithoutChange } from "@/lib/pr-landing";
 import { warmScreenshotsLater } from "@/lib/page-screenshot";
 
@@ -40,6 +40,8 @@ const AWAITING_RETRY_MS = 2 * 60 * 60_000;
 type Payload = {
   draftId: string;
   prNumber: number;
+  /** The repo the pull request is in (stamped since 2026-11-11). */
+  repo?: string;
   kind: "edit" | "remove";
   round?: number;
   deadline?: string;
@@ -71,9 +73,19 @@ export async function runOwnerPrJob(job: Job): Promise<void> {
   if (p.kind === "edit" && row.status !== "published") return;
   if (p.kind === "remove" && row.status !== "removing") return;
 
+  const now = new Date();
+  // The site publishes to another repo now (or to none): this pull request
+  // is in one we no longer write to, and its number would be read from the
+  // wrong repo. Whatever happens to it cannot reach the site as it is today,
+  // so the watching ends. A removal goes back to "live" (it would sit as
+  // "removing" for good); an edit's row is left alone - it holds the owner's
+  // latest text, and putting older text back would be a guess.
+  if (!sameRepo(p.repo, project.github_repo)) {
+    if (p.kind === "remove") await revert(project.id, row, p, now.toISOString());
+    return;
+  }
   const pr = await fetchPullRequest(project, prNumber);
   if (!pr) throw new Error("could not read the pull request from GitHub");
-  const now = new Date();
 
   const memo = landMemo(job.payload);
   // Merged by hand in the few minutes the branch held no change (the checks
@@ -165,7 +177,10 @@ async function revert(projectId: string, row: { id: string; published_url: strin
       .order("created_at", { ascending: false })
       .limit(200);
     if (error) throw new Error(`could not check for a newer edit: ${error.message}`);
-    if (((others ?? []) as { payload?: { prNumber?: number } }[]).some((o) => Number(o.payload?.prNumber) > Number(p.prNumber))) return;
+    // Only within one repo: after a repo change the numbers start again.
+    // A watcher from before the repo was stamped counts as the same repo.
+    const same = (o: { payload?: { repo?: string } }) => !o.payload?.repo || !p.repo || o.payload.repo.toLowerCase() === p.repo.toLowerCase();
+    if (((others ?? []) as { payload?: { prNumber?: number; repo?: string } }[]).some((o) => same(o) && Number(o.payload?.prNumber) > Number(p.prNumber))) return;
     await db()
       .from("article_drafts")
       .update({ title: p.previous.title, meta_description: p.previous.meta_description, markdown: p.previous.markdown, updated_at: now })

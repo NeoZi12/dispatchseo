@@ -296,8 +296,25 @@ async function requeue(project: Project, draftId: string, key: string, payload: 
  *  (pr-landing.ts was running the site's checks without the article, and
  *  somebody pressed Merge in those minutes): the article never reached the
  *  repo, so it is published again from the top. */
-export async function republishAfterEmptyMerge(project: Project, draftId: string): Promise<void> {
-  await requeue(project, draftId, `publish:${draftId}:after-empty-merge`);
+export async function republishAfterEmptyMerge(project: Project, draftId: string): Promise<boolean> {
+  return requeueOnce(project, draftId, `publish:${draftId}:after-empty-merge`);
+}
+
+/** requeue(), at most once per article and reason. The queue frees a key
+ *  when its job finishes, so the key alone does not stop a loop (publish,
+ *  empty merge, publish again, with a new pull request in the owner's repo
+ *  each round): every job that ever carried it is counted. Unreadable counts
+ *  as "already tried" - a loop is the worse mistake. */
+async function requeueOnce(project: Project, draftId: string, key: string): Promise<boolean> {
+  const { count, error } = await db()
+    .from("jobs")
+    .select("id", { count: "exact", head: true })
+    .eq("project_id", project.id)
+    .eq("kind", "publish")
+    .eq("idempotency_key", key);
+  if (error || (count ?? 0) > 0) return false;
+  await requeue(project, draftId, key);
+  return true;
 }
 
 /**

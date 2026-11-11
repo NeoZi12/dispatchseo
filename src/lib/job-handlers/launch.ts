@@ -190,7 +190,7 @@ async function launchBlog(project: Project): Promise<Project> {
       if (effectiveAutomations(project).auto_merge && (await ensureBlogStore(project, { deadlineMs: 60_000 }).catch(() => null))?.status === "ready") return project;
       secondPath = true;
     }
-    if (!(await switchToHostedBlog(project, { secondPath }))) {
+    if (!(await switchToHostedBlog(project, secondPath ? { secondPath, ownBlog: true } : {}))) {
       // A second path that is taken too is the old "keeps its own blog"
       // answer, not a failure: the publish step parks and says so.
       if (secondPath) return project;

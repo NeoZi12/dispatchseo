@@ -38,6 +38,12 @@ export type RepoSiteCheck = {
 
 const STATIC = /\.(png|jpe?g|gif|svg|webp|avif|ico|webmanifest|txt|woff2?|mp4|webm|pdf)$/i;
 const HASHED = /[.-][A-Za-z0-9_-]{8,}\.(js|css|woff2?|png|jpe?g|svg|webp|avif)$/;
+// Made at build time or served by a CMS on the same host, so never in the
+// repo: Gatsby's /static/<hash>/<hash>/hero.png, Hugo's processed
+// hero_hu<hash>_resize.jpg, Payload's /api/media/file/x.png, WordPress
+// uploads. Counted as "files the repo must hold" they read a real site as the
+// wrong repo (audit, 2026-11-11).
+const BUILT = /(^|\/)[0-9a-f]{16,}(\/|\.)|_hu_?[0-9a-f]{8,}|^(api|wp-content|wp-includes|cdn-cgi)\//i;
 const GENERIC = new Set([
   "favicon.ico", "favicon.svg", "favicon.png", "icon.png", "icon.svg", "apple-icon.png", "apple-touch-icon.png",
   "opengraph-image.png", "twitter-image.png", "og.png", "og-image.png", "manifest.webmanifest", "site.webmanifest",
@@ -72,7 +78,7 @@ export function namedStaticFiles(html: string, rootUrl: URL): string[] {
     } catch {
       continue;
     }
-    if (!rel || !STATIC.test(rel) || HASHED.test(rel) || rel.startsWith("_next/") || rel.startsWith("assets/")) continue;
+    if (!rel || !STATIC.test(rel) || HASHED.test(rel) || rel.startsWith("_next/") || rel.startsWith("assets/") || BUILT.test(rel)) continue;
     if (GENERIC.has(rel.toLowerCase())) continue;
     rels.add(rel);
   }

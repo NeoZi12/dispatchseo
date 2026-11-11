@@ -21,6 +21,7 @@ import { removeQueuedIdea, restoreQueuedIdea } from "@/lib/autopilot/queue";
 import { adoptPage, editArticle, removeArticle } from "@/lib/article-owner";
 import { approveArticle, discardReviewArticle, setPublishMode } from "@/lib/article-review";
 import { redirect } from "next/navigation";
+import { rateLimitHit, rateLimitKey } from "@/lib/rate-limit";
 import type { ActionState } from "@/components/ui/action-state";
 
 // The dashboard's door to the autopilot owner controls (decision 7 of the
@@ -397,12 +398,21 @@ export async function saveFolder(_prev: ActionState, fd: FormData): Promise<Acti
 
 // ---- the owner's levers over a live article (src/lib/article-owner.ts) ----
 
+const DASH_EDITS_PER_DAY = 60;
+
 /** Save the edited title, description and body of a live article. */
 export async function saveArticleEdit(_prev: ActionState, fd: FormData): Promise<ActionState> {
   const o = await ownedProject(fd);
   if ("refused" in o) return o.refused;
   const id = text(fd, "id");
   if (!id) return state(false, "That article can't be edited from here.");
+  // Every save republishes (a hosted page, a pull request, a WordPress
+  // update). The MCP door stops at 20 a day; a person fixing typos saves far
+  // more often than an agent, so the dashboard's ceiling is higher, but it
+  // has one (audit, 2026-11-11).
+  if (!(await rateLimitHit(rateLimitKey("edit-article-dash", o.project.id), DASH_EDITS_PER_DAY, 86400, { failOpen: true }))) {
+    return state(false, `This site has saved ${DASH_EDITS_PER_DAY} article edits in 24 hours, the limit. Your text is still here: save it again later.`);
+  }
   const r = await editArticle(o.project, id, {
     title: text(fd, "title"),
     metaDescription: text(fd, "meta_description"),

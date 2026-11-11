@@ -29,10 +29,21 @@ export const SECRET_FILE = /(^|\/)(\.env[^/]*|[^/]*(secret|credential|service[-_
 
 /** Token-shaped strings are blanked out of whatever is read back, so a key
  *  someone committed into a config file does not travel through this tool. */
-export function redact(text: string): string {
-  return text
+export function redact(text: string, path = ""): string {
+  // Config files write a secret with no quotes around it
+  // (`POSTGRES_PASSWORD: hunter22`). Only there: in code the same shape is an
+  // ordinary assignment (`token = makeToken(x)`), which must stay readable.
+  // Spaces and tabs only, never \s: with `m` that also matches newlines, and
+  // a run of blank lines then took minutes (measured in review). The key must
+  // END in the secret word (`secretName: tls-cert` is a name, not a secret)
+  // and an address is not one either (`token_url: https://...`).
+  const config = /\.(ya?ml|toml|ini|conf|cfg|txt)$/i.test(path);
+  const out = config
+    ? text.replace(/^([ \t]*-?[ \t]*[A-Za-z0-9_.-]*(?:secret|token|password|passwd|(?:api|private|secret|access|auth|signing|encryption)[-_]?key)[ \t]*[:=][ \t]*)(?!["'`$<{[|>])(?![^\s#]*:\/\/)[^\s#]{8,}[ \t]*$/gim, "$1[redacted]")
+    : text;
+  return out
     .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, "[redacted private key]")
-    .replace(/\b(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|eyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{10,})\b/g, "[redacted]")
+    .replace(/\b(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|[sr]k_(?:live|test)_[A-Za-z0-9]{16,}|whsec_[A-Za-z0-9]{16,}|re_[A-Za-z0-9]{8,}_[A-Za-z0-9]{16,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|eyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{10,})\b/g, "[redacted]")
     .replace(/((?:secret|token|password|passwd|api[-_]?key|private[-_]?key|client[-_]?secret|auth)["']?\s*[:=]\s*["'`])[^"'`\n]{8,}(["'`])/gi, "$1[redacted]$2")
     .replace(/([a-z][a-z0-9+.-]*:\/\/[^\s:@/"']+:)[^\s@/"']+@/gi, "$1[redacted]@");
 }
@@ -112,7 +123,7 @@ export async function readRepoLayout(
     // `from` pages through a file longer than one window (a seed file, a long
     // config): the same 8,000 characters, starting further in.
     const from = Math.max(0, Math.min(Math.floor(opts.from ?? 0) || 0, text.length));
-    layout.file = { path: file, bytes: blob.size, from, text: redact(text.slice(from, from + MAX_FILE_CHARS)), cut: text.length > from + MAX_FILE_CHARS };
+    layout.file = { path: file, bytes: blob.size, from, text: redact(text.slice(from, from + MAX_FILE_CHARS), file), cut: text.length > from + MAX_FILE_CHARS };
   }
 
   return { ok: true, layout };
