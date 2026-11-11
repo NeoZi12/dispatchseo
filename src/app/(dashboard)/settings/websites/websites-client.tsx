@@ -137,7 +137,12 @@ function AddWebsiteForm({ onCancel }: { onCancel: () => void }) {
   const shown = state && state.domain === normalize(domain) ? state : null;
 
   return (
-    <form action={formAction} className="relative isolate overflow-hidden rounded-2xl border border-accent/25 bg-surface px-5 py-5 sm:px-7 sm:py-6">
+    // overflow-clip, not overflow-hidden: the glow below hangs 4rem past the
+    // right edge, and a hidden box is still a scroll container, so when the
+    // refusal row mounted the browser scrolled the whole form sideways to
+    // show it and left the label and the address clipped ("h website?").
+    // A clipped box cannot scroll at all.
+    <form action={formAction} className="relative isolate overflow-clip rounded-2xl border border-accent/25 bg-surface px-5 py-5 sm:px-7 sm:py-6">
       <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-20 -z-10 h-56 w-72 rounded-full bg-accent-strong/15 blur-3xl" />
       <label htmlFor={id} className="block text-[15px] font-semibold text-ink">
         Which website?
@@ -258,7 +263,7 @@ function SiteCardView({ card: c, index }: { card: SiteCard; index: number }) {
   const used = c.used ?? null;
   return (
     <li
-      className={cx("arrive-up overflow-hidden rounded-2xl border bg-surface", muted ? "border-line-soft/70" : "border-line-soft")}
+      className={cx("arrive-up overflow-clip rounded-2xl border bg-surface", muted ? "border-line-soft/70" : "border-line-soft")}
       style={{ "--at": "200ms", "--i": index, "--step": "70ms" } as React.CSSProperties}
     >
       {/* Head: who it is, how it's doing, and its number - as a phrase. */}
