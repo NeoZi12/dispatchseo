@@ -2,7 +2,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { effectiveAutomations, type Project } from "@/lib/projects";
 import { mergePr, tokenForRef } from "@/lib/github";
-import { githubApi, type RepoDraft } from "@/lib/repo-publish";
+import { creditLine, githubApi, type RepoDraft } from "@/lib/repo-publish";
 import { siteRoot, sitePath } from "@/lib/site-root";
 import { fetchProjectUrl } from "@/lib/url-guard";
 import { generate, parseJson } from "@/lib/writer/models";
@@ -867,7 +867,8 @@ export type EntryContext = {
   entries: Record<string, unknown>[];
   recipe: StoreRecipe;
   slug: string;
-  credit: { href: string; label: string } | null;
+  /** `line` = the exact nofollow anchor the body must carry (creditLine). */
+  credit: { href: string; label: string; line: string } | null;
   signature: string | null;
 };
 
@@ -1019,7 +1020,11 @@ export function validateEntry(entry: Record<string, unknown>, ctx: EntryContext)
     else if (t.length >= 20 && seen.get(t) === 1) out.push(`"${t.slice(0, 80)}" repeats text another post already has`);
   }
 
-  if (ctx.credit && !joined.includes(ctx.credit.href.toLowerCase())) out.push(`the credit link ${ctx.credit.href} is missing`);
+  if (ctx.credit && !mine.some((s) => s.text.includes(ctx.credit!.line))) out.push(`the body must carry exactly ${ctx.credit.line}`);
+  // One link to us, and only the nofollow one: a second (a "source", a links
+  // field) would render followed by the site's own code.
+  const ours = joined.match(/dispatchseo\.com/g)?.length ?? 0;
+  if (ours > (ctx.credit ? 1 : 0)) out.push(ctx.credit ? "dispatchseo.com may appear only in the credit line" : "the entry may not link to dispatchseo.com");
   if (ctx.signature && !mine.some((s) => s.text.includes(ctx.signature!))) out.push(`the body must end with ${ctx.signature}`);
   return [...new Set(out)].slice(0, 25);
 }
@@ -1616,8 +1621,15 @@ export async function publishDraftToStore(
 
   const free = await isFreeProject(project.id);
   const parts = creditParts(project, draft.id);
-  const credit = free ? { href: parts.href, label: parts.label } : null;
-  const signature = (recipe.bodyFormat === "html" || recipe.bodyFormat === "markdown" || recipe.bodyFormat === "mdx") && postsCarryHtml(entries) ? articleSignature(draft.id) : null;
+  const htmlBody = (recipe.bodyFormat === "html" || recipe.bodyFormat === "markdown" || recipe.bodyFormat === "mdx") && postsCarryHtml(entries);
+  // The free plan's credit goes in ONLY as our own <a rel="sponsored
+  // nofollow">, written into a body that renders HTML. A link in a field the
+  // site's code renders (a "sources" item, a links array) comes out followed,
+  // and a followed credit on every free article is a widget link scheme in
+  // Google's eyes: the customer's site pays for it. Such a site gets no
+  // credit at all rather than a followed one.
+  const credit = free && htmlBody ? { href: parts.href, label: parts.label, line: creditLine(parts) } : null;
+  const signature = htmlBody ? articleSignature(draft.id) : null;
   const today = opts.today ?? new Date().toISOString().slice(0, 10);
 
   // What the model is told about the fields we fill ourselves and the ones
@@ -1658,7 +1670,7 @@ export async function publishDraftToStore(
     enums.length ? `What the fields may hold:\n${enums.join("\n")}` : "",
     recipe.rules ? `The site's own rules:\n${recipe.rules}` : "",
     recipe.banned?.length ? `Never write these strings anywhere: ${recipe.banned.map((b) => JSON.stringify(b)).join(", ")}.` : "",
-    credit ? `Required: a visible link to ${credit.href} labelled "${credit.label}", placed where this shape holds links (${recipe.creditHint || "wherever the existing posts keep a link"}). It is the last item there. No other link to dispatchseo.com.` : "",
+    credit ? `Required: the body's last paragraph, just before the end, is exactly this line, character for character (keep its rel attribute): ${credit.line}\nNo other link to dispatchseo.com anywhere in the entry - not in a sources or links field.` : "",
     signature ? `Required: the body ends with exactly ${signature}` : "",
   ].filter(Boolean).join("\n\n");
   const base = `Existing posts, newest first:\n\n${samples.map((s, i) => `<post ${i + 1}>\n${s}\n</post>`).join("\n\n")}\n\n${instructions}\n\n<article>\n${article}\n</article>`;
