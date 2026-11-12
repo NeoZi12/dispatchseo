@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { operatorUserIds } from "./autopilot/operator";
 import { isCloudMode } from "./cloud";
-import { AUTOMATED_BROWSER, BADGE_MEDIUM } from "./visits";
+import { AUTOMATED_BROWSER, BADGE_MEDIUM, CLICK_ID_MEDIUM } from "./visits";
 import { aiReferrer } from "./owner-insights";
 import { windows, type Range } from "./owner-analytics";
 import { memoMinute } from "./owner-memo";
@@ -26,6 +26,9 @@ export type Visit = {
   channel: Channel;
   /** The site that sent them, when it differs from the channel's name. */
   referrer: string | null;
+  /** A Direct visit, narrowed down: what the landing page, the signed-in
+   *  user and the browser say about how they got here. Null otherwise. */
+  how: { title: string; detail: string } | null;
   campaign: string | null;
   /** Came through a customer article's "Made with DispatchSEO" credit. */
   badge: { site: string; articleId: string | null; title: string | null } | null;
@@ -110,6 +113,8 @@ export function channelOf(referrer: string | null, utmSource: string | null, utm
   // Our own credit on a customer article: its tag is more exact than the
   // referrer, which would only name the customer's site.
   if (utmMedium === BADGE_MEDIUM && utmSource) return { name: "DispatchSEO badge", kind: "badge" };
+  // An ad click id (visits.ts): an ad, even though the referrer says google.com.
+  if (utmMedium === CLICK_ID_MEDIUM && utmSource && / Ads$/.test(utmSource)) return { name: utmSource, kind: "campaign" };
   const host = referrer?.toLowerCase() ?? null;
   if (host) {
     const ai = aiReferrer(host);
@@ -134,6 +139,38 @@ export function channelOf(referrer: string | null, utmSource: string | null, utm
   }
   if (host) return { name: host, kind: "site" };
   return { name: "Direct", kind: "direct" };
+}
+
+// Browsers built into an app name the app in their user agent. A link opened
+// there came from that app, even with no referrer.
+const IN_APP_SOCIAL: Array<[RegExp, string]> = [
+  [/FBAN|FBAV|FB_IAB|FB4A/, "Facebook"],
+  [/Instagram/, "Instagram"],
+  [/LinkedInApp/, "LinkedIn"],
+  [/TwitterAndroid|\bTwitter for/, "X"],
+  [/\bReddit\//, "Reddit"],
+  [/musical_ly|BytedanceWebview|\bTikTok/, "TikTok"],
+  [/Snapchat/, "Snapchat"],
+  [/Pinterest/, "Pinterest"],
+];
+const IN_APP_CHAT: Array<[RegExp, string]> = [
+  [/\bLine\//, "LINE"],
+  [/Telegram/, "Telegram"],
+  [/WhatsApp/, "WhatsApp"],
+];
+
+/** "Direct" only says nothing told us the source. Narrow it with what we do
+ *  know: the app the browser lives in, whether they were signed in, and where
+ *  they landed (nobody types a blog URL from memory). */
+export function directHow(ua: string | null, userId: string | null, landing: string): { title: string; detail: string } {
+  const u = ua ?? "";
+  const chat = IN_APP_CHAT.find(([re]) => re.test(u))?.[1];
+  if (chat) return { title: `${chat} link`, detail: `Opened inside ${chat}, so someone sent it` };
+  if (/\bGSA\//.test(u)) return { title: "Google app", detail: "Opened inside the Google app: Discover, a search, or a shared link" };
+  if (userId) return { title: "Returning user", detail: "Signed in and came straight back" };
+  if (landing === "/login" || landing.startsWith("/login/")) return { title: "Came back to log in", detail: "Straight to the login page: a bookmark or typed" };
+  if (landing === "/") return { title: "Typed the address", detail: "dispatchseo.com typed, a bookmark, or a link in an app" };
+  return { title: "Shared link", detail: "Straight to an inner page: a link in a chat, email or app that hides its source" };
 }
 
 type Row = {
@@ -254,7 +291,11 @@ async function visitorsReportFresh(range: Range, now = Date.now()): Promise<Visi
     const ref = list.find((r) => r.referrer)?.referrer ?? null;
     const tagged = list.find((r) => r.utm_source);
     const utm = tagged?.utm_source ?? null;
-    const channel = channelOf(ref, utm, tagged?.utm_medium ?? null);
+    const ua = list.find((r) => r.ua)?.ua ?? null;
+    const userId = list.find((r) => r.user_id)?.user_id ?? null;
+    let channel = channelOf(ref, utm, tagged?.utm_medium ?? null);
+    const inApp = channel.kind === "direct" ? IN_APP_SOCIAL.find(([re]) => re.test(ua ?? ""))?.[1] : null;
+    if (inApp) channel = { name: inApp, kind: "social" };
     const badge = channel.kind === "badge" ? { site: utm!, articleId: tagged?.utm_campaign ?? null, title: null } : null;
     const pages: string[] = [];
     for (const r of list) if (pages[pages.length - 1] !== r.path) pages.push(r.path);
@@ -266,12 +307,13 @@ async function visitorsReportFresh(range: Range, now = Date.now()): Promise<Visi
       device: list.find((r) => r.device)?.device ?? null,
       channel,
       referrer: badge ? badge.site : ref && ref !== channel.name.toLowerCase() ? ref : null,
+      how: channel.kind === "direct" ? directHow(ua, userId, first.path) : null,
       campaign: badge ? null : (list.find((r) => r.utm_campaign)?.utm_campaign ?? null),
       badge,
       landing: first.path,
       pages,
       views: list.length,
-      userId: list.find((r) => r.user_id)?.user_id ?? null,
+      userId,
       ...judge(list, engaged, chromeOf, newestChrome),
     });
   }

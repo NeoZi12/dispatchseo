@@ -27,10 +27,10 @@ function Source({ v }: { v: VisitRow }) {
     <>
       <span className="flex min-w-0 items-center gap-2 text-[13.5px] text-ink">
         <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: KIND_COLOR[v.channel.kind] }} aria-hidden="true" />
-        <span className="truncate">{v.channel.name}</span>
+        <span className="truncate">{v.how?.title ?? v.channel.name}</span>
       </span>
-      <span className="mt-0.5 block truncate pl-4 text-[11.5px] text-ink-faint">
-        {v.channel.kind === "direct" ? "Typed in, a bookmark, or an app" : [KIND_NAME[v.channel.kind], v.referrer, v.campaign].filter(Boolean).join(" · ")}
+      <span className="mt-0.5 block truncate pl-4 text-[11.5px] text-ink-faint" title={v.how?.detail}>
+        {v.how ? v.how.detail : [KIND_NAME[v.channel.kind], v.referrer, v.campaign].filter(Boolean).join(" · ")}
       </span>
     </>
   );

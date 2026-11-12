@@ -219,6 +219,22 @@ export function badgeRef(raw: string | null | undefined): { site: string; articl
   return { site, articleId };
 }
 
+/** Ad platforms add a click id to the landing URL. Stored like the badge, in
+ *  the utm columns under this medium, so a visit with no referrer and no tag
+ *  still says it was an ad (or a Facebook link). A real utm_source wins. */
+export const CLICK_ID_MEDIUM = "click-id";
+const CLICK_IDS: Array<[string, string]> = [
+  ["gclid", "Google Ads"],
+  ["gbraid", "Google Ads"],
+  ["wbraid", "Google Ads"],
+  ["msclkid", "Microsoft Ads"],
+  ["fbclid", "facebook.com"],
+];
+function clickIdSource(p: URLSearchParams): string | null {
+  for (const [key, source] of CLICK_IDS) if (p.get(key)) return source;
+  return null;
+}
+
 function hostedKey(pathname: string): string | null {
   const m = /^\/hosted\/([^/]+)/.exec(pathname);
   return m ? m[1].slice(0, 80) : null;
@@ -248,6 +264,7 @@ export async function recordVisit(input: VisitInput): Promise<void> {
     // Our own pages only (a hosted customer page never carries our ref), and
     // never over a real tag on the same link.
     const badge = input.area === "site" && !p.get("utm_source") ? badgeRef(p.get("ref")) : null;
+    const clicked = input.area === "site" && !p.get("utm_source") && !badge ? clickIdSource(p) : null;
     const row = {
       kind: input.kind,
       area: input.area,
@@ -262,8 +279,8 @@ export async function recordVisit(input: VisitInput): Promise<void> {
       net: netHash(h, salt),
       user_id: input.userId ?? null,
       hosted_key: input.area === "hosted" ? hostedKey(input.url.pathname) : null,
-      utm_source: p.get("utm_source")?.slice(0, 80) || badge?.site || null,
-      utm_medium: badge ? BADGE_MEDIUM : p.get("utm_medium")?.slice(0, 80) || null,
+      utm_source: p.get("utm_source")?.slice(0, 80) || badge?.site || clicked || null,
+      utm_medium: badge ? BADGE_MEDIUM : clicked ? CLICK_ID_MEDIUM : p.get("utm_medium")?.slice(0, 80) || null,
       utm_campaign: p.get("utm_campaign")?.slice(0, 120) || badge?.articleId || null,
     };
     const { error } = await db().from("web_visits").insert(row);
