@@ -515,7 +515,11 @@ export async function renderHostedIndex(project: Project, posts: HostedPost[], p
     pages > 1
       ? `<nav class="pager" aria-label="Pages">${paging.page > 1 ? `<a href="${esc(site.base)}${paging.page > 2 ? `?page=${paging.page - 1}` : ""}">←</a>` : "<span></span>"}<span>${paging.page} / ${pages}</span>${paging.page < pages ? `<a href="${esc(site.base)}?page=${paging.page + 1}">→</a>` : "<span></span>"}</nav>`
       : "";
-  const body = `<section class="list"><h1>${esc(site.name)} ${esc(site.label)}</h1><p class="sub">${esc(site.tagline || site.short || site.name)}</p>${items || `<p class="sub">${esc(t.none)}</p>`}${pager}${promo(site, "below")}</section>`;
+  // The site's card (and, on the free plan, the credit under it) closes the
+  // list at every width, like a short article. As "below" it was hidden from
+  // 1024px up - that rule is for pages with a side rail, which carries the
+  // card there - so on a desktop the list showed neither (2026-11-12).
+  const body = `<section class="list"><h1>${esc(site.name)} ${esc(site.label)}</h1><p class="sub">${esc(site.tagline || site.short || site.name)}</p>${items || `<p class="sub">${esc(t.none)}</p>`}${pager}${promo(site, "end")}</section>`;
   const canonical = `${site.base}${paging.page > 1 ? `?page=${paging.page}` : ""}`;
   return shell(site, { title: `${site.name} ${site.label}${paging.page > 1 ? ` · ${paging.page}` : ""}`, description: site.short || site.tagline || site.name, canonical, body });
 }
