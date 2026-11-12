@@ -31,10 +31,10 @@ dispatchseo.com and also available as open-source software (AGPL-3.0) to
 self-host. The hosted service does the whole job for you: it finds keywords
 with measured search demand, writes an article on each one, fact-checks it,
 publishes it to your site, and reports the Google clicks and impressions it
-earns. Articles reach your site as pull requests to your GitHub repository
-(Next.js, Astro and other code-built sites), through the API of a self-hosted
-WordPress site, or on a hosted blog when your site has no repository. Every
-site starts on the free plan; paid plans publish more articles a month.
+earns. It works with websites that live in a GitHub repository (Next.js,
+Astro, Hugo and other code-built sites), and articles reach the site as pull
+requests to that repository. Every site starts on the free plan; paid plans
+publish more articles a month.
 
 ## Key facts
 
@@ -51,11 +51,13 @@ site starts on the free plan; paid plans publish more articles a month.
 - Articles are only written about topics with real, measured search demand.
   A thin niche may not fill its monthly quota, and the product says so rather
   than padding.
-- Supported sites: anything whose source lives in a GitHub repository, and
-  self-hosted WordPress. Hosted site builders (Wix, Squarespace, Shopify,
-  Webflow) are not supported yet.
-- Publishing is a pull request by default, so every article is reviewable in
-  your repo's history; automatic merge is opt-in.
+- Supported sites: websites whose source lives in a GitHub repository, and
+  nothing else today. WordPress, Shopify, Wix, Squarespace, Webflow and Ghost
+  are not supported. Support for Lovable sites is coming soon.
+- Publishing is a pull request to your repository, so every article is in
+  your repo's history. On Autopilot (the default) each article goes live on
+  its own once it is written and checked; Manual review makes each one wait
+  for you to press Publish.
 - Self-hosting: one Docker command, zero feature limits, your own accounts and
   keys. A self-hosted install exposes an MCP server at /api/mcp (streamable
   HTTP, bearer token per project) so a coding agent (Claude Code, Codex,

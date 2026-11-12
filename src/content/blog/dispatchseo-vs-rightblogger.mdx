@@ -7,9 +7,9 @@ cover: /blog/covers/dispatchseo-vs-rightblogger.webp
 googleNoindex: true
 ---
 
-Pick RightBlogger if you also write your own posts, want about 30 automated posts a month on one site for $49, or publish to Webflow, Ghost or Duda. Pick DispatchSEO if you want to see finished articles before paying, need a hosted blog because your site has no repo, or want the fact check inside the pipeline rather than an audit afterwards. These are the two tools that commit an article to a GitHub repository and open a pull request. We make DispatchSEO, so RightBlogger's side is quoted from its own pages.
+Pick RightBlogger if you also write your own posts, want about 30 automated posts a month on one site for $49, or publish to WordPress, Shopify, Wix, Webflow or Ghost. Pick DispatchSEO if your site lives in a GitHub repo and you want to see finished articles before paying, or want the fact check inside the pipeline rather than an audit afterwards. These are the two tools that commit an article to a GitHub repository and open a pull request. We make DispatchSEO, so RightBlogger's side is quoted from its own pages.
 
-> **TL;DR** - RightBlogger is a writing suite with automation: $49 a month billed yearly ($59 monthly) for one site and one automated post a day, and a free tier that writes 2,000 words but does not automate. DispatchSEO is a narrower autopilot: two fact-checked articles a month free (with a small badge), then 5 to 30 articles per month for $19 to $69, on up to 5 sites. Both open pull requests; only DispatchSEO merges them for you on Auto, and only DispatchSEO can host the blog when there is no repo.
+> **TL;DR** - RightBlogger is a writing suite with automation: $49 a month billed yearly ($59 monthly) for one site and one automated post a day, and a free tier that writes 2,000 words but does not automate. DispatchSEO is a narrower autopilot: two fact-checked articles a month free (with a small badge), then 5 to 30 articles per month for $19 to $69, on up to 5 sites. Both open pull requests; only DispatchSEO merges them for you on Auto. DispatchSEO works only with sites that live in a GitHub repo, while RightBlogger also publishes to WordPress, Shopify, Wix and Webflow.
 
 ## What does each one cost?
 
@@ -22,13 +22,13 @@ Pick RightBlogger if you also write your own posts, want about 30 automated post
 | Extra sites | $20 to $30 a month each | Included on Growth and Scale; the plan's articles are split between the sites |
 | Trial | 7 days on paid plans, 30-day refund | The free plan, with no clock |
 
-RightBlogger caps automation at 30 queued posts and 5 per site per day. DispatchSEO's counts are flat, and a thin niche may get fewer because the research step never queues a topic without measured volume and difficulty.
+RightBlogger caps automation at 30 queued posts and 5 per site per day. DispatchSEO's counts are flat, per month, and shared between a plan's sites.
 
 ## How does each one publish to a repo?
 
 RightBlogger's Git integration ("Continue with GitHub", or paste a repo URL and token) finds where your posts live, commits each post with its images, and opens a pull request by default. A toggle commits to the production branch instead. It supports GitHub and Cloudflare Artifacts and any Markdown or MDX blog (Astro, Next.js, Hugo, Eleventy, Jekyll), verifies the change reached the live site, and asks the host to rebuild if not.
 
-DispatchSEO's server does the same mechanics: it reads a post already in your repo and mirrors its frontmatter keys, date format and file naming, commits on a branch, opens the pull request, and merges it when the site is on Auto. A verify job confirms the page is live and rebuilds a red pull request twice before leaving a comment. When there is no repo, it hosts the blog, and it publishes to self-hosted WordPress through the WordPress API.
+DispatchSEO's server does the same mechanics: it reads a post already in your repo and mirrors its frontmatter keys, date format and file naming, commits on a branch, opens the pull request, and merges it when the site is on Auto. DispatchSEO works only with sites that live in a GitHub repo; WordPress, Shopify, Wix, Squarespace, Webflow and Ghost are not supported, and support for Lovable sites is coming soon.
 
 RightBlogger is ahead on Cloudflare Artifacts and on the product built around the integration. DispatchSEO is ahead on the automatic merge and on showing each article's Google clicks in the same dashboard a week later.
 
@@ -38,7 +38,7 @@ RightBlogger's pricing page does not mention fact-checking or source citations i
 
 ## Who should pick which?
 
-RightBlogger is the better fit for anyone on Wix, Squarespace, Shopify or Webflow (DispatchSEO does not support them), for anyone who wants 30 posts a month at the lower price ($49 against DispatchSEO Scale's $59, both billed yearly), for anyone who wants a writing assistant for their own drafts, and for an agency running ten client sites on one bill. DispatchSEO is the better fit for anyone who wants to try before paying, whose site has no repository and no supported CMS, or who wants the fact check before publication rather than an audit after it.
+RightBlogger is the better fit for anyone on WordPress, Wix, Shopify or Webflow (DispatchSEO does not support them), for anyone who wants 30 posts a month at the lower price ($49 against DispatchSEO Scale's $59, both billed yearly), for anyone who wants a writing assistant for their own drafts, and for an agency running ten client sites on one bill. DispatchSEO is the better fit for anyone whose site lives in a GitHub repo and who wants to try before paying, or who wants the fact check before publication rather than an audit after it.
 
 ## FAQ
 

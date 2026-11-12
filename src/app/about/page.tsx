@@ -46,8 +46,8 @@ export default function AboutPage() {
             data once you connect it, so every article targets a topic people actually look for
           </li>
           <li>
-            Articles written and fact-checked for you, then published to your site: as a pull
-            request to your GitHub repository, or on a hosted blog if your site has no repo
+            Articles written and fact-checked for you, then published to your site as a pull
+            request to your GitHub repository
           </li>
           <li>Google clicks and impressions per article, so you can see what each one brought</li>
           <li>Keyword rank tracking and weekly research on the paid plans</li>
@@ -68,9 +68,9 @@ export default function AboutPage() {
           .
         </p>
         <p>
-          Sites that live in a GitHub repository, including Next.js, Astro and other code-built
-          sites, and sites on self-hosted WordPress are supported today. Hosted site builders
-          (Wix, Squarespace, Shopify, Webflow) are not yet.
+          DispatchSEO works with sites that live in a GitHub repository: Next.js, Astro, Hugo and
+          other code-built sites. WordPress, Shopify, Wix, Squarespace, Webflow and Ghost are not
+          supported. Support for Lovable sites is coming soon.
         </p>
         <p>
           The software is open source (AGPL-3.0) and can be self-hosted, where it also exposes an
