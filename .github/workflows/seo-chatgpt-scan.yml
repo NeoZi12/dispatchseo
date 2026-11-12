@@ -1,19 +1,22 @@
 name: SEO ChatGPT scan
 
-# Every Thursday, ask OpenAI's model (with live web search) the questions in
-# scripts/ai-answer-panel.json and record whether each answer names
+# Asks OpenAI's model (with live web search) the questions in
+# scripts/ai-answer-panel.json and records whether each answer names
 # dispatchseo.com. Results land in ai_snapshots through the record_ai_citations
 # MCP tool, engine "chatgpt", and show on /owner's AI visibility panel as the
 # ChatGPT row of "Named us". The Claude row comes from seo-geo-scan.yml; the
 # Google row from the daily rank cron.
 #
-# Costs the owner's OpenAI balance about $0.25 a run on gpt-5-mini. Without
-# the CHATGPT_SCAN_OPENAI_KEY secret the run exits quietly: an unset key is a
-# setup state, not a failure.
+# Manual only since 2026-11-12 (owner's call): the weekly schedule is off. It
+# billed the owner's OpenAI balance on every run (the balance ran out mid-run
+# that day, 12 of 16 questions answered), and an API model is not what people
+# see anyway. The measurement that counts is the same 16 questions asked in
+# the ChatGPT app on the owner's subscription, about once a month. Run this by
+# hand (Actions > Run workflow) only if the key has credit and a quick API
+# reading is wanted. Without the CHATGPT_SCAN_OPENAI_KEY secret the run exits
+# quietly: an unset key is a setup state, not a failure.
 
 on:
-  schedule:
-    - cron: "17 7 * * 4" # Thursdays 07:17 UTC
   workflow_dispatch:
 
 concurrency:
