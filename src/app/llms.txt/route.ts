@@ -49,8 +49,6 @@ publish more articles a month.
   rank tracking and advanced analytics, and remove the badge. Yearly billing
   is cheaper where offered.
 - Articles are only written about topics with real, measured search demand.
-  A thin niche may not fill its monthly quota, and the product says so rather
-  than padding.
 - Supported sites: websites whose source lives in a GitHub repository, and
   nothing else today. WordPress, Shopify, Wix, Squarespace, Webflow and Ghost
   are not supported. Support for Lovable sites is coming soon.

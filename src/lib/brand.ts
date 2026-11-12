@@ -21,7 +21,7 @@ export const BRAND_TAGLINE = "Free SEO automation: researched articles, publishe
 const PAID_RANGE = `${ARTICLES_PER_MONTH.starter}, ${ARTICLES_PER_MONTH.growth} or ${ARTICLES_PER_MONTH.scale}`;
 
 export const BRAND_DESCRIPTION =
-  `DispatchSEO is a free SEO autopilot for small websites. It researches keywords with real search demand, writes fact-checked articles and publishes them to your site for you, as pull requests to your GitHub repo or on a hosted blog, then shows the Google visitors they bring. Two articles per month are free, with no card. Paid plans publish ${PAID_RANGE} articles per month on up to ${TIER_LIMITS.scale.sites} websites.`;
+  `DispatchSEO is a free SEO autopilot for small websites. It researches keywords with real search demand, writes fact-checked articles and publishes them to your site for you, as pull requests to your GitHub repo, then shows the Google visitors they bring. Two articles per month are free, with no card. Paid plans publish ${PAID_RANGE} articles per month on up to ${TIER_LIMITS.scale.sites} websites.`;
 
 export const BRAND_SAME_AS = [
   "https://github.com/NeoZi12/dispatchseo",
@@ -90,7 +90,7 @@ export function brandJsonLd(): Record<string, unknown> {
         featureList: [
           "Keyword research from real search demand and your Search Console data",
           `Fact-checked articles written and published for you, ${FREE_ARTICLES_PER_MONTH} to ${ARTICLES_PER_MONTH.scale} a month`,
-          "Publishes as pull requests to a GitHub repository or to a hosted blog",
+          "Publishes as pull requests to your GitHub repository",
           "Google Search Console clicks and impressions per article",
           "Keyword rank tracking on paid plans",
           "Open source (AGPL-3.0), self-hostable, with an MCP server for coding agents",
