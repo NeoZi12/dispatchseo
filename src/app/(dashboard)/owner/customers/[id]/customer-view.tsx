@@ -7,8 +7,8 @@ import { PHASE_WORDS, setupShort, type SetupProgress } from "@/lib/owner-setup";
 import { TIER_NAMES } from "@/lib/billing";
 import { cx } from "@/components/ui/styles";
 import { AreaChart, MetricChart } from "../../area";
-import { BarList, DeltaPill, Panel, PanelHead, PublishStrip, StatCells } from "../../bits";
-import { ago, cancelNote, compact, delta, fmt, fullDate, money, pct, shortDate } from "../../format";
+import { BarList, Panel, PanelHead, PublishStrip, StatCells } from "../../bits";
+import { ago, cancelNote, compact, fmt, fullDate, money, pct, shortDate } from "../../format";
 
 // One customer, the full picture, top to bottom: who they are and where
 // they stand; six figures (paid, cost, margin, articles, clicks,
@@ -181,6 +181,45 @@ function SetupPanel({ s, now }: { s: SetupProgress; now: number }) {
   );
 }
 
+const plural = (n: number, one: string, many = `${one}s`) => `${fmt(n)} ${n === 1 ? one : many}`;
+
+/** Whether Search Console has anything for them: a site connected now, or
+ *  numbers from before it was disconnected. */
+const hasGoogle = (d: CustomerDetail) => d.sites.some((s) => s.gscConnected) || d.google.totalImpressions > 0;
+
+/** One plain sentence: are the articles we published bringing them anything?
+ *  Reads only the articles' own Google numbers, never the whole site's - the
+ *  site's clicks are theirs until a page of ours earns some. */
+function impactVerdict(d: CustomerDetail, now: number): { text: string; tone: "ok" | "warn" | "muted" } {
+  const g = d.google;
+  const n = d.articleCount;
+  if (!hasGoogle(d)) return { text: "Can't tell: Search Console isn't connected for their site, so there are no Google numbers to read.", tone: "warn" };
+  if (!n) return { text: "Nothing to measure yet: no article of ours is live.", tone: "muted" };
+  const ours = n === 1 ? "our article" : `our ${n} articles`;
+  const Ours = ours[0].toUpperCase() + ours.slice(1);
+  const theirs =
+    g.clicks28d || g.impressions28d
+      ? ` The ${plural(g.clicks28d, "click")} and ${plural(g.impressions28d, "impression")} their site did get in that time came from pages they wrote themselves.`
+      : "";
+  if (g.articleClicks28d > 0) {
+    const share = g.clicks28d >= g.articleClicks28d ? `: ${pct(g.articleClicks28d, g.clicks28d)} of every click to their site` : "";
+    return { text: `Yes. ${Ours} brought them ${plural(g.articleClicks28d, "click")} from Google in the last 28 days${share}.`, tone: "ok" };
+  }
+  if (g.articleImpressions28d > 0) {
+    const pos = g.articlePosition != null ? `, at an average position of ${g.articlePosition.toFixed(1)}` : "";
+    return { text: `Starting to. Google showed ${ours} ${plural(g.articleImpressions28d, "time")} in the last 28 days${pos}, but nobody has clicked yet.`, tone: "muted" };
+  }
+  const days = d.firstArticleAt ? Math.max(0, Math.floor((now - Date.parse(d.firstArticleAt)) / 86_400_000)) : 0;
+  const age = days === 0 ? "today" : `${plural(days, "day")} ago`;
+  if (days < 28) {
+    return {
+      text: `Too early to tell. ${n === 1 ? "Our article" : "Our first article"} went live ${age} and Google hasn't shown it in search yet. New pages often take a few weeks to start appearing.${theirs}`,
+      tone: "muted",
+    };
+  }
+  return { text: `Not yet. ${Ours} ${n === 1 ? "has" : "have"} been live for ${plural(days, "day")} and Google hasn't shown ${n === 1 ? "it" : "them"} once in the last 28 days.${theirs}`, tone: "warn" };
+}
+
 const TH = "pb-2.5 pt-3.5 text-[11px] font-medium uppercase tracking-wider text-ink-faint";
 const TD_NUM = "py-3 text-right font-mono text-[13px] tabular-nums";
 
@@ -197,7 +236,7 @@ function ArticleTitle({ a }: { a: CustomerArticle }) {
         </span>
       )}
       <span className="mt-0.5 block truncate text-[12px] text-ink-faint">
-        {a.domain} · {shortDate(a.publishedAt)}
+        {a.domain} · live since {shortDate(a.publishedAt)}
         {a.keyword ? ` · "${a.keyword}"` : ""}
         {a.live === false ? <span className="text-danger"> · page gone</span> : null}
       </span>
@@ -233,8 +272,12 @@ function ArticlesTable({ d, rows }: { d: CustomerDetail; rows: CustomerArticle[]
               <th scope="col" className={cx(TH, "px-3 text-right")}>Impressions</th>
               <th scope="col" className={cx(TH, "px-3 text-right")}>Clicks</th>
               <th scope="col" className={cx(TH, "px-3 text-right")}>Position</th>
-              <th scope="col" className={cx(TH, "px-3")}>Mark</th>
-              <th scope="col" className={cx(TH, "pl-3 pr-5 text-right sm:pr-6")}>AI cost</th>
+              <th scope="col" className={cx(TH, "px-3")} title="What the live page carried at its last nightly scan: our hidden signature, the visible credit, or neither">
+                Mark
+              </th>
+              <th scope="col" className={cx(TH, "pl-3 pr-5 text-right sm:pr-6")} title="The writer's own spend on this article, before the free Claude credit. Keyword data is bought per site, not per article.">
+                AI cost
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -326,6 +369,8 @@ export function CustomerDetailView({ d, now, inModal = false }: { d: CustomerDet
   const initial = (d.email.trim()[0] ?? "?").toUpperCase();
   const articles = [...d.articles].sort((a, b) => b.clicks28d - a.clicks28d || b.impressions28d - a.impressions28d || b.publishedAt.localeCompare(a.publishedAt));
   const scanned = d.marks.checked;
+  const google = hasGoogle(d);
+  const verdict = impactVerdict(d, now);
   // One cell per day for the 90-day activity strip, zero where they were away.
   const viewsByDay = new Map(d.activeDays.map((x) => [x.day, x.views]));
   const strip: Array<{ day: string; count: number }> = [];
@@ -447,12 +492,17 @@ export function CustomerDetailView({ d, now, inModal = false }: { d: CustomerDet
               .join(" · ") || "none yet"
           }
         />
-        <Figure label="Clicks, 28 days" value={fmt(d.google.clicks28d)} pill={<DeltaPill value={delta(d.google.clicks28d, d.google.prevClicks28d)} />} sub={`${fmt(d.google.totalClicks)} in 90 days · from Google`} />
+        {/* Our articles' own Google numbers, the same sum as the articles table's footer; the whole site rides underneath. */}
         <Figure
-          label="Impressions, 28 days"
-          value={compact(d.google.impressions28d)}
-          pill={<DeltaPill value={delta(d.google.impressions28d, d.google.prevImpressions28d)} />}
-          sub={d.google.position != null ? `average position ${d.google.position.toFixed(1)} over 90 days` : `${compact(d.google.totalImpressions)} in 90 days`}
+          label="Clicks from our articles, 28 d"
+          value={google ? fmt(d.google.articleClicks28d) : "–"}
+          tone={d.google.articleClicks28d > 0 ? "ok" : undefined}
+          sub={google ? `of ${plural(d.google.clicks28d, "click")} to their whole site` : "Search Console not connected"}
+        />
+        <Figure
+          label="Our articles seen in Google, 28 d"
+          value={google ? compact(d.google.articleImpressions28d) : "–"}
+          sub={google ? `of ${compact(d.google.impressions28d)} times their whole site was` : "Search Console not connected"}
         />
       </Panel>
 
@@ -483,22 +533,46 @@ export function CustomerDetailView({ d, now, inModal = false }: { d: CustomerDet
         </Panel>
       </div>
 
-      <Panel label="Google">
-        <PanelHead title="Google Search, their sites" sub="Clicks and impressions across every site they own, from Search Console. The figures are the last 28 days against the 28 before." meta="90 d" />
-        <div className="mt-4 border-t border-line-soft">
+      <Panel label="Impact">
+        <PanelHead title="Are our articles bringing them traffic?" meta="90 d" />
+        <p className={cx("max-w-[80ch] px-5 pt-2 text-[14px] leading-relaxed sm:px-6", verdict.tone === "ok" ? "text-ok" : verdict.tone === "warn" ? "text-warn" : "text-ink-muted")}>{verdict.text}</p>
+        <div className="mt-5 border-t border-line-soft">
           <MetricChart
             days={d.google.days}
             height={220}
             metrics={[
-              { key: "clicks", label: "Clicks", total: fmt(d.google.clicks28d), delta: delta(d.google.clicks28d, d.google.prevClicks28d), values: d.google.clicks, tone: "green" },
-              { key: "impressions", label: "Impressions", total: compact(d.google.impressions28d), delta: delta(d.google.impressions28d, d.google.prevImpressions28d), values: d.google.impressions, tone: "blue" },
+              {
+                key: "clicks",
+                label: "Clicks, 28 d: ours of the whole site",
+                total: `${fmt(d.google.articleClicks28d)} of ${fmt(d.google.clicks28d)}`,
+                delta: null,
+                values: d.google.clicks,
+                previous: d.google.articleClicks,
+                legend: "Whole site",
+                compareLabel: "our articles",
+                tone: "blue",
+                tone2: "green",
+              },
+              {
+                key: "impressions",
+                label: "Impressions, 28 d: ours of the whole site",
+                total: `${compact(d.google.articleImpressions28d)} of ${compact(d.google.impressions28d)}`,
+                delta: null,
+                values: d.google.impressions,
+                previous: d.google.articleImpressions,
+                legend: "Whole site",
+                compareLabel: "our articles",
+                tone: "blue",
+                tone2: "green",
+              },
             ]}
           />
         </div>
         <StatCells
           className="border-b-0"
           items={[
-            { label: "Average position, 90 d", value: d.google.position != null ? d.google.position.toFixed(1) : "–" },
+            { label: "Our share of site clicks, 28 d", value: d.google.clicks28d ? pct(Math.min(d.google.articleClicks28d, d.google.clicks28d), d.google.clicks28d) : "–", tone: d.google.articleClicks28d > 0 ? "ok" : undefined },
+            { label: "Our articles' position, 28 d", value: d.google.articlePosition != null ? d.google.articlePosition.toFixed(1) : "–" },
             { label: "Search Console connected", value: `${d.sites.filter((s) => s.gscConnected).length} of ${d.sites.length} ${d.sites.length === 1 ? "site" : "sites"}` },
             { label: "Cited by AI, 90 d", value: d.citations.checks ? `${d.citations.cited} of ${d.citations.checks} checks` : "–" },
           ]}
@@ -508,7 +582,7 @@ export function CustomerDetailView({ d, now, inModal = false }: { d: CustomerDet
       <Panel label="Articles">
         <PanelHead
           title="Articles"
-          sub="Every article published for them, most clicked first, with its own Google numbers for the last 28 days. Mark is what the live page carried at its last nightly scan: our hidden signature, the visible credit, or neither. AI cost is the writer's own spend on that article, before the free Claude credit; keyword data is bought per site, not per article."
+          sub="Every article we published for them, most clicked first. Impressions, clicks and position are that one page's Google numbers for the last 28 days, so they add up to the figures at the top."
           meta={`${fmt(d.articleCount)} live`}
         />
         <div className="mt-4">
@@ -687,7 +761,7 @@ export function CustomerDetailView({ d, now, inModal = false }: { d: CustomerDet
                   </span>
                   <span className="shrink-0 text-right font-mono text-[12.5px] tabular-nums text-ink-muted">
                     {fmt(s.articles)} <span className="font-sans text-ink-faint">{s.articles === 1 ? "article" : "articles"}</span>
-                    <span className="block text-[11.5px] text-ink-faint">{fmt(s.clicks28d)} clicks · 28 d</span>
+                    <span className="block text-[11.5px] text-ink-faint">{fmt(s.clicks28d)} site clicks · 28 d</span>
                   </span>
                   <span className={cx("w-20 shrink-0 text-right text-[12px]", s.gscConnected ? "text-ink-muted" : "text-warn")}>{s.gscConnected ? "Google on" : "No Google"}</span>
                 </li>

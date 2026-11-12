@@ -215,6 +215,11 @@ export type ChartMetric = {
   delta: number | null;
   values: number[];
   previous?: number[];
+  /** Names the main line and the second one, and draws the second solid in
+   *  `tone2` instead of dashed gray (a part of the whole, not a past period). */
+  legend?: string;
+  compareLabel?: string;
+  tone2?: Tone;
   unit?: Unit;
   tone?: Tone;
   kind?: "line" | "bars";
@@ -272,7 +277,20 @@ export function MetricChart({ days, metrics, height = 260 }: { days: string[]; m
         })}
       </div>
       <div className="px-4 pb-5 pt-8 sm:px-6">
-        <AreaChart key={m.key} days={days} values={m.values} previous={m.previous} unit={m.unit} tone={m.tone} kind={m.kind} height={height} label={m.label} />
+        <AreaChart
+          key={m.key}
+          days={days}
+          values={m.values}
+          previous={m.previous}
+          legend={m.legend}
+          compareLabel={m.compareLabel}
+          tone2={m.tone2}
+          unit={m.unit}
+          tone={m.tone}
+          kind={m.kind}
+          height={height}
+          label={m.label}
+        />
       </div>
     </div>
   );

@@ -485,7 +485,7 @@ function CustomerRows({ rows, now, range }: { rows: Customer[]; now: number; ran
               <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Cost</th>
               <th scope="col" className="px-3 pb-3 pt-4 text-right font-medium">Margin</th>
               <th scope="col" className="hidden px-3 pb-3 pt-4 text-right font-medium xl:table-cell">Articles</th>
-              <th scope="col" className="hidden px-3 pb-3 pt-4 text-right font-medium xl:table-cell">Clicks 28d</th>
+              <th scope="col" className="hidden px-3 pb-3 pt-4 text-right font-medium xl:table-cell" title="Google clicks to their whole site, not only our articles. Open a customer to see what our articles brought.">Site clicks 28d</th>
               <th scope="col" className="hidden px-3 pb-3 pt-4 text-right font-medium lg:table-cell" title={VISIT_HINT.dashboard}>Dashboard</th>
               <th scope="col" className="hidden px-6 pb-3 pt-4 text-right font-medium lg:table-cell" title={VISIT_HINT.site}>Site</th>
             </tr>

@@ -149,6 +149,15 @@ export type CustomerDetail = {
     prevImpressions28d: number;
     /** Impression-weighted average position over the 90 days, null without impressions. */
     position: number | null;
+    /** The part of the above that landed on the articles we published, per
+     *  day (the same 90 days), and over the last 28 days. The 28-day figures
+     *  are the sum of the article rows, so they always equal the articles
+     *  table's footer. Position is the articles' own, 28 days. */
+    articleClicks: number[];
+    articleImpressions: number[];
+    articleClicks28d: number;
+    articleImpressions28d: number;
+    articlePosition: number | null;
   };
   /** Their live pages by what the last scan found on them. */
   marks: { checked: number; signed: number; badge: number; none: number; unchecked: number };
@@ -516,6 +525,27 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
   }
   const firstArticleAt = articles.map((a) => a.publishedAt).filter(Boolean).sort()[0] ?? null;
 
+  // Google, our articles only: the same daily top-pages snapshots kept to
+  // the pages we published, so the page can tell what we brought from what
+  // the site already had. Until 2026-11-12 the page showed the whole site's
+  // clicks on top and the articles' own below, with nothing saying which was
+  // which: 2 clicks up top, 0 on our article, both true.
+  const articleKeys = new Set(articles.map((a) => (a.url ? pageKey(a.url) : null)).filter((k): k is string => Boolean(k)));
+  const ac = new Map<string, number>();
+  const ai = new Map<string, number>();
+  for (const r of gscRows) {
+    const d = String(r.date);
+    for (const p of r.top_pages ?? []) {
+      if (!articleKeys.has(pageKey(p.page))) continue;
+      ac.set(d, (ac.get(d) ?? 0) + Number(p.clicks ?? 0));
+      ai.set(d, (ai.get(d) ?? 0) + Number(p.impressions ?? 0));
+    }
+  }
+  const art28 = articles.reduce(
+    (t, a) => ({ clicks: t.clicks + a.clicks28d, impressions: t.impressions + a.impressions28d, posWeight: t.posWeight + (a.position ?? 0) * a.impressions28d }),
+    { clicks: 0, impressions: 0, posWeight: 0 },
+  );
+
   const draftRows = (draftsRes.data ?? []) as Row[];
   // A parked draft on a hosted-writer site is not "in progress": it is a
   // finished article waiting on a route that may never appear. Counted as in
@@ -633,6 +663,11 @@ export async function customerDetail(userId: string, now = Date.now()): Promise<
       prevClicks28d: sum(gc, day56, day28),
       prevImpressions28d: sum(gi, day56, day28),
       position: posImpr > 0 ? Math.round((posWeight / posImpr) * 10) / 10 : null,
+      articleClicks: gDays.map((d) => ac.get(d) ?? 0),
+      articleImpressions: gDays.map((d) => ai.get(d) ?? 0),
+      articleClicks28d: art28.clicks,
+      articleImpressions28d: art28.impressions,
+      articlePosition: art28.impressions > 0 ? Math.round((art28.posWeight / art28.impressions) * 10) / 10 : null,
     },
     marks,
     citations: { checks: cites.length, cited: cites.filter((r) => r.cited).length },
