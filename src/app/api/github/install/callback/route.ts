@@ -7,8 +7,9 @@ import { getProjectBySlug } from "@/lib/projects";
 import { assertInstallationClaimable, assertProjectOwned, installationAlreadyMine, ownedProjectIds } from "@/lib/tenant-guard";
 import { inheritGithubInstallation, pendingSetupProject } from "@/lib/setup-flow";
 import {
-  callerControlsInstallation,
   GH_WANT_COOKIE,
+  makeInstallerStamp,
+  proveCaller,
   getInstallation,
   installationsControlledBy,
   installUrl,
@@ -22,6 +23,7 @@ import { db } from "@/lib/db";
 import { scopedProjects } from "@/lib/active-project";
 import { isCloudMode } from "@/lib/cloud";
 import { cookies } from "next/headers";
+import { readInstaller, verdictFor } from "@/lib/github-installer";
 
 // GitHub redirects here after the App install/update flow. With "Request user
 // authorization (OAuth) during installation" enabled, this URL is the App's
@@ -78,6 +80,9 @@ export async function GET(req: Request): Promise<Response> {
     const slug = state ? await verifyState(state) : null;
     const proofCode = url.searchParams.get("code") ?? "";
     let provenPromise: Promise<boolean> | null = null;
+    // The GitHub login of whoever proved the installation, when a code did
+    // (github-installer.ts keeps it with the site).
+    let installerLogin: string | null = null;
 
     // A FOURTH arrival: GitHub's sign-in alone (install/start?check=1), for an
     // owner whose GitHub account already has the App. It carries our signed
@@ -126,6 +131,7 @@ export async function GET(req: Request): Promise<Response> {
       otherAccounts = mine.filter((i) => i.id !== chosen.id);
       viaSignIn = true;
       provenPromise = Promise.resolve(true);
+      installerLogin = listed.who;
     }
 
     if (!Number.isFinite(installationId)) {
@@ -136,7 +142,10 @@ export async function GET(req: Request): Promise<Response> {
 
     const provenCaller = () =>
       (provenPromise ??= proofCode
-        ? callerControlsInstallation(proofCode, installationId)
+        ? proveCaller(proofCode, installationId).then((r) => {
+            installerLogin = r.login;
+            return r.ok;
+          })
         : Promise.resolve(false));
 
     // UPDATE redirects are handled before either branch below, because they
@@ -306,10 +315,45 @@ export async function GET(req: Request): Promise<Response> {
       // Never on the sign-in path either: there the owner did not just pick
       // this repository for this site on GitHub, so a lone repository is only
       // "what the installation happens to cover" - they choose.
-      const attach = !viaSignIn && repos.length === 1 && !project.github_repo && !takenBySibling.has(repos[0].full_name);
-      if (attach) patch.github_repo = repos[0].full_name;
+      let attach = !viaSignIn && repos.length === 1 && !project.github_repo && !takenBySibling.has(repos[0].full_name);
 
-      const { error } = await db().from("projects").update(patch).eq("id", project.id);
+      // Who attached it, kept with the site: a repository is only ever used
+      // when THIS person can push to it (github-installer.ts). A code names
+      // them. Without one (the installation is already on another of the
+      // caller's sites) it is whoever attached it there. Written before the
+      // repository, so the lone-repository attach below is asked about the
+      // right person; cleared when the installation changes and nobody was
+      // named, so an old site's person never vouches for a new installation.
+      let who: string | null = installerLogin;
+      // A sign-in code proved the installation, and GitHub then would not
+      // say whose code it was: attaching now would leave a site with nobody
+      // on record, which reads as "any repository". Nothing is written; the
+      // owner tries again.
+      if (proofCode && proven && !who) {
+        redirect(back("GitHub didn't finish telling us who you are, so nothing was changed. Try that again."));
+      }
+      if (!who && alreadyMine) {
+        for (const sib of (await scopedProjects()).filter((p) => p.id !== project.id && p.github_installation_id === installationId)) {
+          const theirs = await readInstaller(sib.id);
+          if (theirs === "unreadable") redirect(back("We couldn't finish that just now, so nothing was changed. Try again in a minute."));
+          who = theirs;
+          if (who) break;
+        }
+      }
+      // The lone repository is only attached when that person can push to
+      // it; "could not ask" leaves the choice to the picker.
+      if (attach && who && (await verdictFor(installationId, repos[0].full_name, who, project.id)) !== "ok") attach = false;
+      if (attach) patch.github_repo = repos[0].full_name;
+      // In the SAME write as the installation, so there is never a moment
+      // (or a failed second write) with one and not the other. Cleared when
+      // the installation changes and nobody was named.
+      const withWho = who || project.github_installation_id !== installationId ? { ...patch, github_installer_login: who } : patch;
+
+      let { error } = await db().from("projects").update(withWho).eq("id", project.id);
+      // A database without 0092: the write as it always was.
+      if (error && withWho !== patch && /github_installer_login|does not exist|could not find/i.test(error.message)) {
+        ({ error } = await db().from("projects").update(patch).eq("id", project.id));
+      }
       if (error) redirect("/onboarding?gh=error&msg=save-failed");
       // Same as the update path: a project whose connected repo was the wrong
       // one picks up the right one now that it is shared.
@@ -359,6 +403,11 @@ export async function GET(req: Request): Promise<Response> {
     if (!proofCode ? requireInstallProof() : !(await provenCaller())) {
       redirect(`/onboarding?gh=error&msg=${encodeURIComponent("We could not confirm that this GitHub installation belongs to you. Install the app from this page's button so we can verify it, rather than from github.com directly.")}`);
     }
+    // Proven by a code, but GitHub would not name the person: the attach on
+    // the next screen would have nobody to record (github-installer.ts).
+    if (proofCode && !installerLogin) {
+      redirect(back("GitHub didn't finish telling us who you are, so nothing was changed. Try that again."));
+    }
 
     const installation = await getInstallation(installationId);
     if (!installation || !installationClaimable(installation)) {
@@ -378,6 +427,16 @@ export async function GET(req: Request): Promise<Response> {
       path: "/",
       maxAge: Math.floor((15 * 60 * 1000) / 1000),
     });
+    // Who proved it, for the attach on the next screen (the code is spent).
+    if (installerLogin) {
+      res.cookies.set("gh_install_who", await makeInstallerStamp(installationId, installerLogin), {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: Math.floor((15 * 60 * 1000) / 1000),
+      });
+    }
     return res;
   } catch (e) {
     unstable_rethrow(e); // let the redirect()s above pass through untouched

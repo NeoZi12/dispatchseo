@@ -697,6 +697,7 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   { kind: "fixed", text: "On a blog we host, a very short article no longer shows your site's card above the text. The card now comes after the article." },
   { kind: "fixed", text: "If your GitHub account already has DispatchSEO installed, the GitHub step of setup now has a \"Find my repositories\" link that takes you straight to your repository list. Before, GitHub could show a settings page with nothing to press, and setup stayed stuck." },
   { kind: "fixed", text: "On a blog we host, the list of articles now ends with your site's card on a computer screen too. Before, it only showed on a phone." },
+  { kind: "improved", text: "When you connect a repository, we now check that your own GitHub account can push to it. A repository you can only read is no longer offered, so an organization's other repositories stay out of reach." },
 ];
 
 // Newest first. The head of this list is what the banner announces.

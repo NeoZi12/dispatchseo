@@ -3635,9 +3635,21 @@ const mcpHandler = createMcpHandler(
           return fail("Could not reach GitHub to validate the repo - try again.");
         }
         if (!repos.some((r) => r.full_name === repo)) {
+          // Only the ones this site may use are named: on an organization
+          // the installation also covers repositories its installer cannot
+          // even read.
+          const { reposSiteMayUse } = await import("@/lib/github-installer");
+          const usable = await reposSiteMayUse(p, repos.map((r) => r.full_name));
           return fail(
-            `"${repo}" is not part of this project's App installation. In scope: ${repos.map((r) => r.full_name).join(", ") || "none"}.`,
+            `"${repo}" is not part of this project's App installation. In scope: ${usable.repos.join(", ") || "none"}.`,
           );
+        }
+        // The same rule as the dashboard's picker: the person who attached
+        // the installation must be able to push to the repository.
+        const { installerRepoVerdict, REPO_CHECK_RETRY, REPO_NOT_YOURS } = await import("@/lib/github-installer");
+        if (repo !== p.github_repo) {
+          const verdict = await installerRepoVerdict(p, repo);
+          if (verdict !== "ok") return fail(verdict === "denied" ? REPO_NOT_YOURS : REPO_CHECK_RETRY);
         }
         // A new repo invalidates the blog-switch PR pointer (its number means nothing in the new repo).
         const { error } = await db()

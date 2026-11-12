@@ -2125,6 +2125,13 @@ export async function chooseGithubRepo(
   if (!repos.some((r) => r.full_name === repo)) {
     return { error: "That repository is not part of your DispatchSEO installation." };
   }
+  // In the installation is not enough: whoever attached it must be able to
+  // push there themselves (github-installer.ts).
+  const { installerRepoVerdict, REPO_CHECK_RETRY, REPO_NOT_YOURS } = await import("@/lib/github-installer");
+  if (repo !== project.github_repo) {
+    const verdict = await installerRepoVerdict(project, repo);
+    if (verdict !== "ok") return { error: verdict === "denied" ? REPO_NOT_YOURS : REPO_CHECK_RETRY };
+  }
   // A site still in setup cannot take the repository another of the owner's
   // sites is built from: with one GitHub installation shared between sites
   // it is in the list, and setup's "is this the site's code" check lets an
@@ -2555,15 +2562,36 @@ export async function attachGithubInstallation(projectSlug: string, installation
     github_installation_id: installationId,
     github_app_installed_at: new Date().toISOString(),
   };
+  // Who proved this installation one screen ago (the callback's signed
+  // stamp): kept with the site, so only repositories that person can push
+  // to are ever used (github-installer.ts). No stamp = nobody named; an old
+  // record must not vouch for a different installation.
+  const { readInstallerStamp, requireInstallProof } = await import("@/lib/github-app");
+  const { verdictFor } = await import("@/lib/github-installer");
+  const who = await readInstallerStamp(jar.get("gh_install_who")?.value, installationId);
+  // The stamp is not optional where sign-in proof is: the callback sets it
+  // beside the nonce whenever a code proved the installation, so a request
+  // without it has dropped it on purpose - to attach with nobody on record.
+  if (!who && requireInstallProof()) {
+    throw new Error("This GitHub install link isn't valid for your session or has expired. Re-install the app from your dashboard's setup step.");
+  }
+  if (who || project.github_installation_id !== installationId) row.github_installer_login = who;
   try {
     const repos = await listInstallationRepos(installationId);
-    if (repos.length === 1 && !project.github_repo) row.github_repo = repos[0].full_name;
+    if (repos.length === 1 && !project.github_repo && (!who || (await verdictFor(installationId, repos[0].full_name, who, project.id)) === "ok")) row.github_repo = repos[0].full_name;
   } catch {
     // repo list is a nicety here - the wizard's picker covers it
   }
-  const { error } = await db().from("projects").update(row).eq("id", project.id);
+  let { error } = await db().from("projects").update(row).eq("id", project.id);
+  // A database without 0092: the write as it always was.
+  if (error && "github_installer_login" in row && /github_installer_login|does not exist|could not find/i.test(error.message)) {
+    const { github_installer_login: _dropped, ...rest } = row;
+    void _dropped;
+    ({ error } = await db().from("projects").update(rest).eq("id", project.id));
+  }
   if (error) throw new Error(error.message);
   jar.delete("gh_install_nonce"); // single-use
+  jar.delete("gh_install_who");
   revalidatePath("/onboarding");
   redirect("/onboarding");
 }

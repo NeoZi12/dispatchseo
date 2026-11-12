@@ -274,7 +274,8 @@ async function runLive(kind: LiveKind, project: Project, s: SetupSnapshot): Prom
     // Same rule as the install callback: an installation that covers exactly
     // one repo IS the pick. Saved, so every later step (the secret check, the
     // install) has the repo the engine already counts as chosen.
-    if (repos.length === 1 && !ps.github_repo) {
+    const { installerMayUseRepo } = await import("@/lib/github-installer");
+    if (repos.length === 1 && !ps.github_repo && (await installerMayUseRepo({ id, github_installation_id: installationId }, repos[0].full_name))) {
       const { error } = await db()
         .from("projects")
         .update({ github_repo: repos[0].full_name })

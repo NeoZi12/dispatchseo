@@ -238,10 +238,17 @@ export function requireInstallProof(): boolean {
   return userAuthConfigured() && process.env.GITHUB_APP_REQUIRE_INSTALL_PROOF !== "0";
 }
 
-export async function callerControlsInstallation(
-  code: string,
-  installationId: number,
-): Promise<boolean> {
+export async function callerControlsInstallation(code: string, installationId: number): Promise<boolean> {
+  return (await proveCaller(code, installationId)).ok;
+}
+
+/** callerControlsInstallation's answer, plus the GitHub login of the person
+ *  the code belongs to (null when GitHub would not say). The login is kept
+ *  with the site (github-installer.ts): it is what "may this site use that
+ *  repository" is later asked about. */
+export async function proveCaller(code: string, installationId: number): Promise<{ ok: boolean; login: string | null }> {
+  let login: string | null = null;
+  const ok = await (async (): Promise<boolean> => {
   if (!code) return false;
   try {
     const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
@@ -289,7 +296,10 @@ export async function callerControlsInstallation(
       }
       const body = (await res.json()) as { installations?: Array<{ id?: number }> };
       const list = body.installations ?? [];
-      if (list.some((i) => i.id === installationId)) return canWriteThroughInstallation(token.access_token, installationId);
+      if (list.some((i) => i.id === installationId)) {
+        login = await userLogin(token.access_token);
+        return canWriteThroughInstallation(token.access_token, installationId);
+      }
       if (list.length < 100) {
         console.error(
           `[github-install] installation ${installationId} not in the installer's own list ` +
@@ -302,6 +312,8 @@ export async function callerControlsInstallation(
   } catch {
     return false;
   }
+  })();
+  return { ok, login };
 }
 
 // "In the installer's list" also holds for an organization member who can
@@ -416,7 +428,7 @@ export async function authorizeUrl(projectSlug: string): Promise<string> {
 export async function installationsControlledBy(
   code: string,
   wantId?: number,
-): Promise<{ mine: Array<{ id: number; login: string }>; suspended: number } | null> {
+): Promise<{ mine: Array<{ id: number; login: string }>; suspended: number; who: string | null } | null> {
   if (!code) return null;
   try {
     const token = await exchangeUserCode(code);
@@ -440,7 +452,7 @@ export async function installationsControlledBy(
           suspended++;
           continue;
         }
-        found.push({ id: i.id, login: String(i.account?.login ?? "").replace(/[^A-Za-z0-9-]/g, "").slice(0, 60) });
+        found.push({ id: i.id, login: String(i.account?.login ?? "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 60) });
       }
       if (list.length < 100) break;
     }
@@ -451,11 +463,70 @@ export async function installationsControlledBy(
     // of time. A check that could not be made throws: "try again".
     const ordered = [...found.filter((i) => i.id === wantId), ...found.filter((i) => i.id !== wantId)].slice(0, 10);
     const can = await Promise.all(ordered.map((i) => canWriteThroughInstallation(token, i.id, true)));
-    return { mine: ordered.filter((_, k) => can[k]), suspended };
+    return { mine: ordered.filter((_, k) => can[k]), suspended, who: await userLogin(token) };
   } catch (e) {
     console.error(`[github-install] could not list the caller's installations: ${e instanceof Error ? e.message : String(e)}`);
     return null;
   }
+}
+
+/** The GitHub login behind a user token, or null. Never throws. */
+async function userLogin(userToken: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${API}/user`, {
+      headers: { Authorization: `Bearer ${userToken}`, Accept: "application/vnd.github+json", "User-Agent": USER_AGENT },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return null;
+    const login = String(((await res.json()) as { login?: string }).login ?? "");
+    return /^[A-Za-z0-9_-]{1,60}$/.test(login) ? login : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Can this GitHub user push to this repository? Asked with the
+ *  installation's own token, so it works long after the person's sign-in
+ *  code is gone. "unknown" = GitHub could not be asked; the caller decides
+ *  what that means. */
+export async function repoPermissionFor(installationId: number, repo: string, login: string): Promise<"write" | "none" | "unknown"> {
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo) || !/^[A-Za-z0-9_-]{1,60}$/.test(login)) return "unknown";
+  try {
+    const token = await installationToken(installationId);
+    const res = await fetch(`${API}/repos/${repo}/collaborators/${login}/permission`, { headers: ghHeaders(token), signal: AbortSignal.timeout(10000) });
+    // Not a collaborator on a private repository answers 404.
+    if (res.status === 404) return "none";
+    if (!res.ok) return "unknown";
+    const body = (await res.json()) as { permission?: string; role_name?: string; user?: { permissions?: { admin?: boolean; maintain?: boolean; push?: boolean } | null } | null };
+    // `permission` is the documented answer about THIS user (maintain reads
+    // as write, triage as read). The nested object is only a fallback for a
+    // reply without it.
+    if (typeof body.permission === "string") return body.permission === "admin" || body.permission === "write" ? "write" : "none";
+    const p = body.user?.permissions;
+    if (p && typeof p === "object") return p.admin || p.maintain || p.push ? "write" : "none";
+    return "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+// Who proved an installation on the pick-a-project path, carried from the
+// callback (where the sign-in code is spent) to the attach a screen later.
+// Signed for this installation, like the nonce beside it.
+export async function makeInstallerStamp(installationId: number, login: string): Promise<string> {
+  const payload = `${installationId}.${login}`;
+  return `${payload}.${createHmac("sha256", await installNonceSecret()).update(`who:${payload}`).digest("hex")}`;
+}
+
+export async function readInstallerStamp(stamp: string | undefined, installationId: number): Promise<string | null> {
+  const parts = (stamp ?? "").split(".");
+  if (parts.length !== 3) return null;
+  const [id, login, mac] = parts;
+  if (id !== String(installationId) || !/^[A-Za-z0-9_-]{1,60}$/.test(login)) return null;
+  const expected = createHmac("sha256", await installNonceSecret()).update(`who:${id}.${login}`).digest("hex");
+  const a = Buffer.from(mac);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b) ? login : null;
 }
 
 /** A one-time OAuth code for the installer's own token, or null. */

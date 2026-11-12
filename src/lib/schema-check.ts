@@ -196,6 +196,10 @@ const PROBES: Probe[] = [
   // the columns every site reads as "not allocated yet" (an even split);
   // without the table a deleted site's month is simply not carried.
   { migration: "0090_site_shares", table: "owner_month_carry", column: "article_starts" },
+  // 0092: who attached a site's GitHub installation (lib/github-installer.ts).
+  // Without it every site keeps the older rule: any repository its
+  // installation covers, whether or not the installer can push there.
+  { migration: "0092_github_installer_login", table: "projects", column: "github_installer_login" },
 ];
 
 // Migrations that genuinely CANNOT be probed through this mechanism, with the

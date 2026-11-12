@@ -139,7 +139,7 @@ function parseGhAccounts(raw: string | undefined): { id: number; login: string }
   if (typeof raw !== "string" || !raw) return undefined;
   const out: { id: number; login: string }[] = [];
   for (const part of raw.slice(0, 600).split(",").slice(0, 10)) {
-    const m = /^(\d{1,15}):([A-Za-z0-9-]{0,60})$/.exec(part);
+    const m = /^(\d{1,15}):([A-Za-z0-9_-]{0,60})$/.exec(part);
     if (m) out.push({ id: Number(m[1]), login: m[2] });
   }
   return out.length > 1 ? out : undefined;
@@ -389,13 +389,21 @@ async function cloudSetupFlow(params: OnboardingParams) {
       : { kind: "idle" };
 
   let repos: string[] | null = null;
+  let reposVerified = false;
   if (stage === "github" && s.project?.github_installation_id) {
     try {
       // Not the repositories this owner's other sites are built from: on a
       // shared installation the first site's repo is in the list (often the
       // only one), and picking it would send this site's articles there.
       const taken = new Set((await scopedProjects()).filter((p) => p.id !== s.project!.id && p.github_repo).map((p) => p.github_repo as string));
-      repos = (await listInstallationRepos(s.project.github_installation_id)).map((r) => r.full_name).filter((r) => !taken.has(r));
+      const covered = (await listInstallationRepos(s.project.github_installation_id)).map((r) => r.full_name).filter((r) => !taken.has(r));
+      // Only the ones the person who attached the installation can push to
+      // (github-installer.ts): the others could not be picked anyway, and
+      // on an organization their names are not this person's to see.
+      const { reposSiteMayUse } = await import("@/lib/github-installer");
+      const usable = await reposSiteMayUse(s.project, covered);
+      repos = usable.repos;
+      reposVerified = usable.verified;
     } catch {
       repos = null;
     }
@@ -457,6 +465,7 @@ async function cloudSetupFlow(params: OnboardingParams) {
         planMenu={planMenu}
         sentTo={sent?.to ?? null}
         repos={repos}
+        reposVerified={reposVerified}
         ghAccounts={parseGhAccounts(params.accounts)}
         ghError={params.gh === "error" ? (cleanFlagText(params.msg) ?? GENERIC_GITHUB_FLAG) : null}
         googleError={stage === "google" && !notice && gsc && gsc !== "connected" ? `Google didn't connect (${gsc}). Try again.` : null}

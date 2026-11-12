@@ -1,3 +1,4 @@
+import { isCloudMode } from "@/lib/cloud";
 import { db } from "@/lib/db";
 import { mergeToken } from "@/lib/github";
 import type { Project } from "@/lib/projects";
@@ -26,6 +27,10 @@ export async function setProjectRepoSelfHost(
   project: Pick<Project, "id" | "github_repo">,
   repoInput: string,
 ): Promise<{ repo: string } | { error: string }> {
+  // Self-host only, and said here as well as by both callers: the hosted
+  // version pairs a site with a repository through the GitHub App, where
+  // the installer's own access is checked (github-installer.ts).
+  if (isCloudMode()) return { error: "Cloud picks the repo through the GitHub App installation." };
   const repo = repoInput
     .trim()
     .replace(/^https?:\/\/(www\.)?github\.com\//i, "")

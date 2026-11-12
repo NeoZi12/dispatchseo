@@ -187,6 +187,10 @@ export async function findSiteRepo(project: Project): Promise<Project | null> {
     }
     if (matches.length !== 1) return null;
     const [{ repo, check }] = matches;
+    // "It builds the site" is not "this owner may publish there": the person
+    // who attached the installation must be able to push to it too.
+    const { installerMayUseRepo } = await import("@/lib/github-installer");
+    if (!(await installerMayUseRepo(project, repo))) return null;
     // The folder hint and the blog-switch PR belonged to the old repo.
     const { error } = await db().from("projects").update({ github_repo: repo, repo_site_check: check, content_path_hint: null, hosted_rewrite_pr_url: null, hosted_rewrite_live_at: null }).eq("id", project.id).eq("github_repo", project.github_repo ?? "");
     if (error) return null;

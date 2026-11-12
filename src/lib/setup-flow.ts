@@ -730,15 +730,28 @@ export async function inheritGithubInstallation(
       .sort((a, b) => ((a.github_app_installed_at ?? "") < (b.github_app_installed_at ?? "") ? 1 : -1));
     const donor = (preferredId != null ? donors.find((p) => p.github_installation_id === preferredId) : undefined) ?? (preferredId != null ? undefined : donors[0]);
     if (!donor?.github_installation_id) return null;
-    const { data, error } = await db()
-      .from("projects")
-      .update({ github_installation_id: donor.github_installation_id, github_app_installed_at: new Date().toISOString() })
-      .eq("id", project.id)
-      // The row's own owner again, in the write itself: whatever object a
-      // future caller hands in, this can only ever touch the caller's site.
-      .eq("owner_user_id", user.id)
-      .is("github_installation_id", null)
-      .select("id");
+    // The same person stands behind it here as on the site it came from -
+    // read first and written in the SAME update as the installation, so the
+    // site never holds one without the other (github-installer.ts).
+    const { readInstaller } = await import("@/lib/github-installer");
+    const who = await readInstaller(donor.id);
+    // Could not look: do not inherit now (the owner's next visit tries
+    // again) rather than attach with nobody on record.
+    if (who === "unreadable") return null;
+    const write = (row: Record<string, unknown>) =>
+      db()
+        .from("projects")
+        .update(row)
+        .eq("id", project.id)
+        // The row's own owner again, in the write itself: whatever object a
+        // future caller hands in, this can only ever touch the caller's site.
+        .eq("owner_user_id", user.id)
+        .is("github_installation_id", null)
+        .select("id");
+    const base = { github_installation_id: donor.github_installation_id, github_app_installed_at: new Date().toISOString() };
+    let { data, error } = await write({ ...base, github_installer_login: who });
+    // A database without 0092: the write as it always was.
+    if (error && /github_installer_login|does not exist|could not find/i.test(error.message)) ({ data, error } = await write(base));
     if (error || !data?.length) return null;
     return donor.github_installation_id;
   } catch {

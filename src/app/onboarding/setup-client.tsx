@@ -72,6 +72,8 @@ export function SetupClient(props: {
   sentTo: string | null;
   repos: string[] | null;
   ghError: string | null;
+  /** The list was narrowed to repositories the installer can push to. */
+  reposVerified?: boolean;
   /** The owner's GitHub accounts that have the app, the one on screen first
    *  (only after the "already installed" path found several). */
   ghAccounts?: { id: number; login: string }[];
@@ -447,7 +449,7 @@ export function SetupClient(props: {
           <p className="mt-1 text-[15px] text-ink-muted">
             {props.repos!.length > 0 ? `Pick the repository ${domain ?? "your site"} is built from.` : `We can't see any repository on your GitHub yet. Give us access to the one ${domain ?? "your site"} is built from.`}
           </p>
-          <ul className="mt-5 grid gap-2">
+          <ul className="mt-5 grid gap-2" data-verified={props.reposVerified ? "yes" : "no"}>
             {props.repos!.map((r) => (
               <li key={r}>
                 <button
