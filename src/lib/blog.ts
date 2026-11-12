@@ -24,6 +24,19 @@ export type PostMeta = {
   // Google's August 2026 spam update demoted this site for, so Google must
   // not count them while the site waits to be re-judged.
   googleNoindex?: boolean;
+  // Frontmatter `updated: YYYY-MM-DD`: the last time the post's facts were
+  // re-checked. Shown as "Updated <date>" under the title and used as the
+  // Article's dateModified. AI answer engines weigh freshness; a page whose
+  // prices changed but whose date did not reads as stale.
+  updated?: string;
+  // Comparison pages ("A vs B", "X alternatives", "best X tools"): which kind,
+  // and the products compared. Drives the structured data (Article.about,
+  // ItemList for lists) and the comparison layout (no hero cover, so the
+  // short answer sits at the top where AI engines quote from). "guide" is a
+  // page that names several products without ranking them (the price guide):
+  // it gets the layout and `about`, never an ItemList.
+  compareKind?: "versus" | "list" | "guide";
+  compareProducts?: { name: string; url: string }[];
 };
 
 const BLOG_DIR = join(process.cwd(), "src/content/blog");
@@ -36,6 +49,28 @@ const WORDS_PER_MINUTE = 200;
 export function estimateReadingMinutes(content: string): number {
   const words = content.trim().split(/\s+/).filter(Boolean).length;
   return Math.max(1, Math.round(words / WORDS_PER_MINUTE));
+}
+
+// gray-matter parses a bare YYYY-MM-DD as a Date; keep every date a string.
+function dateString(v: unknown): string | undefined {
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  return typeof v === "string" ? v : undefined;
+}
+
+function compareFields(data: Record<string, unknown>): Partial<PostMeta> {
+  const out: Partial<PostMeta> = {};
+  const updated = dateString(data.updated);
+  if (updated) out.updated = updated;
+  if (data.compareKind === "versus" || data.compareKind === "list" || data.compareKind === "guide") {
+    out.compareKind = data.compareKind;
+  }
+  if (Array.isArray(data.compareProducts)) {
+    out.compareProducts = data.compareProducts.filter(
+      (p): p is { name: string; url: string } =>
+        !!p && typeof p.name === "string" && typeof p.url === "string",
+    );
+  }
+  return out;
 }
 
 export function getAllPosts(): PostMeta[] {
@@ -57,6 +92,7 @@ export function getAllPosts(): PostMeta[] {
         ...(data.keyword ? { keyword: data.keyword as string } : {}),
         ...(data.cover ? { cover: data.cover as string } : {}),
         ...(data.googleNoindex === true ? { googleNoindex: true } : {}),
+        ...compareFields(data),
       };
     })
     .sort((a, b) => (a.date < b.date ? 1 : -1));
@@ -79,6 +115,7 @@ export function getPost(slug: string): { meta: PostMeta; content: string } | nul
         ...(data.keyword ? { keyword: data.keyword as string } : {}),
         ...(data.cover ? { cover: data.cover as string } : {}),
         ...(data.googleNoindex === true ? { googleNoindex: true } : {}),
+        ...compareFields(data),
       },
       content,
     };

@@ -263,6 +263,7 @@ import { ValidateFixStatesRow } from "./validate-fix-states-row";
 import { AutoMergeGateDecisionFlow } from "./auto-merge-gate-decision-flow";
 import { AgentPrMergeHistoryStats } from "./agent-pr-merge-history-stats";
 import { ContainerCredentialPathTable } from "./container-credential-path-table";
+import { Verdict, ChooseIf, Pick, CompareTable, ToolCard, Strengths, Limits, Faq, Q, Sources, TryCta } from "./compare";
 
 // The components every blog MDX file renders with: typographic defaults that
 // match the app's dark look (no @tailwindcss/typography dependency), plus
@@ -605,4 +606,58 @@ export const mdxComponents: MDXComponents = {
   NotFoundTriageFlow,
   RedirectCurlProofTable,
   ValidateFixStatesRow,
+};
+
+// The components a COMPARISON post renders with (a post that sets
+// `compareKind` in its frontmatter): everything above, plus the comparison
+// blocks (compare.tsx) and a richer table. Kept as a separate map on purpose:
+// every other post keeps rendering with mdxComponents, byte for byte, so a
+// change made for the comparison pages can never move the rest of the blog.
+//
+// The table's semantics come from rehype-compare-tables (scope on every
+// header, the first cell of each row as a row header, data-ours on
+// DispatchSEO's column or row, data-v on Yes/No cells). Here it gets the look:
+// our side tinted violet, a tick or dash in front of Yes/No (the word stays),
+// and on phones the row labels stick while the table scrolls sideways.
+export const compareMdxComponents: MDXComponents = {
+  ...mdxComponents,
+  Verdict,
+  ChooseIf,
+  Pick,
+  CompareTable,
+  ToolCard,
+  Strengths,
+  Limits,
+  Faq,
+  Q,
+  Sources,
+  TryCta,
+  table: (props) => (
+    <div className="my-5 overflow-x-auto">
+      <table
+        className="w-full border-collapse text-sm [&_tr[data-ours]>*]:bg-violet-500/[0.08] [&_tr[data-ours]>th]:text-violet-200"
+        {...props}
+      />
+    </div>
+  ),
+  th: ({ scope, ...props }) =>
+    scope === "row" ? (
+      <th
+        scope="row"
+        className="sticky left-0 z-[1] min-w-[8.5rem] border-b border-neutral-800 bg-neutral-950 px-3 py-2.5 text-left align-top font-medium text-neutral-100 data-[ours]:text-violet-200"
+        {...props}
+      />
+    ) : (
+      <th
+        scope="col"
+        className="border-b border-neutral-700 bg-neutral-900 px-3 py-2.5 text-left align-bottom font-semibold text-neutral-200 first:sticky first:left-0 first:z-[1] data-[ours]:bg-violet-500/[0.14] data-[ours]:text-violet-200"
+        {...props}
+      />
+    ),
+  td: (props) => (
+    <td
+      className="min-w-[9.5rem] border-b border-neutral-800 px-3 py-2.5 align-top text-neutral-300 data-[ours]:bg-violet-500/[0.08] data-[ours]:text-neutral-100 data-[v=yes]:before:mr-1.5 data-[v=yes]:before:font-bold data-[v=yes]:before:text-emerald-400 data-[v=yes]:before:content-['✓'] data-[v=no]:before:mr-1.5 data-[v=no]:before:font-bold data-[v=no]:before:text-neutral-500 data-[v=no]:before:content-['–']"
+      {...props}
+    />
+  ),
 };

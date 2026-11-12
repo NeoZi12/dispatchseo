@@ -5,10 +5,12 @@ import { notFound } from "next/navigation";
 import { MDXRemote } from "next-mdx-remote/rsc";
 import remarkGfm from "remark-gfm";
 import { getAllPosts, getPost, getPostHeadings } from "@/lib/blog";
-import { mdxComponents } from "@/components/blog/registry";
+import { compareMdxComponents, mdxComponents } from "@/components/blog/registry";
 import { TableOfContents } from "@/components/blog/TableOfContents";
 import { SideAd } from "@/components/blog/SideAd";
 import { SiteNav } from "@/app/site-nav";
+import { rehypeCompareTables } from "@/lib/rehype-compare-tables";
+import { BRAND_URL } from "@/lib/brand";
 
 // Public post page. Static at build time (generateStaticParams) - no auth,
 // no DB, renders MDX from src/content/blog with the registry's components.
@@ -66,18 +68,65 @@ export default async function BlogPost({ params }: { params: Promise<{ slug: str
   // named author with a page of their own - an invented byline is worse than
   // none. URLs are absolute on dispatchseo.com, same as metadataBase.
   const origin = "https://dispatchseo.com";
-  const articleLd = {
-    "@context": "https://schema.org",
+  const url = `${origin}/blog/${slug}`;
+  const modified = post.meta.updated ?? post.meta.date;
+  const compare = post.meta.compareKind;
+  const products = post.meta.compareProducts ?? [];
+  // A compared product as structured data. Ours points at the one
+  // SoftwareApplication node the landing page defines (brand.ts), so every
+  // page agrees on what DispatchSEO is; the others are named and linked only.
+  // No ratings for anyone: we never mark up a score we gave a competitor.
+  const productLd = (p: { name: string; url: string }) =>
+    /^dispatchseo$/i.test(p.name)
+      ? { "@type": "SoftwareApplication", "@id": `${BRAND_URL}/#software`, name: p.name, url: BRAND_URL }
+      : { "@type": "SoftwareApplication", name: p.name, url: p.url };
+  // The Article every post carries. Key order is the order it prints in, and
+  // a plain post's markup must stay exactly what it was - see below.
+  const article = {
     "@type": "Article",
     headline: post.meta.title,
     description: post.meta.description,
     datePublished: post.meta.date,
-    dateModified: post.meta.date,
-    mainEntityOfPage: `${origin}/blog/${slug}`,
+    dateModified: modified,
+    mainEntityOfPage: url,
     ...(post.meta.cover ? { image: `${origin}${post.meta.cover}` } : {}),
     author: { "@type": "Organization", name: "DispatchSEO", url: origin },
     publisher: { "@type": "Organization", name: "DispatchSEO", url: origin },
   };
+  // A comparison post (frontmatter `compareKind`) says more: which products it
+  // is about, where it sits on the site, and - for "best X" / "X alternatives"
+  // lists - the products in the order the page presents them. Every other post
+  // prints the single Article it always has, unchanged: the comparison layout
+  // must never move the rest of the blog (Google is re-reading those posts).
+  const articleLd = compare
+    ? {
+        "@context": "https://schema.org",
+        "@graph": [
+          { ...article, ...(products.length ? { about: products.map(productLd) } : {}) },
+          {
+            "@type": "BreadcrumbList",
+            itemListElement: [
+              { "@type": "ListItem", position: 1, name: "DispatchSEO", item: origin },
+              { "@type": "ListItem", position: 2, name: "Blog", item: `${origin}/blog` },
+              { "@type": "ListItem", position: 3, name: post.meta.title, item: url },
+            ],
+          },
+          ...(compare === "list" && products.length
+            ? [
+                {
+                  "@type": "ItemList",
+                  name: post.meta.title,
+                  itemListElement: products.map((p, i) => ({
+                    "@type": "ListItem",
+                    position: i + 1,
+                    item: productLd(p),
+                  })),
+                },
+              ]
+            : []),
+        ],
+      }
+    : { "@context": "https://schema.org", ...article };
 
   return (
     // Below lg this is the same centered column as before; from lg up, with
@@ -116,12 +165,20 @@ export default async function BlogPost({ params }: { params: Promise<{ slug: str
         <header className="mb-8">
           <h1 className="text-3xl font-semibold tracking-tight">{post.meta.title}</h1>
           <p className="mt-2 flex items-center gap-2 text-sm text-neutral-500">
-            <time dateTime={post.meta.date}>{longDate(post.meta.date)}</time>
+            {post.meta.updated ? (
+              <span>
+                Updated <time dateTime={post.meta.updated}>{longDate(post.meta.updated)}</time>
+              </span>
+            ) : (
+              <time dateTime={post.meta.date}>{longDate(post.meta.date)}</time>
+            )}
             <span aria-hidden="true">·</span>
             <span>{post.meta.readingMinutes} min read</span>
           </p>
         </header>
-        {post.meta.cover && (
+        {/* Comparison pages skip the hero image: the short answer is what
+            people and AI engines came for, so it goes first. */}
+        {post.meta.cover && !compare && (
           <div className="relative mb-8 aspect-[16/9] w-full overflow-hidden rounded-xl">
             {/* Decorative hero - the title above already names the post, so
                 the image needs no alt text. No CoverArt-plate fallback here:
@@ -142,7 +199,15 @@ export default async function BlogPost({ params }: { params: Promise<{ slug: str
         ) : (
           <SideAd className="mb-8" />
         )}
-        <MDXRemote source={post.content} components={mdxComponents} options={{ mdxOptions: { remarkPlugins: [remarkGfm] } }} />
+        <MDXRemote
+          source={post.content}
+          components={compare ? compareMdxComponents : mdxComponents}
+          options={{
+            mdxOptions: compare
+              ? { remarkPlugins: [remarkGfm], rehypePlugins: [rehypeCompareTables] }
+              : { remarkPlugins: [remarkGfm] },
+          }}
+        />
         <div className="mt-12 border-t border-neutral-800 pt-6">
           <Link
             href="/blog"
