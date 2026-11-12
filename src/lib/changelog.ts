@@ -72,6 +72,7 @@ export type ChangelogEntry = {
 // into a new CHANGELOG entry when it's time to cut a release. Nothing reads
 // this list - it exists so that writing the note down doesn't ping anyone.
 export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
+  { kind: "new", text: "DispatchSEO has a pricing page at dispatchseo.com/pricing: every plan side by side, a comparison table, and what one article costs on each plan. You can read it without signing in." },
   { kind: "fixed", text: "On the free plan, the \"Made with DispatchSEO\" credit is now always a nofollow link, on every kind of blog, so it can never count against your site with Google. If your blog's posts can't hold a nofollow link, we leave the credit out." },
   {
     kind: "improved",

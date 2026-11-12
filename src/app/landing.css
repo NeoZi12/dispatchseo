@@ -603,6 +603,42 @@ html:has(.ld) { scroll-behavior: smooth; }
 .ld .pm-card .btn { width: 100%; min-height: 50px; font-size: 16px; border-radius: 999px; margin-top: auto; }
 .ld .pm-card:not(.pm-pick) .btn:not([href="/onboarding"]) { background: transparent; color: #fff; border-color: var(--line3); }
 
+/* ---------- /pricing page (src/app/pricing/page.tsx) ----------
+   The plan cards above are the landing's own; these are the page's title and
+   the comparison table. The table scrolls sideways inside its own frame on a
+   phone (the row labels stay pinned), so the page itself never does. */
+.ld .pr-hero { padding: 84px 0 0; text-align: center; }
+.ld .pr-hero h1 { font-size: clamp(36px, 5.4vw, 58px); font-weight: 800; margin-bottom: 18px; }
+.ld .pr-hero p { color: var(--mut); font-size: 18px; max-width: 620px; margin: 0 auto; }
+/* 72px, not less: the Growth card's mascot stands 51px above the cards. */
+.ld .pr-plans { padding-top: 72px; }
+/* position: relative is load-bearing: the cells hold visually-hidden labels
+   (.ld-sr, position: absolute), and without a positioned scroller they escape
+   it and widen the whole page on a phone. */
+.ld .pr-table-wrap { position: relative; max-width: 940px; margin: 0 auto; overflow-x: auto; border: 1px solid var(--line); border-radius: 16px; background: var(--card); }
+.ld .pr-table { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 15px; }
+.ld .pr-table th, .ld .pr-table td { padding: 15px 18px; text-align: center; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.ld .pr-table tbody tr:last-child > * { border-bottom: 0; }
+.ld .pr-table thead th { font-family: var(--disp); font-size: 16.5px; font-weight: 700; color: #fff; background: var(--card2); }
+.ld .pr-table th[scope="row"], .ld .pr-table thead th:first-child { text-align: left; position: sticky; left: 0; z-index: 1; }
+.ld .pr-table th[scope="row"] { font-weight: 500; color: var(--mut); background: var(--card); }
+.ld .pr-table td { color: var(--txt); font-weight: 600; }
+.ld .pr-table td small { display: block; margin-top: 2px; font-size: 12.5px; font-weight: 500; color: var(--dim); }
+.ld .pr-table .pr-pick { background: rgba(139, 92, 246, 0.08); }
+.ld .pr-table thead .pr-pick { background: rgba(139, 92, 246, 0.2); }
+.ld .pr-yes { color: var(--vio2); font-size: 17px; font-weight: 700; }
+.ld .pr-no { color: var(--dim); }
+@media (max-width: 600px) {
+  .ld .pr-hero { padding-top: 52px; }
+  .ld .pr-hero p { font-size: 16.5px; }
+  .ld .pr-plans { padding-top: 44px; }
+  /* Narrow, wrapping row labels so two plans show beside them before the
+     sideways scroll starts. */
+  .ld .pr-table { font-size: 14px; min-width: 560px; }
+  .ld .pr-table th, .ld .pr-table td { padding: 13px 12px; }
+  .ld .pr-table th[scope="row"] { white-space: normal; width: 124px; min-width: 124px; max-width: 124px; line-height: 1.3; }
+}
+
 /* ---------- faq ---------- */
 .ld .faq-list { max-width: 760px; margin: 0 auto; }
 .ld details { border: 1px solid var(--line); border-radius: 12px; background: var(--card); margin-bottom: 12px; overflow: hidden; }

@@ -5,10 +5,10 @@ import { CtaChevrons } from "./cta-chevrons";
 import "./landing.css";
 
 // The landing page's nav bar, for public pages that are NOT the landing
-// (the blog index and every post today). Same markup and the same .ld-scoped
+// (the blog index, every post and /pricing). Same markup and the same .ld-scoped
 // CSS, so it is pixel-identical to the bar on "/" - the reader lands on a
 // post from Google, sees the same chrome, and the way home or to pricing is
-// obvious. Links are absolute ("/#pricing") because they must work from
+// obvious. Links are absolute ("/pricing", "/#faq") because they must work from
 // any path; the landing's own copy (page.tsx, agent-landing.tsx) uses bare
 // anchors and is unchanged.
 //
@@ -22,7 +22,7 @@ const dmSans = DM_Sans({ subsets: ["latin"], variable: "--font-dm" });
 const GITHUB_URL = "https://github.com/NeoZi12/dispatchseo";
 const DOCS_URL = "/docs";
 const LINKS = [
-  { href: "/#pricing", label: "Pricing" },
+  { href: "/pricing", label: "Pricing" },
   { href: "/#faq", label: "FAQ" },
   { href: "/blog", label: "Blog" },
 ];

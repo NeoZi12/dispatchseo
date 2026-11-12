@@ -62,8 +62,8 @@ export default function AboutPage() {
           per month on up to {TIER_LIMITS.scale.sites} websites for {priceLabel(TIER_LIMITS.scale.price)}. Paid plans add
           weekly keyword research, keyword rankings and advanced analytics, and drop the badge.
           Yearly billing is cheaper where offered; the exact figures are on the{" "}
-          <Link className="underline text-white" href="/?home=1#pricing">
-            pricing section
+          <Link className="underline text-white" href="/pricing">
+            pricing page
           </Link>
           .
         </p>

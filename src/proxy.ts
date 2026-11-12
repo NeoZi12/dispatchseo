@@ -35,6 +35,10 @@ const PUBLIC_FILES = new Set([
   // The same docs as one plain-text file, for agents that would rather fetch
   // once than crawl. Same public-by-design reasoning as /docs itself.
   "/llms-full.txt",
+  // The IndexNow key file (public/2ecb0fc59c527d10a2ebb79a921f9988.txt, scripts/indexnow.mjs). Bing
+  // fetches it logged-out to check that a URL submission really came from
+  // this site; behind /login every submission is rejected.
+  "/2ecb0fc59c527d10a2ebb79a921f9988.txt",
   "/icon.png",
   "/apple-icon.png",
   "/opengraph-image.png",
@@ -240,7 +244,10 @@ export async function proxy(req: NextRequest, event: NextFetchEvent) {
     // deployment only. Self-hosted installs never set LANDING_ENABLED, so
     // theirs stay gated (the pages themselves also redirect to /dashboard as
     // defense in depth).
-    ((pathname === "/" || AGENT_LANDING_PATHS.has(pathname)) &&
+    // /pricing rides the same condition: it is the cloud's price list, and it
+    // has to be readable logged-out by the people (and the search and AI
+    // crawlers) who look for it before there is an account.
+    ((pathname === "/" || pathname === "/pricing" || AGENT_LANDING_PATHS.has(pathname)) &&
       process.env.LANDING_ENABLED === "true")
   ) {
     track(req, event, classifyPath(pathname), null);

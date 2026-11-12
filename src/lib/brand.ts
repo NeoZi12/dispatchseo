@@ -44,6 +44,7 @@ export function brandJsonLd(): Record<string, unknown> {
     {
       "@type": "Offer",
       name: "Free",
+      url: `${BRAND_URL}/pricing`,
       price: "0",
       priceCurrency: "USD",
       description: "2 fact-checked articles per month, published for you, with your Google stats. No card.",
@@ -51,6 +52,7 @@ export function brandJsonLd(): Record<string, unknown> {
     ...(Object.keys(TIER_LIMITS) as Tier[]).map((tier) => ({
       "@type": "Offer",
       name: TIER_NAMES[tier],
+      url: `${BRAND_URL}/pricing`,
       price: String(TIER_LIMITS[tier].price),
       priceCurrency: "USD",
       priceSpecification: {

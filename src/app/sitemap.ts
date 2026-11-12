@@ -51,6 +51,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // Google OAuth consent home page), and the one page that states the
     // product and its pricing as prose a crawler can quote.
     { url: `${base}/about`, changeFrequency: "monthly" },
+    // The price list. Cloud only (the page redirects without LANDING_ENABLED),
+    // so a self-hosted install's sitemap never advertises a page it lacks.
+    ...(process.env.LANDING_ENABLED === "true" ? [{ url: `${base}/pricing`, changeFrequency: "monthly" as const }] : []),
     { url: `${base}/blog`, changeFrequency: "daily" },
     // Posts hidden from Google (PostMeta.googleNoindex) stay out: listing a
     // URL here while telling Googlebot not to index it is a mixed signal.
