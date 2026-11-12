@@ -8,7 +8,10 @@ import { assertInstallationClaimable, assertProjectOwned, installationAlreadyMin
 import { inheritGithubInstallation, pendingSetupProject } from "@/lib/setup-flow";
 import {
   callerControlsInstallation,
+  GH_WANT_COOKIE,
   getInstallation,
+  installationsControlledBy,
+  installUrl,
   installationClaimable,
   listInstallationRepos,
   makeInstallNonce,
@@ -18,6 +21,7 @@ import {
 import { db } from "@/lib/db";
 import { scopedProjects } from "@/lib/active-project";
 import { isCloudMode } from "@/lib/cloud";
+import { cookies } from "next/headers";
 
 // GitHub redirects here after the App install/update flow. With "Request user
 // authorization (OAuth) during installation" enabled, this URL is the App's
@@ -64,13 +68,9 @@ export async function GET(req: Request): Promise<Response> {
   // and never as the sole basis for a decision.
   const setupAction = url.searchParams.get("setup_action");
 
-  const installationId = installationIdRaw ? Number(installationIdRaw) : NaN;
+  let installationId = installationIdRaw ? Number(installationIdRaw) : NaN;
 
   try {
-    if (!Number.isFinite(installationId)) {
-      redirect("/onboarding?gh=error&msg=bad-installation-id");
-    }
-
     // Resolved once, up front: which project started this flow (if any), and
     // whether the OAuth code proves this human administers the installation.
     // The proof is a ONE-TIME code, so it is exchanged lazily and memoized -
@@ -78,6 +78,62 @@ export async function GET(req: Request): Promise<Response> {
     const slug = state ? await verifyState(state) : null;
     const proofCode = url.searchParams.get("code") ?? "";
     let provenPromise: Promise<boolean> | null = null;
+
+    // A FOURTH arrival: GitHub's sign-in alone (install/start?check=1), for an
+    // owner whose GitHub account already has the App. It carries our signed
+    // state and a code, and NO installation_id - which installation is read
+    // from GitHub with the code, as the list of installations this person
+    // can push through. So the id below is never a caller-supplied number on
+    // this path, and the proof is already in hand.
+    //   none      they have not installed it after all: on to the install link
+    //   one       that one
+    //   several   the one they asked for (a cookie, checked against the
+    //             list), else the first; the others ride along for the
+    //             repository screen's "use another account" links
+    let viaSignIn = false;
+    let otherAccounts: Array<{ id: number; login: string }> = [];
+    let chosenLogin = "";
+    const back = (msg: string) => `/onboarding?gh=error${slug ? `&site=${encodeURIComponent(slug)}` : ""}&msg=${encodeURIComponent(msg)}`;
+    // Said no on GitHub's sign-in screen: no code and no installation, and
+    // "bad-installation-id" would be our word for their choice.
+    if (!Number.isFinite(installationId) && !proofCode && url.searchParams.get("error")) {
+      redirect(back("GitHub sign-in wasn't finished. Nothing was changed - try again when you're ready."));
+    }
+    if (!Number.isFinite(installationId) && slug && proofCode && !setupAction) {
+      const jar = await cookies();
+      const wantRaw = Number(jar.get(GH_WANT_COOKIE)?.value);
+      const want = Number.isSafeInteger(wantRaw) && wantRaw > 0 ? wantRaw : null;
+      // One use: it was for this trip.
+      jar.delete({ name: GH_WANT_COOKIE, path: "/api/github/install" });
+      const listed = await installationsControlledBy(proofCode, want ?? undefined);
+      if (listed === null) redirect(back("GitHub didn't answer just now. Try that again."));
+      const mine = listed.mine;
+      if (mine.length === 0) {
+        // Only suspended ones: the install link would show them the same
+        // settings page with nothing to press.
+        if (listed.suspended > 0) {
+          redirect(back("DispatchSEO is suspended on your GitHub account. Open GitHub > Settings > Applications > DispatchSEO, press Unsuspend, then try again."));
+        }
+        redirect(await installUrl(slug));
+      }
+      // The account they clicked, or nothing: never a different one quietly.
+      if (want !== null && !mine.some((i) => i.id === want)) {
+        redirect(back("We couldn't use that GitHub account for this site. Pick it again, or choose another."));
+      }
+      const chosen = mine.find((i) => i.id === want) ?? mine[0];
+      installationId = chosen.id;
+      chosenLogin = chosen.login;
+      otherAccounts = mine.filter((i) => i.id !== chosen.id);
+      viaSignIn = true;
+      provenPromise = Promise.resolve(true);
+    }
+
+    if (!Number.isFinite(installationId)) {
+      // A sign-in that came back after its ten minutes (the state no longer
+      // verifies), or an address with no installation in it.
+      redirect(proofCode ? back("That took too long, so nothing was changed. Try again from this page.") : "/onboarding?gh=error&msg=bad-installation-id");
+    }
+
     const provenCaller = () =>
       (provenPromise ??= proofCode
         ? callerControlsInstallation(proofCode, installationId)
@@ -160,6 +216,10 @@ export async function GET(req: Request): Promise<Response> {
       const project = await getProjectBySlug(slug);
       if (!project) redirect("/onboarding?gh=error&msg=unknown-project");
       await assertProjectOwned(project.id);
+      // The sign-in path is for a site with no repository yet. A connected
+      // site never starts it (install/start), and one that got its
+      // repository in another tab meanwhile has nothing left to do here.
+      if (viaSignIn && project.github_repo) redirect(`/onboarding?gh=installed&site=${encodeURIComponent(project.slug)}`);
 
       // Proof that the human who just clicked Install controls THIS installation.
       // GitHub's setup redirect is unsigned, so without this the only checks were
@@ -187,7 +247,9 @@ export async function GET(req: Request): Promise<Response> {
             `${requireInstallProof() ? "REFUSING (install proof required; set GITHUB_APP_REQUIRE_INSTALL_PROOF=0 to fall back to the freshness gate)." : "Falling back to the freshness gate."}`,
         );
       }
-      const proven = await provenCaller();
+      // On the sign-in path the code was already spent on the list this
+      // installation was read from: that list IS the proof.
+      const proven = viaSignIn ? true : await provenCaller();
       // No code, but the installation is already attached to a site this
       // caller owns: the owner is adding a repository for their NEXT site,
       // and GitHub sends no sign-in code for a change to an app that is
@@ -241,7 +303,10 @@ export async function GET(req: Request): Promise<Response> {
       const takenBySibling = new Set(
         (await scopedProjects()).filter((p) => p.id !== project.id && p.github_repo).map((p) => p.github_repo as string),
       );
-      const attach = repos.length === 1 && !project.github_repo && !takenBySibling.has(repos[0].full_name);
+      // Never on the sign-in path either: there the owner did not just pick
+      // this repository for this site on GitHub, so a lone repository is only
+      // "what the installation happens to cover" - they choose.
+      const attach = !viaSignIn && repos.length === 1 && !project.github_repo && !takenBySibling.has(repos[0].full_name);
       if (attach) patch.github_repo = repos[0].full_name;
 
       const { error } = await db().from("projects").update(patch).eq("id", project.id);
@@ -251,7 +316,13 @@ export async function GET(req: Request): Promise<Response> {
       if (project.github_repo) await healReposForInstallation(installationId).catch(() => 0);
 
       const site = `&site=${encodeURIComponent(project.slug)}`;
-      redirect(attach || project.github_repo ? `/onboarding?gh=installed${site}` : `/onboarding?gh=pick_repo${site}`);
+      // Display only: the repository screen names the account it is showing
+      // and links the others. Each link goes back through GitHub's sign-in,
+      // so a made-up id in this address proves nothing and binds nothing.
+      const accounts = viaSignIn && otherAccounts.length
+        ? `&accounts=${encodeURIComponent([{ id: installationId, login: chosenLogin }, ...otherAccounts].map((a) => `${a.id}:${a.login}`).join(","))}`
+        : "";
+      redirect(attach || project.github_repo ? `/onboarding?gh=installed${site}` : `/onboarding?gh=pick_repo${site}${accounts}`);
     }
 
     // No usable state: installed straight from github.com (or the signed

@@ -133,6 +133,18 @@ async function buildResume(): Promise<WizardResume | null> {
   };
 }
 
+/** install/callback's `accounts` list, read back strictly: numbers and
+ *  GitHub login characters only, a handful at most. */
+function parseGhAccounts(raw: string | undefined): { id: number; login: string }[] | undefined {
+  if (typeof raw !== "string" || !raw) return undefined;
+  const out: { id: number; login: string }[] = [];
+  for (const part of raw.slice(0, 600).split(",").slice(0, 10)) {
+    const m = /^(\d{1,15}):([A-Za-z0-9-]{0,60})$/.exec(part);
+    if (m) out.push({ id: Number(m[1]), login: m[2] });
+  }
+  return out.length > 1 ? out : undefined;
+}
+
 type OnboardingParams = {
   new?: string;
   gh?: string;
@@ -148,6 +160,10 @@ type OnboardingParams = {
   /** The site whose setup to show, when the owner has more than one
    *  unfinished (the Websites page's "Finish setup", GitHub's way back). */
   site?: string;
+  /** "id:login,id:login": the owner's GitHub accounts that have the app,
+   *  the one on screen first (install/callback's sign-in path). Display
+   *  only - each link goes back through GitHub's sign-in. */
+  accounts?: string;
 };
 
 const NOTICES: Record<string, string> = {
@@ -441,6 +457,7 @@ async function cloudSetupFlow(params: OnboardingParams) {
         planMenu={planMenu}
         sentTo={sent?.to ?? null}
         repos={repos}
+        ghAccounts={parseGhAccounts(params.accounts)}
         ghError={params.gh === "error" ? (cleanFlagText(params.msg) ?? GENERIC_GITHUB_FLAG) : null}
         googleError={stage === "google" && !notice && gsc && gsc !== "connected" ? `Google didn't connect (${gsc}). Try again.` : null}
         notice={notice}
@@ -465,6 +482,8 @@ export default async function OnboardingPage({
     sent?: string;
     plan?: string;
     interval?: string;
+    site?: string;
+    accounts?: string;
   }>;
 }) {
   const params = await searchParams;

@@ -316,7 +316,15 @@ export async function callerControlsInstallation(
 // unreachable, an unexpected shape, an installation with no repos yet) keeps
 // the answer the list gave - a legitimate install must never be blocked by
 // this second look (launch morning, 2026-07-28).
-async function canWriteThroughInstallation(userToken: string, installationId: number): Promise<boolean> {
+async function canWriteThroughInstallation(userToken: string, installationId: number, strict = false): Promise<boolean> {
+  // strict (the "already installed" sign-in path, which the owner starts and
+  // can simply start again): only a push permission actually SEEN counts. A
+  // GitHub error throws, so the caller says "try again" instead of reading
+  // it as yes or as no. The lenient default stays for a fresh install.
+  const unsure = (why: string): boolean => {
+    if (strict) throw new Error(`push check for installation ${installationId}: ${why}`);
+    return true;
+  };
   try {
     let seen = 0;
     for (let page = 1; page <= 3; page++) {
@@ -328,22 +336,26 @@ async function canWriteThroughInstallation(userToken: string, installationId: nu
         },
         signal: AbortSignal.timeout(10000),
       });
-      if (!res.ok) return true;
+      if (!res.ok) return unsure(`HTTP ${res.status}`);
       const body = (await res.json()) as { repositories?: Array<{ permissions?: { admin?: boolean; push?: boolean; maintain?: boolean } | null }> };
       const repos = body.repositories;
-      if (!Array.isArray(repos)) return true;
+      if (!Array.isArray(repos)) return unsure("unexpected shape");
       for (const r of repos) {
-        if (!r?.permissions || typeof r.permissions !== "object") return true; // shape we cannot judge
+        if (!r?.permissions || typeof r.permissions !== "object") {
+          if (strict) continue; // not evidence either way: keep looking
+          return true; // shape we cannot judge
+        }
         if (r.permissions.admin || r.permissions.push || r.permissions.maintain) return true;
       }
       seen += repos.length;
       if (repos.length < 100) break;
-      if (page === 3) return true; // more repos than we read: not proven
+      if (page === 3) return !strict; // more repos than we read: not proven
     }
-    if (seen === 0) return true;
+    if (seen === 0) return !strict;
     console.error(`[github-install] installation ${installationId}: the caller can read ${seen} repo(s) through it and push to none - refused`);
     return false;
-  } catch {
+  } catch (e) {
+    if (strict) throw e;
     return true;
   }
 }
@@ -377,6 +389,93 @@ export async function listInstallationRepos(
     page += 1;
   }
   return repos;
+}
+
+/** Which installation the owner asked for on the "already installed" path
+ *  (install/start sets it, install/callback reads it). A preference among
+ *  installations the callback has proven are theirs, never a claim. */
+export const GH_WANT_COOKIE = "gh_install_want";
+
+/** GitHub's own sign-in for the App, with no install step: for a user who has
+ *  already authorized the App it answers at once with a one-time `code`,
+ *  which the callback turns into "which installations is this person in
+ *  charge of" (installationsControlledBy). The way back in for an owner whose
+ *  GitHub account already has the App but whose site is not attached to it:
+ *  GitHub's install link shows them a settings page whose Save is disabled
+ *  unless they change something, and nothing sends them back (found on
+ *  production, 2026-11-12). */
+export async function authorizeUrl(projectSlug: string): Promise<string> {
+  const state = await makeState(projectSlug);
+  return `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(process.env.GITHUB_APP_CLIENT_ID ?? "")}&state=${encodeURIComponent(state)}`;
+}
+
+/** Every installation of the App the person behind this one-time `code` can
+ *  push through, as GitHub lists them for that person. null = GitHub could
+ *  not be asked (a spent code, an outage): the caller says "try again", and
+ *  must not read it as "none". The code is used up by this call. */
+export async function installationsControlledBy(
+  code: string,
+  wantId?: number,
+): Promise<{ mine: Array<{ id: number; login: string }>; suspended: number } | null> {
+  if (!code) return null;
+  try {
+    const token = await exchangeUserCode(code);
+    if (!token) return null;
+    const found: Array<{ id: number; login: string }> = [];
+    let suspended = 0;
+    for (let page = 1; page <= 3; page++) {
+      const res = await fetch(`${API}/user/installations?per_page=100&page=${page}`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "User-Agent": USER_AGENT },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!res.ok) {
+        console.error(`[github-install] /user/installations HTTP ${res.status}`);
+        return null;
+      }
+      const body = (await res.json()) as { installations?: Array<{ id?: number; suspended_at?: string | null; account?: { login?: string } | null }> };
+      const list = body.installations ?? [];
+      for (const i of list) {
+        if (typeof i.id !== "number") continue;
+        if (i.suspended_at) {
+          suspended++;
+          continue;
+        }
+        found.push({ id: i.id, login: String(i.account?.login ?? "").replace(/[^A-Za-z0-9-]/g, "").slice(0, 60) });
+      }
+      if (list.length < 100) break;
+    }
+    // The same second look as a fresh install gets, but strict: listed is
+    // not enough, a push permission must be seen. The one the owner asked
+    // for is looked at first, so the cap can never be what hides it. Asked
+    // together - the code is spent, so a slow GitHub must not run this out
+    // of time. A check that could not be made throws: "try again".
+    const ordered = [...found.filter((i) => i.id === wantId), ...found.filter((i) => i.id !== wantId)].slice(0, 10);
+    const can = await Promise.all(ordered.map((i) => canWriteThroughInstallation(token, i.id, true)));
+    return { mine: ordered.filter((_, k) => can[k]), suspended };
+  } catch (e) {
+    console.error(`[github-install] could not list the caller's installations: ${e instanceof Error ? e.message : String(e)}`);
+    return null;
+  }
+}
+
+/** A one-time OAuth code for the installer's own token, or null. */
+async function exchangeUserCode(code: string): Promise<string | null> {
+  const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": USER_AGENT },
+    body: JSON.stringify({ client_id: process.env.GITHUB_APP_CLIENT_ID, client_secret: process.env.GITHUB_APP_CLIENT_SECRET, code }),
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!tokenRes.ok) {
+    console.error(`[github-install] code exchange HTTP ${tokenRes.status}`);
+    return null;
+  }
+  const token = (await tokenRes.json()) as { access_token?: string; error?: string };
+  if (!token.access_token) {
+    console.error(`[github-install] code exchange returned no token: ${token.error ?? "unknown"}`);
+    return null;
+  }
+  return token.access_token;
 }
 
 // Where the dashboard's "Connect GitHub" button sends the owner. state ties

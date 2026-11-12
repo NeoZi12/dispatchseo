@@ -72,6 +72,9 @@ export function SetupClient(props: {
   sentTo: string | null;
   repos: string[] | null;
   ghError: string | null;
+  /** The owner's GitHub accounts that have the app, the one on screen first
+   *  (only after the "already installed" path found several). */
+  ghAccounts?: { id: number; login: string }[];
   googleError: string | null;
   notice: string | null;
 }) {
@@ -434,6 +437,7 @@ export function SetupClient(props: {
           busy={busy}
           error={props.ghError ?? error}
           onContinue={openGithub}
+          alreadyHref={props.slug ? `/api/github/install/start?slug=${encodeURIComponent(props.slug)}&check=1` : undefined}
         />
       ) : null}
 
@@ -458,6 +462,23 @@ export function SetupClient(props: {
             ))}
           </ul>
           {(error ?? props.ghError) ? <p className="mt-4 rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-[14px] text-ink">{error ?? props.ghError}</p> : null}
+          {props.slug && props.ghAccounts && props.ghAccounts.length > 1 ? (
+            <p className="mt-4 text-[14px] text-ink-muted">
+              These are from <span className="font-medium text-ink">{props.ghAccounts[0].login || "your first GitHub account"}</span>. Use{" "}
+              {props.ghAccounts.slice(1).map((a, i) => (
+                <span key={a.id}>
+                  {i > 0 ? ", " : ""}
+                  <a
+                    href={`/api/github/install/start?slug=${encodeURIComponent(props.slug!)}&check=1&installation=${a.id}`}
+                    className="underline decoration-line underline-offset-4 hover:text-ink"
+                  >
+                    {a.login || "another account"}
+                  </a>
+                </span>
+              ))}{" "}
+              instead.
+            </p>
+          ) : null}
           <div className="mt-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-line-soft pt-5">
             <p className="text-[14px] text-ink-muted">
               {props.repos!.length > 0 ? "Not in the list? " : ""}Add it on GitHub, then come back to this tab.

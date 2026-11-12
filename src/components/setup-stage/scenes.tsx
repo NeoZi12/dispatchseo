@@ -157,7 +157,7 @@ function Chip({ children }: { children: React.ReactNode }) {
 
 // ----------------------------------------------------------------- github
 
-export function GithubScene({ onContinue, handoffHref, busy, error }: { onContinue: () => void; handoffHref?: string; busy?: boolean; error?: string | null }) {
+export function GithubScene({ onContinue, handoffHref, alreadyHref, busy, error }: { onContinue: () => void; handoffHref?: string; /** GitHub's sign-in, for an account that already has the app (install/start?check=1). */ alreadyHref?: string; busy?: boolean; error?: string | null }) {
   return (
     <SceneCard
       id="github"
@@ -170,6 +170,13 @@ export function GithubScene({ onContinue, handoffHref, busy, error }: { onContin
             <GithubMark />
             Open GitHub
           </button>
+          {alreadyHref ? (
+            <p className="basis-full text-center">
+              <a href={alreadyHref} className="text-[14px] text-ink-muted underline decoration-line underline-offset-4 hover:text-ink">
+                Already installed DispatchSEO on GitHub? Find my repositories.
+              </a>
+            </p>
+          ) : null}
           {handoffHref ? (
             <p className="basis-full text-center">
               <a href={handoffHref} className="text-[14px] text-ink-muted underline decoration-line underline-offset-4 hover:text-ink">
