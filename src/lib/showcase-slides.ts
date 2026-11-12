@@ -41,8 +41,9 @@ export const SLIDES: Slide[] = [
     id: "traffic",
     title: "Watch Google send you visitors",
     caption: "Your visitors and impressions from Google, day by day.",
-    image: "/screenshots/landing-traffic-v5.png",
-    alt: "Overview charts for one site: 414 people from Google in 30 days (up 26%) and 59,316 impressions on Google",
+    // v6 (2026-11-12): the 12-month tab, same v5 framing.
+    image: "/screenshots/landing-traffic-v6.png",
+    alt: "Overview charts for one site over 12 months: 1,029 people from Google and 158,513 impressions on Google",
   },
   {
     id: "top-posts",

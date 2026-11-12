@@ -797,7 +797,7 @@ html:has(.ld) { scroll-behavior: smooth; }
   /* Same reasoning for the frame itself: the native 2.2:1 is a ~120px sliver
      on a phone. A 4:3 crop trades ~40% of the width for a 1.65x bigger,
      legible screenshot. It crops from the LEFT, not the centre: every shot
-     puts its point there (414 / 59,316, the queue's titles and KD, the
+     puts its point there (the traffic totals, the queue's titles and KD, the
      article's headline), and a centred crop sliced those off - a phone saw
      bare chart lines. Shots whose point spans the width carry a phone-shaped
      mobileImage instead (showcase-slides.ts). Tablets skip all of this. */
