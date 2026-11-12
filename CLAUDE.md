@@ -4,7 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-DispatchSEO — a single-owner, multi-tenant "SEO manager" backend. One Vercel
+DispatchSEO is free SEO automation for small websites: it researches keywords
+with real search demand, writes fact-checked articles and publishes them to the
+site, as pull requests to a GitHub repo or on a hosted blog. The hosted product
+lives at dispatchseo.com (two articles a month free, paid plans for 5, 15 or 30
+articles a month on up to 5 websites). This open-source repo is the same
+product to self-host, driven by your own coding agent (Claude Code, Codex or
+Cursor) over MCP.
+
+Under the hood it is a multi-tenant "SEO manager" backend. One Vercel
 deployment manages many sites: it exposes an **MCP server** that an external
 Claude Code agent drives to research keywords and queue content ideas, runs
 **crons** that track SERP ranks + Google Search Console stats, and hosts a
