@@ -65,6 +65,8 @@ import { isHubPage } from "./research";
 import { blockedTopicsOf } from "@/lib/autopilot/prefs";
 import { copyPictureCover, coverPrompt, coverScenePrompt, draftPicturePath, dryCoverSvg, hueOf, ledgerPicture, paintCover, pickHue, pictureCoverPrompt, pictureCoversEnabled, runPicturePath, sanitizeCoverSvg, storePictureCover, type CoverTheme, type Hue } from "@/lib/cover-art";
 import { normalizeTheme } from "@/lib/hosted-theme";
+import { latinSlug, siteStyleOf } from "@/lib/site-style";
+import { figuresPrompt, keptFigures, parseFigures, storeFigures, type ArticleFigure } from "@/lib/article-figures";
 import { distinctiveWords, sameSubtopic, SUBTOPIC_SPACING_DAYS } from "@/lib/autopilot/math";
 import { sortIdeas, type RankableIdea } from "@/lib/autopilot/idea-order";
 
@@ -748,7 +750,9 @@ async function plan(c: Ctx): Promise<void> {
         gain: { type: "one of: " + Object.keys(GAIN_TYPES).join("|"), backed_by: ["fact ids like f3, or S2 for a site page - must exist"], where: "the section heading that will carry it" },
         archetype: "one of the allowed archetypes",
         title: "45-60 characters, contains the keyword naturally, descriptive, not clickbait",
-        slug: "3-6 words, kebab-case",
+        slug: siteStyleOf(project)?.latinSlugs
+          ? "3-6 words, kebab-case, in LATIN letters only: the words transliterated the way they are written in English letters (for Hebrew: ishur-nihul-sfarim, hachzer-mas-lesachirim), never in the article's own script"
+          : "3-6 words, kebab-case",
         meta_description: "120-155 characters, states the concrete benefit",
         sections: [{ heading: "phrased as the reader's question or the outcome, never a topic noun", reader_outcome: "what the reader can DO or DECIDE after this section", fact_ids: ["f1"], format: "prose|steps|table|checklist" }],
         faq_questions: ["from QUESTIONS PEOPLE ALSO ASK when the research lists any, otherwise 2-3 questions this article's reader would ask next; 0-5, omit any the sections already answer"],
@@ -810,6 +814,11 @@ async function plan(c: Ctx): Promise<void> {
     return plan(c);
   }
   parsed.slug = slugify(parsed.slug || parsed.title, sheet.keyword);
+  const latinSlugs = siteStyleOf(project)?.latinSlugs === true;
+  // A site whose URLs are Latin (site-style.ts): whatever script the planner
+  // answered in, the slug leaves here in Latin letters.
+  const toLatin = (v: string) => (latinSlugs && /[^a-z0-9-]/.test(v) ? latinSlug(v) || v : v);
+  parsed.slug = toLatin(parsed.slug);
   // 700 is the floor a page needs to read as an answer rather than a stub
   // (Paperbot's own content lint refuses anything shorter; the gate below
   // holds the same line), 2500 the point past which a draft rambles.
@@ -903,7 +912,7 @@ async function plan(c: Ctx): Promise<void> {
   }
   stubReport = outline();
   if (failing("slug-shape") || failing("slug-not-stopword-soup")) {
-    parsed.slug = slugify(sheet.keyword, parsed.slug);
+    parsed.slug = toLatin(slugify(sheet.keyword, parsed.slug));
     outlineFixes.push("slug");
   }
   if (existing.slugs.includes(parsed.slug)) parsed.slug = `${parsed.slug}-${new Date().getUTCFullYear()}`;
@@ -1054,7 +1063,7 @@ async function write(c: Ctx): Promise<void> {
       )}\n\nWrite the article now.`,
     dry: () => dryArticle(sheet, brief, p),
   });
-  const [wrote, drew] = await Promise.allSettled([writing, drawCover(c, sheet.keyword, brief.name, p, hue)]);
+  const [wrote, drew, figured] = await Promise.allSettled([writing, drawCover(c, sheet.keyword, brief.name, p, hue), drawFigures(c, sheet, p)]);
   // The cover first: it is saved (with its cost) even when the prose call
   // failed, so a retry of this stage never pays for the drawing twice.
   const waits: string[] = [];
@@ -1068,6 +1077,15 @@ async function write(c: Ctx): Promise<void> {
       run.cost_usd = Number(run.cost_usd) + drew.value.costUsd;
     }
   } else if (drew.status === "rejected" && isAwaitingAgent(drew.reason)) waits.push(...drew.reason.keys);
+  // The inline diagrams of a site whose style has them: saved the same way,
+  // for the same reason.
+  if (figured.status === "fulfilled" && figured.value) {
+    await saveScratch(run, "figures", figured.value.figures);
+    if (figured.value.costUsd > 0) {
+      await db().from("writer_runs").update({ cost_usd: Number((Number(run.cost_usd) + figured.value.costUsd).toFixed(4)) }).eq("id", run.id);
+      run.cost_usd = Number(run.cost_usd) + figured.value.costUsd;
+    }
+  } else if (figured.status === "rejected" && isAwaitingAgent(figured.reason)) waits.push(...figured.reason.keys);
   if (wrote.status === "rejected") {
     if (isAwaitingAgent(wrote.reason)) throw new AwaitingAgent([...wrote.reason.keys, ...waits]);
     throw wrote.reason;
@@ -1117,7 +1135,10 @@ async function drawCover(c: Ctx, keyword: string, siteName: string, p: Plan, hue
   // covers"); the drawing below is the fallback, and the scene call's cost
   // is carried into it when the picture fails.
   let spent = 0;
-  if (pictureCoversEnabled() && !isDryRun()) {
+  // A site with its own cover look (site-style.ts) is always DRAWN: a painted
+  // picture cannot be held to an exact palette, the drawing can.
+  const ownCover = siteStyleOf(c.project)?.cover ?? null;
+  if (pictureCoversEnabled() && !isDryRun() && !ownCover) {
     const pic = await paintPictureCover(c, keyword, siteName, p, hue);
     if (pic?.path) return { svg: "", costUsd: pic.costUsd, picture: pic.path };
     spent = pic?.costUsd ?? 0;
@@ -1130,6 +1151,7 @@ async function drawCover(c: Ctx, keyword: string, siteName: string, p: Plan, hue
     angle: p.angle,
     sections: p.sections.map((x) => x.heading),
     siteName,
+    ...(ownCover?.brief ? { brief: ownCover.brief } : {}),
   });
   try {
     const r = await generate({ slot: "illustrator", ...ctxOf(c), temperature: 0.7, system, user, dry: dryCoverSvg });
@@ -1140,6 +1162,34 @@ async function drawCover(c: Ctx, keyword: string, siteName: string, p: Plan, hue
     if (isAwaitingAgent(err)) throw err;
     console.warn(`[writer] run ${c.run.id}: cover not drawn (${err instanceof Error ? err.message : String(err)}); the title card stands in`);
     return { svg: "", costUsd: spent };
+  }
+}
+
+/** One call for the article's inline diagrams, on a site whose style has
+ *  them (article-figures.ts); null = this site has none, or an earlier
+ *  attempt of this stage already drew them. Never fails the article: a
+ *  refused or broken reply is saved as no figures. Only AwaitingAgent
+ *  escapes, as with the cover. */
+async function drawFigures(c: Ctx, sheet: FactSheet, p: Plan): Promise<{ figures: ArticleFigure[]; costUsd: number } | null> {
+  const style = siteStyleOf(c.project)?.figures;
+  if (!style || isDryRun()) return null;
+  if (Array.isArray(c.run.stage_outputs.figures)) return null;
+  const { system, user } = figuresPrompt({
+    lang: c.project.language_code ?? "en",
+    brief: style.brief,
+    max: style.max,
+    title: p.title,
+    keyword: sheet.keyword,
+    sections: p.sections.map((x) => ({ heading: x.heading, reader_outcome: x.reader_outcome, format: x.format })),
+    facts: sheet.facts.map((f) => f.quote),
+  });
+  try {
+    const r = await generate({ slot: "illustrator", ...ctxOf(c), temperature: 0.5, system, user, dry: () => "NONE" });
+    return { figures: parseFigures(r.text, p.sections.map((x) => x.heading), style.max), costUsd: r.costUsd };
+  } catch (err) {
+    if (isAwaitingAgent(err)) throw err;
+    console.warn(`[writer] run ${c.run.id}: figures not drawn (${err instanceof Error ? err.message : String(err)}); the article ships without them`);
+    return { figures: [], costUsd: 0 };
   }
 }
 
@@ -2242,6 +2292,7 @@ async function splicePatch(
 function closingCta(markdown: string, brief: SiteBrief, project: Project): string {
   const prefs = (project.content_prefs ?? {}) as { disabled_blocks?: unknown };
   if (Array.isArray(prefs.disabled_blocks) && prefs.disabled_blocks.includes("cta")) return "";
+  if (siteStyleOf(project)?.noClosingCta) return "";
   let home: URL;
   try {
     home = new URL(brief.url);
@@ -2342,6 +2393,17 @@ async function handoff(c: Ctx, draft: Draft, p: Plan, report: ValidationReport, 
   // /api/cover looks for it. A failed copy leaves the drawn fallback.
   const coverPicture = run.stage_outputs.cover_picture;
   if (typeof coverPicture === "string" && coverPicture) await copyPictureCover(coverPicture, draftPicturePath(draftId));
+  // The inline diagrams (site-style.ts), re-read against the text that
+  // passed verify: a figure whose section is gone, or that shows a number
+  // the article no longer states, is dropped here.
+  const drawn = run.stage_outputs.figures;
+  if (Array.isArray(drawn) && drawn.length && siteStyleOf(project)?.figures) {
+    const kept = keptFigures(drawn as ArticleFigure[], body, p.sections.map((x) => x.heading), draft.faqHeading || faqHeadingFor(project.language_code));
+    if (kept.length < drawn.length) console.warn(`[writer] draft ${draftId}: ${drawn.length - kept.length} of ${drawn.length} figures dropped (section gone or a number the article does not state)`);
+    // Always written, even empty: an earlier pass of this draft may have
+    // kept figures this text no longer supports.
+    await storeFigures(draftId, kept);
+  }
   if (run.suggestion_id) {
     await db().from("suggestions").update({ status: "in_progress", started_at: new Date().toISOString() }).eq("id", run.suggestion_id);
   }

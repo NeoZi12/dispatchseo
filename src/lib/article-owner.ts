@@ -1,3 +1,4 @@
+import { siteStyleOf } from "@/lib/site-style";
 import "server-only";
 import { db } from "@/lib/db";
 import { effectiveAutomations, publishTarget, type Project } from "@/lib/projects";
@@ -897,9 +898,18 @@ async function repoChange(project: Project, row: Row, change: RepoChange): Promi
     // description values swapped; its own body shape (an H1 when it had
     // one); our signature last, as buildArticleFile writes it.
     const sample = parseFrontmatter(change.file.text);
-    const withTitle = setFrontmatterKey(change.file.frontmatter, "title", yamlDoubleQuote(change.title));
+    // A site with its own file shape (site-style.ts): values bare, the way
+    // its parser reads them, and no raw HTML under the body.
+    const style = siteStyleOf(project);
+    const fmValue = (v: string) => (style?.frontmatter ? v.replace(/\s*[\r\n]+\s*/g, " ").trim() : yamlDoubleQuote(v));
+    const withTitle = setFrontmatterKey(change.file.frontmatter, "title", fmValue(change.title));
     const descKey = DESCRIPTION_KEYS.find((k) => k in sample.raw);
-    const fm = withTitle === null || !descKey ? withTitle : setFrontmatterKey(withTitle, descKey, yamlDoubleQuote(change.metaDescription || buildExcerpt(change.markdown)));
+    let fm = withTitle === null || !descKey ? withTitle : setFrontmatterKey(withTitle, descKey, fmValue(change.metaDescription || buildExcerpt(change.markdown)));
+    // A styled site may write the description under more than one key
+    // (excerpt and meta_description): an edit keeps them all in step.
+    if (style?.frontmatter) {
+      for (const k of DESCRIPTION_KEYS) if (fm !== null && k !== descKey && k in sample.raw) fm = setFrontmatterKey(fm, k, fmValue(change.metaDescription || buildExcerpt(change.markdown)));
+    }
     if (fm === null) return { ok: false, error: `The article's front matter writes its title or description over several lines, which can't be updated safely from here. ${ON_GITHUB}` };
     // Own-site links root-relative, as every file we write (a site's lint may
     // require `](/blog/...)`; relativizeOwnLinks says which one did).
@@ -907,7 +917,7 @@ async function repoChange(project: Project, row: Row, change: RepoChange): Promi
     // wrote it (readRepoFile took it off, so the owner never edits it and a
     // save never doubles it): an edit must not be the way it disappears.
     const credit = (await isFreeProject(project.id)) ? `\n\n${creditLine(creditParts(project, row.id))}` : "";
-    content = `---\n${fm}\n---\n\n${relativizeOwnLinks(change.markdown, project.domain).trim().replace(CREDIT_LINE_AT_END, "").trim()}${credit}\n\n${articleSignature(row.id)}\n`;
+    content = `---\n${fm}\n---\n\n${relativizeOwnLinks(change.markdown, project.domain).trim().replace(CREDIT_LINE_AT_END, "").trim()}${style?.plainBody ? "" : `${credit}\n\n${articleSignature(row.id)}`}\n`;
   } else {
     // The file must still be there to delete (a stale path after a move).
     const head = await gh("GET", `/repos/${repo}/contents/${encodeURI(path)}?ref=${encodeURIComponent(baseBranch)}`);

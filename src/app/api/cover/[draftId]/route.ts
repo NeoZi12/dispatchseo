@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { db } from "@/lib/db";
 import { draftPicturePath, loadPictureCover, renderCoverPng, storePictureCover } from "@/lib/cover-art";
 import { normalizeTheme } from "@/lib/hosted-theme";
+import { siteStyleOf } from "@/lib/site-style";
 
 // The cover image for a writer article, drawn on demand (src/lib/cover-art.ts).
 //
@@ -62,18 +63,21 @@ export async function GET(_req: Request, { params }: { params: Promise<{ draftId
   // The site's colours, when we have read them (lib/hosted-theme.ts): the
   // cover is drawn in them. No theme read (or a DB without the column) = the
   // house look.
-  let projectRes = await db().from("projects").select("name, hosted_theme").eq("id", draft.project_id).maybeSingle();
+  let projectRes = await db().from("projects").select("name, hosted_theme, content_prefs").eq("id", draft.project_id).maybeSingle();
   if (projectRes.error) projectRes = (await db().from("projects").select("name").eq("id", draft.project_id).maybeSingle()) as typeof projectRes;
-  const projectRow = projectRes.data as { name: string; hosted_theme?: unknown } | null;
+  const projectRow = projectRes.data as { name: string; hosted_theme?: unknown; content_prefs?: unknown } | null;
   const siteName = projectRow?.name ?? "";
   const theme = projectRow?.hosted_theme ? normalizeTheme(projectRow.hosted_theme) : null;
+  // A site with its own cover palette (lib/site-style.ts) is drawn in exactly
+  // those colours, whatever theme was read off its homepage.
+  const own = siteStyleOf({ content_prefs: projectRow?.content_prefs ?? null })?.cover ?? null;
 
   const inputs = {
     subjectSvg: draft.cover_svg ?? null,
     title: draft.title ?? "",
     siteName,
     seed: draft.slug || draftId,
-    theme: theme && theme.source !== "default" ? { accent: theme.accent, mode: theme.mode } : null,
+    theme: own ? { accent: own.palette.accent, mode: "light" as const, palette: own.palette } : theme && theme.source !== "default" ? { accent: theme.accent, mode: theme.mode } : null,
   };
   // The kept render is keyed by what it was drawn from, so a new title, a
   // re-read theme or a drawing attached later gets a fresh picture; the old

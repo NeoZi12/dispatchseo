@@ -8,6 +8,7 @@ import { backendBaseUrl } from "./pipeline-pack";
 import { db } from "./db";
 import { isFreeProject } from "./billing";
 import { creditParts } from "./hosted-blog";
+import { siteStyleOf, withFigures, type FrontmatterLine, type SiteStyle } from "./site-style";
 
 // Publishing an article into the customer's own Git repository - from our
 // server, not from an agent in their CI.
@@ -429,7 +430,41 @@ export type ArticleFileInput = {
   /** The free plan's visible credit (hosted-blog.ts creditParts): when given,
    *  the body ends with it as its own line. Paid plans pass nothing. */
   credit?: { href: string; madeWith: string } | null;
+  /** The site's own article style (lib/site-style.ts). Absent on every site
+   *  but the few that have one; everything below then behaves as it always
+   *  has. */
+  style?: SiteStyle | null;
+  /** Inline diagrams committed beside the cover (lib/article-figures.ts):
+   *  each is written as an image line at the end of its section. */
+  figures?: { heading: string; alt: string; ref: string }[] | null;
 };
+
+/** A frontmatter value on one bare line, for a site whose own parser reads
+ *  `key: value` and nothing more (site-style.ts): no quoting, no escapes,
+ *  line breaks folded to spaces. */
+function bareValue(value: string): string {
+  return value.replace(/\s*[\r\n]+\s*/g, " ").trim();
+}
+
+/** The frontmatter a site's own style spells out, line by line. */
+function styledFrontmatter(lines: FrontmatterLine[], article: ArticleFileInput): string[] {
+  const out: string[] = [];
+  const haystack = `${article.title}\n${article.primaryKeyword}`;
+  for (const line of lines) {
+    if ("from" in line) {
+      const value =
+        line.from === "title" ? article.title
+        : line.from === "description" ? article.metaDescription
+        : line.from === "date" ? article.dateIso
+        : line.from === "cover" ? (article.coverPath ?? "")
+        : article.primaryKeyword;
+      if (bareValue(value)) out.push(`${line.key}: ${bareValue(value)}`);
+    } else if (!line.when || line.when.some((w) => haystack.includes(w))) {
+      out.push(`${line.key}: ${line.value}`);
+    }
+  }
+  return out;
+}
 
 /** The free plan's credit as a repo article carries it: one line under the
  *  body, above the signature. One spelling, so the edit path (article-owner.ts)
@@ -532,6 +567,34 @@ export function sampleCoverKey(sample: ParsedSample | null): string | null {
  * fields we cannot know - a wrong `author` is worse than a missing one.
  */
 export function buildArticleFile(sample: ParsedSample | null, article: ArticleFileInput): string {
+  const style = article.style ?? null;
+  if (style?.frontmatter || style?.plainBody) {
+    // A site with its own file shape: its frontmatter as spelled out (or the
+    // mirrored one below when only the body is its own), and on a plainBody
+    // site no raw HTML at all - no signature element, no HTML credit line -
+    // because its renderer prints tags as text.
+    const fm = style.frontmatter ? styledFrontmatter(style.frontmatter, article) : mirroredFrontmatter(sample, article);
+    const tail = style.plainBody ? "" : `${article.credit ? `\n\n${creditLine(article.credit)}` : ""}${article.draftId ? `\n\n${articleSignature(article.draftId)}` : ""}`;
+    return `---\n${fm.join("\n")}\n---\n\n${bodyWithFaq(article, sample)}${tail}\n`;
+  }
+  const lines = mirroredFrontmatter(sample, article);
+
+  // The signature is the file's last line, outside the frontmatter and after
+  // the FAQ: an inline element both .md and .mdx accept (article-signature.ts
+  // says why not a comment), rendering nothing.
+  const signature = article.draftId ? `\n\n${articleSignature(article.draftId)}` : "";
+  // The free plan's credit, the same link the hosted blog prints. Inline
+  // HTML, like the signature: an <a> is valid in .md and in .mdx alike, and
+  // it is the only form that carries rel="sponsored" (a markdown link
+  // cannot). page-marks.ts finds it by its ?ref= address.
+  const credit = article.credit
+    ? `\n\n${creditLine(article.credit)}`
+    : "";
+  return `---\n${lines.join("\n")}\n---\n\n${bodyWithFaq(article, sample)}${credit}${signature}\n`;
+}
+
+/** The frontmatter lines shaped like the sample's (see buildArticleFile). */
+function mirroredFrontmatter(sample: ParsedSample | null, article: ArticleFileInput): string[] {
   const lines: string[] = [];
   const emitted = new Set<string>();
   const push = (key: string, value: string) => {
@@ -580,19 +643,7 @@ export function buildArticleFile(sample: ParsedSample | null, article: ArticleFi
   if (article.primaryKeyword.trim() && !(sample && "keyword" in sample.raw)) {
     push("keyword", yamlDoubleQuote(article.primaryKeyword));
   }
-
-  // The signature is the file's last line, outside the frontmatter and after
-  // the FAQ: an inline element both .md and .mdx accept (article-signature.ts
-  // says why not a comment), rendering nothing.
-  const signature = article.draftId ? `\n\n${articleSignature(article.draftId)}` : "";
-  // The free plan's credit, the same link the hosted blog prints. Inline
-  // HTML, like the signature: an <a> is valid in .md and in .mdx alike, and
-  // it is the only form that carries rel="sponsored" (a markdown link
-  // cannot). page-marks.ts finds it by its ?ref= address.
-  const credit = article.credit
-    ? `\n\n${creditLine(article.credit)}`
-    : "";
-  return `---\n${lines.join("\n")}\n---\n\n${bodyWithFaq(article, sample)}${credit}${signature}\n`;
+  return lines;
 }
 
 /** The article body plus its FAQ as plain markdown. The gate guarantees every
@@ -607,7 +658,12 @@ export function bodyWithFaq(article: ArticleFileInput, sample: ParsedSample | nu
   const withTitle = sample?.bodyHasH1 ? article.markdown : article.markdown.replace(/^\s*#\s+[^\n]*\n+/, "");
   const linked = relativizeOwnLinks(withTitle, article.siteDomain).trim();
   // The picture on the article's own page, where this site's posts put it.
-  const body = article.coverPath && sample?.bodyShowsCover ? withBodyCover(linked, article.title, article.coverPath) : linked;
+  let body = article.coverPath && sample?.bodyShowsCover ? withBodyCover(linked, article.title, article.coverPath) : linked;
+  // A site with its own style (site-style.ts): its word for the opening
+  // summary, and its inline diagrams under the sections they belong to.
+  const label = article.style?.tldrLabel;
+  if (label) body = body.replace(/^>\s*\*\*TL;DR:?\*\*:?/im, `> **${label}**:`);
+  if (article.figures?.length) body = withFigures(body, article.figures);
   const faq = (article.faq ?? []).filter(
     (f) => f && typeof f.question === "string" && typeof f.answer === "string" && f.question.trim() && f.answer.trim(),
   );
@@ -1275,6 +1331,28 @@ export async function publishDraftToRepo(
     }
   }
 
+  // THE INLINE DIAGRAMS of a site whose style has them (site-style.ts), kept
+  // with the draft by the writer: each is committed as an .svg in the
+  // cover's folder and named in the body. Best-effort, like the cover.
+  const style = siteStyleOf(project);
+  const figureRefs: { heading: string; alt: string; ref: string }[] = [];
+  const figureTarget = style?.figures && coverKey ? (coverTarget ?? coverTargetFor(dir, allPaths, sampleCover, slug)) : null;
+  if (figureTarget) {
+    try {
+      const { loadFigures } = await import("./article-figures");
+      const folder = figureTarget.repoPath.slice(0, figureTarget.repoPath.lastIndexOf("/"));
+      const refFolder = figureTarget.ref.slice(0, figureTarget.ref.lastIndexOf("/"));
+      for (const f of await loadFigures(draft.id)) {
+        const path = `${folder}/${slug}-${f.name}.svg`;
+        if (allPaths.includes(path)) continue; // never over a file already there
+        treeEntries.push({ path, mode: "100644", type: "blob", content: f.svg });
+        figureRefs.push({ heading: f.heading, alt: f.alt, ref: `${refFolder}/${slug}-${f.name}.svg` });
+      }
+    } catch (err) {
+      console.warn(`[publish-repo] figures dropped for ${slug}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   const fileName = chooseFileName(dirFiles, slug, ".mdx", dateIso);
   const repoPath = `${dir}/${fileName}`;
   const content = buildArticleFile(sample, {
@@ -1289,6 +1367,8 @@ export async function publishDraftToRepo(
     faqHeading: faqHeadingFor(project.language_code),
     draftId: draft.id,
     credit: (await isFreeProject(project.id)) ? creditParts(project, draft.id) : null,
+    style,
+    figures: figureRefs,
   });
   treeEntries.unshift({ path: repoPath, mode: "100644", type: "blob", content });
 
