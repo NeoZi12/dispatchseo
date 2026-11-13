@@ -52,6 +52,7 @@ import {
   type JudgedCandidate,
 } from "./math";
 import { blockedTopicsOf } from "./prefs";
+import { isOperator } from "./operator";
 
 // Keyword research without an agent.
 //
@@ -118,9 +119,12 @@ const MODEL_FIRST_JUDGE_CALLS = 3;
 // it matches by Google category, and for short seeds returned 300 of 300
 // off-topic rows on every site that reached it ("easy bake oven" for "easy
 // render", "shrek react" for "tanstack fetch").
-// Selected per run by researchV2Enabled(free): env RESEARCH_V2 = "all" |
-// "free" | unset (off). Measured on the shadow route before any default
-// moves (src/app/api/cron/research-shadow).
+// Selected per run by researchV2Enabled(free, operatorSite): env RESEARCH_V2
+// = "all" | "free" | unset (off). Measured on the shadow route before any
+// default moves (src/app/api/cron/research-shadow). "free" also covers the
+// operator's own sites (OPERATOR_USER_IDS, cloud only): the operator pays
+// their keyword data either way, and a paying customer's research is the one
+// thing that waits for "all" (2026-11-13).
 const MODEL_FIRST_KEYWORDS_V2 = 150;
 const MODEL_FIRST_JUDGE_CALLS_V2 = 5;
 /** Seeds per round of keyword_suggestions under v2 (rung 1, then backup). */
@@ -133,9 +137,9 @@ const V2_SERP_SCORE_MAX = 6;
  *  ~$0.0001); still bounded. */
 const MAX_JUDGE_CALLS_V2 = 15;
 
-export function researchV2Enabled(free: boolean): boolean {
+export function researchV2Enabled(free: boolean, operatorSite = false): boolean {
   const v = (process.env.RESEARCH_V2 ?? "").trim().toLowerCase();
-  return v === "all" || v === "1" || v === "true" || (v === "free" && free);
+  return v === "all" || v === "1" || v === "true" || (v === "free" && (free || operatorSite));
 }
 // 100, not 50 (2026-11-09): Labs bills $0.01 per request and $0.0001 per
 // row, so one call for 100 rows ($0.02) buys twice the candidates of two
@@ -464,7 +468,8 @@ export async function researchReadiness(project: Project, opts: { skipPlanGate?:
 }
 
 export type RunResearchOptions = {
-  /** Research-v2 on or off for this run; default researchV2Enabled(free). */
+  /** Research-v2 on or off for this run; default researchV2Enabled(free,
+   *  operatorSite). */
   v2?: boolean;
   /** Decide everything, write nothing: no ideas queued, no refusals stored,
    *  no dead seeds, no state, no stamp. The outcome's `added` is what would
@@ -544,7 +549,7 @@ export async function runResearch(project: Project, now = new Date(), opts: RunR
   // never buys the domain-strength lookup: a free site reads as DR 0, which
   // is the strict KD zone a new small site belongs in anyway.
   const free = isFreePlan(plan);
-  const v2 = opts.v2 ?? researchV2Enabled(free);
+  const v2 = opts.v2 ?? researchV2Enabled(free, isOperator(project.owner_user_id));
   const visibleNeeded = ideasNeeded(approvedCount ?? 0, plan.articlesPerWeek);
   // The target scales with the plan (math.ts backlogTarget): eight weeks of
   // the site's own cadence, not a flat hundred, so a 1-a-week site stops
