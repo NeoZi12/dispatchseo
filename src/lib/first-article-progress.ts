@@ -263,6 +263,22 @@ export async function firstArticleProgress(
   return {
     live: false,
     launched: true,
-    progress: { blog, google, reading, topics, writing, publishing, keywordsFound, topic, liveUrl: null, stuck, blocker, review },
+    progress: {
+      blog,
+      google,
+      reading,
+      topics,
+      writing,
+      publishing,
+      keywordsFound,
+      topic,
+      liveUrl: null,
+      // The hosted blog's own address (it is /articles on a site that keeps
+      // its own /blog); a repo-route site keeps the card's generic wording.
+      blogAddress: target === "hosted" && project.hosted_key ? hostedBase(project).replace(/^https?:\/\//, "") : null,
+      stuck,
+      blocker,
+      review,
+    },
   };
 }

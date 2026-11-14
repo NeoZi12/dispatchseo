@@ -37,6 +37,9 @@ export type FirstArticleProgress = {
   topic?: string | null;
   /** The live URL, once published. */
   liveUrl?: string | null;
+  /** Where the blog answers, without the scheme ("yoursite.com/articles"),
+   *  once it is known: not every site's blog is at /blog. */
+  blogAddress?: string | null;
   /** Steps waiting on something only the owner (or Google) can do. */
   stuck?: Partial<Record<ProgressStep, StuckNote>> | null;
   /** The one thing standing between a WRITTEN article and the site, when
@@ -324,7 +327,7 @@ export function FirstArticleWait({ siteName, progress: p, estimate = "usually 20
             index={0}
             state={lovable ? "you" : p.blog}
             label={lovable ? "Press Publish in Lovable" : "Switching on your blog"}
-            detail={lovable ? "The one click only you can do. Your blog is on right after." : (note("blog") ?? (p.blog === "done" ? "One small change to your site. yoursite.com/blog answers." : undefined))}
+            detail={lovable ? "The one click only you can do. Your blog is on right after." : (note("blog") ?? (p.blog === "done" ? `One small change to your site. ${p.blogAddress ?? "yoursite.com/blog"} answers.` : undefined))}
           />
           {p.google ? <StepRow index={1} state={p.google} label="Google confirms the site is yours" detail={note("google") ?? (p.google === "done" ? "It\u2019s in your Search Console now." : undefined)} /> : null}
           <StepRow index={0} state={p.reading} label="Reading your site" detail={note("reading") ?? (p.reading === "done" ? "What you sell, and to whom." : undefined)} />
