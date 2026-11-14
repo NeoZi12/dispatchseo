@@ -19,7 +19,7 @@ jobs:
       pull-requests: write
       issues: write # gh label create
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Open and close a throwaway PR from a workflow
         env:

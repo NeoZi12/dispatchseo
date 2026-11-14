@@ -50,7 +50,7 @@ jobs:
       id-token: write
       actions: read # the outcome report reads which step failed
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The dead-man's cron must not redo work the backend's dispatch already
       # did earlier the same day. Best-effort: missing field, non-200, or a

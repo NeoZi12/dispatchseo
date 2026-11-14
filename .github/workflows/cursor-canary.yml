@@ -52,7 +52,7 @@ jobs:
     continue-on-error: true
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Deliberately NOT version-pinned. A pinned builder wants a fixed version;
       # a canary wants to learn what the CURRENT CLI does, so it installs
