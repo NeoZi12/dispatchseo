@@ -103,8 +103,171 @@ export function withNetlifyRedirects(existing: string | null, backend: string, s
 export type PlanFile = { path: string; content: string | null };
 
 export type RewritePlan =
-  | { kind: "vercel" | "netlify" | "next-proxy" | "next-config" | "next-remove-blog"; files: PlanFile[] }
-  | { kind: "manual" };
+  | { kind: "vercel" | "netlify" | "next-proxy" | "next-config" | "next-remove-blog" | "tanstack" | "lovable"; files: PlanFile[] }
+  | { kind: "manual"; why?: ManualWhy };
+
+/** Why no rule could be written, where the reason changes what happens next:
+ *    route-taken     the app already has a page at that path (a TanStack
+ *                    route file); planRepoRewrite tries a second path.
+ *    lovable-legacy  a Lovable project on Lovable's older setup (a Vite
+ *                    single-page app): nothing runs on the server, so there
+ *                    is nowhere to forward from until the owner upgrades it
+ *                    in Lovable. Setup says exactly that.
+ *    start-too-old   a TanStack Start version from before route files could
+ *                    answer requests themselves. */
+export type ManualWhy = "route-taken" | "lovable-legacy" | "start-too-old";
+
+// --- TanStack Start apps, and Lovable ------------------------------------
+//
+// A TanStack Start app answers requests from route files, so ONE new file -
+// src/routes/<path>/$.ts, a splat route with a GET handler - forwards the
+// path and everything under it, on whatever host runs the app. Nothing of
+// the owner's is edited, and the generated route tree is rebuilt by the
+// app's own build.
+//
+// LOVABLE is why this exists. Every Lovable project made since 2026-05-13 is
+// a TanStack Start app, and on Lovable's hosting a push to the repo never
+// goes live: only the Publish button in Lovable does. So articles committed
+// to the repo would each wait for a click, while this one file needs ONE
+// click, ever - after it, every article is live the moment we publish it.
+// Hand-tested 2026-11-14 on a new Lovable project (crumb-test-bakery): the
+// file pushed from GitHub, one Publish, and <path>, <path>/ and
+// <path>/<page> all answered from the other origin with our headers intact;
+// a second push changed nothing live until the next Publish; a file in
+// public/ was served at the site root.
+//
+// Two kinds write the same file. "lovable" is that file on Lovable's own
+// hosting, where the owner's Publish click is what makes it live (the
+// dashboard asks for that one click); "tanstack" is the same app deployed
+// anywhere that builds on push.
+
+/** `<dir>` when this is a TanStack Start app whose route files can answer
+ *  requests, "too-old" when its version predates that, null when it is not
+ *  a TanStack Start app at all. */
+export function tanstackRoutes(paths: string[], packageJson: string | null): { dir: string } | "too-old" | null {
+  const spec = depSpec(packageJson, "@tanstack/react-start");
+  if (spec === null) return null;
+  const dir = ["src/routes", "app/routes"].find((d) => paths.some((p) => new RegExp(`^${d}/__root\\.(tsx|jsx|ts|js)$`).test(p)));
+  if (!dir) return null;
+  // createFileRoute(...)({ server: { handlers } }) is the 1.x release
+  // candidates' API (1.132, autumn 2025, to our knowledge; Lovable's
+  // template, hand-tested, pins 1.168). Before it, server routes were a
+  // different API, and this file would not build there. An unreadable
+  // version ("latest", a workspace link) is taken as current.
+  const v = spec.match(/(\d+)\.(\d+)/);
+  if (v && (Number(v[1]) < 1 || (Number(v[1]) === 1 && Number(v[2]) < 132))) return "too-old";
+  return { dir };
+}
+
+/** A dependency's version spec from package.json (either list), "" when it
+ *  is listed with no readable spec, null when it is not listed. */
+function depSpec(packageJson: string | null, name: string): string | null {
+  if (!packageJson) return null;
+  try {
+    const pkg = JSON.parse(packageJson) as { dependencies?: Record<string, unknown>; devDependencies?: Record<string, unknown> };
+    const spec = pkg.dependencies?.[name] ?? pkg.devDependencies?.[name];
+    return spec === undefined ? null : typeof spec === "string" ? spec : "";
+  } catch {
+    return null;
+  }
+}
+
+/** Is this repo a Lovable project, and on which of Lovable's two setups?
+ *  "start" = the TanStack Start template (every project since 2026-05-13,
+ *  and older ones their owner upgraded); "legacy" = the Vite single-page
+ *  template before it. Read from what Lovable itself puts in the repo: its
+ *  build config package, its component tagger, or its .lovable/ folder. */
+export function lovableProject(paths: string[], packageJson: string | null): "start" | "legacy" | null {
+  const marked =
+    depSpec(packageJson, "@lovable.dev/vite-tanstack-config") !== null ||
+    depSpec(packageJson, "lovable-tagger") !== null ||
+    paths.some((p) => p.startsWith(".lovable/"));
+  if (!marked) return null;
+  return depSpec(packageJson, "@tanstack/react-start") !== null ? "start" : "legacy";
+}
+
+/** Does a route file of the app already answer at /<path>? Flat names
+ *  (blog.tsx, blog.index.tsx, blog_.$slug.tsx) and folders (blog/...) alike;
+ *  layout folders (_app/) and groups ((marketing)/) add nothing to the
+ *  address, so a blog.tsx inside one counts too. */
+export function tanstackRouteTaken(paths: string[], dir: string, path: string, ours: string[] = []): boolean {
+  return paths.some((p) => {
+    if (!p.startsWith(`${dir}/`) || ours.includes(p)) return false;
+    const rel = p.slice(dir.length + 1).replace(/\.(tsx|ts|jsx|js|mdx)$/, "");
+    const segments = rel
+      .split("/")
+      .flatMap((part) => part.split("."))
+      .filter((part) => part && !part.startsWith("_") && !/^\(.*\)$/.test(part));
+    return (segments[0] ?? "").replace(/_$/, "").toLowerCase() === path.toLowerCase();
+  });
+}
+
+/** The route file. One plain page name at most reaches us (an article,
+ *  feed.xml, sitemap.xml): the name is decoded (a router may hand it over
+ *  either way, and decoding first means the check sees what we would send)
+ *  and one with a slash, a dot-dot or anything left encoded is answered 404
+ *  here, so no address typed on the owner's domain can walk out of their
+ *  own blog on our side. Only the headers a
+ *  blog page needs travel back - its security policy among them, the same
+ *  one a Vercel or Netlify rewrite carries: an article page must never run a
+ *  script on the owner's domain (hosted-blog.ts CSP). Never an encoding
+ *  header: the body is passed on as it is, and the host compresses it. */
+export function tanstackRouteContent(dest: string, opts: { ts: boolean; path?: string }): string {
+  const P = pub(opts.path);
+  const t = opts.ts;
+  return (
+    `import { createFileRoute } from "@tanstack/react-router";\n` +
+    `\n` +
+    `// Added by DispatchSEO: ${P} and everything under it is served by your\n` +
+    `// hosted blog, under your own domain. Remove this file to take it back.\n` +
+    `const BLOG = "${dest}";\n` +
+    `const PASS = [\n` +
+    `  "content-type",\n` +
+    `  "cache-control",\n` +
+    `  "etag",\n` +
+    `  "last-modified",\n` +
+    `  "location",\n` +
+    `  "x-robots-tag",\n` +
+    `  "content-security-policy",\n` +
+    `  "x-content-type-options",\n` +
+    `  "referrer-policy",\n` +
+    `  "${HOSTED_HEADER}",\n` +
+    `];\n` +
+    `\n` +
+    `async function forward(request${t ? ": Request" : ""}, rest${t ? ": string | undefined" : ""})${t ? ": Promise<Response>" : ""} {\n` +
+    `  let page = (rest ?? "").replace(/\\/$/, "");\n` +
+    `  try {\n` +
+    `    page = decodeURIComponent(page);\n` +
+    `  } catch {\n` +
+    `    page = "/";\n` +
+    `  }\n` +
+    `  if (page && !/^[\\p{L}\\p{N}][\\p{L}\\p{N}._~-]*$/u.test(page)) {\n` +
+    `    return new Response("No such page", { status: 404 });\n` +
+    `  }\n` +
+    `  const target = BLOG + (page ? "/" + encodeURIComponent(page) : "") + new URL(request.url).search;\n` +
+    `  let upstream${t ? ": Response" : ""};\n` +
+    `  try {\n` +
+    `    upstream = await fetch(target, { redirect: "manual" });\n` +
+    `  } catch {\n` +
+    `    return new Response("The blog is not answering right now.", { status: 502 });\n` +
+    `  }\n` +
+    `  const headers = new Headers();\n` +
+    `  for (const name of PASS) {\n` +
+    `    const value = upstream.headers.get(name);\n` +
+    `    if (value) headers.set(name, value);\n` +
+    `  }\n` +
+    `  return new Response(upstream.body, { status: upstream.status, headers });\n` +
+    `}\n` +
+    `\n` +
+    `export const Route = createFileRoute("${P}/$")({\n` +
+    `  server: {\n` +
+    `    handlers: {\n` +
+    `      GET: ({ request, params }) => forward(request, params._splat),\n` +
+    `    },\n` +
+    `  },\n` +
+    `});\n`
+  );
+}
 
 // --- Next.js sites that already have a /blog page -------------------------
 //
@@ -235,6 +398,10 @@ export type RepoFiles = {
   /** The app's next.config.* (path relative to the app root) and its text. */
   nextConfig: { path: string; content: string } | null;
   packageJson: string | null;
+  /** Route files in the app that are OURS (a forwarding file from an earlier
+   *  plan, read and recognised by its first comment): planning the same path
+   *  again must not find it "taken" by its own file. */
+  ownRoutes?: string[];
 };
 
 /** Decide the files from the repo's listing (relative to the deployed app). */
@@ -311,11 +478,97 @@ export function planRewrite(paths: string[], existing: RepoFiles, backend: strin
     }
     return { kind: "manual" };
   }
-  if (has("vercel.json") && host !== "other") {
+  // A TanStack Start app forwards from inside itself, on any host. On
+  // Lovable's hosting that is the only way in, and it is its own kind: the
+  // owner's Publish click is what makes it live there.
+  const lovable = lovableProject(paths, existing.packageJson);
+  const onLovableHosting = lovable !== null && host !== "vercel" && host !== "netlify";
+  const start = tanstackRoutes(paths, existing.packageJson);
+  let why: ManualWhy | undefined;
+  if (start && !avoid.has("tanstack") && !avoid.has("lovable")) {
+    // Too old for a route file: not the end - a host rule below may still
+    // apply (the same app on Vercel), and only then is it "manual".
+    if (start === "too-old") why = "start-too-old";
+    else {
+      if (tanstackRouteTaken(paths, start.dir, path, existing.ownRoutes)) return { kind: "manual", why: "route-taken" };
+      const ts = has("tsconfig.json");
+      // Our own file from an earlier plan is written over in place, under
+      // the name it already has.
+      const file = existing.ownRoutes?.find((p) => new RegExp(`^${start.dir}/${path}/\\$\\.(ts|js)$`).test(p)) ?? `${start.dir}/${path}/$.${ts ? "ts" : "js"}`;
+      return {
+        kind: onLovableHosting ? "lovable" : "tanstack",
+        files: [{ path: file, content: tanstackRouteContent(dest, { ts: file.endsWith(".ts"), path }) }],
+      };
+    }
+  }
+  // Lovable's older setup, on Lovable's own hosting: a single-page app with
+  // nothing running on the server, and a host that takes no forwarding rule.
+  if (lovable === "legacy" && onLovableHosting) return { kind: "manual", why: "lovable-legacy" };
+  // vercel.json is read by Vercel only, from the deployed app's own
+  // directory: write one when the repo already has it, or when the live site
+  // answered from Vercel AND this is plainly the app (a repo of several apps
+  // with no marker would get the file at a root Vercel never reads).
+  const severalApps = paths.some((p) => /^(apps|packages)\//.test(p));
+  if ((has("vercel.json") && host !== "other") || (host === "vercel" && !severalApps)) {
     const plan = vercelPlan();
     if (plan) return plan;
   }
-  return { kind: "manual" };
+  return why ? { kind: "manual", why } : { kind: "manual" };
+}
+
+/** Is this site a Lovable project served by Lovable's own hosting? There a
+ *  push to the repo never reaches the live site (only Publish in Lovable
+ *  does), so an article committed to the repo would wait for a click every
+ *  time: such a site always takes the hosted blog, whatever its repo holds.
+ *  False when it could not be read - the caller keeps its usual answer. */
+export async function onLovableHosting(project: Project): Promise<boolean> {
+  const repo = project.github_repo;
+  if (!repo) return false;
+  const token = await tokenForRef(project);
+  if (!token) return false;
+  const [pkg, marker] = await Promise.all([
+    githubApi(token, "GET", `/repos/${repo}/contents/package.json`),
+    githubApi(token, "GET", `/repos/${repo}/contents/.lovable/project.json`),
+  ]);
+  const content = pkg.json?.content;
+  const packageJson = typeof content === "string" ? Buffer.from(content.replace(/\n/g, ""), "base64").toString("utf8") : null;
+  if (lovableProject(marker.status === 200 ? [".lovable/project.json"] : [], packageJson) === null) return false;
+  const host = await detectSiteHost(project);
+  return host !== "vercel" && host !== "netlify";
+}
+
+/** A forwarding change that only goes live when the owner presses Publish in
+ *  Lovable, and has not yet. The dashboard asks for that one click while
+ *  this is true (first-article-progress.ts), and Google's confirmation waits
+ *  for the same click (job-handlers/launch.ts). */
+export function lovablePublishPending(project: Pick<Project, "publish_target" | "hosted_rewrite_state" | "hosted_rewrite_live_at">): boolean {
+  // "live:lovable" = it answered once (checkRewriteLive). Live is a one-way
+  // door for this question: a later blip that clears the stamp must not put
+  // an established site back on "press Publish", or mail its owner again.
+  const state = project.hosted_rewrite_state ?? "";
+  return project.publish_target === "hosted" && !project.hosted_rewrite_live_at && !state.startsWith("live:") && forwardingKind(state) === "lovable";
+}
+
+/** The Lovable forwarding file is merged into the repo (so a Publish click
+ *  now carries it), as far as the row knows. */
+export function lovableFileMerged(project: Pick<Project, "hosted_rewrite_state">): boolean {
+  return (project.hosted_rewrite_state ?? "").startsWith("merged:lovable");
+}
+
+/** An owner who merges the forwarding pull request themselves (a site not on
+ *  Auto) leaves the row saying "opened": nothing of ours ran. Asked while
+ *  their first-article card is open, so it can move from "merge it" to
+ *  "press Publish". One GitHub read; true when the row was moved on. */
+export async function syncRewriteMerged(project: Project): Promise<boolean> {
+  const repo = project.github_repo;
+  const number = (project.hosted_rewrite_pr_url ?? "").match(/\/pull\/(\d+)/)?.[1];
+  if (!repo || !number || !(project.hosted_rewrite_state ?? "").startsWith("opened:")) return false;
+  const token = await tokenForRef(project);
+  if (!token) return false;
+  const pr = await githubApi(token, "GET", `/repos/${repo}/pulls/${number}`);
+  if (pr.status !== 200 || !pr.json?.merged) return false;
+  const { data } = await db().from("projects").update({ hosted_rewrite_state: mergedState(project) }).eq("id", project.id).eq("hosted_rewrite_state", project.hosted_rewrite_state as string).select("id");
+  return Boolean(data?.length);
 }
 
 /**
@@ -384,6 +637,8 @@ export async function switchToHostedBlog(project: Project, opts: { secondPath?: 
       // without it the merge saw whatever the row held before (nothing, or
       // an older plan's kind) and judged the wrong kind of change.
       updated.hosted_rewrite_state = `opened:${pr.kind}`;
+      // openRewritePr moved it to a second path (the app's own /blog page).
+      if (pr.path !== hostedPath(updated)) updated.hosted_path = pr.path;
     }
     // On Auto the owner was promised a blog that switches on by itself, so
     // the forwarding pull request is merged here too (launch.ts does the
@@ -496,7 +751,41 @@ export function looksLikeBlogIndex(html: string): boolean {
   return /\bblog\b/i.test(title) && links.size >= 1;
 }
 
-export async function openRewritePr(project: Project, opts: PlanOptions = {}): Promise<{ url: string; merged: boolean; kind: RewritePlan["kind"] } | null> {
+/** What planning the forwarding rule read and decided (planRepoRewrite).
+ *  `treeOk` / `readFailed` say whether the answer rests on a full read of the
+ *  repo: a dry run (publish-route-check.ts) must not refuse a site on a plan
+ *  made from a listing or a file GitHub did not return. */
+export type RepoRewritePlanning = {
+  token: string;
+  repo: string;
+  baseBranch: string;
+  headSha: string;
+  baseTree: string;
+  /** The deployed app's directory with a trailing slash, "" at the root. */
+  prefix: string;
+  /** Paths relative to the deployed app. */
+  appPaths: string[];
+  ambiguous: boolean;
+  /** The host the plan was made for; null when the monorepo was ambiguous
+   *  (no plan was attempted, so the host was never read). */
+  host: SiteHost | null;
+  files: RepoFiles | null;
+  plan: RewritePlan;
+  /** The public path the plan listens on. The project's own, except when
+   *  the app already has a page there and a second path was free. */
+  path: string;
+  treeOk: boolean;
+  readFailed: boolean;
+};
+
+/**
+ * The planning half of openRewritePr: read the repo's tree and the files the
+ * rule edits, find the deployed app, read the host, and decide the plan.
+ * Reads only - no branch, no pull request, no database write. Null when
+ * GitHub could not be read far enough to plan. `key` is the hosted key the
+ * rule points at (the plan's kind never depends on it).
+ */
+export async function planRepoRewrite(project: Project, key: string, opts: PlanOptions = {}): Promise<RepoRewritePlanning | null> {
   const repo = project.github_repo;
   if (!repo) return null;
   const token = await tokenForRef(project);
@@ -513,6 +802,7 @@ export async function openRewritePr(project: Project, opts: PlanOptions = {}): P
   const baseTree = (headCommit.json?.tree as { sha?: string } | undefined)?.sha;
   if (!baseTree) return null;
   const treeRes = await githubApi(token, "GET", `/repos/${repo}/git/trees/${baseTree}?recursive=1`);
+  const treeOk = treeRes.status === 200 && treeRes.json?.truncated !== true;
   const paths = ((treeRes.json?.tree as { path?: string; type?: string }[] | undefined) ?? []).filter((e) => e.type === "blob").map((e) => String(e.path ?? ""));
 
   // The deployed app's own directory (a monorepo's apps/<x>), with paths
@@ -520,37 +810,78 @@ export async function openRewritePr(project: Project, opts: PlanOptions = {}): P
   const app = siteAppRoot(paths);
   const prefix = app.root ? `${app.root}/` : "";
   const appPaths = prefix ? paths.filter((p) => p.startsWith(prefix)).map((p) => p.slice(prefix.length)) : paths;
+  let readFailed = false;
   const read = async (rel: string): Promise<string | null> => {
     const path = `${prefix}${rel}`;
     if (!paths.includes(path)) return null;
     const res = await githubApi(token, "GET", `/repos/${repo}/contents/${encodeURI(path)}?ref=${encodeURIComponent(baseBranch)}`);
     const content = res.json?.content;
+    if (typeof content !== "string") readFailed = true;
     return typeof content === "string" ? Buffer.from(content.replace(/\n/g, ""), "base64").toString("utf8") : null;
   };
-  if (!project.hosted_key) return null;
   let planned: RewritePlan = { kind: "manual" };
+  let path = hostedPath(project);
+  let host: SiteHost | null = null;
+  let files: RepoFiles | null = null;
   if (!app.ambiguous) {
-    const host = opts.host ?? (await detectSiteHost(project));
+    host = opts.host ?? (await detectSiteHost(project));
     const nextConfigPath = appPaths.find((p) => /^next\.config\.(js|mjs|ts|cjs)$/.test(p)) ?? null;
     const nextConfigText = nextConfigPath ? await read(nextConfigPath) : null;
-    planned = planRewrite(
-      appPaths,
-      {
-        vercelJson: await read("vercel.json"),
-        redirects: (await read("public/_redirects")) ?? (await read("_redirects")),
-        nextConfig: nextConfigPath && nextConfigText ? { path: nextConfigPath, content: nextConfigText } : null,
-        packageJson: await read("package.json"),
-      },
-      backend,
-      project.hosted_key,
-      { blogEmpty: Boolean(opts.blogEmpty), host, avoid: opts.avoid, path: hostedPath(project) },
-    );
+    // A splat route file already sitting where ours would go: ours when it
+    // carries our comment (an earlier plan's file), the owner's otherwise.
+    const ownRoutes: string[] = [];
+    for (const candidate of appPaths.filter((p) => new RegExp(`^(src|app)/routes/(${HOSTED_PATHS.join("|")})/\\$\\.(ts|js)$`).test(p))) {
+      if ((await read(candidate))?.includes("// Added by DispatchSEO:")) ownRoutes.push(candidate);
+    }
+    files = {
+      vercelJson: await read("vercel.json"),
+      redirects: (await read("public/_redirects")) ?? (await read("_redirects")),
+      nextConfig: nextConfigPath && nextConfigText ? { path: nextConfigPath, content: nextConfigText } : null,
+      packageJson: await read("package.json"),
+      ownRoutes,
+    };
+    planned = planRewrite(appPaths, files, backend, key, { blogEmpty: Boolean(opts.blogEmpty), host, avoid: opts.avoid, path });
+    // The app already has a page at /blog (a route file; the live check can
+    // miss one that renders no posts, or is not published yet). Its page is
+    // never shadowed: the hosted blog takes the first second path nothing
+    // on the site or in the repo uses, as it does for a site with a real
+    // blog. Only for a path nobody chose yet.
+    if (planned.kind === "manual" && planned.why === "route-taken" && path === "blog" && !project.hosted_path) {
+      for (const alt of HOSTED_PATHS.slice(1)) {
+        if (!(await pathFree(project, alt))) continue;
+        const again = planRewrite(appPaths, files, backend, key, { blogEmpty: false, host, avoid: opts.avoid, path: alt });
+        if (again.kind === "manual") continue;
+        planned = again;
+        path = alt;
+        break;
+      }
+    }
   }
+  // A route file is only ever added on a full reading of the repo: on a
+  // listing GitHub cut short, "no page at this path" is not known, and the
+  // pull request could replace a route file of the owner's.
+  if ((planned.kind === "tanstack" || planned.kind === "lovable") && !treeOk) planned = { kind: "manual" };
+  return { token, repo, baseBranch, headSha, baseTree, prefix, appPaths, ambiguous: app.ambiguous, host, files, plan: planned, path, treeOk, readFailed };
+}
+
+export async function openRewritePr(project: Project, opts: PlanOptions = {}): Promise<{ url: string; merged: boolean; kind: RewritePlan["kind"]; path: string } | null> {
+  if (!project.github_repo) return null;
+  // Checked before planning rather than after it (as it once was): the
+  // answer is the same null, without the GitHub reads.
+  if (!project.hosted_key) return null;
+  const planning = await planRepoRewrite(project, project.hosted_key, opts);
+  if (!planning) return null;
+  const { token, repo, baseBranch, headSha, baseTree, prefix, plan: planned } = planning;
   if (planned.kind === "manual") {
     await db().from("projects").update({ hosted_rewrite_pr_url: "manual", hosted_rewrite_state: "manual" }).eq("id", project.id);
     return null;
   }
   const plan = planned;
+  // The plan moved to a second path (the app has its own page at /blog):
+  // from here on the project IS at that path - the wording below, the row,
+  // and every address the hosted blog prints.
+  const moved = planning.path !== hostedPath(project);
+  if (moved) project = { ...project, hosted_path: planning.path };
   const files = plan.files.map((f) => ({ ...f, path: `${prefix}${f.path}` }));
 
   const created = await githubApi(token, "POST", `/repos/${repo}/git/refs`, { ref: `refs/heads/${BRANCH}`, sha: headSha });
@@ -574,7 +905,9 @@ export async function openRewritePr(project: Project, opts: PlanOptions = {}): P
   const body =
     `${what.body}\n\n` +
     `\`${base}\` and everything under it is then served by DispatchSEO, under your domain, with your site name and a link back to your site. ` +
-    `Merge it and your articles are live at ${base} within a few minutes of the deploy. Nothing else in your site changes` +
+    (plan.kind === "lovable"
+      ? `Once it is merged, press Publish in Lovable one time and your articles are live at ${base}. Nothing else in your site changes`
+      : `Merge it and your articles are live at ${base} within a few minutes of the deploy. Nothing else in your site changes`) +
     (hostedPath(project) === "blog" ? ". " : `, and your own /blog stays exactly as it is. `) +
     `The same rule for other hosts is on your DispatchSEO settings screen.`;
   let prNumber: number | null = null;
@@ -594,8 +927,8 @@ export async function openRewritePr(project: Project, opts: PlanOptions = {}): P
 
   // Not merged here: launch.ts and switchToHostedBlog merge it on Auto
   // through mergeRewritePr, which also refuses the template-removal kind.
-  await db().from("projects").update({ hosted_rewrite_pr_url: url, hosted_rewrite_state: `opened:${plan.kind}` }).eq("id", project.id);
-  return { url, merged: false, kind: plan.kind };
+  await db().from("projects").update({ hosted_rewrite_pr_url: url, hosted_rewrite_state: `opened:${plan.kind}`, ...(moved ? { hosted_path: planning.path } : {}) }).eq("id", project.id);
+  return { url, merged: false, kind: plan.kind, path: planning.path };
 }
 
 /** Title doubles as the merge guard: a title carrying REMOVES_MARK is the
@@ -632,6 +965,16 @@ const PLAN_WORDS: Record<Exclude<RewritePlan["kind"], "manual">, { title: string
     commit: "A beforeFiles rewrite in next.config: /blog is served by the DispatchSEO hosted blog, under your own domain, ahead of this app's own /blog page.",
     body: "This adds a `beforeFiles` rewrite to your `next.config` so it runs before your app's own `/blog` page is matched.",
   },
+  tanstack: {
+    title: "Forward /blog to your hosted blog",
+    commit: "One new route file: /blog and everything under it is served by the DispatchSEO hosted blog, under your own domain.",
+    body: "This adds one small route file. It answers `/blog` and everything under it by fetching the page from your hosted blog.",
+  },
+  lovable: {
+    title: "Forward /blog to your hosted blog",
+    commit: "One new route file: /blog and everything under it is served by the DispatchSEO hosted blog, under your own domain. It goes live the next time you press Publish in Lovable.",
+    body: "This adds one small route file. It answers `/blog` and everything under it by fetching the page from your hosted blog. It goes live the next time you press **Publish** in Lovable; after that, new articles appear without another Publish.",
+  },
   "next-remove-blog": {
     title: `Forward /blog to your hosted blog ${REMOVES_MARK}`,
     commit: "Removes the template /blog page, which serves no posts, and adds the vercel.json rewrite that serves /blog from the DispatchSEO hosted blog under your own domain.",
@@ -652,7 +995,11 @@ export async function mergeRewritePr(project: Project, prUrl: string): Promise<v
     await mergeRewritePrNow(project, prUrl);
   } catch (e) {
     const why = (e instanceof Error ? e.message : String(e)).slice(0, 200);
-    await db().from("projects").update({ hosted_rewrite_state: `merge-failed: ${why}` }).eq("id", project.id);
+    // The kind rides along ("merge-failed:lovable: ..."): what the change IS
+    // decides what the dashboard asks for and whether it is ever re-planned,
+    // and a refused merge does not change that.
+    const kind = forwardingKind(project.hosted_rewrite_state);
+    await db().from("projects").update({ hosted_rewrite_state: kind ? `merge-failed:${kind}: ${why}` : `merge-failed: ${why}` }).eq("id", project.id);
     throw e;
   }
 }
@@ -714,7 +1061,7 @@ async function mergeRewritePrNow(project: Project, prUrl: string): Promise<void>
     // A different head since the first read is not the commit judged above.
     if (again.status === 200 && (again.json?.head as { sha?: string } | undefined)?.sha === head.sha) mergeable = again.json?.mergeable_state;
   }
-  const kind = /^opened:([a-z-]+)/.exec(String(project.hosted_rewrite_state ?? ""))?.[1] ?? "";
+  const kind = forwardingKind(project.hosted_rewrite_state) ?? "";
   const hostRuleOnly = kind === "vercel" || kind === "netlify";
   if (!hostRuleOnly && !CLEAN.has(String(mergeable ?? "unknown"))) {
     const openedAt = Date.parse(String(state.json.created_at ?? ""));
@@ -745,13 +1092,18 @@ async function mergeRewritePrNow(project: Project, prUrl: string): Promise<void>
 /** "merged:<kind>", the kind carried over from "opened:<kind>"; plain
  *  "merged" when the row predates the kind (treated as unknown). */
 function mergedState(project: Pick<Project, "hosted_rewrite_state">): string {
+  // Already answered once ("live:<kind>"): that says more than "merged".
+  if ((project.hosted_rewrite_state ?? "").startsWith("live:")) return project.hosted_rewrite_state as string;
   const kind = forwardingKind(project.hosted_rewrite_state);
   return kind ? `merged:${kind}` : "merged";
 }
 
 /** The plan kind recorded in hosted_rewrite_state, or null when unknown. */
 export function forwardingKind(state: string | null | undefined): RewritePlan["kind"] | null {
-  const m = (state ?? "").match(/^(?:opened|merged):([a-z-]+)$/);
+  // "opened:<kind>", "merged:<kind>", "live:<kind>" (a Lovable site that has
+  // answered once) and "merge-failed:<kind>: why". An older failure row,
+  // "merge-failed: why", has no kind and reads as unknown.
+  const m = (state ?? "").match(/^(?:opened|merged|live|merge-failed):([a-z-]+)(?::|$)/);
   return m ? (m[1] as RewritePlan["kind"]) : null;
 }
 
@@ -789,8 +1141,34 @@ export async function startHostedLiveWatch(projectId: string): Promise<void> {
 export async function checkRewriteLive(project: Project): Promise<boolean> {
   const res = await fetchProjectUrl(hostedBase(project), project.domain, { timeoutMs: 5_000, userAgent: "DispatchSEO-Check/1.0" });
   const live = res?.headers.get(HOSTED_HEADER) === "1";
-  if (live) await db().from("projects").update({ hosted_rewrite_live_at: new Date().toISOString() }).eq("id", project.id);
-  return live;
+  if (!live) return false;
+  const now = new Date().toISOString();
+  if (!lovablePublishPending(project)) {
+    await db().from("projects").update({ hosted_rewrite_live_at: now }).eq("id", project.id);
+    return true;
+  }
+  // A Lovable site just went live: its owner pressed Publish. Whoever asked
+  // (a page, the scheduler, the watch) only wanted the answer, so the two
+  // things that waited for that click - the "your article is live" email and
+  // Google's confirmation - are handed to the queue (hosted-live.ts). ONCE:
+  // the write below only lands on a row that has never been live, so two
+  // callers noticing the same click, or a caller holding an older copy of
+  // the row, queue one finishing pass between them, and a site that answers
+  // again after a blip (the row then says "live:lovable") queues none.
+  const { data: first } = await db()
+    .from("projects")
+    .update({ hosted_rewrite_live_at: now, hosted_rewrite_state: "live:lovable" })
+    .eq("id", project.id)
+    .is("hosted_rewrite_live_at", null)
+    .neq("hosted_rewrite_state", "live:lovable")
+    .select("id");
+  if (first?.length) {
+    await enqueue({ projectId: project.id, kind: "hosted-live", payload: { finish: true }, idempotencyKey: `hosted-live:${project.id}:finish` }).catch(() => undefined);
+  } else {
+    // Not the first to see it (or the row moved on): just the stamp.
+    await db().from("projects").update({ hosted_rewrite_live_at: now }).eq("id", project.id).is("hosted_rewrite_live_at", null);
+  }
+  return true;
 }
 
 /** The weekly re-probe (autopilot pass): a stamp older than a week is

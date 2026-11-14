@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { enqueue, type Job } from "@/lib/jobs";
 import { getProjectById, publishTarget, type Project } from "@/lib/projects";
-import { checkRewriteLive, mergeRewritePr, replanForwarding } from "@/lib/hosted-rewrite";
+import { checkRewriteLive, lovablePublishPending, mergeRewritePr, replanForwarding } from "@/lib/hosted-rewrite";
 import { notifyFirstArticleLive } from "@/lib/first-article-email";
 
 // Watches a hosted site's own /blog until it answers from us (the marker
@@ -30,6 +30,20 @@ const REPLAN_AFTER_MS = 20 * 60_000;
 export async function runHostedLiveJob(job: Job): Promise<void> {
   const project = await getProjectById(job.project_id);
   if (!project || publishTarget(project) !== "hosted") return;
+  // Queued by checkRewriteLive the moment a Lovable site's forwarding first
+  // answers (its owner pressed Publish): the email and Google's confirmation
+  // both waited for that click, whoever happened to notice it.
+  if (job.payload.finish === true) {
+    // Google first and never thrown: a failure there retries this job, and a
+    // retry must not reach the email a second time. An unconfirmed site is
+    // not lost - the card shows the two Search Console clicks instead.
+    if (project.gsc_oauth_refresh_token && !project.gsc_site_url) {
+      const { finishGoogleAfterPublish } = await import("@/lib/job-handlers/launch");
+      await finishGoogleAfterPublish(project).catch((e) => console.warn(`[hosted-live] ${project.slug}: Google not confirmed after the Lovable publish: ${e instanceof Error ? e.message : String(e)}`));
+    }
+    await emailFirstPublished(project);
+    return;
+  }
   const since = typeof job.payload.since === "string" ? job.payload.since : job.created_at;
   const n = Number(job.payload.n ?? 0);
 
@@ -44,13 +58,17 @@ export async function runHostedLiveJob(job: Job): Promise<void> {
   // Best-effort; the state column says why.
   const pr = project.hosted_rewrite_pr_url;
   const state = project.hosted_rewrite_state ?? "";
-  if (project.auto_merge && pr && pr.startsWith("http") && !state.startsWith("merged") && state !== "owner-merge") {
+  if (project.auto_merge && pr && pr.startsWith("http") && !state.startsWith("merged") && !state.startsWith("live:") && state !== "owner-merge") {
     await mergeRewritePr(project, pr).catch(() => undefined);
   }
 
+  // A Lovable site: checkRewriteLive queues the finishing pass above itself
+  // the moment the site answers, and that pass sends the email - sending it
+  // here too would mail the owner twice.
+  const finishesItself = lovablePublishPending(project);
   const live = await checkRewriteLive(project).catch(() => false);
   if (live) {
-    await emailFirstPublished(project);
+    if (!finishesItself) await emailFirstPublished(project);
     return;
   }
   // Merged twenty minutes ago and still not answering: a Vercel deploy

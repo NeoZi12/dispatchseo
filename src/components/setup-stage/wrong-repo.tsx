@@ -76,7 +76,7 @@ function RepoRoutes({ repo, domain, empty }: { repo: string; domain: string; emp
   );
 }
 
-function RepoTile({ icon, name, sub, lit = false }: { icon: ReactNode; name: string; sub: string; lit?: boolean }) {
+export function RepoTile({ icon, name, sub, lit = false }: { icon: ReactNode; name: string; sub: string; lit?: boolean }) {
   return (
     <div
       title={name}
@@ -96,7 +96,7 @@ function RepoTile({ icon, name, sub, lit = false }: { icon: ReactNode; name: str
   );
 }
 
-function SiteTile({ domain, live }: { domain: string; live: boolean }) {
+export function SiteTile({ domain, live }: { domain: string; live: boolean }) {
   return (
     <div title={domain} className={cx("flex h-full min-w-0 max-w-[7rem] items-center gap-2 rounded-xl border border-line-soft bg-surface-2 px-2.5 py-2 sm:max-w-[12rem] sm:px-3 sm:py-2.5", live ? "" : "opacity-60")}>
       <svg viewBox="0 0 20 20" className="hidden h-4 w-4 shrink-0 text-ink-faint sm:block" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
@@ -116,7 +116,7 @@ function SiteTile({ domain, live }: { domain: string; live: boolean }) {
   );
 }
 
-function Road({ open }: { open: boolean }) {
+export function Road({ open }: { open: boolean }) {
   return (
     <div className="relative h-6 w-full">
       {open ? (

@@ -5,7 +5,8 @@ import { getAutopilotReport, type AutopilotArticle, type AutopilotReport } from 
 import { friendlyError } from "@/lib/autopilot/friendly";
 import { MAX_ATTEMPTS, type JobKind } from "@/lib/jobs";
 import { publishTarget, type Project } from "@/lib/projects";
-import { reachableArticleUrl } from "@/lib/hosted-blog";
+import { hostedBase, reachableArticleUrl } from "@/lib/hosted-blog";
+import { forwardingKind, lovableFileMerged, lovablePublishPending } from "@/lib/hosted-rewrite";
 import { backendBaseUrl } from "@/lib/pipeline-pack";
 import { launchStepError, urlPrefixProperty } from "@/lib/job-handlers/launch";
 import type { FirstArticleProgress, ProgressStep, StuckNote } from "@/components/setup-stage/wait";
@@ -95,7 +96,11 @@ export async function firstArticleProgress(
   const everLive = (drafts.data ?? []) as { published_url: string; status: string }[];
   // The link is the first article that is STILL up; a removed one answers 410.
   const first = everLive.find((d) => d.status !== "removed") ?? (everLive.length ? { published_url: null as string | null } : undefined);
-  if (first || (guides.count ?? 0) > 0) {
+  // A Lovable site whose owner has not pressed Publish yet: the article can
+  // be published on our side and still be on nobody's site. That is not
+  // live - the card stays, and asks for the one click (the blocker below).
+  const awaitingPublish = lovablePublishPending(project);
+  if ((first || (guides.count ?? 0) > 0) && !awaitingPublish) {
     seenLive.add(project.id);
     return { live: true, launched: true, progress: { ...ALL_DONE, liveUrl: reachableArticleUrl(project, first?.published_url ?? null, await backendBaseUrl()) } };
   }
@@ -107,7 +112,7 @@ export async function firstArticleProgress(
   const report = await (opts.loadReport ?? getAutopilotReport)(project.id).catch(() => null);
   if (!report) return { live: true, launched: true, progress: ALL_DONE };
   const published = report.articles.find((a) => a.status === "published" && a.url);
-  if (published) {
+  if (published && !awaitingPublish) {
     seenLive.add(project.id);
     return { live: true, launched: true, progress: { ...ALL_DONE, liveUrl: published.url } };
   }
@@ -133,16 +138,24 @@ export async function firstArticleProgress(
   const blogError = stepError("blog");
   if (target === "hosted" && project.hosted_key) {
     if (project.hosted_rewrite_live_at) blog = "done";
-    else if (pr === "manual") {
+    else if (awaitingPublish && lovableFileMerged(project)) {
+      // Shown once the file is merged AND the launch's first pass is
+      // through: by then the route file and Google's verification file are
+      // both in the repo, so the owner's one Publish carries both.
+      if (launchRan) blocker = { kind: "lovable", address: hostedBase(project).replace(/^https?:\/\//, ""), topic: null, written: false };
+    } else if (pr === "manual") {
       stuck.blog = { text: "Your host needs one forwarding rule we can't add for you.", href: "/settings#publishing", linkLabel: "See the rule" };
     } else if (blogError) {
       stuck.blog = pr
-        ? { text: "GitHub wouldn't let us merge the one small change to your site. Merge it and your blog is on.", href: pr, linkLabel: "Merge it" }
+        ? { text: awaitingPublish ? "GitHub wouldn't let us merge the one small change to your project. Merge it, then press Publish in Lovable." : "GitHub wouldn't let us merge the one small change to your site. Merge it and your blog is on.", href: pr, linkLabel: "Merge it" }
         : { text: "We couldn't make the one small change to your site yet.", href: "/settings#publishing", linkLabel: "Do it in Settings" };
     } else if (launchRan && pr) {
+      // A Lovable site whose file is not merged yet: Publish would carry
+      // nothing, so the ask is the merge first (the card moves on to
+      // "press Publish" once the row says merged).
       stuck.blog = project.auto_merge
-        ? { text: "Waiting for your site to deploy." }
-        : { text: "Merge the one small change we opened in your repo and your blog is on.", href: pr, linkLabel: "Merge it" };
+        ? { text: awaitingPublish ? "Adding one small file to your project." : "Waiting for your site to deploy." }
+        : { text: awaitingPublish ? "Merge the one small change we opened in your repo, then press Publish in Lovable." : "Merge the one small change we opened in your repo and your blog is on.", href: pr, linkLabel: "Merge it" };
     }
   } else if (blogError) {
     stuck.blog = { text: "We couldn't switch your blog on yet.", href: "/settings#publishing", linkLabel: "Do it in Settings" };
@@ -162,7 +175,12 @@ export async function firstArticleProgress(
       // the launch gave up: only the owner's two clicks in Search Console
       // move it now. A Google error on an attempt that will retry (a deploy
       // still landing the verification file) stays "doing".
-      if (launchFailed || !stepError("google")) {
+      // Not while a Lovable Publish is pending: Google's file goes live with
+      // that click, and the go-live pass confirms the site by itself - nor in
+      // the minutes right after the click, while that pass is still at it.
+      const liveAt = project.hosted_rewrite_live_at ? Date.parse(project.hosted_rewrite_live_at) : 0;
+      const justPublished = forwardingKind(project.hosted_rewrite_state) === "lovable" && Date.now() - liveAt < 15 * 60_000;
+      if (!awaitingPublish && !justPublished && (launchFailed || !stepError("google"))) {
         stuck.google = { text: "Google hasn't confirmed the site yet. Two clicks in Search Console do it.", href: "https://search.google.com/search-console" };
       }
     }
@@ -211,6 +229,10 @@ export async function firstArticleProgress(
     } else {
       writing = "done";
       publishing = "doing";
+      if (blocker?.kind === "lovable") {
+        blocker = { ...blocker, topic: newest.title ?? null, written: newest.status === "published" };
+        if (newest.status === "published") stuck.publishing = { text: "The article is ready. It goes live the moment you press Publish in Lovable." };
+      }
       // Written and waiting for the owner's Publish (article-review.ts):
       // the card's one job now is to hand them the article.
       if (newest.status === "review" && newest.draftId) review = { href: `/articles/${encodeURIComponent(newest.draftId)}`, title: newest.title ?? null };

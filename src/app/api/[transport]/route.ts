@@ -76,7 +76,7 @@ import {
   setTone,
   suggestTopic,
 } from "@/lib/autopilot";
-import { checkRewriteLive, manualSnippet, switchToHostedBlog } from "@/lib/hosted-rewrite";
+import { checkRewriteLive, forwardingKind, manualSnippet, switchToHostedBlog } from "@/lib/hosted-rewrite";
 import { hostedBase, hostedPath } from "@/lib/hosted-blog";
 import { normalizeTheme, readableAccent, readSiteTheme } from "@/lib/hosted-theme";
 import { clientKindStore, currentClientKind, currentProject, projectStore } from "@/lib/mcp-context";
@@ -2146,6 +2146,13 @@ const mcpHandler = createMcpHandler(
           if (!switched) return fail("We can't publish to /blog because this site already has something there, and /articles and /guides are taken too. The owner can email support@dispatchseo.com to pick a free path.");
           return ok({ publish_target: "hosted", blog_url: hostedBase(switched), rewrite_pr: switched.hosted_rewrite_pr_url, note: hostedPath(switched) === "blog" ? "Articles now publish to the hosted blog. Merge the forwarding pull request (or add the rule on Settings) so the site's /blog answers from it." : `This site already has something at /blog, so we can't publish there. Articles now publish at /${hostedPath(switched)} and the site's own /blog is untouched. Merge the forwarding pull request (or add the rule on Settings) so /${hostedPath(switched)} answers from it.` });
         }
+        // A Lovable site: a commit to its repo never reaches the live site
+        // until the owner presses Publish in Lovable, so the repo route
+        // would need that click for every article. The hosted blog needs it
+        // once.
+        if (target === "github" && publishTarget(p) === "hosted" && forwardingKind(p.hosted_rewrite_state) === "lovable") {
+          return fail("This site is built with Lovable, where changes in the repo only go live when the owner presses Publish. Articles stay on the hosted blog, which goes live by itself.");
+        }
         const { error } = await db()
           .from("projects")
           .update({ publish_target: target })
@@ -3654,7 +3661,7 @@ const mcpHandler = createMcpHandler(
         // A new repo invalidates the blog-switch PR pointer (its number means nothing in the new repo).
         const { error } = await db()
           .from("projects")
-          .update(repo !== p.github_repo ? { github_repo: repo, hosted_rewrite_pr_url: null, hosted_rewrite_live_at: null } : { github_repo: repo })
+          .update(repo !== p.github_repo ? { github_repo: repo, hosted_rewrite_pr_url: null, hosted_rewrite_state: null, hosted_rewrite_live_at: null } : { github_repo: repo })
           .eq("id", p.id);
         if (error) return fail(error.message);
         return ok({ project: p.slug, github_repo: repo });
@@ -4564,16 +4571,28 @@ const mcpHandler = createMcpHandler(
           "the evidence that turns it green, and any parked (deferred) steps. " +
           "id 'complete' means setup is finished. Paste payloads that would " +
           "contain this project's key are left out on purpose - send the owner " +
-          "to the dashboard for those. Takes no parameters.",
+          "to the dashboard for those. publish_route: before the site is " +
+          "launched (repo connected, setup not finished), whether we can " +
+          "publish to it on our own - {fit: ok|cant|unknown, route: " +
+          "repo|store|hosted|null, reason} - the same check the setup's last " +
+          "step refuses a site on; fit 'cant' means setup will not finish for " +
+          "this site. Null once the site is launched. Takes no parameters.",
         inputSchema: {},
       },
       async () => {
+        const p = currentProject();
         // mcpToken null: the key must never appear in a chat transcript.
-        const step = await getSetupStep(currentProject(), await backendBaseUrl(), {
+        const step = await getSetupStep(p, await backendBaseUrl(), {
           live: true,
           mcpToken: null,
         });
-        return ok(step);
+        // The cloud setup's pre-launch gate (onboarding/page.tsx), asked the
+        // same way and only while it can still apply.
+        const publish_route =
+          isCloudMode() && !p.setup_connected_at && p.github_repo
+            ? await (await import("@/lib/publish-route-check")).checkPublishRoute(p)
+            : null;
+        return ok({ ...step, publish_route });
       },
     );
 

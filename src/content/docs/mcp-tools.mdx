@@ -1535,6 +1535,21 @@ project's key (the connect command, the connector address) are left
 out on purpose - send the owner to the dashboard for those. Takes no
 parameters.
 
+Before the site is launched (a repo is connected and setup is not
+finished), `publish_route` says whether DispatchSEO can publish to the
+site on its own: `fit` (`ok`, `cant` or `unknown`), `route` (`repo` =
+articles go into the repo, `store` = into the posts kept as data in the
+repo, `hosted` = the hosted blog forwarded from the site, or `null`) and
+`reason`. It is the same check the setup's last step runs: `cant` means
+setup refuses the site and nothing will be launched, with `reason` one
+of `no-forwarding-rule` (the site's host takes no forwarding rule we can
+write), `static-export` (a static Next.js export, nothing to forward
+from), `ambiguous-monorepo` (several apps, none clearly the site) or
+`lovable-legacy` (a Lovable project on Lovable's older setup; it passes
+once the owner upgrades the project to TanStack Start in Lovable).
+`unknown` means a check could not answer, and setup goes ahead.
+`publish_route` is `null` once the site is launched.
+
 ### `defer_setup_step`
 
 Parks a step for later - the dashboard's "I'll do this later" link - or

@@ -384,6 +384,12 @@ export async function saveFolder(_prev: ActionState, fd: FormData): Promise<Acti
   // Naming a folder on a hosted-blog project is the way back to the repo
   // route: the owner is saying "there IS a blog here after all".
   const { publishTarget } = await import("@/lib/projects");
+  const { forwardingKind } = await import("@/lib/hosted-rewrite");
+  // A Lovable site stays on the hosted blog: nothing committed to its repo
+  // goes live without a Publish click in Lovable, every time.
+  if (path && publishTarget(o.project) === "hosted" && forwardingKind(o.project.hosted_rewrite_state) === "lovable") {
+    return state(false, "This site is built with Lovable, where only the hosted blog goes live by itself. Articles stay there.", "content_path_hint");
+  }
   const backToRepo = Boolean(path) && publishTarget(o.project) === "hosted";
   const { db } = await import("@/lib/db");
   const { error } = await db()

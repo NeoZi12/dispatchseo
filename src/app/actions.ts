@@ -2146,7 +2146,7 @@ export async function chooseGithubRepo(
   // A new repo invalidates the blog-switch PR pointer (its number means nothing in the new repo).
   const { error } = await db()
     .from("projects")
-    .update(repo !== project.github_repo ? { github_repo: repo, hosted_rewrite_pr_url: null, hosted_rewrite_live_at: null } : { github_repo: repo })
+    .update(repo !== project.github_repo ? { github_repo: repo, hosted_rewrite_pr_url: null, hosted_rewrite_state: null, hosted_rewrite_live_at: null } : { github_repo: repo })
     .eq("id", project.id);
   if (error) return { error: error.message };
   await captureServer((await currentUser())?.id ?? project.id, "github_connected", { repo });

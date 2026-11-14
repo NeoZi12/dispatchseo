@@ -54,8 +54,11 @@ export async function setContentPathHint(formData: FormData): Promise<void> {
 
   // Naming a folder on a hosted-blog project is the way back to the repo
   // route: the owner is saying "there IS a blog here after all".
+  // Not on Lovable's hosting: nothing committed to the repo goes live there
+  // without the owner's Publish, so the hosted blog is the only route.
   const { publishTarget } = await import("@/lib/projects");
-  const backToRepo = path && publishTarget(project) === "hosted";
+  const { forwardingKind } = await import("@/lib/hosted-rewrite");
+  const backToRepo = path && publishTarget(project) === "hosted" && forwardingKind(project.hosted_rewrite_state) !== "lovable";
   const { error } = await db()
     .from("projects")
     .update({ content_path_hint: path, ...(backToRepo ? { publish_target: "github" } : {}) })

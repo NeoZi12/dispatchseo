@@ -10,7 +10,7 @@ import { ideaDone } from "@/lib/writer/runs";
 import { warmScreenshotsLater } from "@/lib/page-screenshot";
 import { linkOlderHostedArticles } from "@/lib/backlinks";
 import { notifyFirstArticleLive } from "@/lib/first-article-email";
-import { checkRewriteLive, startHostedLiveWatch } from "@/lib/hosted-rewrite";
+import { checkRewriteLive, lovablePublishPending, startHostedLiveWatch } from "@/lib/hosted-rewrite";
 
 // The hosted half of the publish job: the article is served by us under the
 // site's own /blog (src/lib/hosted-blog.ts), so "publishing" is a render for
@@ -100,9 +100,12 @@ export async function runHostedPublish(project: Project, draftId: string): Promi
   // hosted-live chain sends it the pass it sees the marker (and asks the
   // owner for the rule after a day). Live already: send it now.
   if (flipped?.length) {
+    // A Lovable site that turns out live on this very check gets its email
+    // from the finishing pass checkRewriteLive queues (hosted-live.ts).
+    const finishesItself = lovablePublishPending(project);
     const live = Boolean(project.hosted_rewrite_live_at) || (await checkRewriteLive(project).catch(() => false));
-    if (live) await notifyFirstArticleLive(project, { draftId: row.id, url, title: row.title });
-    else await startHostedLiveWatch(project.id).catch((e) => console.warn(`[publish-hosted] ${project.slug}: live watch not started: ${e instanceof Error ? e.message : String(e)}`));
+    if (live && !finishesItself) await notifyFirstArticleLive(project, { draftId: row.id, url, title: row.title });
+    else if (!live) await startHostedLiveWatch(project.id).catch((e) => console.warn(`[publish-hosted] ${project.slug}: live watch not started: ${e instanceof Error ? e.message : String(e)}`));
   }
   if (flipped?.length) await linkOlderHostedArticles(project, row, url).then(
     (done) => { if (done.length) console.log(`[publish-hosted] ${project.slug}: linked from ${done.map((d) => `${d.sourceUrl} ("${d.anchor}")`).join(", ")}`); },

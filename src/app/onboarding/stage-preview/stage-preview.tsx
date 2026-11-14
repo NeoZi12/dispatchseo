@@ -28,7 +28,7 @@ import { cx, FOCUS_RING } from "@/components/ui/styles";
 // (the "plans: free closed" variant). The "first article: waits for review"
 // variant ends Home's first state on the review card instead of live.
 
-type Variant = "ok" | "refused" | "unreadable" | "gsc-missing" | "gsc-stuck" | "free-closed" | "review";
+type Variant = "ok" | "refused" | "unreadable" | "gsc-missing" | "gsc-stuck" | "free-closed" | "review" | "lovable";
 type View = SceneId | "wait";
 const DOMAIN = "leatherandco.com";
 const VIEWS: { id: View; label: string }[] = [
@@ -195,11 +195,20 @@ export function StagePreview({ plans }: { plans: { open: PlanMenu; closed: PlanM
     setBusy(false);
     const missing = variant === "gsc-missing" || variant === "gsc-stuck";
     setWait({ ...WAIT_START, google: missing ? "todo" : null });
-    after(2200, () => setWait((w) => ({ ...w, blog: "done", google: w.google ? "doing" : null, reading: w.google ? "todo" : "doing" })));
+    // A Lovable site: the blog step waits for the owner's Publish click, the
+    // article is written meanwhile, and the click (played at the end) makes
+    // both live.
+    const lovable = variant === "lovable";
+    const ask = (written: boolean, topic: string | null): FirstArticleProgress["blocker"] => ({ kind: "lovable", address: `${DOMAIN}/blog`, topic, written });
+    after(2200, () => setWait((w) => (lovable ? { ...w, blocker: ask(false, null), reading: "doing" } : { ...w, blog: "done", google: w.google ? "doing" : null, reading: w.google ? "todo" : "doing" })));
     after(4200, () => setWait((w) => ({ ...w, google: w.google ? "done" : null, reading: "doing" })));
     after(5800, () => setWait((w) => ({ ...w, reading: "done", topics: "doing" })));
     after(8400, () => setWait((w) => ({ ...w, topics: "done", keywordsFound: 38, writing: "doing", topic: "best leather bag for a daily commute" })));
-    after(13400, () => setWait((w) => ({ ...w, writing: "done", publishing: "doing" })));
+    after(13400, () => setWait((w) => ({ ...w, writing: "done", publishing: "doing", ...(lovable ? { blocker: ask(true, "The best leather bag for a daily commute, by budget") } : {}) })));
+    if (lovable) {
+      after(24000, () => setWait((w) => ({ ...w, blocker: null, blog: "done", publishing: "done", liveUrl: `https://${DOMAIN}/blog/best-leather-bag-daily-commute` })));
+      return;
+    }
     after(16000, () =>
       setWait((w) =>
         variant === "review"
@@ -313,6 +322,7 @@ export function StagePreview({ plans }: { plans: { open: PlanMenu; closed: PlanM
             <option value="gsc-stuck">Google: won&apos;t confirm</option>
             <option value="free-closed">plans: free closed</option>
             <option value="review">first article: waits for review</option>
+            <option value="lovable">Lovable: waits for Publish</option>
           </select>
           <button type="button" onClick={() => jump("address")} className={cx("ml-auto rounded-md border border-line px-2.5 py-1 text-ink-muted hover:text-ink", FOCUS_RING)}>
             Replay

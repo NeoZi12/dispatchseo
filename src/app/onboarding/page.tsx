@@ -44,6 +44,8 @@ import { DEVICE_COOKIE } from "@/lib/setup-flow";
 import { SetupClient, type CheckoutPlan } from "./setup-client";
 import { PaymentConfirming } from "@/components/payment-confirming";
 import { WrongRepo } from "@/components/setup-stage/wrong-repo";
+import { CantPublish } from "@/components/setup-stage/cant-publish";
+import { checkPublishRoute } from "@/lib/publish-route-check";
 import type { SiteVerdict } from "@/components/setup-stage/scenes";
 
 export const dynamic = "force-dynamic";
@@ -323,6 +325,17 @@ async function cloudSetupFlow(params: OnboardingParams) {
       if (check?.verdict === "mismatch" && full && !(await findSiteRepo(full))) {
         await db().from("projects").update({ github_repo: null }).eq("id", s.project.id).is("setup_connected_at", null);
         return <WrongRepo repo={check.repo} domain={s.project.domain} slug={s.project.slug} empty={Boolean(check.empty)} planStep={s.planStep} />;
+      }
+      // The repo is right, but can we put articles on the site by ourselves?
+      // A dry run of the launch's blog step (publish-route-check.ts): a site
+      // that would end on "paste this rule into your host" is refused here,
+      // before the stamp. The repo is kept - it is the site's own, the host
+      // is the problem - and nothing is written, so a returning visitor gets
+      // the same check and the same answer. "unknown" goes ahead.
+      const route = full ? await checkPublishRoute(full) : null;
+      if (route?.fit === "cant") {
+        console.info(`[onboarding] ${s.project.slug}: refused at setup, can't publish (${route.reason})`);
+        return <CantPublish domain={s.project.domain} reason={route.reason} planStep={s.planStep} />;
       }
     }
     if (!s.project.setup_connected_at) {

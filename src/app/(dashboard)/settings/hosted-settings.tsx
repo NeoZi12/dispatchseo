@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { publishTarget } from "@/lib/projects";
 import { hostBlogHere, saveBrand, saveFolder } from "@/app/autopilot-actions";
 import { RepoRow } from "@/components/repo-row";
-import { rewriteLiveCached } from "@/lib/hosted-rewrite";
+import { forwardingKind, rewriteLiveCached } from "@/lib/hosted-rewrite";
 import { hostedPath } from "@/lib/hosted-blog";
 import { normalizeTheme } from "@/lib/hosted-theme";
 import { backendBaseUrl } from "@/lib/pipeline-pack";
@@ -328,7 +328,7 @@ async function PublishingSection({ project }: { project: Project }) {
           </Row>
           {!live ? (
             <div className="px-5 py-4">
-              <ForwardingHelp live={live} prUrl={project.hosted_rewrite_pr_url} backend={backend} hostedKey={project.hosted_key ?? ""} path={hostedPath(project)} />
+              <ForwardingHelp live={live} prUrl={project.hosted_rewrite_pr_url} backend={backend} hostedKey={project.hosted_key ?? ""} path={hostedPath(project)} lovable={forwardingKind(project.hosted_rewrite_state) !== "lovable" ? false : /^(merged|live):/.test(project.hosted_rewrite_state ?? "") ? "publish" : "merge"} />
             </div>
           ) : null}
           <details className="group">

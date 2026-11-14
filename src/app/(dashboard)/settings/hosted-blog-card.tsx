@@ -72,23 +72,41 @@ export function ForwardingHelp({
   backend,
   hostedKey,
   path = "blog",
+  lovable = false,
   className = "",
 }: {
   live: boolean;
   prUrl: string | null;
   backend: string;
   hostedKey: string;
+  /** A Lovable site: the change is in the project, and only the owner's
+   *  Publish click in Lovable puts it on the live site. "merge" while the
+   *  pull request is still open (the click would carry nothing yet). */
+  lovable?: "publish" | "merge" | false;
   /** The public path the rule listens on (hostedPath): blog or articles. */
   path?: string;
   className?: string;
 }) {
   if (live) return null;
+  if (lovable === "publish" || (lovable === "merge" && !(prUrl ?? "").startsWith("http"))) {
+    return (
+      <div className={className}>
+        <p className="text-[13px] leading-relaxed text-ink-muted">
+          Press Publish in your Lovable project. That one click puts your blog on your site, and this turns green on its own.{" "}
+          <a href="https://lovable.dev/projects" className="font-medium text-accent underline decoration-accent/40 underline-offset-[3px]" target="_blank" rel="noreferrer">
+            Open Lovable
+          </a>
+        </p>
+      </div>
+    );
+  }
   const snippets = manualSnippet(backend, hostedKey, path);
   const manual = prUrl === "manual" || !prUrl;
+  const after = lovable === "merge" ? "Merge the pull request, then press Publish in Lovable. This turns green on its own." : "Merge the pull request and deploy. This turns green on its own.";
   return (
     <div className={className}>
       <p className="text-[13px] leading-relaxed text-ink-muted">
-        {manual ? "Add the rule below to your site and deploy. This turns green on its own." : "Merge the pull request and deploy. This turns green on its own."}{" "}
+        {manual ? "Add the rule below to your site and deploy. This turns green on its own." : after}{" "}
         {!manual ? (
           <a href={prUrl!} className="font-medium text-accent underline decoration-accent/40 underline-offset-[3px]" target="_blank" rel="noreferrer">
             Open the pull request

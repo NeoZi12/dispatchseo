@@ -724,7 +724,9 @@ function forwardingLine(p: Record<string, unknown>): string | null {
   if (p.publish_target !== "hosted") return null;
   if (p.hosted_rewrite_live_at) return "live";
   const state = typeof p.hosted_rewrite_state === "string" ? p.hosted_rewrite_state : "";
-  if (state === "merged" || state.startsWith("merged:")) return `PR merged${state.includes(":") ? ` (${state.slice(7)})` : ""}, waiting for their deploy`;
+  if (state === "merged" || (state.startsWith("merged:") && state !== "merged:lovable")) return `PR merged${state.includes(":") ? ` (${state.slice(7)})` : ""}, waiting for their deploy`;
+  if (state.startsWith("live:")) return `was live (${state.slice(5)}), not answering now`;
+  if (state === "merged:lovable") return "PR merged (lovable), waiting for their Publish click in Lovable";
   if (state === "owner-merge") return "PR open, removes their template blog - their merge";
   if (state.startsWith("merge-failed")) return state.replace("merge-failed:", "merge failed:");
   if (state.startsWith("opened:")) return `PR open (${state.slice(7)})`;

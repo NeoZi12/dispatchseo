@@ -7,7 +7,7 @@ import { siteRoot, sitePath } from "@/lib/site-root";
 import { resolveSitePath } from "@/lib/site-root-resolve";
 import { fetchProjectUrl } from "@/lib/url-guard";
 import { isCloudMode } from "@/lib/cloud";
-import { checkRewriteLive, mergeRewritePr, servesOwnBlog, siteAppRoot, switchToHostedBlog } from "@/lib/hosted-rewrite";
+import { checkRewriteLive, lovablePublishPending, mergeRewritePr, onLovableHosting, servesOwnBlog, siteAppRoot, switchToHostedBlog } from "@/lib/hosted-rewrite";
 import {
   addSearchConsoleSite,
   confirmSiteVerification,
@@ -179,15 +179,21 @@ async function launchBlog(project: Project): Promise<Project> {
     // publish step makes the same switch if the folder really is missing.
     let secondPath = false;
     if (await servesOwnBlog(project)) {
-      const { repoHasArticleFolder } = await import("@/lib/repo-publish");
-      if ((await repoHasArticleFolder(project).catch(() => null)) !== false) return project;
-      // Posts kept as data in the repo (a JSON array, an array in a code
-      // file) are a blog we can write into: stay on the repo route
-      // (blog-store.ts). A scout that runs out of its minute is "not yet",
-      // uncached, and the publish step asks again.
-      // Only on Auto: without merging the second path is what goes live.
-      const { ensureBlogStore } = await import("@/lib/blog-store");
-      if (effectiveAutomations(project).auto_merge && (await ensureBlogStore(project, { deadlineMs: 60_000 }).catch(() => null))?.status === "ready") return project;
+      // On Lovable's own hosting nothing committed to the repo goes live
+      // until the owner presses Publish, so neither repo route below would
+      // ever be autopilot there: such a site takes the hosted blog at a
+      // second path, which needs that click once (hosted-rewrite.ts).
+      if (!(await onLovableHosting(project).catch(() => false))) {
+        const { repoHasArticleFolder } = await import("@/lib/repo-publish");
+        if ((await repoHasArticleFolder(project).catch(() => null)) !== false) return project;
+        // Posts kept as data in the repo (a JSON array, an array in a code
+        // file) are a blog we can write into: stay on the repo route
+        // (blog-store.ts). A scout that runs out of its minute is "not yet",
+        // uncached, and the publish step asks again.
+        // Only on Auto: without merging the second path is what goes live.
+        const { ensureBlogStore } = await import("@/lib/blog-store");
+        if (effectiveAutomations(project).auto_merge && (await ensureBlogStore(project, { deadlineMs: 60_000 }).catch(() => null))?.status === "ready") return project;
+      }
       secondPath = true;
     }
     if (!(await switchToHostedBlog(project, secondPath ? { secondPath, ownBlog: true } : {}))) {
@@ -267,6 +273,13 @@ function propertyCandidates(project: Project): string[] {
   ].filter((v, i, all) => all.indexOf(v) === i);
 }
 
+/** Google's confirmation for a site whose forwarding just went live after
+ *  its owner's Publish in Lovable (job-handlers/hosted-live.ts): the
+ *  verification file went live with that same click. */
+export async function finishGoogleAfterPublish(project: Project): Promise<void> {
+  await launchGoogle(project);
+}
+
 async function launchGoogle(project: Project): Promise<void> {
   const refresh = project.gsc_oauth_refresh_token;
   if (!refresh || !project.domain) return;
@@ -302,6 +315,12 @@ async function launchGoogle(project: Project): Promise<void> {
   const token = await siteVerificationFileToken(refresh, siteUrl);
   if (!token) return;
   await commitVerificationFile(project, token);
+  // On Lovable's hosting the file is in the repo but not on the site until
+  // the owner presses Publish - the same click the blog waits for. Waiting
+  // two minutes for it here, five times, would only end this job as failed
+  // and show the owner Search Console instructions they do not need: the
+  // go-live watch runs this step again the moment the site answers.
+  if (lovablePublishPending(project)) return;
   await waitForFile(project, `${siteUrl}${token}`, token);
   await confirmSiteVerification(refresh, siteUrl);
   // A read-only grant cannot add the property, but Google lists a site its

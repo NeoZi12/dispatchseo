@@ -43,8 +43,16 @@ export type FirstArticleProgress = {
    *  only the owner can clear it. Shown as its own card above the steps.
    *  "repo": the connected repository is empty or isn't the site's code
    *  (repo-site-check.ts); `href` starts GitHub's repo picker, and on the way
-   *  back we find the right repo ourselves and publish the waiting article. */
-  blocker?: { kind: "repo"; repo: string; empty: boolean; domain: string; href: string; topic: string | null } | null;
+   *  back we find the right repo ourselves and publish the waiting article.
+   *  "lovable": the site is a Lovable project, and the one small file that
+   *  switches its blog on is in the repo but not on the site - on Lovable
+   *  only the owner's Publish click puts it there. One click, once: after
+   *  it every article goes live by itself. `written` = the first article is
+   *  finished and waiting for that click. */
+  blocker?:
+    | { kind: "repo"; repo: string; empty: boolean; domain: string; href: string; topic: string | null }
+    | { kind: "lovable"; address: string; topic: string | null; written: boolean }
+    | null;
   /** Review before publishing (article-review.ts): the first article is
    *  written and waits for the owner's Publish. `href` opens it in the
    *  dashboard (/articles/<id>), where it can be read, edited and published. */
@@ -117,9 +125,56 @@ function RepoBlockerCard({ b }: { b: RepoBlocker }) {
   );
 }
 
+type LovableBlocker = Extract<NonNullable<FirstArticleProgress["blocker"]>, { kind: "lovable" }>;
+
+/** A Lovable site, one Publish click short of its blog. Lovable puts nothing
+ *  on the live site until its owner presses Publish, so this is the one thing
+ *  setup cannot do for them - asked once, here, in the same card the
+ *  wrong-repo case uses. The dashboard notices the click by itself. */
+function LovablePublishCard({ b }: { b: LovableBlocker }) {
+  const steps = ["Open your project in Lovable", "Press Publish", b.written ? "Your article is live" : "Your blog is on"];
+  return (
+    <section
+      aria-labelledby="lovable-blocker-title"
+      className={cx("relative mb-4 overflow-hidden rounded-3xl border border-[#8b5cf6]/25 bg-surface", s.sceneIn)}
+    >
+      <span aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_70%_at_0%_0%,rgb(139_92_246/0.14),transparent_60%),radial-gradient(60%_60%_at_100%_100%,rgb(147_51_234/0.07),transparent_70%)]" />
+      <div className="relative grid gap-6 p-5 sm:p-7 md:grid-cols-[15rem_minmax(0,1fr)] md:items-center md:gap-8">
+        <HeldArticle topic={b.topic} done={b.written} bubble={b.written ? "Written! One click and it\u2019s out." : "One click from you, then I\u2019m off."} />
+        <div className="min-w-0">
+          <h2 id="lovable-blocker-title" className="text-balance text-[22px] font-semibold leading-snug tracking-tight text-ink sm:text-[25px]">
+            One click left: press Publish in Lovable
+          </h2>
+          <p className="mt-2.5 text-[15px] leading-relaxed text-ink-muted">
+            We added one small file to your project that switches on <span className="break-words font-medium text-ink">{b.address}</span>. Lovable only puts changes on your live site when you
+            press Publish, so this one click is yours. You do it once: after that, every article goes live by itself.
+          </p>
+          <a href="https://lovable.dev/projects" target="_blank" rel="noreferrer" className={cx(BTN_PRIMARY, "mt-6 w-full sm:w-auto")}>
+            Open Lovable
+            <Arrow />
+          </a>
+        </div>
+      </div>
+      <div className="@container relative border-t border-line-soft px-5 py-4 sm:px-7">
+        <ol aria-label="What happens next" className="m-0 flex list-none flex-col gap-2.5 p-0 @[34rem]:flex-row @[34rem]:items-center @[34rem]:gap-0">
+          {steps.map((label, i) => (
+            <li key={label} className="flex items-center gap-2 whitespace-nowrap text-[13.5px] text-ink-muted">
+              {i > 0 ? <span aria-hidden="true" className="mx-3 hidden h-px w-6 bg-line @[34rem]:block" /> : null}
+              <span aria-hidden="true" className="grid h-5 w-5 shrink-0 place-items-center rounded-full border border-line text-[11px] font-semibold tabular-nums text-ink-faint">
+                {i + 1}
+              </span>
+              {label}
+            </li>
+          ))}
+        </ol>
+      </div>
+    </section>
+  );
+}
+
 /** The written article as a printed page on a little stage, the dispatcher
  *  perched on its top edge, a speech bubble beside it. */
-function HeldArticle({ topic }: { topic: string | null }) {
+function HeldArticle({ topic, bubble = "Written! Where do I take it?", done = true }: { topic: string | null; bubble?: string; /** false while the article is still being written: no tick yet */ done?: boolean }) {
   return (
     <figure className="relative m-0 flex min-h-[15rem] items-end justify-center overflow-hidden rounded-2xl border border-line-soft bg-gradient-to-b from-surface-3 to-surface-2 px-4 pb-7 pt-[5.5rem]">
       <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-3/4 bg-[radial-gradient(70%_80%_at_50%_100%,var(--color-accent-soft),transparent_72%)]" />
@@ -142,9 +197,11 @@ function HeldArticle({ topic }: { topic: string | null }) {
             <span className="h-[3px] w-2/3 rounded-full bg-canvas/15" />
           </span>
         </div>
-        <span className="absolute -bottom-2 -right-2 grid h-6 w-6 place-items-center rounded-full bg-ok text-canvas ring-[3px] ring-surface-2">
-          <Check className="h-3.5 w-3.5" delay={700} />
-        </span>
+        {done ? (
+          <span className="absolute -bottom-2 -right-2 grid h-6 w-6 place-items-center rounded-full bg-ok text-canvas ring-[3px] ring-surface-2">
+            <Check className="h-3.5 w-3.5" delay={700} />
+          </span>
+        ) : null}
         <span className={cx("absolute -top-[50px] left-1 z-10 block h-[60px] w-[60px] drop-shadow-[0_6px_8px_rgb(0_0_0/0.45)]", s.perch)} style={{ "--d": "420ms" } as React.CSSProperties}>
           <CardMascot className={cx("block h-full w-full", s.blink)} />
         </span>
@@ -155,11 +212,11 @@ function HeldArticle({ topic }: { topic: string | null }) {
         className={cx("absolute right-3 top-4 max-w-[7.25rem] rounded-2xl rounded-bl-md border border-line bg-surface px-3 py-2 text-[12.5px] font-medium leading-snug text-ink shadow-lg shadow-black/30", s.bubble)}
         style={{ animationDelay: "900ms" }}
       >
-        Written! Where do I take it?
+        {bubble}
       </span>
 
       <figcaption className="sr-only">
-        {topic ? <>Your article &ldquo;{topic}&rdquo; is written and waiting.</> : "Your first article is written and waiting."}
+        {!done ? "Your first article is being written." : topic ? <>Your article &ldquo;{topic}&rdquo; is written and waiting.</> : "Your first article is written and waiting."}
       </figcaption>
     </figure>
   );
@@ -212,20 +269,23 @@ export function FirstArticleWait({ siteName, progress: p, estimate = "usually 20
   const review = !live && p.review ? p.review : null;
   // The wrong-repo card's own wording stays its own: review is "held" too,
   // but nothing about it is a repository.
-  const repoBlocked = Boolean(p.blocker) && !live;
-  const blocked = repoBlocked || (Boolean(review) && !live);
+  const repoBlocked = p.blocker?.kind === "repo" && !live;
+  // A Lovable site waiting for its owner's one Publish click.
+  const lovable = !live && p.blocker?.kind === "lovable" ? p.blocker : null;
+  const blocked = repoBlocked || Boolean(lovable) || (Boolean(review) && !live);
   const stuck = p.stuck ?? {};
   const note = (k: ProgressStep) => (stuck[k] ? <StuckDetail note={stuck[k]!} /> : undefined);
   return (
     <div className="mx-auto w-full max-w-3xl">
       {p.blocker?.kind === "repo" ? <RepoBlockerCard b={p.blocker} /> : null}
+      {lovable ? <LovablePublishCard b={lovable} /> : null}
       <section aria-labelledby="wait-title" className={cx("overflow-hidden rounded-3xl border border-line-soft bg-surface", s.sceneIn)}>
         <div className="relative px-6 pt-7 sm:px-8">
           <div className="flex flex-wrap items-end justify-between gap-4 sm:flex-nowrap">
             <div className="min-w-0">
               <p className="text-[12.5px] font-medium uppercase tracking-wide text-accent">{siteName}</p>
               <h1 id="wait-title" className="mt-1 text-[26px] font-semibold leading-tight tracking-tight text-ink sm:text-[30px]">
-                {live ? "Your first article is live." : blocked ? "Your first article is ready" : "Your first article is on its way"}
+                {live ? "Your first article is live." : blocked && !(lovable && !lovable.written) ? "Your first article is ready" : "Your first article is on its way"}
               </h1>
               <p className="mt-2 text-[15px] text-ink-muted">
                 {live ? (
@@ -238,6 +298,12 @@ export function FirstArticleWait({ siteName, progress: p, estimate = "usually 20
                   </>
                 ) : review ? (
                   <>It goes live when you press Publish.</>
+                ) : lovable ? (
+                  lovable.written ? (
+                    <>Written and ready. It goes live the moment you press Publish in Lovable, and we&apos;ll email you.</>
+                  ) : (
+                    <>We&apos;re writing it now. Press Publish in Lovable while you wait, and it goes live the moment it&apos;s done.</>
+                  )
                 ) : blocked ? (
                   <>Written and ready, but it can&apos;t go out until you connect your site&apos;s repository above. Then it goes live right away, and we&apos;ll email you.</>
                 ) : (
@@ -254,7 +320,12 @@ export function FirstArticleWait({ siteName, progress: p, estimate = "usually 20
         </div>
 
         <ol className="m-0 list-none px-6 pb-6 pt-5 sm:px-8">
-          <StepRow index={0} state={p.blog} label="Switching on your blog" detail={note("blog") ?? (p.blog === "done" ? "One small change to your site. yoursite.com/blog answers." : undefined)} />
+          <StepRow
+            index={0}
+            state={lovable ? "you" : p.blog}
+            label={lovable ? "Press Publish in Lovable" : "Switching on your blog"}
+            detail={lovable ? "The one click only you can do. Your blog is on right after." : (note("blog") ?? (p.blog === "done" ? "One small change to your site. yoursite.com/blog answers." : undefined))}
+          />
           {p.google ? <StepRow index={1} state={p.google} label="Google confirms the site is yours" detail={note("google") ?? (p.google === "done" ? "It\u2019s in your Search Console now." : undefined)} /> : null}
           <StepRow index={0} state={p.reading} label="Reading your site" detail={note("reading") ?? (p.reading === "done" ? "What you sell, and to whom." : undefined)} />
           <StepRow index={1} state={p.topics} label="Finding topics people search for" detail={note("topics") ?? (p.topics === "done" && p.keywordsFound ? `${p.keywordsFound} keywords with real search numbers. The first one is picked.` : undefined)} />

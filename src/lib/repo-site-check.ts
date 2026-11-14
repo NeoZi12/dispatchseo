@@ -192,7 +192,7 @@ export async function findSiteRepo(project: Project): Promise<Project | null> {
     const { installerMayUseRepo } = await import("@/lib/github-installer");
     if (!(await installerMayUseRepo(project, repo))) return null;
     // The folder hint and the blog-switch PR belonged to the old repo.
-    const { error } = await db().from("projects").update({ github_repo: repo, repo_site_check: check, content_path_hint: null, hosted_rewrite_pr_url: null, hosted_rewrite_live_at: null }).eq("id", project.id).eq("github_repo", project.github_repo ?? "");
+    const { error } = await db().from("projects").update({ github_repo: repo, repo_site_check: check, content_path_hint: null, hosted_rewrite_pr_url: null, hosted_rewrite_state: null, hosted_rewrite_live_at: null }).eq("id", project.id).eq("github_repo", project.github_repo ?? "");
     if (error) return null;
     console.log(`[repo-site] ${project.slug}: ${project.github_repo} is not the site; switched to ${repo} (${check.found}/${check.named})`);
     // Articles held for the wrong repo go out now, not at the hourly drain.
