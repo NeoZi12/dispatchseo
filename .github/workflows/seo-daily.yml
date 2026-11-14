@@ -670,7 +670,7 @@ jobs:
       - name: Save the agent execution log for turn analysis
         if: always() && steps.guard.outputs.open == '0' && github.event.repository.private
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: agent-execution-log-${{ github.run_id }}
           path: |
