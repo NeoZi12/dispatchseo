@@ -2,7 +2,7 @@ import { db } from "./db";
 import { windows, type Range } from "./owner-analytics";
 // Circular with owner-visitors (it imports aiReferrer from here); both sides
 // only call the other inside functions, so load order does not matter.
-import { channelOf } from "./owner-visitors";
+import { badgeHosts, channelOf } from "./owner-visitors";
 
 // The two "outside world" panels of /owner:
 //   - AI: which AI crawlers read dispatchseo.com, which read it live because a
@@ -180,7 +180,7 @@ type BotDay = { day: string; bot_name: string; area: string; hits: number };
 
 export async function aiReport(range: Range, productProjectId: string | null, now = Date.now()): Promise<AiReport> {
   const w = windows(range, now);
-  const [daily, prevDaily, feedRes, firstRes, refRes, citeRes] = await Promise.all([
+  const [daily, prevDaily, feedRes, firstRes, refRes, citeRes, customers] = await Promise.all([
     db().rpc("owner_bots_daily", { p_from: ISO(w.from), p_to: ISO(w.to) }),
     db().rpc("owner_bots_daily", { p_from: ISO(w.prevFrom), p_to: ISO(w.prevTo) }),
     db()
@@ -214,6 +214,7 @@ export async function aiReport(range: Range, productProjectId: string | null, no
           .order("checked_at", { ascending: false })
           .limit(2000)
       : Promise.resolve({ data: null, error: null }),
+    badgeHosts(),
   ]);
   if (daily.error) throw daily.error;
 
@@ -291,7 +292,7 @@ export async function aiReport(range: Range, productProjectId: string | null, no
   for (const r of (refRes.data ?? []) as Array<{ at: string; referrer: string | null; utm_source: string | null; utm_medium: string | null }>) {
     // The same call the Visitors table makes, so the two pages cannot disagree
     // about who an AI sent.
-    const channel = channelOf(r.referrer, r.utm_source, r.utm_medium);
+    const channel = channelOf(r.referrer, r.utm_source, r.utm_medium, customers);
     if (channel.kind !== "ai") continue;
     const name = channel.name;
     const day = r.at.slice(0, 10);

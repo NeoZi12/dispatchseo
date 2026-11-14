@@ -107,12 +107,40 @@ function match(list: Array<[RegExp, string]>, host: string): string | null {
   return null;
 }
 
+/** A site name as a bare host: no scheme, no www, no path. */
+function bareHost(s: string): string {
+  return s.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
+}
+
+/** The sites a "Made with DispatchSEO" credit can name: every project's
+ *  domain and hosted origin. visits.ts tags ANY `?ref=` as the badge, and
+ *  launch directories tag their outbound links the same way (TinyLaunch
+ *  sends ?ref=tinylaunch, 2026-11-14), so only a ref naming one of these is
+ *  our credit. Null when projects can't be read: then every ref counts, as
+ *  before, rather than hiding real badge clicks. */
+export async function badgeHosts(): Promise<Set<string> | null> {
+  let res = await db().from("projects").select("domain, hosted_origin");
+  if (res.error) res = (await db().from("projects").select("domain")) as typeof res;
+  if (res.error) return null;
+  const hosts = new Set<string>();
+  for (const p of (res.data ?? []) as Array<{ domain: string | null; hosted_origin?: string | null }>) {
+    if (p.domain) hosts.add(bareHost(p.domain));
+    if (p.hosted_origin) hosts.add(bareHost(p.hosted_origin));
+  }
+  hosts.delete("");
+  return hosts;
+}
+
 /** How a visit reached the site: an AI answer, a search engine, a social
- *  site, a tagged link, another site, or nothing at all (typed / bookmarked). */
-export function channelOf(referrer: string | null, utmSource: string | null, utmMedium: string | null = null): Channel {
+ *  site, a tagged link, another site, or nothing at all (typed / bookmarked).
+ *  `customers` (badgeHosts) narrows the badge to refs naming a customer site;
+ *  any other ref reads as the tagged link it is. */
+export function channelOf(referrer: string | null, utmSource: string | null, utmMedium: string | null = null, customers: Set<string> | null = null): Channel {
   // Our own credit on a customer article: its tag is more exact than the
   // referrer, which would only name the customer's site.
-  if (utmMedium === BADGE_MEDIUM && utmSource) return { name: "DispatchSEO badge", kind: "badge" };
+  if (utmMedium === BADGE_MEDIUM && utmSource && (!customers || customers.has(bareHost(utmSource)))) {
+    return { name: "DispatchSEO badge", kind: "badge" };
+  }
   // An ad click id (visits.ts): an ad, even though the referrer says google.com.
   if (utmMedium === CLICK_ID_MEDIUM && utmSource && / Ads$/.test(utmSource)) return { name: utmSource, kind: "campaign" };
   const host = referrer?.toLowerCase() ?? null;
@@ -260,7 +288,7 @@ async function visitorsReportFresh(range: Range, now = Date.now()): Promise<Visi
 
   // The operator's own browsing is not a visitor.
   const distinct = (k: "visitor" | "net") => [...new Set(rows.map((r) => r[k]).filter((v): v is string => !!v))];
-  const mine = await operatorKeys(distinct("visitor"), distinct("net"));
+  const [mine, customers] = await Promise.all([operatorKeys(distinct("visitor"), distinct("net")), badgeHosts()]);
   const isMine = (r: Row) => (!!r.visitor && mine.visitors.has(r.visitor)) || (!!r.net && mine.nets.has(r.net));
 
   // Oldest first, so the first row of a visit is where it started.
@@ -293,7 +321,7 @@ async function visitorsReportFresh(range: Range, now = Date.now()): Promise<Visi
     const utm = tagged?.utm_source ?? null;
     const ua = list.find((r) => r.ua)?.ua ?? null;
     const userId = list.find((r) => r.user_id)?.user_id ?? null;
-    let channel = channelOf(ref, utm, tagged?.utm_medium ?? null);
+    let channel = channelOf(ref, utm, tagged?.utm_medium ?? null, customers);
     const inApp = channel.kind === "direct" ? IN_APP_SOCIAL.find(([re]) => re.test(ua ?? ""))?.[1] : null;
     if (inApp) channel = { name: inApp, kind: "social" };
     const badge = channel.kind === "badge" ? { site: utm!, articleId: tagged?.utm_campaign ?? null, title: null } : null;
