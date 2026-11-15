@@ -253,6 +253,7 @@ export default function PricingPage() {
                   <div className="a">
                     {a}
                     {q === "Can I run it myself instead?" ? <> The code is on <a href={GITHUB_URL}>GitHub</a>.</> : null}
+                    {q === "Which websites does it work with?" ? <> See <a href="/lovable">how it works on a Lovable site</a>.</> : null}
                   </div>
                 </details>
               ))}

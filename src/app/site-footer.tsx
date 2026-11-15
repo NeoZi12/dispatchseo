@@ -31,6 +31,7 @@ export function SiteFooter({ home = false }: { home?: boolean }) {
             <a href={`${base}#features`}>Features</a>
             <a href="/pricing">Pricing</a>
             <a href={`${base}#faq`}>FAQ</a>
+            <a href="/lovable">DispatchSEO for Lovable</a>
             {availableAgents().map((a) => (
               <a key={a.id} href={a.landingPath}>
                 DispatchSEO for {a.displayName}

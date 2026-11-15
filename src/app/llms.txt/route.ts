@@ -109,6 +109,9 @@ Every documentation page is also available as plain markdown by appending
 
 - [Pricing](${BASE}/pricing): every plan, its price, its articles per month
   and what it includes, with a comparison table.
+- [DispatchSEO for Lovable sites](${BASE}/lovable): how it works on a site
+  built with Lovable: the setup steps, what is added to the project, why one
+  Publish click is enough, and the common questions.
 - [Quickstart](${BASE}/docs): choose an install path, then two setup steps.
 
 ${docSections}

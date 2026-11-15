@@ -247,7 +247,9 @@ export async function proxy(req: NextRequest, event: NextFetchEvent) {
     // /pricing rides the same condition: it is the cloud's price list, and it
     // has to be readable logged-out by the people (and the search and AI
     // crawlers) who look for it before there is an account.
-    ((pathname === "/" || pathname === "/pricing" || AGENT_LANDING_PATHS.has(pathname)) &&
+    // /lovable too: the page that says how DispatchSEO works on a Lovable
+    // site, for the same logged-out readers.
+    ((pathname === "/" || pathname === "/pricing" || pathname === "/lovable" || AGENT_LANDING_PATHS.has(pathname)) &&
       process.env.LANDING_ENABLED === "true")
   ) {
     track(req, event, classifyPath(pathname), null);

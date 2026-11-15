@@ -49,6 +49,7 @@ const SITE_PREFIXES = [
   "/free-tools",
   "/plans",
   "/pricing",
+  "/lovable",
   "/signup",
   "/login",
   "/onboarding",

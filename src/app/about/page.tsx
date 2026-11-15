@@ -69,7 +69,11 @@ export default function AboutPage() {
         </p>
         <p>
           DispatchSEO works with sites that live in a GitHub repository: Next.js, Astro, Hugo and
-          other code-built sites, and sites built with Lovable. WordPress, Shopify, Wix,
+          other code-built sites, and{" "}
+          <Link className="underline text-white" href="/lovable">
+            sites built with Lovable
+          </Link>
+          . WordPress, Shopify, Wix,
           Squarespace, Webflow and Ghost are not supported.
         </p>
         <p>

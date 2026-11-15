@@ -322,7 +322,7 @@ export default async function LandingPage({
             </details>
             <details>
               <summary>Does it work with Lovable sites?</summary>
-              <div className="a">Yes. Connect your Lovable project&apos;s GitHub repo during setup, then press Publish in Lovable once when your dashboard asks. After that, every article goes live on its own. If your Lovable project was made before May 2026, Lovable has to upgrade it first, and setup tells you when that&apos;s the case.</div>
+              <div className="a">Yes. Connect your Lovable project&apos;s GitHub repo during setup, then press Publish in Lovable once when your dashboard asks. After that, every article goes live on its own. If your Lovable project was made before May 2026, Lovable has to upgrade it first, and setup tells you when that&apos;s the case. <a href="/lovable">How it works on a Lovable site</a>.</div>
             </details>
             <details>
               <summary>Does it work with WordPress, Shopify, Wix or Webflow?</summary>
