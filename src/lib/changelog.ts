@@ -699,13 +699,44 @@ export const UNRELEASED: { kind: ChangeKind; text: string }[] = [
   { kind: "fixed", text: "If your GitHub account already has DispatchSEO installed, the GitHub step of setup now has a \"Find my repositories\" link that takes you straight to your repository list. Before, GitHub could show a settings page with nothing to press, and setup stayed stuck." },
   { kind: "fixed", text: "On a blog we host, the list of articles now ends with your site's card on a computer screen too. Before, it only showed on a phone." },
   { kind: "improved", text: "When you connect a repository, we now check that your own GitHub account can push to it. A repository you can only read is no longer offered, so an organization's other repositories stay out of reach." },
-  { kind: "new", text: "DispatchSEO now works with websites built in Lovable. Connect the project's GitHub repository as usual, press Publish in Lovable once when your dashboard asks, and from then on every article goes live by itself. A project on Lovable's older setup is asked to upgrade in Lovable first." },
-  { kind: "improved", text: "Setup now tells you at the GitHub step if we can't publish to your site, before anything starts. Before, a site on a host we couldn't add the blog to was let in and then asked to add a rule by hand." },
-  { kind: "improved", text: "A site on Vercel with no vercel.json file now gets its blog switched on by itself. Before, it was asked to add the rule by hand." },
+  // 1.6.0 (2026-11-15) took only the Lovable lines out of this list, on the
+  // maintainer's say-so. Everything above is still staged for a later release.
 ];
 
 // Newest first. The head of this list is what the banner announces.
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.6.0",
+    date: "2026-11-15",
+    title: "DispatchSEO now works with Lovable sites",
+    summary:
+      "Websites built in Lovable can now get their articles from DispatchSEO. Connect the " +
+      "project's GitHub repository, press Publish in Lovable once, and every article goes " +
+      "live by itself. Setup also tells you at the GitHub step if we can't publish to your site.",
+    changes: [
+      {
+        kind: "new",
+        text:
+          "DispatchSEO now works with websites built in Lovable. Connect the project's GitHub " +
+          "repository, press Publish in Lovable once, and every article then goes live by itself. " +
+          "Your dashboard tells you when to press it. A project on Lovable's older setup is asked " +
+          "to upgrade in Lovable first. How it works is at dispatchseo.com/lovable.",
+      },
+      {
+        kind: "improved",
+        text:
+          "Setup now tells you at the GitHub step if we can't publish to your site, before " +
+          "anything starts. Before, a site on a host we couldn't add the blog to was let in " +
+          "and then asked to add a rule by hand.",
+      },
+      {
+        kind: "improved",
+        text:
+          "A site on Vercel with no vercel.json file now gets its blog switched on by itself. " +
+          "Before, it was asked to add the rule by hand.",
+      },
+    ],
+  },
   {
     version: "1.5.0",
     date: "2026-08-18",
