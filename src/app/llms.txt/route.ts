@@ -32,8 +32,8 @@ self-host. The hosted service does the whole job for you: it finds keywords
 with measured search demand, writes an article on each one, fact-checks it,
 publishes it to your site, and reports the Google clicks and impressions it
 earns. It works with websites that live in a GitHub repository (Next.js,
-Astro, Hugo and other code-built sites), and articles reach the site as pull
-requests to that repository. Every site starts on the free plan; paid plans
+Astro, Hugo and other code-built sites, and sites built with Lovable), and
+articles reach the site as pull requests to that repository. Every site starts on the free plan; paid plans
 publish more articles a month.
 
 ## Key facts
@@ -50,8 +50,13 @@ publish more articles a month.
   is cheaper where offered.
 - Articles are only written about topics with real, measured search demand.
 - Supported sites: websites whose source lives in a GitHub repository, and
-  nothing else today. WordPress, Shopify, Wix, Squarespace, Webflow and Ghost
-  are not supported. Support for Lovable sites is coming soon.
+  nothing else today. That includes sites built with Lovable. WordPress,
+  Shopify, Wix, Squarespace, Webflow and Ghost are not supported.
+- Lovable sites: connect the Lovable project's GitHub repository in setup and
+  press Publish in Lovable once when the dashboard asks. Setup adds the blog
+  to the project with one small pull request. After that one click, each new
+  article goes live on the site on its own, under the site's own domain. A
+  Lovable project created before May 2026 has to be upgraded in Lovable first.
 - Publishing is a pull request to your repository, so every article is in
   your repo's history. On Autopilot (the default) each article goes live on
   its own once it is written and checked; Manual review makes each one wait

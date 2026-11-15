@@ -107,7 +107,7 @@ function pricingFaq(annual: boolean): { q: string; a: string }[] {
     },
     {
       q: "Which websites does it work with?",
-      a: "Right now DispatchSEO publishes to websites that live in a GitHub repo: Next.js, Astro, Hugo, anything you deploy from code. WordPress, Shopify, Wix, Squarespace, Webflow and Ghost aren't supported yet.",
+      a: "Right now DispatchSEO publishes to websites that live in a GitHub repo: Next.js, Astro, Hugo, anything you deploy from code. Sites built with Lovable work too, through the project's GitHub repo. WordPress, Shopify, Wix, Squarespace, Webflow and Ghost aren't supported yet.",
     },
     {
       q: "Can I run it myself instead?",

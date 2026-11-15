@@ -6,7 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 DispatchSEO is free SEO automation for small websites: it researches keywords
 with real search demand, writes fact-checked articles and publishes them to the
-site, as pull requests to a GitHub repo. The hosted product
+site, as pull requests to a GitHub repo. It works with any website that lives
+in a GitHub repo, including sites built with Lovable. The hosted product
 lives at dispatchseo.com (two articles a month free, paid plans for 5, 15 or 30
 articles a month on up to 5 websites). This open-source repo is the same
 product to self-host, driven by your own coding agent (Claude Code, Codex or

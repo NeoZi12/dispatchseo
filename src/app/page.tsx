@@ -318,11 +318,15 @@ export default async function LandingPage({
             </details>
             <details>
               <summary>What do I need to get started?</summary>
-              <div className="a">A website that lives in a GitHub repo (Next.js, Astro, Hugo, anything you deploy from code) and a free Google Search Console account. Setup connects both. Your first article usually goes live within a few hours, and you can watch it being written on your dashboard.</div>
+              <div className="a">A website that lives in a GitHub repo (Next.js, Astro, Hugo, a Lovable site, anything you deploy from code) and a free Google Search Console account. Setup connects both. Your first article usually goes live within a few hours, and you can watch it being written on your dashboard.</div>
+            </details>
+            <details>
+              <summary>Does it work with Lovable sites?</summary>
+              <div className="a">Yes. Connect your Lovable project&apos;s GitHub repo during setup, then press Publish in Lovable once when your dashboard asks. After that, every article goes live on its own. If your Lovable project was made before May 2026, Lovable has to upgrade it first, and setup tells you when that&apos;s the case.</div>
             </details>
             <details>
               <summary>Does it work with WordPress, Shopify, Wix or Webflow?</summary>
-              <div className="a">Not yet. Right now DispatchSEO publishes to sites that live in a GitHub repo. WordPress, Shopify, Wix, Squarespace, Webflow and Ghost aren&apos;t supported yet.</div>
+              <div className="a">Not yet. Right now DispatchSEO publishes to sites that live in a GitHub repo, which includes sites built with Lovable. WordPress, Shopify, Wix, Squarespace, Webflow and Ghost aren&apos;t supported yet.</div>
             </details>
             <details>
               <summary>How many articles will I get?</summary>
