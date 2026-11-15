@@ -302,8 +302,10 @@ export type PlanTone = "ok" | "active" | "warn" | "danger" | "neutral";
  *  doesn't build the site (empty, or another project's: repo_site_check), so
  *  nothing can publish and the scheduler starts nothing (repoStillNotTheSite);
  *  publish_mode "review" is manual approval; anything else (auto, or not
- *  chosen yet) publishes by itself. */
-export type SiteMode = "autopilot" | "manual" | "paused" | "blocked" | "agent";
+ *  chosen yet) publishes by itself. "setup" = a hosted site whose owner never
+ *  finished the wizard (setup_connected_at unset): nothing is connected, the
+ *  scheduler skips it as "setup incomplete", so it is not on autopilot. */
+export type SiteMode = "autopilot" | "manual" | "paused" | "blocked" | "agent" | "setup";
 
 export type CustomerSite = {
   id: string;
@@ -464,17 +466,25 @@ type ProjectRow = {
   next_article_at?: string | null;
   github_repo?: string | null;
   repo_site_check?: unknown;
+  setup_connected_at?: string | null;
   created_at: string;
 };
 
+/** A hosted site whose setup was never finished. Only a row that carries the
+ *  column counts (undefined = not read), so an old DB never reads as unfinished. */
+function setupUnfinished(p: ProjectRow): boolean {
+  return p.writer_mode === "hosted" && p.setup_connected_at === null;
+}
+
 function siteModeOf(p: ProjectRow): SiteMode {
   if (p.writer_mode !== "hosted") return "agent";
+  if (setupUnfinished(p)) return "setup";
   if (p.writer_paused_at) return "paused";
   if (repoMismatchOf(p)) return "blocked";
   return p.publish_mode === "review" ? "manual" : "autopilot";
 }
 
-const PROJECT_COLS = "id, slug, name, domain, owner_user_id, writer_mode, writer_paused_at, writer_pause_reason, next_article_at, github_repo, repo_site_check, publish_mode, created_at";
+const PROJECT_COLS = "id, slug, name, domain, owner_user_id, writer_mode, writer_paused_at, writer_pause_reason, next_article_at, github_repo, repo_site_check, setup_connected_at, publish_mode, created_at";
 
 /** The sites, with how each publishes. A DB without 0089 has no publish_mode:
  *  read again without it, which reads as autopilot (what every site did). */
@@ -772,7 +782,7 @@ async function customersReportFresh(range: Range, now = Date.now()): Promise<Cus
   // Each hosted site's next article, in the queue's own projection - the
   // date and title the customer sees on their Home. Owned sites only.
   const next = await nextArticles(
-    projects.filter((p) => p.owner_user_id).map((p) => ({ ...p, next_article_at: p.next_article_at ?? null })),
+    projects.filter((p) => p.owner_user_id && !setupUnfinished(p)).map((p) => ({ ...p, next_article_at: p.next_article_at ?? null })),
     new Date(now),
   );
   for (const c of customers) {

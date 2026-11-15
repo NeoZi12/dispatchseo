@@ -40,13 +40,14 @@ function StatusChip({ c }: { c: Customer }) {
   return <span className={cx("inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-[11.5px] font-medium", cls)}>{word}</span>;
 }
 
-const MODE_LABEL: Record<SiteMode, string> = { autopilot: "Autopilot", manual: "Manual", paused: "Paused", blocked: "Wrong repo", agent: "Own agent" };
+const MODE_LABEL: Record<SiteMode, string> = { autopilot: "Autopilot", manual: "Manual", paused: "Paused", blocked: "Wrong repo", agent: "Own agent", setup: "Setting up" };
 const MODE_CLS: Record<SiteMode, string> = {
   autopilot: "text-ok",
   manual: "text-info",
   paused: "text-warn",
   blocked: "text-danger",
   agent: "text-ink-faint",
+  setup: "text-ink-faint",
 };
 const MODE_HINT: Record<SiteMode, string> = {
   autopilot: "Articles go live by themselves",
@@ -54,6 +55,7 @@ const MODE_HINT: Record<SiteMode, string> = {
   paused: "The Dispatcher is paused: nothing is written or published",
   blocked: "The connected repository doesn't build their site, so nothing can publish and the Dispatcher writes nothing until they connect the right one",
   agent: "The owner's own coding agent builds the articles",
+  setup: "Setup isn't finished: nothing is connected yet, so the Dispatcher writes nothing",
 };
 
 /** How a customer's sites publish: Autopilot, Manual (review first), Paused,
@@ -61,7 +63,7 @@ const MODE_HINT: Record<SiteMode, string> = {
  *  paused shows both. */
 function ModeTag({ x, className = "" }: { x: Customer; className?: string }) {
   if (!x.sites.length) return <span className={cx("text-[12px] text-ink-faint", className)}>-</span>;
-  const order: SiteMode[] = ["blocked", "paused", "manual", "autopilot", "agent"];
+  const order: SiteMode[] = ["blocked", "setup", "paused", "manual", "autopilot", "agent"];
   const modes = order.filter((m) => x.sites.some((s) => s.mode === m));
   const many = x.sites.length > 1;
   return (
@@ -372,6 +374,7 @@ function untilWords(day: string, now: number): string {
 function noNextWord(x: Customer): string {
   if (!x.sites.length) return "-";
   if (x.sites.every((s) => s.mode === "agent")) return "their agent";
+  if (x.sites.every((s) => s.mode === "setup")) return "none: setup unfinished";
   if (x.sites.some((s) => s.mode === "blocked") && x.sites.every((s) => s.mode !== "autopilot" && s.mode !== "manual")) return "none: wrong repo";
   if (x.sites.every((s) => s.mode === "paused" || s.mode === "agent")) return "paused";
   return "-";
