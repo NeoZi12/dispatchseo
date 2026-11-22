@@ -12,6 +12,7 @@ import { submitSiteSitemap } from "@/lib/gsc-sitemaps";
 import { ideaDone } from "@/lib/writer/runs";
 import { warmScreenshotsLater } from "@/lib/page-screenshot";
 import { notifyFirstArticleLive } from "@/lib/first-article-email";
+import { quietUntil } from "@/lib/quiet-days";
 
 // Confirms a published article is actually reachable - and, once it is, files
 // it as a real page of the site.
@@ -238,8 +239,12 @@ async function verifyRepoArticle(job: Job, draftId: string): Promise<void> {
     // article the owner approved by hand still goes out - their Publish is
     // the go-ahead (the same rule as publish.ts). Read on its own, only when
     // paused, as publish.ts does: a database without 0089 must still verify.
+    // A quiet day (quiet-days.ts) holds the merge the same way and for the
+    // same articles: a pull request opened on Thursday night must not turn
+    // green and merge on Friday.
+    const quiet = quietUntil(project, nowDate);
     let held = false;
-    if (auto && project.writer_paused_at) {
+    if (auto && (project.writer_paused_at || quiet)) {
       const { data: gate } = await db().from("article_drafts").select("approved_at").eq("id", draftId).eq("project_id", project.id).maybeSingle();
       held = !(gate as { approved_at?: string | null } | null)?.approved_at;
     }
@@ -289,7 +294,10 @@ async function verifyRepoArticle(job: Job, draftId: string): Promise<void> {
     if (held || ((!deadline || now < deadline) && round < MAX_ROUNDS)) {
       // A refused merge is answered by asking again on the next round, not
       // by failing a job the owner would be emailed about.
-      const wait = (land.outcome === "wait" ? land.afterMs : null) ?? (auto && round < AUTO_EARLY_ROUNDS ? AUTO_EARLY_RETRY_MS : AWAITING_MERGE_RETRY_MS);
+      let wait = (land.outcome === "wait" ? land.afterMs : null) ?? (auto && round < AUTO_EARLY_ROUNDS ? AUTO_EARLY_RETRY_MS : AWAITING_MERGE_RETRY_MS);
+      // Held by a quiet day alone: look again the minute it lifts, not up
+      // to two hours after.
+      if (held && quiet && !project.writer_paused_at) wait = Math.min(wait, quiet.getTime() - nowDate.getTime() + 60_000);
       // A round spent waiting out a pause is not a round the pull request
       // had to merge in: the deadline moves with it, or a long pause ended
       // the chain and left the article unmerged after the resume.

@@ -6,6 +6,7 @@ import { consecutivePostPickFailures, FAILURE_STREAK_ALARM, noArticleAlarm, noAr
 import { BUDGET_SKIP } from "./research";
 import { AGENT_STALE_HOURS, AGENT_STALE_REASON, BATCH_STALE_HOURS, BATCH_STALE_REASON, closeRunTasks, waitingOnAgent } from "@/lib/writer/agent-tasks";
 import { failRun, getWriterRun } from "@/lib/writer/runs";
+import { QUIET_DAY_SKIP, quietUntil } from "@/lib/quiet-days";
 
 /** The scheduler's month-gate skips (usage.ts monthAllowance): the plan
  *  working as sold, like "quota met" - never an alarm reason. */
@@ -101,7 +102,11 @@ export async function siteHealthProblems(project: Project, skips: string[], now:
   }
 
   const neverLive = (stuck ?? []) as { title: string; status: string; pr_url: string | null; pr_merged_at: string | null }[];
-  if (neverLive.length) {
+  // A quiet day (quiet-days.ts) holds articles on purpose, for about two
+  // days at a time: one that waited through it is not stuck. The six hours
+  // after cover the merge and the deploy once the hold lifts.
+  const quietHold = Boolean(quietUntil(project, now) || quietUntil(project, new Date(now.getTime() - 6 * 3_600_000)));
+  if (neverLive.length && !quietHold) {
     const first = neverLive[0];
     const more = neverLive.length > 1 ? ` (and ${neverLive.length - 1} more)` : "";
     problems.push(
@@ -116,7 +121,7 @@ export async function siteHealthProblems(project: Project, skips: string[], now:
   // a site with 2 articles a month starts one every 15 days). A plan read
   // that fails keeps the two-week rule.
   const plan = await projectPlan(project.id).catch(() => null);
-  const normal = new Set(["quota met", "spacing", ...MONTH_SKIPS]);
+  const normal = new Set(["quota met", "spacing", QUIET_DAY_SKIP, ...MONTH_SKIPS]);
   const monthUsed = skips.some((s) => MONTH_SKIPS.includes(s));
   // A plan read error is neither "no share" nor a reason to stay quiet
   // forever: it carries no pool, so it simply reads the two-week rule.

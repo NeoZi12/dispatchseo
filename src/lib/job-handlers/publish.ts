@@ -10,6 +10,7 @@ import { enqueue } from "@/lib/jobs";
 import { dryDraftBlocked, parkDryDraft } from "./dry-guard";
 import type { Job } from "@/lib/jobs";
 import { parkForReviewIfDue } from "@/lib/article-review";
+import { quietUntil } from "@/lib/quiet-days";
 
 // Puts a finished article on the customer's site.
 //
@@ -44,9 +45,21 @@ export async function runPublishJob(job: Job): Promise<void> {
   // as it is and goes out when the owner resumes (pause.ts resumeWriter
   // queues it again). The one exception is an article the owner approved by
   // hand - their own Publish is the go-ahead.
-  if (project.writer_paused_at) {
+  //
+  // A quiet day (quiet-days.ts) holds it the same way, with the same
+  // exception, but nobody presses anything to end it: this job is queued
+  // again for the moment the hold lifts. Its own key, because this job still
+  // holds `publish:<draft>` until it returns; the lift time in it means a
+  // second hold of the same article dedupes instead of piling up.
+  const quiet = quietUntil(project);
+  if (project.writer_paused_at || quiet) {
     const { data: gate } = await db().from("article_drafts").select("approved_at").eq("id", draftId).eq("project_id", project.id).maybeSingle();
-    if (!(gate as { approved_at?: string | null } | null)?.approved_at) return;
+    if (!(gate as { approved_at?: string | null } | null)?.approved_at) {
+      if (!project.writer_paused_at && quiet) {
+        await enqueue({ projectId: project.id, kind: "publish", payload: job.payload, runAfter: quiet, idempotencyKey: `publish:${draftId}:quiet:${quiet.toISOString()}` });
+      }
+      return;
+    }
   }
   // Review before publishing: an article that parked on setup was never
   // reviewed, so on a review site it waits for the owner now instead of

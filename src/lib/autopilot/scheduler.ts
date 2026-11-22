@@ -19,6 +19,7 @@ import { readResearchState } from "@/lib/keyword-research-cache";
 import { rampFor } from "./ramp";
 import { pauseWriter } from "./pause";
 import { countAwaitingReview, MAX_WAITING_FOR_REVIEW, reviewsArticles } from "@/lib/article-review";
+import { afterQuiet, QUIET_DAY_SKIP, quietUntil } from "@/lib/quiet-days";
 
 export { weekUsage, type WeekUsage } from "./usage";
 
@@ -157,6 +158,14 @@ export async function runScheduler(
   // Operator configuration, not the owner's: reported once per cron run by
   // the route (loudly), skipped quietly per project here.
   if (missingCredentials().length) return { skipped: "the writer has no model credentials on this deploy" };
+  // A quiet day (quiet-days.ts): the site publishes nothing today, so nothing
+  // starts either. The owner's choice, quiet like "quota met"; the date shown
+  // as "next article" moves to the day the hold lifts when it sat inside it.
+  const quiet = quietUntil(project, now);
+  if (quiet) {
+    if (project.next_article_at && Date.parse(project.next_article_at) < quiet.getTime()) await setNextArticleAt(project.id, quiet);
+    return { skipped: QUIET_DAY_SKIP, next_article_at: quiet.toISOString() };
+  }
   // The hosted blog: the FIRST article may go out before /blog forwards (it
   // is how the owner sees the blog at all). After that, more pages on an
   // address nobody can reach from the site is spend with no return.
@@ -240,8 +249,11 @@ export async function runScheduler(
   const pace = paceToday(plan, ramp.quota, siteCount, now);
   const verdict = cadence({ now, quota: pace.quota, spacingDays: pace.spacingDays, countThisWeek: usage.count, lastStartedAt: usage.lastStartedAt });
   if (!verdict.write) {
-    await setNextArticleAt(project.id, verdict.nextAt ? claimMarker(plan, verdict.nextAt, now) : null);
-    return { skipped: verdict.reason, next_article_at: verdict.nextAt?.toISOString() ?? null, profile: profileOutcome };
+    // Past a quiet day (quiet-days.ts): the pass on it starts nothing, so the
+    // date stored and shown is the day the hold lifts.
+    const nextAt = verdict.nextAt ? afterQuiet(project, verdict.nextAt) : null;
+    await setNextArticleAt(project.id, nextAt ? afterQuiet(project, claimMarker(plan, nextAt, now)) : null);
+    return { skipped: verdict.reason, next_article_at: nextAt?.toISOString() ?? null, profile: profileOutcome };
   }
 
   // The keyword data a run needs, checked BEFORE the slot is claimed. A run
@@ -267,7 +279,8 @@ export async function runScheduler(
   }
 
   const previous = project.next_article_at;
-  if (!(await claimSlot(project, now, claimMarker(plan, verdict.nextAfter, now)))) {
+  const nextAfter = afterQuiet(project, verdict.nextAfter);
+  if (!(await claimSlot(project, now, afterQuiet(project, claimMarker(plan, nextAfter, now))))) {
     // Two causes, told apart so the run log does not cry "race" for the
     // common one: next_article_at was already in the future when this pass
     // read it (set while the old plan's quota was met - a mid-week upgrade
@@ -291,7 +304,7 @@ export async function runScheduler(
   return {
     started: started.run.id,
     keyword: started.run.keyword,
-    next_article_at: verdict.nextAfter.toISOString(),
+    next_article_at: nextAfter.toISOString(),
     research,
     profile: profileOutcome,
   };

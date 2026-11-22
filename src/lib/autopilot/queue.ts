@@ -6,6 +6,7 @@ import { monthStartUtc, nextMonthStartUtc, upcomingStarts, weekStartUtc, type Ca
 import { monthUsage, weekUsage } from "./usage";
 import { rampInputs, rampSinceDay, rampVerdict } from "./ramp";
 import { sortIdeas } from "./idea-order";
+import { shiftPastQuiet } from "@/lib/quiet-days";
 
 // The hosted writer's queue, as the owner sees it on /queue and the agent
 // reads it in get_autopilot (`upcoming`, `parked`): every idea the scheduler
@@ -101,7 +102,7 @@ export function stripParkReasons(rationale: string | null | undefined): string |
 }
 
 export async function getHostedQueue(
-  project: Pick<Project, "id" | "next_article_at" | "writer_paused_at"> & Partial<Omit<ProjectHint, "id">>,
+  project: Pick<Project, "id" | "next_article_at" | "writer_paused_at"> & Partial<Omit<ProjectHint, "id">> & Partial<Pick<Project, "content_prefs">>,
   now = new Date(),
   // Home draws its calendar and "Up next" from this and never shows the
   // parked list, so it skips that read.
@@ -171,6 +172,10 @@ export async function getHostedQueue(
       room: month ? (sameMonth ? month.room : month.share) : 0,
     });
   }
+  // The scheduler starts nothing on a quiet day (quiet-days.ts), so no date
+  // shown here may fall on one. A caller without the prefs shows the plain
+  // cadence, as before.
+  starts = shiftPastQuiet(project, starts);
   const day = (d: Date | undefined) => (d ? d.toISOString().slice(0, 10) : null);
 
   return {

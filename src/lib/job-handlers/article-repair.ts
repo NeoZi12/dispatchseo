@@ -6,6 +6,7 @@ import { landMemo, landPullRequest, mergedWithoutChange, type LandMemo, type Lan
 import { repairRepoArticle } from "@/lib/article-repair";
 import { db } from "@/lib/db";
 import { warmScreenshotsLater } from "@/lib/page-screenshot";
+import { quietUntil } from "@/lib/quiet-days";
 
 // One live repo article that shipped without its cover or its free-plan
 // credit (src/lib/article-repair.ts): open the pull request that adds them,
@@ -79,7 +80,9 @@ export async function runArticleRepairJob(job: Job): Promise<void> {
   let land: LandResult | null = null;
   if (!merged) {
     // Everything between "open" and "merged" is pr-landing.ts's.
-    land = await landPullRequest(project, pr, memo, { merge: effectiveAutomations(project).auto_merge, redo });
+    // Not on a quiet day (quiet-days.ts): a repair changes the live site
+    // too, and nobody pressed anything for it. The rounds below look again.
+    land = await landPullRequest(project, pr, memo, { merge: effectiveAutomations(project).auto_merge && !quietUntil(project), redo });
     if (land.outcome === "gone") return;
     merged = land.outcome === "merged";
   }
